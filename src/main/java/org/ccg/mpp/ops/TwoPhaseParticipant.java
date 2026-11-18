@@ -1,0 +1,116 @@
+package org.ccg.mpp.ops;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import org.ccg.mpp.cluster.ClusterCoordinator;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.conn.TxSession;
+import org.ccg.mpp.data.admin.AdminTransactionEntry;
+import org.ccg.mpp.ex.DurableReplayIncompleteException;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.log.Logger;
+import org.ccg.mpp.ops.resp.OperationResponse;
+import org.ccg.mpp.ops.tx.CommitAuthorization;
+import org.ccg.mpp.ops.tx.TransactionRecovery;
+
+public final class TwoPhaseParticipant {
+    private static final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+    private static final ClusterCoordinator coordinator = IocContainer.get(ClusterCoordinator.class);
+    private static final Logger logger = Logger.logFor(TwoPhaseParticipant.class);
+
+    private TwoPhaseParticipant() {
+    }
+
+    public static boolean prepare(UUID clientId, String coordinatorAddress, List<String> participants) {
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        if (transaction == null || transaction.isAborted() || coordinator.hasNotTransactionQuorum()
+                || TransactionOperationHelper.ownershipMoved(transaction)
+                || !CommitAuthorization.allows(transaction, clientTracker.getAuthenticatedUsername(clientId))) {
+            return false;
+        }
+        try {
+            Tx2pcLog.recordParticipantPrepared(transaction.getTransactionId().toString(), coordinatorAddress,
+                    participants, new ArrayList<>(transaction.getHeldLocks()),
+                    transaction.areOpsDurable() ? List.of() : transaction.getPendingOps(),
+                    List.copyOf(transaction.getBufferedOpIds()));
+            transaction.markOpsDurable();
+            return true;
+        } catch (Exception e) {
+            logger.warning("Failed to prepare transaction: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public static OperationResponse commitPrepared(UUID clientId) {
+        return commitPrepared(clientId, List.of());
+    }
+
+    public static OperationResponse commitPrepared(UUID clientId, List<AdminTransactionEntry> decision) {
+        return TransactionOperationHelper.commitDecided(clientId, decision);
+    }
+
+    // The durable replay takes the slice's collection write locks. A prepared session that never died still
+    // holds them on its own thread, so resolving through the session is both the only way to release them and
+    // the only way to avoid blocking the recovery worker on them for the life of the process.
+    private static Map.Entry<String, TxSession> liveSessionFor(String dtxId) {
+        for (final var entry : clientTracker.txSessionsSnapshot().entrySet()) {
+            final var transaction = clientTracker.getActiveTransaction(entry.getValue().clientId());
+            if (transaction != null && transaction.getTransactionId().toString().equals(dtxId)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static boolean resolvedThroughLiveSession(String dtxId, boolean commit, long timeoutMillis)
+            throws Exception {
+        final var entry = liveSessionFor(dtxId);
+        if (entry == null) {
+            return false;
+        }
+        final var session = entry.getValue();
+        final var future = session.submit(() -> commit
+                ? commitPrepared(session.clientId())
+                : TransactionOperationHelper.abort(session.clientId()));
+        final var result = timeoutMillis > 0 ? future.get(timeoutMillis, TimeUnit.MILLISECONDS) : future.get();
+        if (clientTracker.getActiveTransaction(session.clientId()) == null) {
+            clientTracker.removeTxSession(entry.getKey());
+        }
+        if (!resolved(result)) {
+            throw new DurableReplayIncompleteException(dtxId, result.getMessage());
+        }
+        return true;
+    }
+
+    public static boolean redriveOnLiveSession(String txId, long timeoutMillis) throws Exception {
+        final var entry = liveSessionFor(txId);
+        if (entry == null) {
+            return false;
+        }
+        final var session = entry.getValue();
+        final var future = session.submit(() -> TransactionOperationHelper.redriveFenced(session.clientId()));
+        final var finished = timeoutMillis > 0 ? future.get(timeoutMillis, TimeUnit.MILLISECONDS) : future.get();
+        if (clientTracker.getActiveTransaction(session.clientId()) == null) {
+            clientTracker.removeTxSession(entry.getKey());
+        }
+        if (!finished) {
+            throw new DurableReplayIncompleteException(txId, "its commit still cannot finish applying");
+        }
+        return true;
+    }
+
+    public static boolean resolved(OperationResponse response) {
+        return response.getStatus() == OperationStatus.OK
+                || ErrorCode.REPLICATION_TIMEOUT.getCode().equals(response.getErrorCode());
+    }
+
+    public static void resolveFromDurable(String dtxId, boolean commit, long timeoutMillis) throws Exception {
+        if (resolvedThroughLiveSession(dtxId, commit, timeoutMillis)) {
+            return;
+        }
+        TransactionRecovery.resolveFromDurable(dtxId, commit, timeoutMillis);
+    }
+}

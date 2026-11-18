@@ -74,7 +74,7 @@ def _discard(executor, work_dir: str, keep: bool) -> None:
 
 
 def run_plan(plan: list, namespace, seed, signature=None):
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-fuzz-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-fuzz-")
     executor = Executor(work_dir, PORT)
     stats = oracles.Stats()
     try:
@@ -90,7 +90,7 @@ class PersistentReplayer:
         self.namespace = namespace
         self.seed = seed
         self.signature = signature
-        self.work_dir = tempfile.mkdtemp(prefix="lwnrdb-shrink-")
+        self.work_dir = tempfile.mkdtemp(prefix="mpp-shrink-")
         self.executor = Executor(self.work_dir, PORT)
         self.executor.start()
 
@@ -203,7 +203,7 @@ def run_soak(minutes: float, ops: int, start_seed, shrink_seconds: float,
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Differential fuzz harness for LWNRDB. One seed determines a whole run "
+        description="Differential fuzz harness for MPP. One seed determines a whole run "
                     "- the plan of operations, the documents it writes and the queries it "
                     "asks - so a failing plan can be replayed and shrunk. Every oracle "
                     "compares the engine against itself: an index-backed read against the "

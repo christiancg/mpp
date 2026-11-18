@@ -1,0 +1,176 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.OperationStatus;
+import org.junit.jupiter.api.Test;
+
+public class ErrorCodeTest {
+
+    @Test
+    public void server_shutting_down_is_a_retryable_503() {
+        assertEquals("503-13", ErrorCode.SERVER_SHUTTING_DOWN.getCode());
+        assertEquals(OperationStatus.ERROR, ErrorCode.SERVER_SHUTTING_DOWN.getStatus());
+    }
+
+    @Test
+    public void all_error_codes_have_non_blank_code_string() {
+        for (ErrorCode code : ErrorCode.values()) {
+            assertNotNull(code.getCode(), code.name() + " has null code");
+            assertFalse(code.getCode().isBlank(), code.name() + " has blank code");
+        }
+    }
+
+    @Test
+    public void all_error_codes_have_unique_codes() {
+        final var seen = new HashSet<String>();
+        for (ErrorCode code : ErrorCode.values()) {
+            assertTrue(seen.add(code.getCode()), "Duplicate code: " + code.getCode() + " on " + code.name());
+        }
+    }
+
+    @Test
+    public void error_code_format_matches_pattern() {
+        for (ErrorCode code : ErrorCode.values()) {
+            assertTrue(code.getCode().matches("\\d{3}-\\d+"),
+                    code.name() + " code '" + code.getCode() + "' does not match NNN-N format");
+        }
+    }
+
+    @Test
+    public void internal_server_errors_start_with_5() {
+        final long count = Arrays.stream(ErrorCode.values()).filter(c -> c.getCode().startsWith("5")).count();
+        assertTrue(count > 0, "Expected at least one 5xx error code");
+        Arrays.stream(ErrorCode.values()).filter(c -> c.getCode().startsWith("5"))
+                .forEach(c -> assertTrue(c.getCode().startsWith("5"), c.name() + " should be a 5xx code"));
+    }
+
+    @Test
+    public void client_errors_start_with_4() {
+        Arrays.stream(ErrorCode.values()).filter(c -> !c.getCode().startsWith("5"))
+                .forEach(c -> assertTrue(c.getCode().startsWith("4"),
+                        c.name() + " code '" + c.getCode() + "' is neither 4xx nor 5xx"));
+    }
+
+    @Test
+    public void validation_error_has_null_default_message() {
+        assertNull(ErrorCode.VALIDATION_ERROR.getDefaultMessage());
+    }
+
+    @Test
+    public void non_validation_codes_have_non_null_default_message() {
+        for (ErrorCode code : ErrorCode.values()) {
+            if (code != ErrorCode.VALIDATION_ERROR) {
+                assertNotNull(code.getDefaultMessage(), code.name() + " should have a default message");
+                assertFalse(code.getDefaultMessage().isBlank(), code.name() + " default message is blank");
+            }
+        }
+    }
+
+    @Test
+    public void must_authenticate_first_code_is_401_1() {
+        assertEquals("401-1", ErrorCode.MUST_AUTHENTICATE_FIRST.getCode());
+    }
+
+    @Test
+    public void procedure_bound_by_other_definer_is_a_forbidden_403_4() {
+        assertEquals("403-4", ErrorCode.PROCEDURE_BOUND_BY_OTHER_DEFINER.getCode());
+        assertEquals(OperationStatus.FORBIDDEN, ErrorCode.PROCEDURE_BOUND_BY_OTHER_DEFINER.getStatus());
+    }
+
+    @Test
+    public void no_permissions_code_is_403_1() {
+        assertEquals("403-1", ErrorCode.NO_PERMISSIONS.getCode());
+    }
+
+    @Test
+    public void all_error_codes_have_non_null_status() {
+        for (ErrorCode code : ErrorCode.values()) {
+            assertNotNull(code.getStatus(), code.name() + " has null status");
+        }
+    }
+
+    @Test
+    public void client_404_codes_have_not_found_status() {
+        Arrays.stream(ErrorCode.values()).filter(c -> c.getCode().startsWith("404"))
+                .forEach(c -> assertEquals(OperationStatus.NOT_FOUND, c.getStatus(),
+                        c.name() + " should have NOT_FOUND status"));
+    }
+
+    @Test
+    public void client_401_unauthenticated_codes_have_unauthenticated_status() {
+        assertEquals(OperationStatus.UNAUTHENTICATED, ErrorCode.MUST_AUTHENTICATE_FIRST.getStatus());
+        assertEquals(OperationStatus.UNAUTHENTICATED, ErrorCode.USER_NO_LONGER_EXISTS.getStatus());
+        assertEquals(OperationStatus.UNAUTHENTICATED, ErrorCode.TOO_MANY_FAILED_ATTEMPTS.getStatus());
+        assertEquals("401-4", ErrorCode.TOO_MANY_FAILED_ATTEMPTS.getCode());
+    }
+
+    @Test
+    public void no_permissions_has_forbidden_status() {
+        assertEquals(OperationStatus.FORBIDDEN, ErrorCode.NO_PERMISSIONS.getStatus());
+    }
+
+    @Test
+    public void script_error_codes_carry_expected_statuses() {
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCRIPT_FAILED.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCRIPT_TOO_LARGE.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCRIPT_LIMIT_EXCEEDED.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCRIPT_TIMEOUT.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCRIPT_MEMORY_EXCEEDED.getStatus());
+        assertEquals(OperationStatus.FORBIDDEN, ErrorCode.SCRIPTS_DISABLED.getStatus());
+    }
+
+    @Test
+    public void script_error_codes_have_expected_codes() {
+        assertEquals("400-9", ErrorCode.SCRIPT_FAILED.getCode());
+        assertEquals("400-10", ErrorCode.SCRIPT_TOO_LARGE.getCode());
+        assertEquals("400-11", ErrorCode.SCRIPT_LIMIT_EXCEEDED.getCode());
+        assertEquals("403-2", ErrorCode.SCRIPTS_DISABLED.getCode());
+        assertEquals("408-1", ErrorCode.SCRIPT_TIMEOUT.getCode());
+        assertEquals("400-12", ErrorCode.SCRIPT_MEMORY_EXCEEDED.getCode());
+        assertEquals(ErrorCode.SCRIPT_TIMEOUT, ErrorCode.byCode("408-1"));
+        assertEquals(ErrorCode.SCRIPT_MEMORY_EXCEEDED, ErrorCode.byCode("400-12"));
+    }
+
+    @Test
+    public void test_name_collides_on_disk_code_and_status() {
+        assertEquals("409-11", ErrorCode.NAME_COLLIDES_ON_DISK.getCode());
+        assertEquals(OperationStatus.ERROR, ErrorCode.NAME_COLLIDES_ON_DISK.getStatus());
+        assertFalse(ErrorCode.NAME_COLLIDES_ON_DISK.getDefaultMessage().isBlank());
+    }
+
+    @Test
+    public void test_transaction_previous_unresolved_code_and_status() {
+        assertEquals("409-12", ErrorCode.TRANSACTION_PREVIOUS_UNRESOLVED.getCode());
+        assertEquals(OperationStatus.ERROR, ErrorCode.TRANSACTION_PREVIOUS_UNRESOLVED.getStatus());
+        assertEquals(ErrorCode.TRANSACTION_PREVIOUS_UNRESOLVED, ErrorCode.byCode("409-12"));
+    }
+
+    @Test
+    public void test_listen_ended_is_410_1_not_found() {
+        assertEquals("410-1", ErrorCode.LISTEN_ENDED.getCode());
+        assertEquals(OperationStatus.NOT_FOUND, ErrorCode.LISTEN_ENDED.getStatus());
+        assertEquals(ErrorCode.LISTEN_ENDED, ErrorCode.byCode("410-1"));
+    }
+
+    @Test
+    public void test_schema_budget_codes_resolve_with_error_status() {
+        assertEquals(ErrorCode.SCHEMA_VALIDATION_BUDGET_EXCEEDED, ErrorCode.byCode("400-23"));
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCHEMA_VALIDATION_BUDGET_EXCEEDED.getStatus());
+        assertEquals(ErrorCode.SCHEMA_TOO_COMPLEX, ErrorCode.byCode("400-24"));
+        assertEquals(OperationStatus.ERROR, ErrorCode.SCHEMA_TOO_COMPLEX.getStatus());
+    }
+
+    @Test
+    public void connection_limit_codes_are_errors() {
+        assertEquals("400-22", ErrorCode.REQUEST_TOO_LARGE.getCode());
+        assertEquals("408-4", ErrorCode.AUTHENTICATION_TIMEOUT.getCode());
+        assertEquals("409-16", ErrorCode.TRANSACTION_IDLE_TIMEOUT.getCode());
+        assertEquals(OperationStatus.ERROR, ErrorCode.REQUEST_TOO_LARGE.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.AUTHENTICATION_TIMEOUT.getStatus());
+        assertEquals(OperationStatus.ERROR, ErrorCode.TRANSACTION_IDLE_TIMEOUT.getStatus());
+    }
+}

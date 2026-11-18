@@ -5,17 +5,17 @@ from datetime import datetime, time
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     GeoPoint,
     ListenEndedError,
-    LwnrdbError,
+    MppError,
     UnavailableError,
     UnknownOutcomeError,
     Vector,
 )
-from lwnrdb._internal.frame_router import Route, is_listen_end, route
-from lwnrdb._internal.response_decoder import check, document, raise_for
-from lwnrdb.error_codes import RETRYABLE_CODES
+from mpp._internal.frame_router import Route, is_listen_end, route
+from mpp._internal.response_decoder import check, document, raise_for
+from mpp.error_codes import RETRYABLE_CODES
 from tests.support.protocol_fixtures import FixtureCase, responses
 
 ERROR_PREFIX = "error:"
@@ -28,7 +28,7 @@ def _fixture(name: str) -> FixtureCase:
 
 def _expect_error(frame: dict[str, object], code: str) -> None:
     assert route(frame, awaiting_close=False) is Route.RESPONSE
-    with pytest.raises(LwnrdbError) as caught:
+    with pytest.raises(MppError) as caught:
         check(frame)
     error = caught.value
     assert error.raw_code == code

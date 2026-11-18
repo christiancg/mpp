@@ -1,0 +1,116 @@
+package org.ccg.mpp.unit.simplejs.internal;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import org.ccg.mpp.simplejs.exceptions.SyntaxErrorException;
+import org.ccg.mpp.simplejs.internal.Lexer;
+import org.ccg.mpp.simplejs.internal.Parser;
+import org.ccg.mpp.simplejs.nodes.Program;
+import org.junit.jupiter.api.Test;
+
+// The strict Script goal raises the early errors the host contract deliberately relaxes, so every
+// case is asserted twice: rejected under the goal, accepted under the default.
+public class ScriptGoalProgramTest {
+    private Program parseStrict(String source) {
+        return Parser.parse(Lexer.lexWithPositions(source), true);
+    }
+
+    private Program parseRelaxed(String source) {
+        return Parser.parse(Lexer.lexWithPositions(source), false);
+    }
+
+    private void assertRejectedOnlyByGoal(String source) {
+        assertThrows(SyntaxErrorException.class, () -> parseStrict(source), source);
+        assertNotNull(parseRelaxed(source), source);
+    }
+
+    private void assertAcceptedByBoth(String source) {
+        assertNotNull(parseStrict(source), source);
+        assertNotNull(parseRelaxed(source), source);
+    }
+
+    @Test
+    public void test_top_level_return_rejected() {
+        assertRejectedOnlyByGoal("var x = 1; return;");
+        assertRejectedOnlyByGoal("return (0);");
+        assertRejectedOnlyByGoal("{ return; }");
+        assertRejectedOnlyByGoal("try { throw 1; } catch (e) { return e; }");
+        assertRejectedOnlyByGoal("while (true) { return; }");
+    }
+
+    @Test
+    public void test_return_in_function_accepted() {
+        assertAcceptedByBoth("function f() { return 1; }");
+        assertAcceptedByBoth("var f = () => { return 1; };");
+        assertAcceptedByBoth("class C { m() { return 1; } }");
+        assertAcceptedByBoth("var o = { m() { return 1; } };");
+    }
+
+    @Test
+    public void test_top_level_new_target_rejected() {
+        assertRejectedOnlyByGoal("new.target;");
+        assertRejectedOnlyByGoal("var f = () => new.target;");
+    }
+
+    @Test
+    public void test_new_target_in_function_code_accepted() {
+        assertAcceptedByBoth("function f() { return new.target; }");
+        assertAcceptedByBoth("function f() { return () => new.target; }");
+        assertAcceptedByBoth("class C { m() { return new.target; } }");
+        assertAcceptedByBoth("class C { static { new.target; } }");
+    }
+
+    @Test
+    public void test_top_level_super_property_rejected() {
+        assertRejectedByBoth("super.property;");
+        assertRejectedByBoth("var f = () => super.property;");
+    }
+
+    private void assertRejectedByBoth(String source) {
+        assertThrows(SyntaxErrorException.class, () -> parseStrict(source), source);
+        assertThrows(SyntaxErrorException.class, () -> parseRelaxed(source), source);
+    }
+
+    @Test
+    public void test_super_property_in_class_accepted() {
+        assertAcceptedByBoth("class C extends B { m() { return super.x; } }");
+        assertAcceptedByBoth("class C extends B { x = super.y; }");
+        assertAcceptedByBoth("class C extends B { m() { return () => super.x; } }");
+        assertAcceptedByBoth("var o = { m() { return super.x; } };");
+    }
+
+    @Test
+    public void test_import_meta_rejected() {
+        assertRejectedOnlyByGoal("import.meta;");
+        assertRejectedOnlyByGoal("var url = import.meta.url;");
+        assertAcceptedByBoth("import('args');");
+    }
+
+    @Test
+    public void test_import_and_export_declarations_rejected() {
+        assertRejectedOnlyByGoal("import v from './import.js';");
+        assertRejectedOnlyByGoal("import 'args';");
+        assertRejectedOnlyByGoal("export default null;");
+        assertRejectedOnlyByGoal("export const a = 1;");
+        assertRejectedOnlyByGoal("export * from 'args';");
+    }
+
+    @Test
+    public void test_top_level_using_rejected() {
+        assertRejectedOnlyByGoal("using x = null;");
+        assertRejectedOnlyByGoal("await using x = null;");
+        assertAcceptedByBoth("{ using x = null; }");
+        assertAcceptedByBoth("{ await using x = null; }");
+        assertAcceptedByBoth("function f() { using x = null; }");
+        assertAcceptedByBoth("for (using x of []) { x; }");
+        assertAcceptedByBoth("class C { static { using x = null; } }");
+    }
+
+    @Test
+    public void test_relaxed_goal_still_parses_the_host_contract() {
+        assertAcceptedByBoth("var x = 1;");
+        assertNotNull(parseRelaxed("return 1;"));
+        assertNotNull(parseRelaxed("import args from 'args'; export default args;"));
+    }
+}

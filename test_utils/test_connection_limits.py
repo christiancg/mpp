@@ -636,7 +636,7 @@ def test_pipelined_small_requests_answer_in_order():
 
 
 def run_budget_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-connlimits-budget-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-connlimits-budget-")
     log_path = os.path.join(work_dir, "server.log")
     write_budget_config(work_dir)
     print(f"  Budget phase working dir: {work_dir}")
@@ -694,7 +694,7 @@ def test_max_connections_admits_exactly_the_limit_under_concurrency():
 def main():
     bu.banner("Connection limits test suite", HOST, PORT)
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-connlimits-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-connlimits-")
     log_path = os.path.join(work_dir, "server.log")
     write_config(work_dir)
     print(f"  Working dir: {work_dir}")

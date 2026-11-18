@@ -6,7 +6,7 @@ from typing import Any, TypeVar
 
 import pytest
 
-from lwnrdb import AsyncCollection, AsyncLwnrdbClient, ClientSettings, Credentials, LwnrdbClient, ServerAddress
+from mpp import AsyncCollection, AsyncMppClient, ClientSettings, Credentials, MppClient, ServerAddress
 from tests.support.server_process import ADMIN, PASSWORD, ServerProcess
 
 V = TypeVar("V")
@@ -30,15 +30,15 @@ def server(request: pytest.FixtureRequest) -> Iterator[ServerProcess]:
 
 
 @pytest.fixture
-async def client(server: ServerProcess) -> AsyncIterator[AsyncLwnrdbClient]:
-    connected = await AsyncLwnrdbClient.connect(settings_for(server))
+async def client(server: ServerProcess) -> AsyncIterator[AsyncMppClient]:
+    connected = await AsyncMppClient.connect(settings_for(server))
     yield connected
     await connected.close()
 
 
 @pytest.fixture
-def sync_client(server: ServerProcess) -> Iterator[LwnrdbClient]:
-    connected = LwnrdbClient.connect(settings_for(server))
+def sync_client(server: ServerProcess) -> Iterator[MppClient]:
+    connected = MppClient.connect(settings_for(server))
     yield connected
     connected.close()
 

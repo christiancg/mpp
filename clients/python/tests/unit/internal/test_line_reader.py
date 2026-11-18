@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lwnrdb._internal.line_reader import TOO_LARGE, LineEvent, LineReader
+from mpp._internal.line_reader import TOO_LARGE, LineEvent, LineReader
 
 
 def test_lines_split_across_chunks_are_joined() -> None:

@@ -1,0 +1,40 @@
+package org.ccg.mpp.cluster;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.ccg.mpp.cluster.msg.ClusterMessageType;
+import org.junit.jupiter.api.Test;
+
+// Lives in org.ccg.mpp.cluster rather than unit/cluster because ClusterMessages is package-private.
+public class ClusterMessagesTest {
+
+    @Test
+    public void test_reply_returns_the_ack_the_builder_filled_in() {
+        final var reply = ClusterMessages.reply(ClusterMessageType.ADMIN_SNAPSHOT_ACK, "Failed",
+                response -> response.setTxStatus("COMMITTED"));
+
+        assertEquals(ClusterMessageType.ADMIN_SNAPSHOT_ACK, reply.getType());
+        assertEquals("COMMITTED", reply.getTxStatus());
+    }
+
+    @Test
+    public void test_reply_wraps_a_failing_builder_as_an_error_ack() {
+        final var reply = ClusterMessages.reply(ClusterMessageType.ADMIN_SNAPSHOT_ACK, "Snapshot failed", _ -> {
+            throw new IllegalStateException("disk gone");
+        });
+
+        assertEquals(ClusterMessageType.ERROR, reply.getType());
+        assertEquals("Snapshot failed: disk gone", reply.getErrorMessage());
+    }
+
+    @Test
+    public void test_a_failure_replaces_the_ack_type_it_had_already_set() {
+        final var reply = ClusterMessages.reply(ClusterMessageType.REPLICATE_ADMIN_ACK, "Replication failed", _ -> {
+            throw new IllegalStateException("nope");
+        });
+
+        assertTrue(reply.getErrorMessage().startsWith("Replication failed"));
+        assertEquals(ClusterMessageType.ERROR, reply.getType());
+    }
+}

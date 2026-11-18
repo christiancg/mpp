@@ -1,0 +1,203 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.ejson.elements.JsonNumber;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ops.AggregateLimitException;
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.MapOperatorHelper;
+import org.ccg.mpp.ops.PipelineContext;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.mid_operators.ScriptMidOperator;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.ccg.mpp.ops.req.agg.operators.ScriptOperator;
+import org.ccg.mpp.ops.req.agg.step.map.AddFieldMapOperator;
+import org.ccg.mpp.simplejs.exceptions.ScriptCallableException;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+public class MapOperatorHelperScriptTest {
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.releaseAllLocks();
+    }
+
+    private static JsonObject document(double price, double qty) {
+        final var document = new JsonObject();
+        document.add("price", new JsonNumber(price));
+        document.add("qty", new JsonNumber(qty));
+        return document;
+    }
+
+    @Test
+    public void test_adds_computed_field() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("total", null,
+                    new ScriptMidOperator("export default (doc) => doc.price * doc.qty;"));
+            final var result = MapOperatorHelper.processOperator(operator, document(3, 4), context);
+            assertEquals(12d, result.get("total").asJsonNumber().getValue().doubleValue());
+        }
+    }
+
+    @Test
+    public void test_computed_field_under_a_condition() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var condition = new FieldOperator(FieldOperatorType.GREATER_THAN, "price", new JsonNumber(10));
+            final var operator = new AddFieldMapOperator("total", condition,
+                    new ScriptMidOperator("export default (doc) => doc.price * doc.qty;"));
+            assertNull(MapOperatorHelper.processOperator(operator, document(3, 4), context).get("total"));
+            assertEquals(80d, MapOperatorHelper.processOperator(operator, document(20, 4), context).get("total")
+                    .asJsonNumber().getValue().doubleValue());
+        }
+    }
+
+    @Test
+    public void test_script_condition_gates_the_field() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var condition = new ScriptOperator("export default (doc) => doc.qty > 2;");
+            final var operator = new AddFieldMapOperator("total", condition,
+                    new ScriptMidOperator("export default (doc) => doc.price * doc.qty;"));
+            assertNull(MapOperatorHelper.processOperator(operator, document(3, 1), context).get("total"));
+            assertEquals(12d, MapOperatorHelper.processOperator(operator, document(3, 4), context).get("total")
+                    .asJsonNumber().getValue().doubleValue());
+        }
+    }
+
+    @Test
+    public void test_script_returning_undefined_omits_the_field() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("total", null,
+                    new ScriptMidOperator("export default (doc) => undefined;"));
+            assertNull(MapOperatorHelper.processOperator(operator, document(3, 4), context).get("total"));
+        }
+    }
+
+    @Test
+    public void test_script_value_over_max_entry_size_is_400_28() {
+        final var oversized = Configuration.getInstance().getMaxEntrySize() + 1;
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("big", null,
+                    new ScriptMidOperator("export default (doc) => 'x'.repeat(" + oversized + ");"));
+            final var refused = assertThrows(AggregateLimitException.class,
+                    () -> MapOperatorHelper.processOperator(operator, document(3, 4), context));
+            assertEquals(ErrorCode.MAP_RESULT_TOO_LARGE, refused.getErrorCode());
+        }
+    }
+
+    @Test
+    public void test_script_values_count_toward_the_aggregate_result_budget() {
+        try (var context = PipelineContext.of(0L, 1000L, null)) {
+            final var operator = new AddFieldMapOperator("text", null,
+                    new ScriptMidOperator("export default (doc) => 'x'.repeat(400);"));
+            MapOperatorHelper.processOperator(operator, document(1, 1), context);
+            MapOperatorHelper.processOperator(operator, document(2, 1), context);
+            final var refused = assertThrows(AggregateLimitException.class,
+                    () -> MapOperatorHelper.processOperator(operator, document(3, 1), context));
+            assertEquals(ErrorCode.AGGREGATE_RESULT_TOO_LARGE, refused.getErrorCode());
+        }
+    }
+
+    @Test
+    public void test_a_script_returning_nothing_charges_nothing() {
+        try (var context = PipelineContext.of(0L, 1L, null)) {
+            final var operator = new AddFieldMapOperator("nothing", null,
+                    new ScriptMidOperator("export default (doc) => undefined;"));
+            for (var i = 0; i < 3; i++) {
+                assertNull(MapOperatorHelper.processOperator(operator, document(i, 1), context).get("nothing"));
+            }
+        }
+    }
+
+    @Test
+    public void test_script_throwing_surfaces_script_failed() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("total", null,
+                    new ScriptMidOperator("export default (doc) => { throw new Error('boom'); };"));
+            final var error = assertThrows(ScriptCallableException.class,
+                    () -> MapOperatorHelper.processOperator(operator, document(3, 4), context));
+            assertEquals("Error", error.getErrorName());
+            assertEquals("boom", error.getMessage());
+        }
+    }
+
+    @Test
+    public void test_custom_type_value_round_trips() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("where", null,
+                    new ScriptMidOperator("export default (doc) => Geo.from({ lat: 1, lng: 2 });"));
+            final var value = MapOperatorHelper.processOperator(operator, document(3, 4), context).get("where");
+            assertTrue(value.isJsonCustom());
+            assertEquals("geo", value.asJsonCustom().getCustomTypeName());
+        }
+    }
+
+    @Test
+    public void test_object_and_array_results_are_stored() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var objectOperator = new AddFieldMapOperator("meta", null,
+                    new ScriptMidOperator("export default (doc) => ({ a: 1, b: [1, 2] });"));
+            final var result = MapOperatorHelper.processOperator(objectOperator, document(3, 4), context);
+            assertEquals(1d, result.get("meta").asJsonObject().get("a").asJsonNumber().getValue().doubleValue());
+            assertEquals(2, result.get("meta").asJsonObject().get("b").asJsonArray().size());
+        }
+    }
+
+    @Test
+    public void test_string_result_is_stored() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("label", null,
+                    new ScriptMidOperator("export default (doc) => `p${doc.price}`;"));
+            final var result = MapOperatorHelper.processOperator(operator, document(3, 4), context);
+            assertEquals(new JsonString("p3").getValue(), result.get("label").asJsonString().getValue());
+        }
+    }
+
+    @Test
+    public void test_script_cannot_mutate_the_source_document() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("total", null,
+                    new ScriptMidOperator("export default (doc) => { doc.price = 999; return doc.price; };"));
+            final var document = document(3, 4);
+            final var result = MapOperatorHelper.processOperator(operator, document, context);
+            assertEquals(999d, result.get("total").asJsonNumber().getValue().doubleValue());
+            assertEquals(3d, result.get("price").asJsonNumber().getValue().doubleValue());
+        }
+    }
+
+    @Test
+    public void test_missing_context_is_an_internal_error() {
+        final var operator = new AddFieldMapOperator("total", null,
+                new ScriptMidOperator("export default (doc) => 1;"));
+        assertThrows(ScriptCallableException.class, () -> MapOperatorHelper.processOperator(operator, document(1, 1)));
+    }
+
+    private static JsonObject tagged(String tag) {
+        final var meta = new JsonObject();
+        meta.add("tag", new JsonString(tag));
+        final var document = new JsonObject();
+        document.add("meta", meta);
+        return document;
+    }
+
+    @Test
+    public void test_a_row_kept_by_the_script_does_not_see_the_fields_map_writes_after_the_call() {
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            final var operator = new AddFieldMapOperator("meta.tag", null, new ScriptMidOperator("""
+                    let previous;
+                    export default (doc) => {
+                        const seen = previous === undefined ? "none" : previous.meta.tag;
+                        previous = doc;
+                        return seen;
+                    };"""));
+            final var first = MapOperatorHelper.processOperator(operator, tagged("a"), context);
+            final var second = MapOperatorHelper.processOperator(operator, tagged("b"), context);
+
+            assertEquals("none", first.get("meta").asJsonObject().get("tag").asJsonString().getValue());
+            assertEquals("a", second.get("meta").asJsonObject().get("tag").asJsonString().getValue());
+        }
+    }
+}

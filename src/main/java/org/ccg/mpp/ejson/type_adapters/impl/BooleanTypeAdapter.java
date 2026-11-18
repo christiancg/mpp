@@ -1,0 +1,22 @@
+package org.ccg.mpp.ejson.type_adapters.impl;
+
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.type_adapters.TypeAdapter;
+
+public class BooleanTypeAdapter implements TypeAdapter<Boolean> {
+    @Override
+    public String toJson(Boolean value) {
+        return String.valueOf(value);
+    }
+
+    @Override
+    public Boolean fromJson(JsonBaseElement value) {
+        if (value.getJsonType() == JsonBaseElement.JsonType.BOOLEAN) {
+            return value.asJsonBoolean().getValue();
+        } else if (value.isJsonString()) {
+            return Boolean.parseBoolean(value.asJsonString().getValue());
+        } else {
+            return null;
+        }
+    }
+}

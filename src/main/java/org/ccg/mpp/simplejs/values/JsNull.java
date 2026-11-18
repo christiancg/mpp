@@ -1,0 +1,17 @@
+package org.ccg.mpp.simplejs.values;
+
+public final class JsNull extends JsValue {
+    private static final JsNull instance = new JsNull();
+
+    private JsNull() {
+    }
+
+    public static JsNull getInstance() {
+        return instance;
+    }
+
+    @Override
+    public JsValueType getType() {
+        return JsValueType.NULL;
+    }
+}

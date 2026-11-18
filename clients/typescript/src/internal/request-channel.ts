@@ -1,4 +1,4 @@
-import { ConnectionLostError, LwnrdbError, UnavailableError } from "../errors/errors.js";
+import { ConnectionLostError, MppError, UnavailableError } from "../errors/errors.js";
 import { RETRYABLE_CODES } from "../errors/error-codes.js";
 import { operationDetails, type Operation } from "../protocol/operations.js";
 import { backoffBefore, type RetryPolicy } from "../retry-policy.js";
@@ -42,7 +42,7 @@ export class PooledChannel implements RequestChannel {
                 return await this.#once(request);
             } catch (error) {
                 if (
-                    !(error instanceof LwnrdbError) ||
+                    !(error instanceof MppError) ||
                     attempt >= this.#retryPolicy.maxAttempts ||
                     !isRetryable(operation, error)
                 ) {
@@ -79,7 +79,7 @@ export class PinnedChannel implements RequestChannel {
 
     async send(operation: Operation, request: JsonObject): Promise<JsonObject> {
         if (!operationDetails(operation).allowedInTransaction) {
-            throw new LwnrdbError(`${operation} is not allowed inside a transaction`, { operation });
+            throw new MppError(`${operation} is not allowed inside a transaction`, { operation });
         }
         return check(await this.#connection.request(request, this.#requestTimeoutMs));
     }

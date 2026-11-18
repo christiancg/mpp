@@ -38,7 +38,7 @@ jobs:
       - name: Unit tests, coverage, style, types, API docs, build and consumers
         run: python build_tools/verify.py
       - name: Integration tests
-        run: LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" python -m pytest tests/it -m it
+        run: MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" python -m pytest tests/it -m it
 
   publish:
     name: Publish to PyPI

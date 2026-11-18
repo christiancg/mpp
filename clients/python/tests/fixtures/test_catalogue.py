@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lwnrdb import (
+from mpp import (
     ERROR_CODES,
     OPERATIONS,
     CustomType,
@@ -13,8 +13,8 @@ from lwnrdb import (
     nearest,
     within,
 )
-from lwnrdb._internal.custom_values import DETECTION
-from lwnrdb._internal.pipeline_encoder import PipelineEncoder
+from mpp._internal.custom_values import DETECTION
+from mpp._internal.pipeline_encoder import PipelineEncoder
 from tests.support.protocol_fixtures import read
 
 

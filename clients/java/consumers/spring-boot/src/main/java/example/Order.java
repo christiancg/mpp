@@ -1,8 +1,8 @@
 package example;
 
-import io.github.christiancg.lwnrdb.spring.data.mapping.LwnrdbEntity;
+import io.github.christiancg.mpp.spring.data.mapping.MppEntity;
 import java.time.LocalDateTime;
 
-@LwnrdbEntity(collection = "orders")
+@MppEntity(collection = "orders")
 public record Order(String id, String status, double total, LocalDateTime placedAt) {
 }

@@ -33,7 +33,7 @@ def tls_socket(verify: bool):
 
 
 def write_config(work_dir: str):
-    bu.write_config(work_dir, PORT, tlsEnabled=True, tlsKeystorePath="certs/lwnrdb.p12",
+    bu.write_config(work_dir, PORT, tlsEnabled=True, tlsKeystorePath="certs/mpp.p12",
                     tlsKeystorePassword=KEYSTORE_PASSWORD, authTimeoutMs=int(AUTH_TIMEOUT_S * 1000),
                     maxUnauthenticatedConnectionsPerAddress=PRE_AUTH_PER_ADDRESS)
 
@@ -126,7 +126,7 @@ def test_one_address_cannot_hold_every_unauthenticated_slot():
 def test_keystore_generated(work_dir: str, log_path: str):
     section("Self-signed keystore generation on first start")
 
-    keystore = os.path.join(work_dir, "certs", "lwnrdb.p12")
+    keystore = os.path.join(work_dir, "certs", "mpp.p12")
     check("Keystore file was generated at the configured path",
           os.path.isfile(keystore),
           f"path={keystore}")
@@ -231,7 +231,7 @@ def test_plaintext_rejected():
 
 
 def fresh_work_dir(prefix: str):
-    work_dir = tempfile.mkdtemp(prefix=f"lwnrdb-{prefix}-")
+    work_dir = tempfile.mkdtemp(prefix=f"mpp-{prefix}-")
     return work_dir, os.path.join(work_dir, "server.log")
 
 
@@ -271,7 +271,7 @@ def test_cluster_tls_keystore_and_disabled_limits_are_warned_about():
     work_dir, log_path = fresh_work_dir("cluster-tls-warn")
     bu.write_config(work_dir, PORT, clusterEnabled=True, clusterTlsEnabled=True, clusterExpectedSize=2,
                     clusterPort=PORT + 1000, clusterSecret="cluster-secret-for-the-tls-suite-0123456789",
-                    tlsKeystorePath="certs/lwnrdb.p12", tlsKeystorePassword="change_it", maxListens=0,
+                    tlsKeystorePath="certs/mpp.p12", tlsKeystorePassword="change_it", maxListens=0,
                     maxFilterOperands=0)
     proc = None
     try:
@@ -376,7 +376,7 @@ def test_default_keystore_password_warning(main_log_path: str):
     check("A TLS server logs no plaintext warning",
           "SECURITY WARNING: tlsEnabled=false" not in bu.read_log(main_log_path))
     work_dir, log_path = fresh_work_dir("change-it")
-    bu.write_config(work_dir, PORT, tlsEnabled=True, tlsKeystorePath="certs/lwnrdb.p12",
+    bu.write_config(work_dir, PORT, tlsEnabled=True, tlsKeystorePath="certs/mpp.p12",
                     tlsKeystorePassword="change_it")
     proc = None
     try:
@@ -399,7 +399,7 @@ def test_data_and_keystore_folders_are_owner_only(work_dir: str, log_path: str):
     for folder in ("db", "logs", "certs"):
         path = os.path.join(work_dir, folder)
         check(f"{folder}/ was created 0700", mode_of(path) == 0o700, oct(mode_of(path)))
-    keystore = os.path.join(work_dir, "certs", "lwnrdb.p12")
+    keystore = os.path.join(work_dir, "certs", "mpp.p12")
     check("The generated keystore is 0600", mode_of(keystore) == 0o600, oct(mode_of(keystore)))
     data_root = os.path.join(work_dir, "db")
     os.chmod(data_root, 0o755)
@@ -419,7 +419,7 @@ def main():
 
     bu.require_jar()
 
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-tls-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-tls-")
     log_path = os.path.join(work_dir, "server.log")
     write_config(work_dir)
     print(f"  Working dir: {work_dir}")

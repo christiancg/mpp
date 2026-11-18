@@ -1,0 +1,176 @@
+package org.ccg.mpp.data;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.ccg.mpp.data.admin.AdminTransactionEntry;
+import org.ccg.mpp.ejson.elements.JsonObject;
+
+public class Transaction {
+    private static final JsonObject TOMBSTONE = new JsonObject();
+
+    private final UUID transactionId;
+    private final UUID clientId;
+    private int seq;
+    private final Set<String> heldLocks = new HashSet<>();
+    // Carried so a trigger's own transaction cannot restart the cascade at zero and loop forever.
+    private int triggerDepth;
+    private final List<String> bufferedOpIds = new ArrayList<>();
+    private final List<AdminTransactionEntry> pendingOps = new ArrayList<>();
+    private boolean opsDurable;
+    // LinkedHashMap, not HashMap: inserts must stream in a stable order after the committed documents.
+    private final Map<String, LinkedHashMap<String, JsonObject>> overlay = new HashMap<>();
+    private final Map<String, Map<String, Long>> versions = new HashMap<>();
+    private final Map<Long, Set<String>> insertedIdsByOp = new HashMap<>();
+    private boolean aborted;
+    private boolean commitFenced;
+    private final long startedAtNanos = System.nanoTime();
+    private int bufferedOps;
+    private long bufferedBytes;
+
+    public Transaction(UUID transactionId, UUID clientId) {
+        this.transactionId = transactionId;
+        this.clientId = clientId;
+    }
+
+    public UUID getTransactionId() {
+        return transactionId;
+    }
+
+    public int getTriggerDepth() {
+        return triggerDepth;
+    }
+
+    public boolean isAborted() {
+        return aborted;
+    }
+
+    public void markAborted() {
+        this.aborted = true;
+    }
+
+    public void setTriggerDepth(int triggerDepth) {
+        this.triggerDepth = triggerDepth;
+    }
+
+    public UUID getClientId() {
+        return clientId;
+    }
+
+    public long ageMillis() {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos);
+    }
+
+    public boolean wouldExceed(int ops, long bytes, int maxOps, long maxBytes) {
+        return maxOps != 0 && bufferedOps + (long) ops > maxOps || bufferedBytes + bytes > maxBytes;
+    }
+
+    public void accountBuffered(int ops, long bytes) {
+        bufferedOps += ops;
+        bufferedBytes += bytes;
+    }
+
+    public int nextSeq() {
+        return seq++;
+    }
+
+    public boolean holdsLock(String collId) {
+        return heldLocks.contains(collId);
+    }
+
+    public void addHeldLock(String collId) {
+        heldLocks.add(collId);
+    }
+
+    public Set<String> getHeldLocks() {
+        return heldLocks;
+    }
+
+    public void addPendingOp(AdminTransactionEntry op) {
+        pendingOps.add(op);
+        bufferedOpIds.add(op.get_id());
+    }
+
+    public List<AdminTransactionEntry> getPendingOps() {
+        return pendingOps;
+    }
+
+    public boolean areOpsDurable() {
+        return opsDurable;
+    }
+
+    public void markOpsDurable() {
+        opsDurable = true;
+    }
+
+    public boolean isCommitFenced() {
+        return commitFenced;
+    }
+
+    public void markCommitFenced() {
+        commitFenced = true;
+    }
+
+    public List<String> getBufferedOpIds() {
+        return bufferedOpIds;
+    }
+
+    // Decided at buffer time: after the commit applies, the store can no longer tell an insert from an
+    // update, and that is what decides whether the write fires CREATED or UPDATED.
+    public void recordInserts(long seq, Collection<String> ids) {
+        if (!ids.isEmpty()) {
+            insertedIdsByOp.put(seq, Set.copyOf(ids));
+        }
+    }
+
+    public Set<String> insertedIdsFor(long seq) {
+        return insertedIdsByOp.getOrDefault(seq, Set.of());
+    }
+
+    public void recordSave(String collId, String id, JsonObject doc, long version) {
+        overlay.computeIfAbsent(collId, _ -> new LinkedHashMap<>()).put(id, doc);
+        recordVersion(collId, id, version);
+    }
+
+    public void recordDelete(String collId, String id, long version) {
+        overlay.computeIfAbsent(collId, _ -> new LinkedHashMap<>()).put(id, TOMBSTONE);
+        recordVersion(collId, id, version);
+    }
+
+    private void recordVersion(String collId, String id, long version) {
+        versions.computeIfAbsent(collId, _ -> new HashMap<>()).put(id, version);
+    }
+
+    public long versionOf(String collId, String id) {
+        return versions.getOrDefault(collId, Map.of()).getOrDefault(id, 0L);
+    }
+
+    public void forget(String collId, String id) {
+        final var collOverlay = overlay.get(collId);
+        if (collOverlay != null) {
+            collOverlay.remove(id);
+        }
+        final var collVersions = versions.get(collId);
+        if (collVersions != null) {
+            collVersions.remove(id);
+        }
+    }
+
+    public Map<String, JsonObject> overlayFor(String collId) {
+        return overlay.get(collId);
+    }
+
+    public Set<String> touchedCollections() {
+        return overlay.keySet();
+    }
+
+    public static boolean isTombstone(JsonObject doc) {
+        return doc == TOMBSTONE;
+    }
+}

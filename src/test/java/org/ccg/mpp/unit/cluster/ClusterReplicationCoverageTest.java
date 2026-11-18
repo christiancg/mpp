@@ -1,0 +1,139 @@
+package org.ccg.mpp.unit.cluster;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Set;
+import org.ccg.mpp.cluster.ClusterCoordinator;
+import org.ccg.mpp.cluster.PeerConnectionPool;
+import org.ccg.mpp.cluster.ReplicationOutcome;
+import org.ccg.mpp.cluster.Replicator;
+import org.ccg.mpp.cluster.admin.AdminRecord;
+import org.ccg.mpp.cluster.admin.AdminRecords;
+import org.ccg.mpp.cluster.msg.AdminSnapshotPayload;
+import org.ccg.mpp.cluster.msg.ReplicationOp;
+import org.ccg.mpp.cluster.msg.ReplicationPayload;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.data.admin.AdminUserEntry;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.ReplicatedApplyHelper;
+import org.ccg.mpp.ops.admin.AdminRecordKey;
+import org.ccg.mpp.ops.req.ReindexRequest;
+import org.ccg.mpp.test.ClusterTestHarness;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Single-node cluster: with no peers the required-ack count is zero, so replication completes without
+ * spawning network threads - covering the happy paths reliably regardless of CI scheduling.
+ */
+public class ClusterReplicationCoverageTest {
+    private final Configuration config = Configuration.getInstance();
+    private final ClusterCoordinator coordinator = IocContainer.get(ClusterCoordinator.class);
+    private final Replicator replicator = IocContainer.get(Replicator.class);
+    private final ClusterTestHarness cluster = new ClusterTestHarness();
+
+    private static JsonObject doc(String id) {
+        final var object = new JsonObject();
+        object.add("_id", new JsonString(id));
+        return object;
+    }
+
+    private static AdminUserEntry bob() {
+        return new AdminUserEntry("bob", "hash-bob", false, Set.of(), new HashMap<>(), new HashMap<>());
+    }
+
+    @BeforeEach
+    public void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        cluster.enableAlone(ClusterTestHarness.node("self", 19990));
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        cluster.disable();
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    @Test
+    public void test_replicate_upsert_reads_committed_doc_and_meets_quorum() {
+        ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                List.of(doc("u1")), null), TestGlobals.APPLY_BUDGET_MS);
+        assertEquals(ReplicationOutcome.QUORUM_MET,
+                coordinator.replicateUpsert(TestGlobals.DB, TestGlobals.COLL, List.of("u1")));
+    }
+
+    @Test
+    public void test_replicate_delete_meets_quorum() {
+        assertEquals(ReplicationOutcome.QUORUM_MET,
+                coordinator.replicateDelete(TestGlobals.DB, TestGlobals.COLL, List.of("gone"), null));
+    }
+
+    @Test
+    public void test_replicate_admin_records_meets_quorum() throws Exception {
+        assertEquals(ReplicationOutcome.QUORUM_MET, coordinator.replicateAdminRecords(
+                AdminRecords.of(List.of(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL)))));
+    }
+
+    @Test
+    public void test_replicate_user_record_and_its_tombstone_meet_quorum() throws Exception {
+        AdminOperationHelper.saveUserEntry(bob());
+        assertEquals(ReplicationOutcome.QUORUM_MET,
+                coordinator.replicateAdminRecords(AdminRecords.of(List.of(AdminRecordKey.user("bob")))));
+        assertEquals(ReplicationOutcome.QUORUM_MET, coordinator
+                .replicateAdminRecords(List.of(AdminRecord.tombstone(AdminRecordKey.user("bob"), Long.MAX_VALUE))));
+    }
+
+    @Test
+    public void test_broadcast_reindex_meets_quorum() {
+        assertEquals(ReplicationOutcome.QUORUM_MET,
+                coordinator.broadcastReindex(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null)));
+    }
+
+    @Test
+    public void test_replicator_broadcasts_meet_quorum_with_no_peers() {
+        final var docPayload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                List.of(doc("b1")), null);
+        assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcast(docPayload));
+        assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcastAdmin(new AdminSnapshotPayload(List.of())));
+        assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcastReindex("{\"type\":\"REINDEX\"}"));
+    }
+
+    @Test
+    public void test_two_node_ids_at_one_address_count_as_one_ack() throws Exception {
+        final var stale = ClusterTestHarness.node("stale-id", 19991);
+        cluster.configureMembership(3, ClusterTestHarness.node("self", 19990), stale,
+                ClusterTestHarness.node("fresh-id", 19991));
+        final var originalTimeout = config.getReplicationAckTimeoutMs();
+        TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 200L);
+        final var realPool = TestUtils.getPrivateField(replicator, "pool", PeerConnectionPool.class);
+        final var pool = mock(PeerConnectionPool.class);
+        when(pool.request(any(), any(), anyLong())).thenThrow(new IllegalStateException("unreachable"));
+        TestUtils.setPrivateField(replicator, "pool", pool);
+        try {
+            replicator.broadcast(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                    List.of(doc("dedup")), null));
+
+            verify(pool, after(500).times(1)).request(eq(stale.address()), any(), anyLong());
+        } finally {
+            TestUtils.setPrivateField(replicator, "pool", realPool);
+            TestUtils.setPrivateField(config, "replicationAckTimeoutMs", originalTimeout);
+        }
+    }
+}

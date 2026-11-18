@@ -1,0 +1,131 @@
+package org.ccg.mpp.unit.ops.auth;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import org.ccg.mpp.data.admin.AdminUserEntry;
+import org.ccg.mpp.data.auth.PermissionLevel;
+import org.ccg.mpp.data.auth.ScriptPermissionLevel;
+import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.auth.AuthorizationChecker;
+import org.ccg.mpp.ops.req.AggregateRequest;
+import org.ccg.mpp.ops.req.agg.BaseAggregationStep;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.mid_operators.ScriptMidOperator;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.ccg.mpp.ops.req.agg.operators.ScriptOperator;
+import org.ccg.mpp.ops.req.agg.step.FilterAggregationStep;
+import org.ccg.mpp.ops.req.agg.step.MapAggregationStep;
+import org.ccg.mpp.ops.req.agg.step.ReduceAggregationStep;
+import org.ccg.mpp.ops.req.agg.step.map.AddFieldMapOperator;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+public class AuthorizationCheckerScriptOperatorTest {
+    private static final String OWNER = "dbowner";
+    private static final String SOURCE = "export default (doc) => true;";
+
+    @BeforeAll
+    static void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+    }
+
+    @AfterAll
+    static void tearDown() throws Exception {
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    private static AdminUserEntry admin() {
+        return new AdminUserEntry("admin", "hash", true, new HashSet<>(), new HashMap<>(), new HashMap<>());
+    }
+
+    private static AdminUserEntry owner() {
+        return new AdminUserEntry(OWNER, "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>());
+    }
+
+    private static AdminUserEntry reader(ScriptPermissionLevel level) {
+        final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
+        if (level != null) {
+            scriptPerms.put(TestGlobals.DB, level);
+        }
+        final var dbPerms = new HashMap<String, PermissionLevel>();
+        dbPerms.put(TestGlobals.DB, PermissionLevel.READ);
+        return new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>(), scriptPerms);
+    }
+
+    private static AggregateRequest aggregate(BaseAggregationStep... steps) {
+        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(List.of(steps));
+        return request;
+    }
+
+    private static AggregateRequest scriptedFilter() {
+        return aggregate(new FilterAggregationStep(new ScriptOperator(SOURCE)));
+    }
+
+    @Test
+    public void test_read_only_user_cannot_use_a_script_operator() {
+        assertFalse(AuthorizationChecker.check(scriptedFilter(), reader(null)).isAllowed());
+    }
+
+    @Test
+    public void test_granted_user_can() {
+        assertTrue(AuthorizationChecker.check(scriptedFilter(), reader(ScriptPermissionLevel.RUN)).isAllowed());
+    }
+
+    @Test
+    public void test_manage_grant_also_allows_running() {
+        assertTrue(AuthorizationChecker.check(scriptedFilter(), reader(ScriptPermissionLevel.MANAGE)).isAllowed());
+    }
+
+    @Test
+    public void test_explicit_none_denies() {
+        assertFalse(AuthorizationChecker.check(scriptedFilter(), reader(ScriptPermissionLevel.NONE)).isAllowed());
+    }
+
+    @Test
+    public void test_admin_can() {
+        assertTrue(AuthorizationChecker.check(scriptedFilter(), admin()).isAllowed());
+    }
+
+    @Test
+    public void test_database_owner_can() {
+        assertTrue(AuthorizationChecker.check(scriptedFilter(), owner()).isAllowed());
+    }
+
+    @Test
+    public void test_plain_aggregate_still_works_for_read_only_user() {
+        final var plain = aggregate(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "a", null)));
+        assertTrue(AuthorizationChecker.check(plain, reader(null)).isAllowed());
+    }
+
+    @Test
+    public void test_script_map_operator_needs_the_grant() {
+        final var map = new MapAggregationStep(
+                List.of(new AddFieldMapOperator("total", null, new ScriptMidOperator(SOURCE))));
+        assertFalse(AuthorizationChecker.check(aggregate(map), reader(null)).isAllowed());
+        assertTrue(AuthorizationChecker.check(aggregate(map), reader(ScriptPermissionLevel.RUN)).isAllowed());
+    }
+
+    @Test
+    public void test_reduce_step_needs_the_grant() {
+        final var reduce = new ReduceAggregationStep(SOURCE, null, "total");
+        assertFalse(AuthorizationChecker.check(aggregate(reduce), reader(null)).isAllowed());
+        assertTrue(AuthorizationChecker.check(aggregate(reduce), reader(ScriptPermissionLevel.RUN)).isAllowed());
+    }
+
+    @Test
+    public void test_script_map_condition_needs_the_grant() {
+        final var map = new MapAggregationStep(
+                List.of(new AddFieldMapOperator("total", new ScriptOperator(SOURCE), null)));
+        assertFalse(AuthorizationChecker.check(aggregate(map), reader(null)).isAllowed());
+    }
+}

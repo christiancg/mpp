@@ -1,6 +1,6 @@
 # ClientSettings
 
-What `LwnrdbClient.connect` takes. Every field is optional.
+What `MppClient.connect` takes. Every field is optional.
 
 ## hosts
 

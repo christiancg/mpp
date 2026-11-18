@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ListenEndedError, ListenUpdate, LwnrdbClient, field
+from mpp import AsyncMppClient, ListenEndedError, ListenUpdate, MppClient, field
 
 pytestmark = pytest.mark.it
 SERVER_CONFIG = {"maxListensPerConnection": "2"}
@@ -33,7 +33,7 @@ class Collected:
                 await self.arrived.wait()
 
 
-async def _orders(client: AsyncLwnrdbClient, database: str) -> Any:
+async def _orders(client: AsyncMppClient, database: str) -> Any:
     shop = client.database(database)
     await shop.create()
     orders = shop.collection("orders")
@@ -41,7 +41,7 @@ async def _orders(client: AsyncLwnrdbClient, database: str) -> Any:
     return orders
 
 
-async def test_a_matching_write_pushes_and_a_closed_subscription_stops(client: AsyncLwnrdbClient) -> None:
+async def test_a_matching_write_pushes_and_a_closed_subscription_stops(client: AsyncMppClient) -> None:
     orders = await _orders(client, "listen_push")
     collected = Collected()
     subscription = await orders.listen(collected, orders.query().filter(field("status").eq("pending")))
@@ -59,7 +59,7 @@ async def test_a_matching_write_pushes_and_a_closed_subscription_stops(client: A
     assert len(collected.updates) == count
 
 
-async def test_updates_arrive_in_write_order(client: AsyncLwnrdbClient) -> None:
+async def test_updates_arrive_in_write_order(client: AsyncMppClient) -> None:
     orders = await _orders(client, "listen_order")
     collected = Collected()
     async with await orders.listen(collected):
@@ -71,7 +71,7 @@ async def test_updates_arrive_in_write_order(client: AsyncLwnrdbClient) -> None:
     assert sizes == sorted(sizes)
 
 
-async def test_dropping_the_collection_ends_the_listen(client: AsyncLwnrdbClient) -> None:
+async def test_dropping_the_collection_ends_the_listen(client: AsyncMppClient) -> None:
     orders = await _orders(client, "listen_drop")
     collected = Collected()
     subscription = await orders.listen(collected)
@@ -83,7 +83,7 @@ async def test_dropping_the_collection_ends_the_listen(client: AsyncLwnrdbClient
     await subscription.close()
 
 
-async def test_listens_past_the_per_connection_limit_spread_over_connections(client: AsyncLwnrdbClient) -> None:
+async def test_listens_past_the_per_connection_limit_spread_over_connections(client: AsyncMppClient) -> None:
     orders = await _orders(client, "listen_spread")
     collectors = [Collected() for _ in range(5)]
     subscriptions = [await orders.listen(collected) for collected in collectors]
@@ -96,7 +96,7 @@ async def test_listens_past_the_per_connection_limit_spread_over_connections(cli
     assert client._listens.open_channels == 0
 
 
-def test_a_sync_handler_receives_updates_in_order_and_may_call_the_client(sync_client: LwnrdbClient) -> None:
+def test_a_sync_handler_receives_updates_in_order_and_may_call_the_client(sync_client: MppClient) -> None:
     shop = sync_client.database("listen_sync")
     shop.create()
     orders = shop.collection("orders")

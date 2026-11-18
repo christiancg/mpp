@@ -1,0 +1,44 @@
+package org.ccg.mpp.unit.ejson.type_adapters.impl;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.ejson.elements.JsonBoolean;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ejson.type_adapters.impl.BooleanTypeAdapter;
+import org.junit.jupiter.api.Test;
+
+public class BooleanTypeAdapterTest {
+    @Test
+    public void test_true_false_value_converts_to_json_string() {
+        BooleanTypeAdapter adapter = new BooleanTypeAdapter();
+        String resultTrue = adapter.toJson(true);
+        assertEquals("true", resultTrue);
+        String resultFalse = adapter.toJson(false);
+        assertEquals("false", resultFalse);
+    }
+
+    @Test
+    public void test_null_value_converts_to_json_string() {
+        BooleanTypeAdapter adapter = new BooleanTypeAdapter();
+
+        assertEquals("null", adapter.toJson(null));
+    }
+
+    @Test
+    public void test_convert_json_boolean_to_boolean() {
+        BooleanTypeAdapter adapter = new BooleanTypeAdapter();
+        JsonBoolean jsonBoolean = JsonBoolean.of(true);
+
+        Boolean result = adapter.fromJson(jsonBoolean);
+
+        assertEquals(true, result);
+    }
+
+    @Test
+    public void test_convert_json_string_true_to_boolean() {
+        JsonString jsonString = new JsonString("true");
+        BooleanTypeAdapter adapter = new BooleanTypeAdapter();
+        Boolean result = adapter.fromJson(jsonString);
+        assertTrue(result);
+    }
+}

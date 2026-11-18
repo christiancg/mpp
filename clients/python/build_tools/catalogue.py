@@ -7,7 +7,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 PROTOCOL = ROOT.parent / "protocol"
-TARGET = ROOT / "src" / "lwnrdb" / "_catalogue.py"
+TARGET = ROOT / "src" / "mpp" / "_catalogue.py"
 
 
 def _read(name: str) -> dict[str, Any]:

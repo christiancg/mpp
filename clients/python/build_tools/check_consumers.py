@@ -16,16 +16,16 @@ def _run(command: list[str], cwd: Path) -> None:
 
 
 def _wheel(dist: Path) -> Path:
-    wheels = sorted(dist.glob("lwnrdb_client-*.whl"))
+    wheels = sorted(dist.glob("mpp_client-*.whl"))
     if not wheels:
-        raise SystemExit(f"no lwnrdb_client wheel in {dist}; run python -m build first")
+        raise SystemExit(f"no mpp_client wheel in {dist}; run python -m build first")
     return wheels[-1]
 
 
 def main(arguments: list[str]) -> int:
     dist = Path(arguments[0]) if arguments else ROOT / "dist"
     wheel = _wheel(dist)
-    with tempfile.TemporaryDirectory(prefix="lwnrdb-consumers-") as folder:
+    with tempfile.TemporaryDirectory(prefix="mpp-consumers-") as folder:
         environment = Path(folder) / "venv"
         venv.create(environment, with_pip=True)
         python = str(environment / ("Scripts" if sys.platform == "win32" else "bin") / "python")

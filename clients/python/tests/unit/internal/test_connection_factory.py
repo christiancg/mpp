@@ -6,8 +6,8 @@ import ssl
 
 import pytest
 
-from lwnrdb import AuthenticationError, ConnectionLostError, Credentials, InsecureTlsWarning, ServerAddress, TlsSettings
-from lwnrdb._internal.connection_factory import (
+from mpp import AuthenticationError, ConnectionLostError, Credentials, InsecureTlsWarning, ServerAddress, TlsSettings
+from mpp._internal.connection_factory import (
     ConnectionFactory,
     ResetTolerantSocket,
     Streams,
@@ -15,9 +15,9 @@ from lwnrdb._internal.connection_factory import (
     open_streams,
     ssl_context,
 )
-from lwnrdb._internal.request_encoder import RequestEncoder
-from lwnrdb._internal.values_codec import JsonObject
-from lwnrdb.settings import ClientSettings
+from mpp._internal.request_encoder import RequestEncoder
+from mpp._internal.values_codec import JsonObject
+from mpp.settings import ClientSettings
 from tests.support.fake_server import FakeServer, Session
 from tests.support.recording_channel import error
 from tests.support.server_process import free_port

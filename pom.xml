@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.techhouse</groupId>
-    <artifactId>lwnrdb</artifactId>
+    <groupId>org.ccg.mpp</groupId>
+    <artifactId>mpp</artifactId>
     <version>${revision}</version>
 
     <licenses>
@@ -57,7 +57,7 @@
         </dependency>
     </dependencies>
     <build>
-        <finalName>lwnrdb</finalName>
+        <finalName>mpp</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -73,7 +73,7 @@
                             <rules>
                                 <requireJavaVersion>
                                     <version>[27,)</version>
-                                    <message>LWNRDB requires JDK 27 or newer.</message>
+                                    <message>MPP requires JDK 27 or newer.</message>
                                 </requireJavaVersion>
                             </rules>
                         </configuration>
@@ -90,7 +90,7 @@
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                             <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                             <addClasspath>true</addClasspath>
-                            <mainClass>org.techhouse.Main</mainClass>
+                            <mainClass>org.ccg.mpp.Main</mainClass>
                         </manifest>
                         <manifestEntries>
                             <Enable-Final-Field-Mutation>ALL-UNNAMED</Enable-Final-Field-Mutation>
@@ -106,8 +106,8 @@
                     <reuseForks>true</reuseForks>
                     <argLine>@{argLine} --enable-final-field-mutation=ALL-UNNAMED</argLine>
                     <systemPropertyVariables>
-                        <lwnrdb.test.path>target/test-data-${surefire.forkNumber}</lwnrdb.test.path>
-                        <lwnrdb.test.logPath>target/test-logs-${surefire.forkNumber}</lwnrdb.test.logPath>
+                        <mpp.test.path>target/test-data-${surefire.forkNumber}</mpp.test.path>
+                        <mpp.test.logPath>target/test-logs-${surefire.forkNumber}</mpp.test.logPath>
                     </systemPropertyVariables>
                 </configuration>
                 <executions>

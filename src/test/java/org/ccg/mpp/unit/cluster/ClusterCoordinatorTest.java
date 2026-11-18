@@ -1,0 +1,218 @@
+package org.ccg.mpp.unit.cluster;
+
+import static org.ccg.mpp.test.ClusterTestHarness.node;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Files;
+import java.util.List;
+import org.ccg.mpp.cluster.ClusterCoordinator;
+import org.ccg.mpp.cluster.MembershipView;
+import org.ccg.mpp.cluster.ReplicationOutcome;
+import org.ccg.mpp.cluster.WriteGuard;
+import org.ccg.mpp.cluster.ownership.OwnershipManager;
+import org.ccg.mpp.concurrency.ResourceLocking;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.fs.PendingForce;
+import org.ccg.mpp.fs.RecordingForcer;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.OperationProcessor;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.req.ReindexRequest;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.test.ClusterTestHarness;
+import org.ccg.mpp.test.RequiresDirectorySync;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class ClusterCoordinatorTest {
+    private final ClusterCoordinator coordinator = IocContainer.get(ClusterCoordinator.class);
+    private final OwnershipManager ownership = IocContainer.get(OwnershipManager.class);
+    private final Configuration config = Configuration.getInstance();
+    private boolean origEnabled;
+    private int origExpected;
+
+    @BeforeEach
+    public void setUp() throws Exception {
+        origEnabled = config.isClusterEnabled();
+        origExpected = config.getClusterExpectedSize();
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        TestUtils.setPrivateField(config, "clusterEnabled", origEnabled);
+        TestUtils.setPrivateField(config, "clusterExpectedSize", origExpected);
+        ownership.setSelfNodeId(null);
+        ownership.onMembershipChanged(new MembershipView(List.of()));
+    }
+
+    private void enable(int expectedSize) throws Exception {
+        TestUtils.setPrivateField(config, "clusterEnabled", true);
+        TestUtils.setPrivateField(config, "clusterExpectedSize", expectedSize);
+    }
+
+    private String collectionOwnedByOther() {
+        for (var i = 0; i < 500; i++) {
+            final var coll = "coll-" + i;
+            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+                return coll;
+            }
+        }
+        throw new IllegalStateException("no collection owned by the other node");
+    }
+
+    @Test
+    public void test_disabled_allows_everything() {
+        assertEquals(WriteGuard.Kind.ALLOW, coordinator.guardWrite(TestGlobals.DB, TestGlobals.COLL).kind());
+    }
+
+    @Test
+    public void test_admin_db_is_allowed() throws Exception {
+        enable(1);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990))));
+        assertEquals(WriteGuard.Kind.ALLOW, coordinator.guardWrite(Globals.ADMIN_DB_NAME, "databases").kind());
+    }
+
+    @Test
+    public void test_no_quorum_rejected() throws Exception {
+        enable(3);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990))));
+        assertEquals(WriteGuard.Kind.NO_QUORUM, coordinator.guardWrite(TestGlobals.DB, TestGlobals.COLL).kind());
+    }
+
+    @Test
+    public void test_owner_with_quorum_allowed() throws Exception {
+        enable(1);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990))));
+        assertEquals(WriteGuard.Kind.ALLOW, coordinator.guardWrite(TestGlobals.DB, TestGlobals.COLL).kind());
+    }
+
+    @Test
+    public void test_non_owner_rejected_with_owner_address() throws Exception {
+        enable(2);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990), node("other", 9991))));
+        final var guard = coordinator.guardWrite(TestGlobals.DB, collectionOwnedByOther());
+        assertEquals(WriteGuard.Kind.NOT_OWNER, guard.kind());
+        assertNotNull(guard.ownerAddress());
+    }
+
+    @Test
+    public void test_replicate_not_applicable_when_disabled() {
+        assertEquals(ReplicationOutcome.NOT_CLUSTERED,
+                coordinator.replicateUpsert(TestGlobals.DB, TestGlobals.COLL, List.of("a")));
+        assertEquals(ReplicationOutcome.NOT_CLUSTERED,
+                coordinator.replicateDelete(TestGlobals.DB, TestGlobals.COLL, List.of("a"), null));
+    }
+
+    @Test
+    public void test_replicate_reports_not_owner_rather_than_success() throws Exception {
+        enable(2);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990), node("other", 9991))));
+        assertEquals(ReplicationOutcome.NOT_OWNER,
+                coordinator.replicateDelete(TestGlobals.DB, collectionOwnedByOther(), List.of("a"), null));
+        assertEquals(ReplicationOutcome.NOT_OWNER,
+                coordinator.replicateUpsert(TestGlobals.DB, collectionOwnedByOther(), List.of("a")));
+    }
+
+    @Test
+    public void test_guard_admin_allows_when_disabled() {
+        assertEquals(WriteGuard.Kind.ALLOW, coordinator.guardAdmin().kind());
+    }
+
+    @Test
+    public void test_guard_admin_allows_with_quorum() throws Exception {
+        enable(1);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990))));
+        assertEquals(WriteGuard.Kind.ALLOW, coordinator.guardAdmin().kind());
+    }
+
+    @Test
+    public void test_guard_admin_no_quorum() throws Exception {
+        enable(3);
+        ownership.setSelfNodeId("self");
+        ownership.onMembershipChanged(new MembershipView(List.of(node("self", 9990))));
+        assertEquals(WriteGuard.Kind.NO_QUORUM, coordinator.guardAdmin().kind());
+    }
+
+    @Test
+    public void test_admin_records_and_reindex_are_not_replicated_when_disabled() {
+        assertEquals(ReplicationOutcome.NOT_CLUSTERED, coordinator.replicateAdminRecords(List.of()));
+        assertEquals(ReplicationOutcome.NOT_CLUSTERED,
+                coordinator.broadcastReindex(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null)));
+    }
+
+    private void saveDocuments() {
+        final var processor = IocContainer.get(OperationProcessor.class);
+        for (final var id : List.of("a", "b", "c", "d", "e")) {
+            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var object = new JsonObject();
+            object.addProperty(Globals.PK_FIELD, id);
+            request.setObject(object);
+            request.set_id(id);
+            assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
+        }
+    }
+
+    private static long tombstoneForces(RecordingForcer recorder) {
+        return recorder.forcedNames().stream()
+                .filter(name -> name.contains(Globals.TOMBSTONE_FILE_NAME) && !name.endsWith(".repair")).count();
+    }
+
+    @Test
+    @RequiresDirectorySync
+    public void test_delete_batch_appends_tombstones_once_deferred() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        final var harness = new ClusterTestHarness();
+        harness.enableAlone();
+        final var fs = IocContainer.get(FileSystem.class);
+        final var locks = IocContainer.get(ResourceLocking.class);
+        try (var recorder = RecordingForcer.install(true)) {
+            saveDocuments();
+            recorder.clear();
+            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            try {
+                final var batch = coordinator.reserveDelete(TestGlobals.DB, TestGlobals.COLL,
+                        List.of("a", "absent", "b", "c"));
+                batch.awaitTombstones();
+                assertEquals(1L, tombstoneForces(recorder), recorder.forcedNames().toString());
+
+                recorder.clear();
+                fs.openWriteGroup(TestGlobals.DB, TestGlobals.COLL);
+                final var first = coordinator.reserveDelete(TestGlobals.DB, TestGlobals.COLL, List.of("d"));
+                final var second = coordinator.reserveDelete(TestGlobals.DB, TestGlobals.COLL, List.of("e"));
+                assertSame(PendingForce.NONE, first.tombstonesForced());
+                assertSame(PendingForce.NONE, second.tombstonesForced());
+                assertEquals(0L, tombstoneForces(recorder), "a group's tombstones wait for the group's force");
+                assertTrue(fs.forceWriteGroup(TestGlobals.DB, TestGlobals.COLL));
+                assertEquals(1L, tombstoneForces(recorder), recorder.forcedNames().toString());
+                assertTrue(fs.settleWriteGroup(TestGlobals.DB, TestGlobals.COLL));
+            } finally {
+                locks.release(TestGlobals.DB, TestGlobals.COLL);
+            }
+            final var lines = Files.readAllLines(java.nio.file.Path.of(TestGlobals.PATH, TestGlobals.DB,
+                    TestGlobals.COLL, TestGlobals.COLL + "-" + Globals.TOMBSTONE_FILE_NAME + ".idx"));
+            assertEquals(5, lines.size(), String.valueOf(lines));
+            assertEquals(java.util.Set.of("a", "b", "c", "d", "e"),
+                    fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).keySet());
+        } finally {
+            harness.disable();
+            TestUtils.releaseAllLocks();
+            TestUtils.standardTearDown();
+        }
+    }
+}

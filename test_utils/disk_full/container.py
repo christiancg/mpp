@@ -7,7 +7,7 @@ import time
 
 import base_utils as bu
 
-IMAGE = os.environ.get("DISK_FULL_IMAGE", "lwnrdb-disk-full")
+IMAGE = os.environ.get("DISK_FULL_IMAGE", "mpp-disk-full")
 DATA = "/app/data"
 LOGS = "/app/logs"
 DATA_BALLAST = f"{DATA}/ballast"
@@ -27,14 +27,14 @@ class Container:
         self.port = port
         self.settings = settings
         self.image = image
-        self.cfg_dir = tempfile.mkdtemp(prefix="lwnrdb-disk-full-")
+        self.cfg_dir = tempfile.mkdtemp(prefix="mpp-disk-full-")
 
     def _write_cfg(self):
         lines = [f"port={self.port}", f"filePath={DATA}/db", f"logPath={LOGS}",
                  f"defaultAdminUsername={bu.USERNAME}", f"defaultAdminPassword={bu.PASSWORD}"]
         lines += [f"{key}={str(value).lower() if isinstance(value, bool) else value}"
                   for key, value in self.settings.items()]
-        path = os.path.join(self.cfg_dir, "lwnrdb.cfg")
+        path = os.path.join(self.cfg_dir, "mpp.cfg")
         with open(path, "w") as fp:
             fp.write("\n".join(lines) + "\n")
         os.chmod(path, 0o600)
@@ -49,7 +49,7 @@ class Container:
         cfg = self._write_cfg()
         subprocess.run(["docker", "run", "-d", "--init", "--name", self.name,
                         "-p", f"127.0.0.1:{self.port}:{self.port}", *self.run_args(),
-                        "-v", f"{cfg}:/app/lwnrdb.cfg:ro",
+                        "-v", f"{cfg}:/app/mpp.cfg:ro",
                         self.image, "sleep", "infinity"], check=True, capture_output=True)
 
     def remove(self):

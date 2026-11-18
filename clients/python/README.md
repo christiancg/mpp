@@ -1,13 +1,13 @@
-# LWNRDB Python client
+# MPP Python client
 
-The Python client for [LWNRDB](https://github.com/christiancg/lwnrdb). It keeps a pool of authenticated connections
+The Python client for [MPP](https://github.com/christiancg/mpp). It keeps a pool of authenticated connections
 and gives you a fluent query builder, transactions, live queries and the server's custom value types, both
 synchronous and with asyncio. It needs Python 3.11 or newer and has no runtime dependencies.
 
 ## Installation
 
 ```bash
-pip install lwnrdb-client
+pip install mpp-client
 ```
 
 The package ships its type information, so mypy and pyright can check your code against it.
@@ -17,14 +17,14 @@ The package ships its type information, so mypy and pyright can check your code 
 ```python
 import os
 
-from lwnrdb import ClientSettings, Credentials, LwnrdbClient, Order, ServerAddress, field
+from mpp import ClientSettings, Credentials, MppClient, Order, ServerAddress, field
 
 settings = ClientSettings(
     hosts=(ServerAddress("localhost", 8989),),
-    credentials=Credentials("admin", os.environ["LWNRDB_PASSWORD"]),
+    credentials=Credentials("admin", os.environ["MPP_PASSWORD"]),
 )
 
-with LwnrdbClient.connect(settings) as client:
+with MppClient.connect(settings) as client:
     shop = client.database("shop")
     shop.create()
     orders = shop.collection("orders")
@@ -48,12 +48,12 @@ many requests run at once.
 
 ## Sync or asyncio
 
-Every class has an async twin with the same methods: `AsyncLwnrdbClient`, `AsyncCollection`, `AsyncQuery` and so on.
+Every class has an async twin with the same methods: `AsyncMppClient`, `AsyncCollection`, `AsyncQuery` and so on.
 
 ```python
-from lwnrdb import AsyncLwnrdbClient
+from mpp import AsyncMppClient
 
-async with await AsyncLwnrdbClient.connect(settings) as client:
+async with await AsyncMppClient.connect(settings) as client:
     orders = client.database("shop").collection("orders")
     await orders.save({"_id": "o-2", "status": "new", "total": 30})
     count = await orders.query().filter(field("status").eq("new")).count()
@@ -75,7 +75,7 @@ Pass a dataclass to `collection` and documents map to it both ways. A field name
 from dataclasses import dataclass
 from datetime import datetime
 
-from lwnrdb import GeoPoint
+from mpp import GeoPoint
 
 
 @dataclass
@@ -163,7 +163,7 @@ connections, not the pool.
 
 ## Errors and retries
 
-Every refusal from the server is an `LwnrdbError` with the server's error code. There is a subclass per range:
+Every refusal from the server is an `MppError` with the server's error code. There is a subclass per range:
 `AuthenticationError` (401), `ForbiddenError` (403), `NotFoundError` (404), `ConflictError` (409), `ListenEndedError`
 (410), `UnavailableError` (503) and `UnknownOutcomeError` (`500-33`, `500-34`).
 
@@ -174,11 +174,11 @@ transaction.
 ## TLS
 
 ```python
-from lwnrdb import TlsSettings
+from mpp import TlsSettings
 
 settings = ClientSettings(
     hosts=(ServerAddress("db.example.com", 8989),),
-    tls=TlsSettings(ca_file="lwnrdb-ca.pem"),
+    tls=TlsSettings(ca_file="mpp-ca.pem"),
 )
 ```
 
@@ -186,7 +186,7 @@ settings = ClientSettings(
 development. To export the server's certificate as PEM:
 
 ```bash
-keytool -exportcert -rfc -alias <alias> -keystore lwnrdb.p12 -storetype PKCS12 -storepass <password> > lwnrdb-ca.pem
+keytool -exportcert -rfc -alias <alias> -keystore mpp.p12 -storetype PKCS12 -storepass <password> > mpp-ca.pem
 ```
 
 ## API reference
@@ -201,7 +201,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install --group dev -e .
 python build_tools/verify.py
 mvn package -DskipTests         # at the repository root, the server jar the integration tests use
-LWNRDB_JAR=$PWD/../../target/lwnrdb.jar python -m pytest tests/it -m it
+MPP_JAR=$PWD/../../target/mpp.jar python -m pytest tests/it -m it
 ```
 
 ## Releasing

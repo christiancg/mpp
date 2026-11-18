@@ -20,7 +20,7 @@ Whether the transaction has not been committed or rolled back yet.
 Returns a collection inside this transaction, typed like `Database.collection`.
 
 Raises:
-    LwnrdbError: the transaction already ended
+    MppError: the transaction already ended
 
 ## commit
 

@@ -1,0 +1,419 @@
+package org.ccg.mpp.unit.cluster;
+
+import static org.ccg.mpp.test.ClusterTestHarness.SECRET;
+import static org.ccg.mpp.test.ClusterTestHarness.node;
+import static org.ccg.mpp.test.Tx2pcFixtures.findStatus;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+import java.util.UUID;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.ClusterRouter;
+import org.ccg.mpp.cluster.NodeInfo;
+import org.ccg.mpp.cluster.PeerConnectionPool;
+import org.ccg.mpp.cluster.msg.ClusterMessage;
+import org.ccg.mpp.cluster.msg.ClusterMessageType;
+import org.ccg.mpp.cluster.msg.ReplicationOp;
+import org.ccg.mpp.cluster.msg.ReplicationPayload;
+import org.ccg.mpp.cluster.msg.TxReplicationPayload;
+import org.ccg.mpp.cluster.ownership.OwnershipManager;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.data.admin.AdminCollEntry;
+import org.ccg.mpp.data.admin.AdminTransactionEntry;
+import org.ccg.mpp.ejson.EJson;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.OperationProcessor;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.Tx2pcLog;
+import org.ccg.mpp.ops.req.CommitTransactionRequest;
+import org.ccg.mpp.ops.req.FindByIdRequest;
+import org.ccg.mpp.ops.req.RollbackTransactionRequest;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.ops.req.StartTransactionRequest;
+import org.ccg.mpp.test.ClusterTestHarness;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class TransactionClusterIntegrationTest {
+    private final ClusterTestHarness cluster = new ClusterTestHarness();
+    private final Configuration config = Configuration.getInstance();
+    private final ClusterRouter router = IocContainer.get(ClusterRouter.class);
+    private final OwnershipManager ownership = IocContainer.get(OwnershipManager.class);
+    private final PeerConnectionPool pool = IocContainer.get(PeerConnectionPool.class);
+    private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
+    private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final EJson eJson = IocContainer.get(EJson.class);
+
+    @BeforeEach
+    public void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.resetClients();
+        cluster.start(false, 1000L);
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        cluster.stop();
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    private void configureMembership(int expectedSize, NodeInfo self, NodeInfo... others) throws Exception {
+        TestUtils.setPrivateField(config, "clusterEnabled", true);
+        cluster.configureMembership(expectedSize, self, others);
+    }
+
+    private static JsonObject doc(String id) {
+        final var object = new JsonObject();
+        object.add("_id", new JsonString(id));
+        return object;
+    }
+
+    private ClusterMessage forwardTx(String sessionId, Object request) {
+        final var message = new ClusterMessage(null, ClusterMessageType.FORWARD_TX_REQUEST, SECRET, node("edge", 1),
+                null);
+        message.setForwardBody(eJson.toJson(request));
+        message.setActingUser("admin");
+        message.setTxSessionId(sessionId);
+        message.setTxId(UUID.nameUUIDFromBytes(sessionId.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
+        return message;
+    }
+
+    private ClusterMessage control(ClusterMessageType type, String sessionId, String dtxId) {
+        final var message = new ClusterMessage(null, type, SECRET, node("self", cluster.serverPort()), null);
+        message.setTxSessionId(sessionId);
+        message.setTxId(dtxId);
+        return message;
+    }
+
+    private SaveRequest saveRequest(String coll, String id) {
+        final var request = new SaveRequest(TestGlobals.DB, coll);
+        request.setObject(doc(id));
+        request.set_id(id);
+        return request;
+    }
+
+    private String collectionOwnedByOther() {
+        for (var i = 0; i < 500; i++) {
+            final var coll = "tx-routed-" + i;
+            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+                return coll;
+            }
+        }
+        throw new IllegalStateException("no collection owned by the other node");
+    }
+
+    private void createCollection(String coll) throws Exception {
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
+        fs.createCollectionFile(TestGlobals.DB, coll);
+    }
+
+    private UUID newClient() {
+        return clientTracker.addClient(TestUtils.clientSocket());
+    }
+
+    @Test
+    public void test_forward_tx_save_then_commit_persists_and_clears_session() throws Exception {
+        final var save = pool.request(cluster.serverAddress(),
+                forwardTx("sess-1", saveRequest(TestGlobals.COLL, "fwd-1")), 2000);
+        assertEquals(ClusterMessageType.FORWARD_RESPONSE, save.getType());
+        final var commit = pool.request(cluster.serverAddress(), forwardTx("sess-1", new CommitTransactionRequest()),
+                2000);
+        assertEquals(ClusterMessageType.FORWARD_RESPONSE, commit.getType());
+        assertEquals(OperationStatus.OK, findStatus("fwd-1"));
+        assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
+    }
+
+    @Test
+    public void test_forward_tx_rollback_discards_and_clears_session() throws Exception {
+        pool.request(cluster.serverAddress(), forwardTx("sess-2", saveRequest(TestGlobals.COLL, "fwd-2")), 2000);
+        final var rollback = pool.request(cluster.serverAddress(),
+                forwardTx("sess-2", new RollbackTransactionRequest()), 2000);
+        assertEquals(ClusterMessageType.FORWARD_RESPONSE, rollback.getType());
+        assertEquals(OperationStatus.NOT_FOUND, findStatus("fwd-2"));
+        assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
+    }
+
+    @Test
+    public void test_forward_tx_with_unparseable_body_is_error() throws Exception {
+        final var message = new ClusterMessage(null, ClusterMessageType.FORWARD_TX_REQUEST, SECRET, node("edge", 1),
+                null);
+        message.setForwardBody("not-json");
+        message.setTxSessionId("sess-bad");
+        final var response = pool.request(cluster.serverAddress(), message, 2000);
+        assertEquals(ClusterMessageType.ERROR, response.getType());
+    }
+
+    @Test
+    public void test_forwarded_transaction_preserves_the_trigger_depth() throws Exception {
+        final var sessionId = "sess-depth";
+        final var request = saveRequest(TestGlobals.COLL, "depth-doc");
+        request.setTriggerDepth(2);
+
+        final var response = pool.request(cluster.serverAddress(), forwardTx(sessionId, request), 2000);
+
+        assertEquals(ClusterMessageType.FORWARD_RESPONSE, response.getType());
+        final var session = clientTracker.txSession(sessionId);
+        assertNotNull(session, "the forwarded op must have opened a session");
+        final var transaction = clientTracker.getActiveTransaction(session.clientId());
+        assertNotNull(transaction);
+        assertEquals(2, transaction.getTriggerDepth(),
+                "a slice started for a forwarded trigger write must inherit its depth, or the cascade is unbounded");
+        pool.request(cluster.serverAddress(),
+                control(ClusterMessageType.ABORT_TX, sessionId, session.clientId().toString()), 2000);
+    }
+
+    @Test
+    public void test_replicate_tx_applies_batch() throws Exception {
+        final var entry = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                List.of(doc("rep-tx")), null, List.of("7"));
+        final var message = new ClusterMessage(null, ClusterMessageType.REPLICATE_TX, SECRET, node("edge", 1), null);
+        message.setTxReplication(new TxReplicationPayload(List.of(entry)));
+        final var response = pool.request(cluster.serverAddress(), message, 2000);
+        assertEquals(ClusterMessageType.REPLICATE_TX_ACK, response.getType());
+        assertEquals(OperationStatus.OK, findStatus("rep-tx"));
+    }
+
+    @Test
+    public void test_replicate_tx_with_empty_batch_is_nacked() throws Exception {
+        final var message = new ClusterMessage(null, ClusterMessageType.REPLICATE_TX, SECRET, node("edge", 1), null);
+        message.setTxReplication(new TxReplicationPayload());
+        final var response = pool.request(cluster.serverAddress(), message, 2000);
+        assertEquals(ClusterMessageType.ERROR, response.getType());
+    }
+
+    @Test
+    public void test_prepare_then_commit_tx_over_wire() throws Exception {
+        configureMembership(1, node("self", cluster.serverPort()));
+        pool.request(cluster.serverAddress(), forwardTx("tpc-1", saveRequest(TestGlobals.COLL, "tpc-doc-1")), 2000);
+        final var dtxId = UUID.nameUUIDFromBytes("tpc-1".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        assertEquals(ClusterMessageType.PREPARE_TX_ACK,
+                pool.request(cluster.serverAddress(), control(ClusterMessageType.PREPARE_TX, "tpc-1", dtxId), 2000)
+                        .getType());
+        assertEquals(ClusterMessageType.COMMIT_TX_ACK,
+                pool.request(cluster.serverAddress(), control(ClusterMessageType.COMMIT_TX, "tpc-1", dtxId), 2000)
+                        .getType());
+        assertEquals(OperationStatus.OK, findStatus("tpc-doc-1"));
+        assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
+    }
+
+    @Test
+    public void test_prepare_then_abort_tx_over_wire() throws Exception {
+        configureMembership(1, node("self", cluster.serverPort()));
+        pool.request(cluster.serverAddress(), forwardTx("tpc-2", saveRequest(TestGlobals.COLL, "tpc-doc-2")), 2000);
+        final var dtxId = UUID.nameUUIDFromBytes("tpc-2".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        pool.request(cluster.serverAddress(), control(ClusterMessageType.PREPARE_TX, "tpc-2", dtxId), 2000);
+        assertEquals(ClusterMessageType.ABORT_TX_ACK,
+                pool.request(cluster.serverAddress(), control(ClusterMessageType.ABORT_TX, "tpc-2", dtxId), 2000)
+                        .getType());
+        assertEquals(OperationStatus.NOT_FOUND, findStatus("tpc-doc-2"));
+        assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
+    }
+
+    @Test
+    public void test_tx_status_reflects_commit_decision() throws Exception {
+        configureMembership(1, node("self", cluster.serverPort()));
+        final var dtxId = UUID.randomUUID().toString();
+        final var unknown = pool.request(cluster.serverAddress(), control(ClusterMessageType.TX_STATUS, null, dtxId),
+                2000);
+        assertEquals(ClusterMessageType.TX_STATUS_ACK, unknown.getType());
+        assertEquals("NO_RECORD", unknown.getTxStatus());
+        org.ccg.mpp.ops.Tx2pcLog.recordCoordinatorCommit(dtxId, null, List.of("127.0.0.1:1"));
+        final var committed = pool.request(cluster.serverAddress(), control(ClusterMessageType.TX_STATUS, null, dtxId),
+                2000);
+        assertEquals(ClusterMessageType.TX_STATUS_ACK, committed.getType());
+        assertEquals("COMMITTED", committed.getTxStatus());
+    }
+
+    @Test
+    public void test_transaction_write_binds_and_forwards_to_owner() throws Exception {
+        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        final var coll = collectionOwnedByOther();
+        createCollection(coll);
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+
+        final var request = saveRequest(coll, "routed");
+        final var relayed = router.forward(request, eJson.toJson(request), true, "admin", clientId);
+
+        assertNotNull(relayed);
+        assertTrue(relayed.contains("routed"), "expected the forwarded write to be buffered, got: " + relayed);
+        assertTrue(clientTracker.transactionParticipants(clientId).contains(cluster.serverAddress().toString()));
+
+        router.teardownTransaction(clientId);
+    }
+
+    @Test
+    public void test_transaction_write_to_unreachable_owner_returns_503_4() throws Exception {
+        configureMembership(2, node("self", 19990), node("other", 1));
+        final var coll = collectionOwnedByOther();
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var request = saveRequest(coll, "unreachable");
+        final var relayed = router.forward(request, eJson.toJson(request), true, "admin", clientId);
+        assertNotNull(relayed);
+        assertTrue(relayed.contains("503-4"), "expected OWNER_UNREACHABLE, got: " + relayed);
+    }
+
+    @Test
+    public void test_start_and_unbound_read_run_locally() throws Exception {
+        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        assertNull(router.forward(new StartTransactionRequest(), "{}", true, "admin", clientId));
+        final var read = new FindByIdRequest(TestGlobals.DB, collectionOwnedByOther());
+        read.set_id("x");
+        assertNull(router.forward(read, eJson.toJson(read), true, "admin", clientId));
+    }
+
+    @Test
+    public void test_local_owned_write_runs_locally() throws Exception {
+        configureMembership(1, node("self", cluster.serverPort()));
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var request = saveRequest(TestGlobals.COLL, "local-slice");
+        assertNull(router.forward(request, eJson.toJson(request), true, "admin", clientId));
+        assertTrue(clientTracker.hasLocalSlice(clientId));
+        assertTrue(clientTracker.transactionParticipants(clientId).isEmpty());
+    }
+
+    @Test
+    public void test_teardown_is_noop_without_remote_participants() throws Exception {
+        configureMembership(1, node("self", cluster.serverPort()));
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        assertFalse(router.teardownTransaction(clientId));
+    }
+
+    @Test
+    public void test_single_remote_commit_refuses_when_the_receiving_node_does_not_own_the_collection()
+            throws Exception {
+        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        final var coll = collectionOwnedByOther();
+        createCollection(coll);
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var save = saveRequest(coll, "fastpath");
+        router.forward(save, eJson.toJson(save), true, "admin", clientId);
+        final var commit = new CommitTransactionRequest();
+        final var relayed = router.forward(commit, eJson.toJson(commit), true, "admin", clientId);
+        assertNotNull(relayed);
+        assertTrue(relayed.contains("421-1"), "expected NOT_COLLECTION_OWNER, got: " + relayed);
+        final var find = new FindByIdRequest(TestGlobals.DB, coll);
+        find.set_id("fastpath");
+        assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find).getStatus());
+        assertNull(clientTracker.getActiveTransaction(clientId));
+    }
+
+    @Test
+    public void test_transaction_read_forwarded_to_participant() throws Exception {
+        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        final var coll = collectionOwnedByOther();
+        createCollection(coll);
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var save = saveRequest(coll, "read-yw");
+        router.forward(save, eJson.toJson(save), true, "admin", clientId);
+        final var read = new FindByIdRequest(TestGlobals.DB, coll);
+        read.set_id("read-yw");
+        final var relayed = router.forward(read, eJson.toJson(read), true, "admin", clientId);
+        assertNotNull(relayed);
+        assertTrue(relayed.contains("read-yw"), "expected read-your-writes result, got: " + relayed);
+        router.teardownTransaction(clientId);
+    }
+
+    @Test
+    public void test_rollback_routed_to_participant() throws Exception {
+        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        final var coll = collectionOwnedByOther();
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var save = saveRequest(coll, "rb-routed");
+        router.forward(save, eJson.toJson(save), true, "admin", clientId);
+        final var rollback = new RollbackTransactionRequest();
+        final var relayed = router.forward(rollback, eJson.toJson(rollback), true, "admin", clientId);
+        assertNotNull(relayed);
+        assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
+        assertNull(clientTracker.getActiveTransaction(clientId));
+    }
+
+    @Test
+    public void test_list_tx_returns_local_in_doubt() throws Exception {
+        final var dtxId = UUID.randomUUID().toString();
+        Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:7000",
+                List.of("127.0.0.1:7000", cluster.serverAddress().toString()),
+                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+        final var message = new ClusterMessage(null, ClusterMessageType.LIST_TX, SECRET,
+                node("self", cluster.serverPort()), null);
+        final var response = pool.request(cluster.serverAddress(), message, 2000);
+        assertEquals(ClusterMessageType.LIST_TX_ACK, response.getType());
+        assertNotNull(response.getInDoubtTransactions());
+        assertEquals(1, response.getInDoubtTransactions().size());
+        final var tx = response.getInDoubtTransactions().getFirst();
+        assertEquals(dtxId, tx.getDtxId());
+        assertEquals("127.0.0.1:7000", tx.getCoordinator());
+        assertEquals("PREPARED", tx.getStatus());
+        assertTrue(tx.getParticipants().contains(cluster.serverAddress().toString()));
+    }
+
+    @Test
+    public void test_list_tx_returns_empty_when_none() throws Exception {
+        final var message = new ClusterMessage(null, ClusterMessageType.LIST_TX, SECRET,
+                node("self", cluster.serverPort()), null);
+        final var response = pool.request(cluster.serverAddress(), message, 2000);
+        assertEquals(ClusterMessageType.LIST_TX_ACK, response.getType());
+        assertTrue(response.getInDoubtTransactions().isEmpty());
+    }
+
+    @Test
+    public void test_prepare_tx_for_unknown_session_votes_no() throws Exception {
+        final var response = pool.request(cluster.serverAddress(),
+                control(ClusterMessageType.PREPARE_TX, "no-such-session", UUID.randomUUID().toString()), 2000);
+        assertEquals(ClusterMessageType.ERROR, response.getType());
+    }
+
+    @Test
+    public void test_commit_tx_resolves_durable_slice_when_session_absent() throws Exception {
+        final var dtxId = UUID.randomUUID().toString();
+        final var obj = new JsonObject();
+        obj.add("_id", new JsonString("durable-commit"));
+        AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 0,
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, obj));
+        Tx2pcLog.recordParticipantPrepared(dtxId, cluster.serverAddress().toString(),
+                List.of(cluster.serverAddress().toString()),
+                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+
+        final var response = pool.request(cluster.serverAddress(),
+                control(ClusterMessageType.COMMIT_TX, "gone-session", dtxId), 2000);
+        assertEquals(ClusterMessageType.COMMIT_TX_ACK, response.getType());
+        assertEquals(OperationStatus.OK, findStatus("durable-commit"));
+    }
+
+    @Test
+    public void test_abort_tx_resolves_durable_slice_when_session_absent() throws Exception {
+        final var dtxId = UUID.randomUUID().toString();
+        final var obj = new JsonObject();
+        obj.add("_id", new JsonString("durable-abort"));
+        AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 0,
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, obj));
+        Tx2pcLog.recordParticipantPrepared(dtxId, cluster.serverAddress().toString(),
+                List.of(cluster.serverAddress().toString()),
+                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+
+        final var response = pool.request(cluster.serverAddress(),
+                control(ClusterMessageType.ABORT_TX, "gone-session", dtxId), 2000);
+        assertEquals(ClusterMessageType.ABORT_TX_ACK, response.getType());
+        assertEquals(OperationStatus.NOT_FOUND, findStatus("durable-abort"));
+        assertFalse(Tx2pcLog.isPrepared(dtxId));
+    }
+}

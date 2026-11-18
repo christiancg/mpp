@@ -2957,7 +2957,7 @@ def exec_client(port: int, request: dict) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory() as cwd:
         return subprocess.run(["java", "-jar", bu.JAR_PATH, "--exec", json.dumps(request), "--host", HOST, "--port",
                                str(port), "--user", ADMIN_USERNAME], cwd=cwd, capture_output=True, timeout=300,
-                              env={**os.environ, "LWNRDB_PASSWORD": ADMIN_PASSWORD}, check=False)
+                              env={**os.environ, "MPP_PASSWORD": ADMIN_PASSWORD}, check=False)
 
 
 def test_the_client_does_not_resend_a_replication_timeout():
@@ -3890,7 +3890,7 @@ class MigrationNode(Node):
 
     def _write_config(self, **overrides):
         super()._write_config(**overrides)
-        path = os.path.join(self.work_dir, "lwnrdb.cfg")
+        path = os.path.join(self.work_dir, "mpp.cfg")
         with open(path) as fp:
             lines = fp.read().splitlines()
         seeds = f"{HOST}:{self.seed_port}" if self.seed_port else ""
@@ -3935,7 +3935,7 @@ def test_a_populated_standalone_node_keeps_its_data_when_a_fresh_node_joins():
     section("A standalone node switched to clustered keeps its data when a fresh node joins and coordinates")
 
     populated_id, fresh_id = _ids_where_the_fresh_node_wins_and_coordinates()
-    base_dir = tempfile.mkdtemp(prefix="lwnrdb-migration-")
+    base_dir = tempfile.mkdtemp(prefix="mpp-migration-")
     populated = MigrationNode(MIGRATION_NODE_OFFSET, base_dir, populated_id)
     fresh = MigrationNode(MIGRATION_NODE_OFFSET + 1, base_dir, fresh_id, populated.cluster_port)
     db, coll, user, password = "standalone_db", "kept", "standalone_analyst", "standalone_analyst1"
@@ -4524,7 +4524,7 @@ def main():
 
     bu.require_jar()
 
-    base_dir = tempfile.mkdtemp(prefix="lwnrdb-cluster-")
+    base_dir = tempfile.mkdtemp(prefix="mpp-cluster-")
     print(f"  Base working dir: {base_dir}")
     for i in range(NODE_COUNT):
         nodes.append(Node(i, base_dir))

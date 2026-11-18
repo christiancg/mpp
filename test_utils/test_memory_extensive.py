@@ -40,7 +40,7 @@ REFUSED_INDEX_COLL = "refused_index"
 REFUSED_INDEX_DOCS = int(os.environ.get("MEM_TEST_REFUSED_INDEX_DOCS", "40000"))
 REFUSED_INDEX_MAX_CAP = 64 * 1024 * 1024
 DROP_TRACKED_CLASSES = ("java.util.concurrent.locks.ReentrantReadWriteLock",
-                        "java.util.concurrent.ConcurrentLinkedQueue", "org.techhouse.cache.UsageCounter")
+                        "java.util.concurrent.ConcurrentLinkedQueue", "org.ccg.mpp.cache.UsageCounter")
 
 bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
@@ -656,7 +656,7 @@ def main():
     pid = find_server_pid()
     print(f"  server pid={pid}  initial rss={get_pid_rss_mb(pid)}MB")
     if pid is None:
-        print("  [ERROR] could not find lwnrdb server PID — is it running?")
+        print("  [ERROR] could not find mpp server PID — is it running?")
         sys.exit(1)
 
     c = Conn()

@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, expect } from "vitest";
-import { type ClientSettings, LwnrdbClient } from "../../src/index.js";
+import { type ClientSettings, MppClient } from "../../src/index.js";
 import { ADMIN, PASSWORD, ServerProcess } from "../support/server-process.js";
 
 export interface ServerIt {
     readonly server: ServerProcess;
-    readonly client: LwnrdbClient;
+    readonly client: MppClient;
     settings(overrides?: ClientSettings): ClientSettings;
 }
 
@@ -19,10 +19,10 @@ export function settingsFor(server: ServerProcess, overrides: ClientSettings = {
 
 export function serverIt(config: Record<string, string> = {}): ServerIt {
     let server: ServerProcess | undefined;
-    let client: LwnrdbClient | undefined;
+    let client: MppClient | undefined;
     beforeAll(async () => {
         server = await ServerProcess.start(config);
-        client = await LwnrdbClient.connect(settingsFor(server));
+        client = await MppClient.connect(settingsFor(server));
     });
     afterAll(async () => {
         await client?.close();
@@ -35,7 +35,7 @@ export function serverIt(config: Record<string, string> = {}): ServerIt {
             }
             return server;
         },
-        get client(): LwnrdbClient {
+        get client(): MppClient {
             if (client === undefined) {
                 throw new Error("the client is not connected");
             }

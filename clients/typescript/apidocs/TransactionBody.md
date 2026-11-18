@@ -1,3 +1,3 @@
 # TransactionBody
 
-The function `LwnrdbClient.transaction` runs inside a transaction.
+The function `MppClient.transaction` runs inside a transaction.

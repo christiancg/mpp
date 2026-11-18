@@ -642,7 +642,7 @@ def main():
         print(f"port {PORT} is already in use", file=sys.stderr)
         sys.exit(1)
 
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-schedule-test-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-schedule-test-")
     log_path = os.path.join(work_dir, "server.out")
     proc = None
     try:

@@ -38,7 +38,7 @@ jobs:
       - name: Consumers
         run: npm run consumers
       - name: Integration tests
-        run: LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" npm run test:it
+        run: MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" npm run test:it
 
   publish:
     name: Publish to npm

@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from lwnrdb import AsyncLwnrdbClient, ClientSettings, ConnectionLostError, ServerAddress, and_, field, nearest
-from lwnrdb import Vector as Embedding
+from mpp import AsyncMppClient, ClientSettings, ConnectionLostError, ServerAddress, and_, field, nearest
+from mpp import Vector as Embedding
 
 
 async def main() -> int:
@@ -12,7 +12,7 @@ async def main() -> int:
     if len(getattr(condition, "operands", ())) != 2:
         raise SystemExit("and_ built the wrong filter")
     try:
-        await AsyncLwnrdbClient.connect(ClientSettings(hosts=(ServerAddress("127.0.0.1", 1),), connect_timeout=2))
+        await AsyncMppClient.connect(ClientSettings(hosts=(ServerAddress("127.0.0.1", 1),), connect_timeout=2))
     except ConnectionLostError:
         sys.stdout.write("async consumer ok\n")
         return 0

@@ -159,7 +159,7 @@ DEVICE_SYNC_FALLBACK = "this platform cannot sync a directory"
 
 def test_the_durability_warning_follows_sync_writes():
     section("synced-writes startup: syncWrites=false warns, syncWrites=true does not")
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-synced-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-synced-")
     log_path = os.path.join(work_dir, "server.log")
     try:
         for synced in (False, True):
@@ -2575,7 +2575,7 @@ def test_backlog_full_write_is_503_16(conn: Conn):
 
 
 def run_backlog_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-backlog-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-backlog-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, faultInjectionEnabled=True, backgroundProcessingThreads=1,
                     backgroundQueueMaxEvents=BACKLOG_MAX_EVENTS, backgroundBacklogWaitMs=BACKLOG_WAIT_MS)
@@ -2644,7 +2644,7 @@ def test_every_document_and_index_answers_after_the_bounded_stop(conn: Conn):
 
 
 def run_bounded_shutdown_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-shutdown-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-shutdown-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, shutdownTimeoutMs=SHUTDOWN_BUDGET_MS)
     print(f"\n  Starting server on {HOST}:{PORT} with shutdownTimeoutMs={SHUTDOWN_BUDGET_MS} ...")
@@ -2719,7 +2719,7 @@ def test_the_killed_reindex_is_repaired_by_the_next_one(conn: Conn, work_dir: st
 
 
 def run_reindex_kill_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-reindex-kill-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-reindex-kill-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, faultInjectionEnabled=True)
     print(f"\n  Starting server on {HOST}:{PORT} for a REINDEX killed between fields ...")
@@ -2803,7 +2803,7 @@ def test_restart_after_pending_frame_is_clean(work_dir: str, log_path: str):
 
 
 def run_pending_frame_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-pending-frame-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-pending-frame-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, walCheckpointBytes=WAL_CHECKPOINT_BYTES,
                     walIdleCheckpointMs=60000)
@@ -2906,7 +2906,7 @@ def test_a_pending_frame_is_not_replayed_on_every_restart(work_dir: str, log_pat
 
 
 def run_stale_pending_frame_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-stale-pending-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-stale-pending-")
     log_path = os.path.join(work_dir, "server.log")
     write_config(work_dir, faults=True)
     test_a_pending_frame_is_not_replayed_on_every_restart(work_dir, log_path)
@@ -2957,7 +2957,7 @@ def test_an_idle_log_is_checkpointed_in_the_background(conn: Conn, work_dir: str
 
 
 def run_checkpoint_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-checkpoint-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-checkpoint-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, walIdleCheckpointMs=0)
     proc = bu.start_server(work_dir, log_path)
@@ -3034,7 +3034,7 @@ def test_an_index_log_left_unfolded_at_shutdown_replays_at_startup(proc, work_di
 
 
 def run_idle_index_fold_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-idle-fold-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-idle-fold-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, maxMemory="256mb")
     proc = bu.start_server(work_dir, log_path)
@@ -3144,7 +3144,7 @@ def test_a_small_hot_collection_converges_on_disk(conn: Conn, work_dir: str) -> 
 
 
 def run_page_placement_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-placement-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-placement-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, maxMemory="256mb")
     proc = bu.start_server(work_dir, log_path, xmx="1g")
@@ -3217,7 +3217,7 @@ def test_many_page_relocations_read_back(conn: Conn, work_dir: str, expected: di
 
 
 def run_many_page_relocation_kill_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-relocation-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-relocation-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, maxMemory="256mb", maxPageSize="4kb",
                     maxEntrySize=MAX_ENTRY_SIZE)
@@ -3335,7 +3335,7 @@ def test_kill_during_bulk_repairs_each_index_once(work_dir: str, log_path: str, 
 
 
 def run_kill_during_bulk_repair_phase():
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-bulk-repair-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-bulk-repair-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, syncWrites=True, maxMemory="64mb")
     print(f"\n  Starting server on {HOST}:{PORT} for a kill -9 inside a BULK_SAVE stream ...")
@@ -3359,7 +3359,7 @@ def main():
 
     bu.require_jar()
 
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-storage-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-storage-")
     log_path = os.path.join(work_dir, "server.log")
     print(f"  Working dir: {work_dir}")
 

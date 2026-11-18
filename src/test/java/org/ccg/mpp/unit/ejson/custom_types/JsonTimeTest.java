@@ -1,0 +1,100 @@
+package org.ccg.mpp.unit.ejson.custom_types;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.time.LocalTime;
+import org.ccg.mpp.ejson.custom_types.JsonTime;
+import org.ccg.mpp.ejson.exceptions.WrongFormatCustomTypeException;
+import org.junit.jupiter.api.Test;
+
+public class JsonTimeTest {
+    @Test
+    public void create_json_time_with_valid_local_time() {
+        LocalTime time = LocalTime.of(10, 30, 15);
+        JsonTime jsonTime = new JsonTime(time);
+        assertEquals(time, jsonTime.getCustomValue());
+    }
+
+    @Test
+    public void test_constructor_accepts_valid_time_string() {
+        String validTimeStr = "#time(13:45:30)";
+
+        JsonTime jsonTime = new JsonTime(validTimeStr);
+
+        assertEquals(validTimeStr, jsonTime.getValue());
+        assertEquals(LocalTime.of(13, 45, 30), jsonTime.getCustomValue());
+    }
+
+    @Test
+    public void test_default_constructor_creates_empty_instance() {
+        JsonTime jsonTime = new JsonTime();
+
+        assertNotNull(jsonTime);
+        assertEquals("", jsonTime.getValue());
+    }
+
+    @Test
+    public void test_default_constructor_creates_null_custom_value() {
+        JsonTime jsonTime = new JsonTime();
+
+        assertNull(jsonTime.getCustomValue());
+    }
+
+    @Test
+    public void returns_time_string_when_called() {
+        JsonTime jsonTime = new JsonTime(LocalTime.now());
+
+        String result = jsonTime.getCustomTypeName();
+
+        assertEquals("time", result);
+    }
+
+    @Test
+    public void subclass_returns_same_type_name() {
+        class CustomJsonTime extends JsonTime {
+            CustomJsonTime(LocalTime time) {
+                super(time);
+            }
+        }
+
+        CustomJsonTime customTime = new CustomJsonTime(LocalTime.now());
+
+        String result = customTime.getCustomTypeName();
+
+        assertEquals("time", result);
+    }
+
+    @Test
+    public void test_compare_returns_correct_ordering() {
+        JsonTime earlier = new JsonTime(LocalTime.of(10, 30));
+        JsonTime later = new JsonTime(LocalTime.of(11, 30));
+
+        assertEquals(-1, earlier.compare(later.getCustomValue()));
+        assertEquals(1, later.compare(earlier.getCustomValue()));
+        assertEquals(0, earlier.compare(earlier.getCustomValue()));
+    }
+
+    @Test
+    public void test_compare_with_null_throws_exception() {
+        JsonTime time = new JsonTime(LocalTime.of(10, 30));
+
+        assertThrows(NullPointerException.class, () -> time.compare(null));
+    }
+
+    @Test
+    public void test_invalid_format_throws_wrong_format_exception() {
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonTime("#time(not_a_time)"));
+    }
+
+    @Test
+    public void test_no_custom_operators() {
+        JsonTime time = new JsonTime(LocalTime.of(10, 30, 15));
+
+        assertTrue(time.customOperatorNames().isEmpty());
+        assertThrows(UnsupportedOperationException.class,
+                () -> time.applyCustomOperator("distance", java.util.Map.of()));
+        assertTrue(time.customRankingOperatorNames().isEmpty());
+        assertThrows(UnsupportedOperationException.class,
+                () -> time.applyCustomRankingOperator("nearest", java.util.Map.of()));
+    }
+}

@@ -1,0 +1,105 @@
+package org.ccg.mpp.utils;
+
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class VectorUtils {
+    private VectorUtils() {
+    }
+
+    // Fixed seed so the hyperplanes are reproducible without persisting any state: same vector, same signature.
+    private static final long SIMHASH_SEED = 0x9E3779B97F4A7C15L;
+
+    private static final Map<Long, double[]> PLANES = new ConcurrentHashMap<>();
+    private static final int MAX_CACHED_PLANE_SHAPES = 8;
+
+    public static double cosineSimilarity(double[] a, double[] b) {
+        if (a.length != b.length) {
+            return Double.NaN;
+        }
+        final var scaleA = maxAbs(a);
+        final var scaleB = maxAbs(b);
+        if (isDegenerateScale(scaleA) || isDegenerateScale(scaleB)) {
+            return Double.NaN;
+        }
+        var dot = 0.0;
+        var normA = 0.0;
+        var normB = 0.0;
+        for (var i = 0; i < a.length; i++) {
+            final var x = a[i] / scaleA;
+            final var y = b[i] / scaleB;
+            dot += x * y;
+            normA += x * x;
+            normB += y * y;
+        }
+        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    private static double maxAbs(double[] vector) {
+        var max = 0.0;
+        for (final var component : vector) {
+            max = Math.max(max, Math.abs(component));
+        }
+        return max;
+    }
+
+    private static boolean isDegenerateScale(double scale) {
+        return !(scale > 0.0 && Double.isFinite(scale));
+    }
+
+    public static int simHashBits(double[] vector, int bits) {
+        final var dimension = vector.length;
+        final var planes = planesFor(bits, dimension);
+        var signature = 0;
+        var offset = 0;
+        for (var plane = 0; plane < bits; plane++) {
+            var dot = 0.0;
+            for (var i = 0; i < dimension; i++) {
+                dot += vector[i] * planes[offset + i];
+            }
+            signature = signature << 1 | (dot >= 0 ? 1 : 0);
+            offset += dimension;
+        }
+        return signature;
+    }
+
+    public static String simHash(double[] vector, int bits) {
+        final var dimension = vector.length;
+        final var planes = planesFor(bits, dimension);
+        final var signature = new char[bits];
+        var offset = 0;
+        for (var plane = 0; plane < bits; plane++) {
+            var dot = 0.0;
+            for (var i = 0; i < dimension; i++) {
+                dot += vector[i] * planes[offset + i];
+            }
+            signature[plane] = dot >= 0 ? '1' : '0';
+            offset += dimension;
+        }
+        return new String(signature);
+    }
+
+    private static double[] planesFor(int bits, int dimension) {
+        final var key = ((long) bits << 32) | (dimension & 0xFFFFFFFFL);
+        final var cached = PLANES.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        final var planes = drawPlanes(bits, dimension);
+        if (PLANES.size() >= MAX_CACHED_PLANE_SHAPES) {
+            return planes;
+        }
+        final var raced = PLANES.putIfAbsent(key, planes);
+        return raced != null ? raced : planes;
+    }
+
+    private static double[] drawPlanes(int bits, int dimension) {
+        final var random = new Random(SIMHASH_SEED);
+        final var planes = new double[bits * dimension];
+        for (var i = 0; i < planes.length; i++) {
+            planes[i] = random.nextGaussian();
+        }
+        return planes;
+    }
+}

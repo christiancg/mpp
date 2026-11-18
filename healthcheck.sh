@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-config=/app/lwnrdb.cfg
+config=/app/mpp.cfg
 port=$(sed -n 's/^port=//p' "$config" | tail -n 1)
 tls=$(sed -n 's/^tlsEnabled=//p' "$config" | tail -n 1)
 

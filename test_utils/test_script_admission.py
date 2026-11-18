@@ -196,7 +196,7 @@ def test_burst_is_capped(conn: Conn):
           f"expected {CALLERS} responses, got {len(burst.responses)}")
     check("every response is either OK or the capacity rejection", not burst.other,
           f"unexpected responses: {burst.other}")
-    check(f"at most the capacity succeeded", 1 <= len(burst.ok) <= CAPACITY,
+    check("at most the capacity succeeded", 1 <= len(burst.ok) <= CAPACITY,
           f"{len(burst.ok)} callers succeeded with capacity {CAPACITY}")
     check("the surplus was rejected", len(burst.rejected) == CALLERS - len(burst.ok),
           f"{len(burst.ok)} ok + {len(burst.rejected)} rejected != {CALLERS}")
@@ -227,7 +227,7 @@ def test_call_procedure_is_capped(conn: Conn):
     burst = fire_burst({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "slow"})
     check("every response is either OK or the capacity rejection", not burst.other,
           f"unexpected responses: {burst.other}")
-    check(f"at most the capacity succeeded", 1 <= len(burst.ok) <= CAPACITY,
+    check("at most the capacity succeeded", 1 <= len(burst.ok) <= CAPACITY,
           f"{len(burst.ok)} callers succeeded")
     check("the surplus was rejected", len(burst.rejected) == CALLERS - len(burst.ok))
     rejection = burst.rejected[0] if burst.rejected else {}
@@ -584,7 +584,7 @@ def main():
 
     bu.require_jar()
 
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-admission-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-admission-")
     log_path = os.path.join(work_dir, "server.log")
     print(f"  Working dir: {work_dir}")
 

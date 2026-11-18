@@ -1,0 +1,88 @@
+package org.ccg.mpp.unit.cluster.msg;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+import org.ccg.mpp.cluster.PeerNames;
+import org.ccg.mpp.cluster.msg.AntiEntropyPayload;
+import org.ccg.mpp.cluster.msg.DigestEntry;
+import org.ccg.mpp.ejson.EJson;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.junit.jupiter.api.Test;
+
+public class AntiEntropyPayloadTest {
+
+    @Test
+    public void test_digest_entry_accessors() {
+        final var entry = new DigestEntry("a", 42L, true);
+        assertEquals("a", entry.getId());
+        assertEquals("42", entry.getVersion());
+        assertEquals(42L, entry.versionValue());
+        assertTrue(entry.isDeleted());
+
+        final var blank = new DigestEntry();
+        blank.setId("b");
+        blank.setVersion("7");
+        blank.setDeleted(false);
+        assertEquals("b", blank.getId());
+        assertEquals("7", blank.getVersion());
+        assertEquals(7L, blank.versionValue());
+        assertFalse(blank.isDeleted());
+    }
+
+    @Test
+    public void test_payload_accessors() {
+        final var payload = new AntiEntropyPayload("db", "coll");
+        assertEquals("db", payload.getDbName());
+        assertEquals("coll", payload.getCollName());
+
+        payload.setDbName("db2");
+        payload.setCollName("coll2");
+        payload.setDigest(List.of(new DigestEntry("a", 1L, false)));
+        payload.setIds(List.of("a"));
+        payload.setDocuments(List.of(new JsonObject()));
+        payload.setVersions(List.of("1"));
+
+        assertEquals("db2", payload.getDbName());
+        assertEquals("coll2", payload.getCollName());
+        assertEquals(1, payload.getDigest().size());
+        assertEquals(1, payload.getIds().size());
+        assertEquals(1, payload.getDocuments().size());
+        assertEquals(1, payload.getVersions().size());
+
+        final var blank = new AntiEntropyPayload();
+        blank.setDbName("d");
+        assertEquals("d", blank.getDbName());
+    }
+
+    @Test
+    public void test_incarnation_accessors() {
+        final var payload = new AntiEntropyPayload("db", "coll");
+        assertEquals(0L, payload.incarnationValue());
+        assertFalse(payload.isStaleIncarnation());
+
+        payload.setIncarnationValue(117333887563005952L);
+        payload.setStaleIncarnation(true);
+
+        assertEquals("117333887563005952", payload.getIncarnation());
+        assertEquals(117333887563005952L, payload.incarnationValue());
+        assertTrue(payload.isStaleIncarnation());
+
+        payload.setIncarnation("42");
+        assertEquals(42L, payload.incarnationValue());
+    }
+
+    @Test
+    public void test_requested_buckets_survive_the_wire_as_integers() {
+        final var payload = new AntiEntropyPayload("db_name", "coll_name");
+        payload.setBucketCount(16);
+        payload.setBuckets(List.of(1, 5, 15));
+        final var eJson = new EJson();
+
+        final var received = eJson.fromJson(eJson.toJson(payload), AntiEntropyPayload.class);
+
+        assertEquals(List.of(1, 5, 15), received.getBuckets());
+        assertInstanceOf(Integer.class, received.getBuckets().getFirst());
+        assertTrue(PeerNames.antiEntropy(received));
+    }
+}

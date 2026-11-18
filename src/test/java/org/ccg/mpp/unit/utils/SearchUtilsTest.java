@@ -1,0 +1,384 @@
+package org.ccg.mpp.unit.utils;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
+import org.ccg.mpp.data.FieldIndexEntry;
+import org.ccg.mpp.ejson.custom_types.JsonDateTime;
+import org.ccg.mpp.ejson.custom_types.JsonTime;
+import org.ccg.mpp.ejson.elements.JsonCustom;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.utils.SearchUtils;
+import org.junit.jupiter.api.Test;
+
+public class SearchUtilsTest {
+    @Test
+    public void test_binary_search_finds_exact_match() {
+        List<FieldIndexEntry<Integer>> entries = new ArrayList<>();
+        entries.add(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")));
+        entries.add(new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")));
+        entries.add(new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.EQUALS, 20);
+
+        assertEquals(Set.of("id2"), result);
+    }
+
+    @Test
+    public void test_empty_entries_returns_empty_set() {
+        List<FieldIndexEntry<Integer>> entries = new ArrayList<>();
+
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.EQUALS, 10);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void test_equals_operator_returns_matching_ids() {
+        Set<String> ids1 = Set.of("id1", "id2");
+        Set<String> ids2 = Set.of("id3");
+
+        List<FieldIndexEntry<String>> entries = Arrays.asList(new FieldIndexEntry<>("db1", "col1", "value1", ids1),
+                new FieldIndexEntry<>("db1", "col1", "value2", ids2));
+
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.EQUALS, "value1");
+
+        assertEquals(ids1, result);
+    }
+
+    @Test
+    public void test_empty_entries_returns_empty_set2() {
+        List<FieldIndexEntry<String>> emptyEntries = Collections.emptyList();
+
+        Set<String> equalsResult = SearchUtils.findingByOperator(emptyEntries, FieldOperatorType.EQUALS, "value");
+        Set<String> greaterResult = SearchUtils.findingByOperator(emptyEntries, FieldOperatorType.GREATER_THAN,
+                "value");
+        Set<String> containsResult = SearchUtils.findingByOperator(emptyEntries, FieldOperatorType.CONTAINS, "value");
+
+        assertTrue(equalsResult.isEmpty());
+        assertTrue(greaterResult.isEmpty());
+        assertTrue(containsResult.isEmpty());
+    }
+
+    @Test
+    public void test_not_equals_operator() {
+        List<FieldIndexEntry<String>> entries = Stream
+                .of(new FieldIndexEntry<>("db1", "col1", "value1", Set.of("id1", "id2")),
+                        new FieldIndexEntry<>("db1", "col1", "value2", Set.of("id3")),
+                        new FieldIndexEntry<>("db1", "col1", "value3", Set.of("id4")))
+                .toList();
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.NOT_EQUALS, "value2");
+        assertEquals(Set.of("id1", "id2", "id4"), result);
+    }
+
+    @Test
+    public void test_finding_by_operator_contains() {
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db1", "col1", "hello world", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", "world peace", Set.of("id2")),
+                new FieldIndexEntry<>("db1", "col1", "hello universe", Set.of("id3")));
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.CONTAINS, "world");
+        assertEquals(Set.of("id1", "id2"), result);
+    }
+
+    @Test
+    public void test_unsupported_operation_in_operator() {
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db1", "collection1", "value1", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "collection1", "value2", Set.of("id2")));
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingByOperator(entries, FieldOperatorType.IN, "value"));
+    }
+
+    @Test
+    public void test_in_and_not_in_operators_throw_exception() {
+        Set<String> ids1 = Set.of("id1", "id2");
+        Set<String> ids2 = Set.of("id3");
+
+        List<FieldIndexEntry<String>> entries = Arrays.asList(new FieldIndexEntry<>("db1", "col1", "value1", ids1),
+                new FieldIndexEntry<>("db1", "col1", "value2", ids2));
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingByOperator(entries, FieldOperatorType.IN, "value1"));
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingByOperator(entries, FieldOperatorType.NOT_IN, "value2"));
+    }
+
+    @Test
+    public void test_in_operator_returns_matching_ids() {
+        Set<String> ids1 = new HashSet<>(Arrays.asList("1", "2"));
+        Set<String> ids2 = new HashSet<>(Arrays.asList("3", "4"));
+
+        List<FieldIndexEntry<String>> entries = Arrays.asList(new FieldIndexEntry<>("db", "col", "value1", ids1),
+                new FieldIndexEntry<>("db", "col", "value2", ids2));
+
+        List<String> searchValues = Arrays.asList("value1", "value2");
+
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, searchValues);
+
+        assertEquals(4, result.size());
+        assertTrue(result.containsAll(Arrays.asList("1", "2", "3", "4")));
+    }
+
+    @Test
+    public void test_null_entries_throws_npe() {
+        List<String> searchValues = List.of("value1");
+
+        assertThrows(NullPointerException.class,
+                () -> SearchUtils.findingInNotIn(null, FieldOperatorType.IN, searchValues));
+    }
+
+    @Test
+    public void test_not_in_operator_returns_ids_not_in_value_list() {
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db1", "col1", "value1", Set.of("id1", "id2")),
+                new FieldIndexEntry<>("db1", "col1", "value2", Set.of("id3")),
+                new FieldIndexEntry<>("db1", "col1", "value3", Set.of("id4")));
+        List<String> value = List.of("value1", "value3");
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, value);
+        assertEquals(Set.of("id3"), result);
+    }
+
+    @Test
+    public void test_empty_value_list_with_in_operator_returns_empty_set() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "value1", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", "value2", Set.of("id2")));
+        List<String> value = Collections.emptyList();
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, value);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void test_empty_value_list_with_not_in_operator_returns_all_ids() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "value1", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", "value2", Set.of("id2")));
+        List<String> value = Collections.emptyList();
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, value);
+        assertEquals(Set.of("id1", "id2"), result);
+    }
+
+    @Test
+    public void test_finding_in_not_in_over_one_custom_type() {
+        Set<String> ids1 = new HashSet<>(Arrays.asList("1", "2"));
+        Set<String> ids2 = new HashSet<>(Arrays.asList("3", "4"));
+
+        JsonTime jsonTime1 = new JsonTime("#time(10:00:00)");
+        JsonTime jsonTime2 = new JsonTime("#time(11:00:00)");
+
+        List<FieldIndexEntry<JsonCustom<?>>> entries = Arrays.asList(
+                new FieldIndexEntry<>("db", "col", jsonTime1, ids1),
+                new FieldIndexEntry<>("db", "col", jsonTime2, ids2));
+
+        List<JsonCustom<?>> searchValues = List.of(jsonTime1);
+
+        Set<String> resultIn = SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, searchValues);
+        assertEquals(ids1, resultIn);
+
+        Set<String> resultNotIn = SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, searchValues);
+        assertEquals(ids2, resultNotIn);
+    }
+
+    @Test
+    public void test_in_matches_a_custom_operand_spelled_differently_from_the_bucket() {
+        JsonDateTime stored = new JsonDateTime("#datetime(2024-01-01T10:00)");
+        JsonDateTime operand = new JsonDateTime("#datetime(2024-01-01T10:00:00)");
+
+        List<FieldIndexEntry<JsonCustom<?>>> entries = List
+                .of(new FieldIndexEntry<>("db", "col", stored, Set.of("id1")));
+
+        assertEquals(Set.of("id1"), SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, List.of(operand)),
+                "IN must use the same equality as EQUALS, which compares custom values semantically");
+        assertTrue(SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, List.of(operand)).isEmpty());
+    }
+
+    @Test
+    public void test_in_matches_a_case_mismatched_string_operand() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "alpha", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", "beta", Set.of("id2")));
+
+        assertEquals(Set.of("id1"), SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, List.of("ALPHA")),
+                "IN must use the same equality as EQUALS, which compares strings case-insensitively");
+    }
+
+    @Test
+    public void test_not_in_excludes_a_case_mismatched_string_operand() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "alpha", Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", "beta", Set.of("id2")));
+
+        assertEquals(Set.of("id2"), SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, List.of("ALPHA")));
+    }
+
+    @Test
+    public void test_in_over_hash_index_entries_stays_exact() {
+        final var first = org.ccg.mpp.utils.JsonUtils.sha256("first");
+        final var second = org.ccg.mpp.utils.JsonUtils.sha256("second");
+        List<FieldIndexEntry<String>> entries = Stream
+                .of(new FieldIndexEntry<>("db1", "col1", first, Set.of("id1")),
+                        new FieldIndexEntry<>("db1", "col1", second, Set.of("id2")))
+                .sorted((a, b) -> a.getValue().compareToIgnoreCase(b.getValue())).toList();
+
+        assertEquals(Set.of("id1"), SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, List.of(first)));
+        assertEquals(Set.of("id2"), SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, List.of(first)));
+    }
+
+    @Test
+    public void test_not_in_returns_every_id_when_no_operand_matches() {
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db1", "col1", "alpha", Set.of("id1", "id2")),
+                new FieldIndexEntry<>("db1", "col1", "beta", Set.of("id3")));
+
+        assertEquals(Set.of("id1", "id2", "id3"),
+                SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN, List.of("gamma")));
+    }
+
+    @Test
+    public void test_in_matches_a_boxed_integer_operand_against_a_double_bucket() {
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 2.0d, Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", 5.0d, Set.of("id2")));
+
+        assertEquals(Set.of("id1"), SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, List.of(2)));
+    }
+
+    @Test
+    public void test_contains_declines_for_a_non_string_operand() {
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")));
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.CONTAINS, 10);
+        assertNull(result,
+                "the CONTAINS scan predicate also matches an array-valued document holding the operand, which a"
+                        + " scalar index cannot see, so it must decline and force a scan rather than answer empty");
+    }
+
+    @Test
+    public void test_finding_in_not_in_throws_for_non_in_operators() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "value1", Set.of("id1")));
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingInNotIn(entries, FieldOperatorType.EQUALS, List.of("value1")));
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingInNotIn(entries, FieldOperatorType.CONTAINS, List.of("value1")));
+        assertThrows(UnsupportedOperationException.class,
+                () -> SearchUtils.findingInNotIn(entries, FieldOperatorType.GREATER_THAN, List.of("value1")));
+    }
+
+    @Test
+    public void test_json_datetime_and_json_time_operators() {
+        Set<String> ids1 = Set.of("1", "2");
+        Set<String> ids2 = Set.of("3", "4");
+
+        JsonDateTime jsonDateTime1 = new JsonDateTime("#datetime(2023-10-01T10:00:00)");
+        JsonDateTime jsonDateTime2 = new JsonDateTime("#datetime(2023-10-02T10:00:00)");
+        JsonTime jsonTime1 = new JsonTime("#time(10:00:00)");
+        JsonTime jsonTime2 = new JsonTime("#time(11:00:00)");
+
+        List<FieldIndexEntry<JsonCustom<?>>> datetimeEntries = Arrays.asList(
+                new FieldIndexEntry<>("db1", "coll1", jsonDateTime1, ids1),
+                new FieldIndexEntry<>("db1", "coll1", jsonDateTime2, ids2));
+
+        List<FieldIndexEntry<JsonCustom<?>>> timeEntries = Arrays.asList(
+                new FieldIndexEntry<>("db1", "coll1", jsonTime1, ids1),
+                new FieldIndexEntry<>("db1", "coll1", jsonTime2, ids2));
+
+        Set<String> resultDateTime = SearchUtils.findingByOperator(datetimeEntries, FieldOperatorType.GREATER_THAN,
+                jsonDateTime1);
+        Set<String> resultTime = SearchUtils.findingByOperator(timeEntries, FieldOperatorType.GREATER_THAN_EQUALS,
+                jsonTime1);
+
+        assertEquals(ids2, resultDateTime);
+        final var allIdSet = new HashSet<>(ids1);
+        allIdSet.addAll(ids2);
+        assertEquals(allIdSet, resultTime);
+    }
+
+    @Test
+    public void test_not_equals_value_not_in_entries_returns_all() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db", "col", "a", Set.of("id1")),
+                new FieldIndexEntry<>("db", "col", "b", Set.of("id2")));
+        Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.NOT_EQUALS, "z");
+        assertEquals(Set.of("id1", "id2"), result);
+    }
+
+    @Test
+    public void test_in_with_duplicate_operands_matches_once() {
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db", "col", "active", Set.of("id1", "id2")),
+                new FieldIndexEntry<>("db", "col", "idle", Set.of("id3")));
+        final var operands = new ArrayList<String>();
+        for (var i = 0; i < 5000; i++) {
+            operands.add("active");
+        }
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.IN, operands);
+        assertEquals(Set.of("id1", "id2"), result);
+    }
+
+    @Test
+    public void test_in_collapses_case_variant_operands() {
+        List<FieldIndexEntry<String>> entries = List
+                .of(new FieldIndexEntry<>("db", "col", "active", Set.of("id1", "id2")));
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.IN,
+                List.of("active", "ACTIVE", "Active"));
+        assertEquals(Set.of("id1", "id2"), result);
+    }
+
+    @Test
+    public void test_not_in_with_duplicate_operands_excludes_once() {
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db", "col", "active", Set.of("id1")),
+                new FieldIndexEntry<>("db", "col", "idle", Set.of("id2")));
+        Set<String> result = SearchUtils.findingInNotIn(entries, FieldOperatorType.NOT_IN,
+                List.of("active", "active", "active"));
+        assertEquals(Set.of("id2"), result);
+    }
+
+    @Test
+    public void test_equals_result_is_detached_from_the_index_entries() {
+        final var live = new HashSet<>(Set.of("id1", "id2"));
+        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db", "col", "v", live));
+
+        final var result = SearchUtils.findingByOperator(entries, FieldOperatorType.EQUALS, "v");
+        live.add("late");
+        result.add("mine");
+
+        assertEquals(Set.of("id1", "id2", "mine"), result);
+        assertEquals(Set.of("id1", "id2", "late"), live);
+    }
+
+    @Test
+    public void test_a_range_over_empty_and_oversized_entries_collects_every_id() {
+        final var big = new HashSet<String>();
+        for (var i = 0; i < 100; i++) {
+            big.add("big" + i);
+        }
+        List<FieldIndexEntry<Integer>> entries = List.of(new FieldIndexEntry<>("db", "col", 1, Set.of("a")),
+                new FieldIndexEntry<>("db", "col", 2, Set.of()), new FieldIndexEntry<>("db", "col", 3, big));
+
+        final var result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN, 1);
+
+        assertEquals(big, result);
+        assertEquals(100, result.size());
+    }
+
+    @Test
+    public void test_count_equals_sums_the_ids_of_the_equal_run() {
+        final List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("db1", "col1", "Alpha", Set.of("a")),
+                new FieldIndexEntry<>("db1", "col1", "alpha", Set.of("b", "c")),
+                new FieldIndexEntry<>("db1", "col1", "beta", Set.of("d")),
+                new FieldIndexEntry<>("db1", "col1", "gamma", Set.of("e", "f", "g")));
+
+        assertEquals(3L, SearchUtils.countEquals(entries, "ALPHA"));
+        assertEquals(1L, SearchUtils.countEquals(entries, "beta"));
+        assertEquals(3L, SearchUtils.countEquals(entries, "gamma"));
+        assertEquals(0L, SearchUtils.countEquals(entries, "delta"));
+        assertEquals(0L, SearchUtils.countEquals(List.of(), "alpha"));
+        for (final var value : List.of("alpha", "BETA", "gamma", "zeta")) {
+            assertEquals(SearchUtils.findingByOperator(entries, FieldOperatorType.EQUALS, value).size(),
+                    SearchUtils.countEquals(entries, value), value);
+        }
+    }
+}

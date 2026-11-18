@@ -598,7 +598,7 @@ def main():
 
     with Conn() as c:
         if c.authenticate().get("status") != "OK":
-            print(f"Could not authenticate as admin. Check lwnrdb.cfg defaultAdminUsername/defaultAdminPassword={bu.PASSWORD}.")
+            print(f"Could not authenticate as admin. Check mpp.cfg defaultAdminUsername/defaultAdminPassword={bu.PASSWORD}.")
             sys.exit(1)
         setup(c)
 

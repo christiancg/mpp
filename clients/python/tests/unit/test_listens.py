@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ConnectionLostError, ListenEndedError, ListenUpdate, LwnrdbError, field
-from lwnrdb._internal.connection_factory import open_streams
-from lwnrdb._internal.values_codec import JsonObject
+from mpp import AsyncMppClient, ConnectionLostError, ListenEndedError, ListenUpdate, MppError, field
+from mpp._internal.connection_factory import open_streams
+from mpp._internal.values_codec import JsonObject
 from tests.conftest import no_backoff
 from tests.support.fake_server import FakeServer, Session
 from tests.support.recording_channel import error, ok
@@ -83,19 +83,19 @@ class Recorder:
 
 
 @pytest.fixture
-async def client(fake: FakeServer) -> AsyncIterator[AsyncLwnrdbClient]:
+async def client(fake: FakeServer) -> AsyncIterator[AsyncMppClient]:
     fake.responder = ListenServer()
-    connected = await AsyncLwnrdbClient._connect(fake.settings(), no_backoff, open_streams)
+    connected = await AsyncMppClient._connect(fake.settings(), no_backoff, open_streams)
     yield connected
     await connected.close()
 
 
-def _orders(client: AsyncLwnrdbClient):
+def _orders(client: AsyncMppClient):
     return client.database("shop").collection("orders")
 
 
 async def test_the_initial_reply_and_pushes_reach_the_handler_in_order(
-    client: AsyncLwnrdbClient, fake: FakeServer
+    client: AsyncMppClient, fake: FakeServer
 ) -> None:
     recorder = Recorder()
     subscription = await _orders(client).listen(recorder, _orders(client).query().filter(field("a").eq(1)))
@@ -115,7 +115,7 @@ async def test_the_initial_reply_and_pushes_reach_the_handler_in_order(
     assert not subscription.is_active
 
 
-async def test_a_push_before_the_registration_is_buffered(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_push_before_the_registration_is_buffered(client: AsyncMppClient, fake: FakeServer) -> None:
     server = ListenServer()
     server.early_push = True
     fake.responder = server
@@ -127,7 +127,7 @@ async def test_a_push_before_the_registration_is_buffered(client: AsyncLwnrdbCli
 
 
 async def test_a_listen_end_marks_the_subscription_closed_without_a_stop(
-    client: AsyncLwnrdbClient, fake: FakeServer
+    client: AsyncMppClient, fake: FakeServer
 ) -> None:
     recorder = Recorder()
     subscription = await _orders(client).listen(recorder)
@@ -139,7 +139,7 @@ async def test_a_listen_end_marks_the_subscription_closed_without_a_stop(
     assert fake.requests_of_type("STOP_LISTEN") == []
 
 
-async def test_a_lost_listen_connection_reports_through_on_error(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_lost_listen_connection_reports_through_on_error(client: AsyncMppClient, fake: FakeServer) -> None:
     recorder = Recorder()
     subscription = await _orders(client).listen(recorder)
     fake.sessions[-1].close()
@@ -148,7 +148,7 @@ async def test_a_lost_listen_connection_reports_through_on_error(client: AsyncLw
     assert not subscription.is_active
 
 
-async def test_handler_failures_go_to_on_error(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_handler_failures_go_to_on_error(client: AsyncMppClient, fake: FakeServer) -> None:
     failures: list[BaseException] = []
     done = asyncio.Event()
 
@@ -172,7 +172,7 @@ async def test_handler_failures_go_to_on_error(client: AsyncLwnrdbClient, fake: 
     assert [str(failure) for failure in failures] == ["L1", "ended"]
 
 
-async def test_a_plain_callable_is_a_handler(client: AsyncLwnrdbClient) -> None:
+async def test_a_plain_callable_is_a_handler(client: AsyncMppClient) -> None:
     seen: list[ListenUpdate[Any]] = []
     arrived = asyncio.Event()
     subscription = await _orders(client).listen(lambda update: (seen.append(update), arrived.set()))
@@ -182,13 +182,13 @@ async def test_a_plain_callable_is_a_handler(client: AsyncLwnrdbClient) -> None:
     await subscription.close()
 
 
-async def test_something_that_is_not_a_handler_is_refused(client: AsyncLwnrdbClient) -> None:
-    with pytest.raises(LwnrdbError, match="needs a handler"):
+async def test_something_that_is_not_a_handler_is_refused(client: AsyncMppClient) -> None:
+    with pytest.raises(MppError, match="needs a handler"):
         await _orders(client).listen(3)
 
 
 async def test_listens_past_the_per_connection_limit_open_another_connection(
-    client: AsyncLwnrdbClient, fake: FakeServer
+    client: AsyncMppClient, fake: FakeServer
 ) -> None:
     fake.responder = ListenServer(limit=2)
     subscriptions = [await _orders(client).listen(Recorder()) for _ in range(3)]
@@ -198,21 +198,21 @@ async def test_listens_past_the_per_connection_limit_open_another_connection(
     assert client._listens.open_channels == 0
 
 
-async def test_a_refused_listen_on_a_new_connection_raises(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_refused_listen_on_a_new_connection_raises(client: AsyncMppClient, fake: FakeServer) -> None:
     fake.responder = lambda request, session: session.send(error(request, "ERROR", "400-19", "no scripts"))
-    with pytest.raises(LwnrdbError, match="400-19"):
+    with pytest.raises(MppError, match="400-19"):
         await _orders(client).listen(Recorder())
     assert client._listens.open_channels == 0
 
 
-async def test_listens_are_not_available_inside_a_transaction(client: AsyncLwnrdbClient) -> None:
+async def test_listens_are_not_available_inside_a_transaction(client: AsyncMppClient) -> None:
     transaction = await client.begin_transaction()
     transaction_orders = transaction.collection("shop", "orders")
     assert not hasattr(transaction_orders, "listen")
     await transaction.rollback()
 
 
-async def test_closing_the_client_closes_listen_connections(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_closing_the_client_closes_listen_connections(client: AsyncMppClient, fake: FakeServer) -> None:
     recorder = Recorder()
     subscription = await _orders(client).listen(recorder)
     await client.close()

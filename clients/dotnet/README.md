@@ -1,27 +1,27 @@
-# LWNRDB .NET client
+# MPP .NET client
 
-The .NET client for [LWNRDB](https://github.com/christiancg/lwnrdb). It keeps a pool of authenticated connections and
+The .NET client for [MPP](https://github.com/christiancg/mpp). It keeps a pool of authenticated connections and
 gives you a fluent query builder, a LINQ provider, transactions, live queries and the server's custom value types. It
 needs .NET 10 or newer and has no NuGet dependencies.
 
 ## Installation
 
 ```bash
-dotnet add package Lwnrdb.Client
+dotnet add package Mpp.Client
 ```
 
 ## Quick start
 
 ```csharp
-using Lwnrdb.Client;
-using Lwnrdb.Client.Linq;
-using Lwnrdb.Client.Query;
-using static Lwnrdb.Client.Query.Filters;
+using Mpp.Client;
+using Mpp.Client.Linq;
+using Mpp.Client.Query;
+using static Mpp.Client.Query.Filters;
 
-await using var client = await LwnrdbClient.ConnectAsync(new ClientSettings
+await using var client = await MppClient.ConnectAsync(new ClientSettings
 {
     Hosts = [new ServerAddress("localhost", 8989)],
-    Credentials = new Credentials("admin", Environment.GetEnvironmentVariable("LWNRDB_PASSWORD") ?? ""),
+    Credentials = new Credentials("admin", Environment.GetEnvironmentVariable("MPP_PASSWORD") ?? ""),
 });
 
 var shop = client.Database("shop");
@@ -82,8 +82,8 @@ The server has four value types of its own. The client maps them both ways.
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
 | `#datetime(2024-01-01T10:00)` | `DateTime`                                     | `Field("placedAt").Gte(new DateTime(2024, 1, 1))`             |
 | `#time(09:30)`                | `TimeOnly`                                     | `o => o.OpensAt < new TimeOnly(12, 0)`                        |
-| `#geo(lat,lng)`               | `GeoPoint`                                     | `o => LwnrdbFunctions.Distance(o.Location, point) < 1000`     |
-| `#vector(v0,v1,...)`          | `Vector`, or `[LwnrdbVector] double[]/float[]` | `.Nearest(o => o.Embedding, Vector.Of(0.12, 0.44, 0.91), 10)` |
+| `#geo(lat,lng)`               | `GeoPoint`                                     | `o => MppFunctions.Distance(o.Location, point) < 1000`     |
+| `#vector(v0,v1,...)`          | `Vector`, or `[MppVector] double[]/float[]` | `.Nearest(o => o.Embedding, Vector.Of(0.12, 0.44, 0.91), 10)` |
 
 The server's date-time has no zone, so a `DateTime` of `Kind.Utc` or `Kind.Local`, or a `DateTimeOffset`, is refused
 unless you set `TemporalZone`. The server stores numbers as doubles, so keep integers past 53 bits in strings.
@@ -154,7 +154,7 @@ queries use their own connections, not the pool.
 
 ## Errors and retries
 
-Every refusal from the server is an `LwnrdbException` with the server's error code. There is a subclass per range:
+Every refusal from the server is an `MppException` with the server's error code. There is a subclass per range:
 `AuthenticationException` (401), `ForbiddenException` (403), `NotFoundException` (404), `ConflictException` (409),
 `ListenEndedException` (410), `UnavailableException` (503) and `UnknownOutcomeException` (`500-33`, `500-34`).
 
@@ -165,10 +165,10 @@ transaction.
 ## TLS
 
 ```csharp
-var client = await LwnrdbClient.ConnectAsync(new ClientSettings
+var client = await MppClient.ConnectAsync(new ClientSettings
 {
     Hosts = [new ServerAddress("db.example.com", 8989)],
-    Tls = new TlsSettings { TrustedCertificates = TlsSettings.LoadPkcs12("lwnrdb.p12", keystorePassword) },
+    Tls = new TlsSettings { TrustedCertificates = TlsSettings.LoadPkcs12("mpp.p12", keystorePassword) },
 });
 ```
 
@@ -177,18 +177,18 @@ development.
 
 ## API reference
 
-The API docs are in [`apidocs/`](apidocs) and in `Lwnrdb.Client.xml`, which ships in the package, so your IDE shows
+The API docs are in [`apidocs/`](apidocs) and in `Mpp.Client.xml`, which ships in the package, so your IDE shows
 them on hover.
 
 ## Building
 
 ```bash
-dotnet build Lwnrdb.slnx -c Release
-dotnet test tests/Lwnrdb.Client.Tests -c Release /p:CollectCoverage=true /p:Threshold=95 /p:ThresholdType=line
-dotnet format Lwnrdb.slnx --verify-no-changes
-dotnet pack src/Lwnrdb.Client -c Release -o artifacts && dotnet run --project consumers/Console
+dotnet build Mpp.slnx -c Release
+dotnet test tests/Mpp.Client.Tests -c Release /p:CollectCoverage=true /p:Threshold=95 /p:ThresholdType=line
+dotnet format Mpp.slnx --verify-no-changes
+dotnet pack src/Mpp.Client -c Release -o artifacts && dotnet run --project consumers/Console
 mvn package -DskipTests        # at the repository root, the server jar the integration tests use
-LWNRDB_JAR=$PWD/../../target/lwnrdb.jar dotnet test tests/Lwnrdb.Client.IntegrationTests -c Release
+MPP_JAR=$PWD/../../target/mpp.jar dotnet test tests/Mpp.Client.IntegrationTests -c Release
 ```
 
 ## Releasing

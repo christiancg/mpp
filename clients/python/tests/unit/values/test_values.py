@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time
 
 import pytest
 
-from lwnrdb import GeoPoint, LocalDateTime, LocalTime, Vector
+from mpp import GeoPoint, LocalDateTime, LocalTime, Vector
 
 
 @pytest.mark.parametrize(

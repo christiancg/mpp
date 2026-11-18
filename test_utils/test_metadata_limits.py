@@ -1,6 +1,5 @@
 import os
 import tempfile
-import time
 
 import base_utils as bu
 from base_utils import Conn, check, check_code, check_status, section
@@ -108,8 +107,8 @@ def wait_for_log(log_path: str, needle: str, timeout_s: float = 10.0) -> bool:
 
 
 def test_a_collection_outgrowing_maxmemory_is_logged():
-    section(f"A primary-key index larger than maxMemory is logged at runtime and at startup")
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-metalimits-outgrow-")
+    section("A primary-key index larger than maxMemory is logged at runtime and at startup")
+    work_dir = tempfile.mkdtemp(prefix="mpp-metalimits-outgrow-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, PORT, maxMemory="1mb")
     proc = None
@@ -149,7 +148,7 @@ def test_a_collection_outgrowing_maxmemory_is_logged():
 def main():
     bu.banner("Metadata limits test suite", HOST, PORT)
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-metalimits-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-metalimits-")
     log_path = os.path.join(work_dir, "server.log")
     write_config(work_dir)
     print(f"  Working dir: {work_dir}")

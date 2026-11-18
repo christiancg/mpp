@@ -6,7 +6,7 @@ from enum import Enum
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ConflictError, LwnrdbClient, LwnrdbError, and_, field
+from mpp import AsyncMppClient, ConflictError, MppClient, MppError, and_, field
 
 pytestmark = pytest.mark.it
 
@@ -30,7 +30,7 @@ class Invoice:
     id: str | None = None
 
 
-async def test_save_find_and_delete(client: AsyncLwnrdbClient) -> None:
+async def test_save_find_and_delete(client: AsyncMppClient) -> None:
     shop = client.database("data_it")
     await shop.create()
     orders = shop.collection("orders")
@@ -61,7 +61,7 @@ async def test_save_find_and_delete(client: AsyncLwnrdbClient) -> None:
     assert await orders.delete_where(field("status").eq("never")) == 0
 
 
-async def test_update_where_merges_the_patch_into_every_match(client: AsyncLwnrdbClient) -> None:
+async def test_update_where_merges_the_patch_into_every_match(client: AsyncMppClient) -> None:
     shop = client.database("data_update")
     await shop.create()
     orders = shop.collection("orders")
@@ -85,13 +85,13 @@ async def test_update_where_merges_the_patch_into_every_match(client: AsyncLwnrd
     assert await orders.find_by_id("uw-2") == {"_id": "uw-2", "status": "pending", "total": 500}
     assert await orders.find_by_id("uw-3") == {"_id": "uw-3", "status": "active", "total": 10}
     assert await orders.update_where(field("status").eq("never"), {"status": "x"}) == 0
-    with pytest.raises(LwnrdbError) as refused:
+    with pytest.raises(MppError) as refused:
         await orders.update_where(field("status").eq("active"), {"_id": "uw-9", "status": "x"})
     assert refused.value.raw_code == "400-1"
     assert await orders.find_by_id("uw-9") is None
 
 
-async def test_insert_refuses_an_id_that_is_already_stored(client: AsyncLwnrdbClient) -> None:
+async def test_insert_refuses_an_id_that_is_already_stored(client: AsyncMppClient) -> None:
     shop = client.database("data_insert")
     await shop.create()
     orders = shop.collection("orders")
@@ -115,7 +115,7 @@ async def test_insert_refuses_an_id_that_is_already_stored(client: AsyncLwnrdbCl
     assert await orders.find_by_id("in-2") == {"_id": "in-2", "status": "new"}
 
 
-async def test_save_all_reports_inserted_and_updated_ids(client: AsyncLwnrdbClient) -> None:
+async def test_save_all_reports_inserted_and_updated_ids(client: AsyncMppClient) -> None:
     shop = client.database("data_bulk")
     await shop.create()
     orders = shop.collection("orders")
@@ -125,14 +125,14 @@ async def test_save_all_reports_inserted_and_updated_ids(client: AsyncLwnrdbClie
     assert result.updated == ("b-1",)
     assert result.inserted[0] == "b-2"
     assert len(result.inserted) == 2
-    with pytest.raises(LwnrdbError) as duplicate:
+    with pytest.raises(MppError) as duplicate:
         await orders.save_all([{"_id": "d"}, {"_id": "d"}])
     assert duplicate.value.raw_code == "400-3"
     with pytest.raises(ConflictError):
         await client.database("data_bulk").create()
 
 
-def test_a_dataclass_collection_round_trips_through_the_sync_client(sync_client: LwnrdbClient) -> None:
+def test_a_dataclass_collection_round_trips_through_the_sync_client(sync_client: MppClient) -> None:
     shop = sync_client.database("data_typed")
     shop.create()
     shop.collection("invoices").create()

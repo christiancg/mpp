@@ -1,6 +1,6 @@
-# LightWeigh Non-Relational DataBase
+# MPP — Micro Project Platform
 
-LWNRDB is a non-relational database written completely in Java. Its main focus is to be lightweight, small, fast and easy to start.
+MPP (Micro Project Platform) is built around a non-relational database written completely in Java. Its main focus is to be lightweight, small, fast and easy to start.
 Database speed (measured in IOPS) is not paramount.
 
 ## Motivation
@@ -35,7 +35,7 @@ As such, this DB is not intended to be the fastest one out there, the most relia
 
 ## Status
 
-LWNRDB does everything it set out to do, but it is still a learning exercise and not something to put production data
+MPP does everything it set out to do, but it is still a learning exercise and not something to put production data
 in. To try it, follow the [Quickstart](QUICKSTART.md).
 
 Documents are stored as JSON lines in paged files and queried through an
@@ -60,12 +60,12 @@ IOPS.
 
 ## Performance
 
-LWNRDB is built for indexed reads on data that mostly fits in memory, not for write throughput or bulk loading. These
+MPP is built for indexed reads on data that mostly fits in memory, not for write throughput or bulk loading. These
 numbers come from the project's own [benchmark](test_utils/bench/README.md), run on an Apple M5 under Docker Desktop on
 2026-11-16. Every engine got 2 CPUs and 4 GB, the same 100,000 documents of about 512 bytes with `category` and `price`
 indexed, 8 client processes, and synced writes.
 
-| Operations per second | LWNRDB | PostgreSQL 18 | MySQL 8.4 | MongoDB 8.0 |
+| Operations per second | MPP | PostgreSQL 18 | MySQL 8.4 | MongoDB 8.0 |
 |---|---|---|---|---|
 | Insert one document | 23,025 | **36,692** | 27,379 | 14,076 |
 | Read one document by id | 93,263 | **95,974** | 63,517 | 38,936 |
@@ -107,16 +107,16 @@ The server jar is also its own client. When the first argument starts with `--`,
 starting one:
 
 ```bash
-java -jar lwnrdb.jar --shell [connection]
-java -jar lwnrdb.jar --exec '<json>' [--exec '<json>' ...] [connection]
-java -jar lwnrdb.jar --exec [connection] < commands.jsonl
-java -jar lwnrdb.jar --dump [--databases a,b | --collections db.coll,...] [--compress] [connection] > backup.ldump
-java -jar lwnrdb.jar --restore [connection] < backup.ldump
-java -jar lwnrdb.jar --health [connection]
+java -jar mpp.jar --shell [connection]
+java -jar mpp.jar --exec '<json>' [--exec '<json>' ...] [connection]
+java -jar mpp.jar --exec [connection] < commands.jsonl
+java -jar mpp.jar --dump [--databases a,b | --collections db.coll,...] [--compress] [connection] > backup.ldump
+java -jar mpp.jar --restore [connection] < backup.ldump
+java -jar mpp.jar --health [connection]
 ```
 
 The connection flags are `--host` (default `127.0.0.1`), `--port` (default `8989`), `--user` (default `admin`),
-`--password` (or the `LWNRDB_PASSWORD` environment variable), `--tls` and `--insecure` (TLS without checking the
+`--password` (or the `MPP_PASSWORD` environment variable), `--tls` and `--insecure` (TLS without checking the
 certificate, only for the dev self-signed one).
 
 - `--shell` reads one JSON request per line and pretty-prints the reply.
@@ -141,7 +141,7 @@ permissions of `--user`.
 From Docker, override the command (add `-i` to feed a restore):
 
 ```bash
-docker run --rm lwnrdb java -jar app.jar --dump --compress --host db.internal --password … > backup.ldump.gz
+docker run --rm mpp java -jar app.jar --dump --compress --host db.internal --password … > backup.ldump.gz
 ```
 
 ## Client libraries
@@ -150,7 +150,7 @@ There are official clients for Java (with Spring Data and Spring Boot), TypeScri
 [`clients/`](clients/README.md). All of them are tested against the same protocol fixtures.
 
 ```java
-try (LwnrdbClient client = LwnrdbClient.connect(ClientSettings.builder()
+try (MppClient client = MppClient.connect(ClientSettings.builder()
         .host("localhost", 8989).credentials("admin", password).build())) {
     List<Document> active = client.database("shop").collection("orders").query()
             .filter(field("status").eq("active")).sort("total", Order.DESC).limit(10).toList();
@@ -158,7 +158,7 @@ try (LwnrdbClient client = LwnrdbClient.connect(ClientSettings.builder()
 ```
 
 ```ts
-await using client = await LwnrdbClient.connect({ credentials: { username: "admin", password } });
+await using client = await MppClient.connect({ credentials: { username: "admin", password } });
 const active = await client.database("shop").collection("orders").query()
     .filter(field("status").eq("active")).sort("total", Order.DESC).limit(10).toArray();
 ```

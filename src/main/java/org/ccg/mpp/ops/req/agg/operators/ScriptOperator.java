@@ -1,0 +1,21 @@
+package org.ccg.mpp.ops.req.agg.operators;
+
+import org.ccg.mpp.ops.req.agg.BaseOperator;
+import org.ccg.mpp.ops.req.agg.OperatorType;
+
+public class ScriptOperator extends BaseOperator {
+    private String source;
+
+    public ScriptOperator(String source) {
+        super(OperatorType.SCRIPT);
+        this.source = source;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+}

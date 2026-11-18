@@ -1,4 +1,4 @@
-# LWNRDB wire protocol
+# MPP wire protocol
 
 This is everything a client and the server say to each other: framing, authentication, what requests and replies look
 like, how replies are matched to requests and which errors are safe to retry. After that come every operation, the

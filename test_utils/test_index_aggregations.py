@@ -2566,7 +2566,7 @@ def test_self_pair_documents_dedupe_fast(c: Conn):
 def test_materialising_steps_obey_the_deadline():
     section("Index-built GROUP_BY and a NOR over 50k documents stop at aggregateTimeoutMs")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-idxagg-deadline-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-idxagg-deadline-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, DEADLINE_PORT, aggregateTimeoutMs=1, indexScanFallbackPercent=100)
     proc = bu.start_server(work_dir, log_path, port=DEADLINE_PORT)
@@ -2592,7 +2592,7 @@ def test_a_large_entry_range_top_k_is_sorted_once():
     total = LARGE_ENTRY_CROWD + LARGE_ENTRY_MATCHING
     section(f"FILTER range + indexed leg, SORT, LIMIT 20 through one {total}-id index entry completes quickly")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-idxagg-large-entry-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-idxagg-large-entry-")
     log_path = os.path.join(work_dir, "server.log")
     coll = "idxagg_large_entry"
     bu.write_config(work_dir, LARGE_ENTRY_PORT, syncWrites=False)
@@ -2920,9 +2920,9 @@ def main():
     bu.banner("index-backed aggregation performance test suite", HOST, PORT)
     print(f"  Plan: load {NUM_DOCS} docs into {COLL} ({NUM_CATEGORIES} categories, each with an object "
           f"meta + array tags), {LEFT_DOCS} left + {NUM_DOCS} right docs for JOIN.")
-    print(f"        Run JOIN/SORT/DISTINCT and object/array element-match FILTER unindexed, then create indexes "
-          f"and time each against a scan baseline (the query behind a SKIP 0, or for JOIN the same join on an "
-          f"unindexed copy of the key), alternating which goes first.")
+    print("        Run JOIN/SORT/DISTINCT and object/array element-match FILTER unindexed, then create indexes "
+          "and time each against a scan baseline (the query behind a SKIP 0, or for JOIN the same join on an "
+          "unindexed copy of the key), alternating which goes first.")
 
     with Conn() as c:
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)

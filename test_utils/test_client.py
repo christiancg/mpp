@@ -197,7 +197,7 @@ def test_health(cwd: str, log_path: str):
     check("--health against a closed port exits 3", client(cwd, "--health", port=1, password=None).returncode == 3)
     version = send(SOURCE_PORT, {"type": "SERVER_INFO"}).get("server", {}).get("version")
     with open(log_path, encoding="utf-8", errors="replace") as log:
-        check("the server log names the version SERVER_INFO reports", f"LWNRDB {version} starting" in log.read(),
+        check("the server log names the version SERVER_INFO reports", f"MPP {version} starting" in log.read(),
               str(version))
 
 
@@ -580,7 +580,7 @@ def test_hygiene(cwd: str, plain_dump: bytes):
 
 def test_tls(cwd: str, work_dir: str, log_path: str):
     section("TLS")
-    write_config(work_dir, SOURCE_PORT, tlsEnabled=True, tlsKeystorePath="certs/lwnrdb.p12",
+    write_config(work_dir, SOURCE_PORT, tlsEnabled=True, tlsKeystorePath="certs/mpp.p12",
                  tlsKeystorePassword="changeit")
     proc = bu.start_server(work_dir, log_path, port=SOURCE_PORT)
     try:
@@ -610,9 +610,9 @@ def main():
             print(f"port {port} is already in use", file=sys.stderr)
             sys.exit(1)
 
-    source_dir = tempfile.mkdtemp(prefix="lwnrdb-client-source-")
-    target_dir = tempfile.mkdtemp(prefix="lwnrdb-client-target-")
-    client_dir = tempfile.mkdtemp(prefix="lwnrdb-client-cwd-")
+    source_dir = tempfile.mkdtemp(prefix="mpp-client-source-")
+    target_dir = tempfile.mkdtemp(prefix="mpp-client-target-")
+    client_dir = tempfile.mkdtemp(prefix="mpp-client-cwd-")
     source_log = os.path.join(source_dir, "server.out")
     target_log = os.path.join(target_dir, "server.out")
     source = target = None

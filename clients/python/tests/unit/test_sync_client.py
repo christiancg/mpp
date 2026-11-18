@@ -6,18 +6,18 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     ClientSettings,
     ConnectionLostError,
     ListenUpdate,
-    LwnrdbClient,
-    LwnrdbError,
+    MppClient,
+    MppError,
     ServerAddress,
     field,
 )
-from lwnrdb._internal.connection_factory import open_streams
-from lwnrdb._internal.portal import Portal
-from lwnrdb._internal.values_codec import JsonObject
+from mpp._internal.connection_factory import open_streams
+from mpp._internal.portal import Portal
+from mpp._internal.values_codec import JsonObject
 from tests.conftest import no_backoff
 from tests.support.fake_server import FakeServer, Session
 from tests.support.recording_channel import ok
@@ -46,8 +46,8 @@ def server() -> Iterator[tuple[Portal, FakeServer]]:
 
 
 @pytest.fixture
-def client(server: tuple[Portal, FakeServer]) -> Iterator[LwnrdbClient]:
-    connected = LwnrdbClient._connect(server[1].settings(), no_backoff, open_streams)
+def client(server: tuple[Portal, FakeServer]) -> Iterator[MppClient]:
+    connected = MppClient._connect(server[1].settings(), no_backoff, open_streams)
     yield connected
     connected.close()
 
@@ -56,11 +56,11 @@ def test_connect_failure_stops_the_runtime() -> None:
     settings = ClientSettings(hosts=(ServerAddress("127.0.0.1", free_port()),), connect_timeout=2)
     before = threading.active_count()
     with pytest.raises(ConnectionLostError):
-        LwnrdbClient.connect(settings)
+        MppClient.connect(settings)
     assert threading.active_count() <= before + 1
 
 
-def test_sync_calls_return_plain_values(client: LwnrdbClient) -> None:
+def test_sync_calls_return_plain_values(client: MppClient) -> None:
     orders = client.database("shop").collection("orders")
     assert orders.name == "orders"
     assert orders.database_name == "shop"
@@ -75,7 +75,7 @@ def test_sync_calls_return_plain_values(client: LwnrdbClient) -> None:
 
 
 def test_a_with_block_transaction_commits_and_a_failing_one_rolls_back(
-    client: LwnrdbClient, server: tuple[Portal, FakeServer]
+    client: MppClient, server: tuple[Portal, FakeServer]
 ) -> None:
     fake = server[1]
     with client.transaction() as transaction:
@@ -94,7 +94,7 @@ def test_a_with_block_transaction_commits_and_a_failing_one_rolls_back(
 
 
 def test_a_sync_listen_handler_runs_on_its_own_thread_and_may_call_the_client(
-    client: LwnrdbClient, server: tuple[Portal, FakeServer]
+    client: MppClient, server: tuple[Portal, FakeServer]
 ) -> None:
     portal, fake = server
     orders = client.database("shop").collection("orders")
@@ -114,7 +114,7 @@ def test_a_sync_listen_handler_runs_on_its_own_thread_and_may_call_the_client(
         portal.run(_send(listen_session, push("L1", [{"_id": "x"}])))
         assert arrived.wait(5)
     assert [entry[0] for entry in seen] == [True, False]
-    assert all(entry[1].startswith("lwnrdb-listen") for entry in seen)
+    assert all(entry[1].startswith("mpp-listen") for entry in seen)
     assert seen[0][2] is not None
     assert seen[0][2]["_id"] == "from-handler"
 
@@ -124,16 +124,16 @@ async def _send(session: Session, frame: JsonObject) -> None:
 
 
 def test_close_is_idempotent_and_later_calls_are_refused(server: tuple[Portal, FakeServer]) -> None:
-    client = LwnrdbClient._connect(server[1].settings(), no_backoff, open_streams)
+    client = MppClient._connect(server[1].settings(), no_backoff, open_streams)
     database = client.database("shop")
     client.close()
     client.close()
-    with pytest.raises(LwnrdbError, match="closed"):
+    with pytest.raises(MppError, match="closed"):
         database.list_collections()
 
 
 def test_the_client_is_a_context_manager(server: tuple[Portal, FakeServer]) -> None:
-    with LwnrdbClient._connect(server[1].settings(), no_backoff, open_streams) as client:
+    with MppClient._connect(server[1].settings(), no_backoff, open_streams) as client:
         assert client.list_databases() == ()
-    with pytest.raises(LwnrdbError):
+    with pytest.raises(MppError):
         client.server_info()

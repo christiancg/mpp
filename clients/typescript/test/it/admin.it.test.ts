@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { AuthenticationError, DataPermission, field, ForbiddenError, LwnrdbClient } from "../../src/index.js";
+import { AuthenticationError, DataPermission, field, ForbiddenError, MppClient } from "../../src/index.js";
 import { serverIt } from "./server-it.js";
 
 const BOB_PASSWORD = "Bob-Secret-1234";
 const it = serverIt();
 
-function asBob(password = BOB_PASSWORD): Promise<LwnrdbClient> {
-    return LwnrdbClient.connect(it.settings({ credentials: { username: "bob", password } }));
+function asBob(password = BOB_PASSWORD): Promise<MppClient> {
+    return MppClient.connect(it.settings({ credentials: { username: "bob", password } }));
 }
 
 describe("administration", () => {

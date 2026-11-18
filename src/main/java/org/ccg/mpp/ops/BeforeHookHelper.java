@@ -1,0 +1,163 @@
+package org.ccg.mpp.ops;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import org.ccg.mpp.bckg_ops.events.EventType;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.DbEntry;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.log.Logger;
+import org.ccg.mpp.ops.req.BulkSaveRequest;
+import org.ccg.mpp.ops.req.DeleteRequest;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.ops.resp.OperationResponse;
+
+public final class BeforeHookHelper {
+    private static final Logger logger = Logger.logFor(BeforeHookHelper.class);
+    private static final Cache cache = IocContainer.get(Cache.class);
+
+    private BeforeHookHelper() {
+    }
+
+    public static OperationResponse beforeSave(SaveRequest request, String actingUser) {
+        final var dbName = request.getDatabaseName();
+        final var collName = request.getCollectionName();
+        if (!BeforeHookContext.hasHooksFor(dbName, collName, EventType.CREATED)
+                && !BeforeHookContext.hasHooksFor(dbName, collName, EventType.UPDATED)) {
+            return null;
+        }
+        if (hasConflictingIds(request)) {
+            return null;
+        }
+        resolveIdForWrite(request);
+        return OperationResponse.respondOrError(OperationType.SAVE, ErrorCode.ERROR_SAVING, () -> {
+            final var event = isInsert(dbName, collName, request.get_id()) ? EventType.CREATED : EventType.UPDATED;
+            if (!BeforeHookContext.hasHooksFor(dbName, collName, event)) {
+                return null;
+            }
+            try (var hooks = BeforeHookContext.open(dbName, collName, event, actingUser,
+                    SchemaValidationHelper.budgetFor(request))) {
+                final var outcome = hooks.apply(request.getObject(), request.get_id(), OperationType.SAVE);
+                if (outcome.isRejected()) {
+                    return outcome.rejection();
+                }
+                request.setObject(outcome.document());
+                return null;
+            }
+        });
+    }
+
+    private static boolean isInsert(String dbName, String collName, String id) throws java.io.IOException {
+        return id == null || id.isBlank()
+                || Collections.binarySearch(cache.getPkIndexAndLoadIfNecessary(dbName, collName), id) < 0;
+    }
+
+    public static OperationResponse beforeBulkSave(BulkSaveRequest request, String actingUser) {
+        final var dbName = request.getDatabaseName();
+        final var collName = request.getCollectionName();
+        final var created = BeforeHookContext.hasHooksFor(dbName, collName, EventType.CREATED);
+        final var updated = BeforeHookContext.hasHooksFor(dbName, collName, EventType.UPDATED);
+        if (!created && !updated) {
+            return null;
+        }
+        return OperationResponse.respondOrError(OperationType.BULK_SAVE, ErrorCode.ERROR_BULK_SAVING, () -> {
+            try (var hooks = BulkBeforeHooks.open(dbName, collName, actingUser,
+                    SchemaValidationHelper.budgetFor(request))) {
+                final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+                final var objects = new ArrayList<>(request.getObjects());
+                for (var i = 0; i < objects.size(); i++) {
+                    final var object = objects.get(i);
+                    final var id = resolveIdForWrite(object);
+                    final var isUpdate = id != null && Collections.binarySearch(primaryKeyIndex, id) >= 0;
+                    final var outcome = hooks.apply(isUpdate, object, id, OperationType.BULK_SAVE);
+                    if (outcome.isRejected()) {
+                        return outcome.rejection();
+                    }
+                    objects.set(i, outcome.document());
+                }
+                request.setObjects(objects);
+                return null;
+            }
+        });
+    }
+
+    public static OperationResponse beforeDelete(DeleteRequest request, String actingUser) {
+        final var dbName = request.getDatabaseName();
+        final var collName = request.getCollectionName();
+        if (!BeforeHookContext.hasHooksFor(dbName, collName, EventType.DELETED)) {
+            return null;
+        }
+        final JsonObject document;
+        try {
+            final var entries = cache.getEntriesByIds(dbName, collName, Set.of(request.get_id()));
+            if (entries.isEmpty()) {
+                return null;
+            }
+            document = entries.getFirst().getData();
+        } catch (Exception e) {
+            logger.error(OperationType.DELETE + " failed with " + ErrorCode.ERROR_DELETING.getCode(), e);
+            return new OperationResponse(OperationType.DELETE, ErrorCode.ERROR_DELETING);
+        }
+        try (var hooks = BeforeHookContext.open(dbName, collName, EventType.DELETED, actingUser)) {
+            final var outcome = hooks.apply(document, request.get_id(), OperationType.DELETE);
+            return outcome.isRejected() ? outcome.rejection() : null;
+        }
+    }
+
+    public static OperationResponse beforeDeleteAll(String dbName, String collName, List<DbEntry> documents,
+            String actingUser) {
+        try (var hooks = BeforeHookContext.open(dbName, collName, EventType.DELETED, actingUser)) {
+            for (final var document : documents) {
+                final var outcome = hooks.apply(document.getData(), document.get_id(), OperationType.DELETE);
+                if (outcome.isRejected()) {
+                    return outcome.rejection();
+                }
+            }
+            return null;
+        }
+    }
+
+    public static String resolveIdForWrite(SaveRequest request) {
+        if (hasConflictingIds(request)) {
+            return null;
+        }
+        final var id = assignedId(request.getObject(), request.get_id());
+        request.set_id(id);
+        return id;
+    }
+
+    public static String resolveIdForWrite(JsonObject object) {
+        return assignedId(object, null);
+    }
+
+    private static String assignedId(JsonObject object, String requestId) {
+        if (requestId != null) {
+            if (!object.has(Globals.PK_FIELD)) {
+                object.addProperty(Globals.PK_FIELD, requestId);
+            }
+            return requestId;
+        }
+        if (object.has(Globals.PK_FIELD)) {
+            return idOf(object);
+        }
+        final var generated = UUID.randomUUID().toString();
+        object.addProperty(Globals.PK_FIELD, generated);
+        return generated;
+    }
+
+    private static boolean hasConflictingIds(SaveRequest request) {
+        final var objectId = idOf(request.getObject());
+        return request.get_id() != null && objectId != null && !request.get_id().equals(objectId);
+    }
+
+    private static String idOf(JsonObject object) {
+        return object.has(Globals.PK_FIELD) && object.get(Globals.PK_FIELD).isJsonString()
+                ? object.get(Globals.PK_FIELD).asJsonString().getValue()
+                : null;
+    }
+}

@@ -6,17 +6,17 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.christiancg</groupId>
-    <artifactId>lwnrdb-client-parent</artifactId>
+    <artifactId>mpp-client-parent</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
-    <name>LWNRDB Java client (parent)</name>
-    <description>Java client for the LWNRDB database: connection pool, fluent query builder, transactions and live queries.</description>
-    <url>https://github.com/christiancg/lwnrdb</url>
+    <name>MPP Java client (parent)</name>
+    <description>Java client for the MPP database: connection pool, fluent query builder, transactions and live queries.</description>
+    <url>https://github.com/christiancg/mpp</url>
 
     <licenses>
         <license>
             <name>MIT License</name>
-            <url>https://github.com/christiancg/lwnrdb/blob/main/LICENSE</url>
+            <url>https://github.com/christiancg/mpp/blob/main/LICENSE</url>
         </license>
     </licenses>
     <developers>
@@ -29,25 +29,25 @@
     <scm child.scm.connection.inherit.append.path="false"
          child.scm.developerConnection.inherit.append.path="false"
          child.scm.url.inherit.append.path="false">
-        <connection>scm:git:https://github.com/christiancg/lwnrdb.git</connection>
-        <developerConnection>scm:git:git@github.com:christiancg/lwnrdb.git</developerConnection>
-        <url>https://github.com/christiancg/lwnrdb</url>
+        <connection>scm:git:https://github.com/christiancg/mpp.git</connection>
+        <developerConnection>scm:git:git@github.com:christiancg/mpp.git</developerConnection>
+        <url>https://github.com/christiancg/mpp</url>
     </scm>
 
     <modules>
         <module>build-tools</module>
-        <module>lwnrdb-test-support</module>
-        <module>lwnrdb-client</module>
-        <module>lwnrdb-spring-data</module>
-        <module>lwnrdb-spring-boot-starter</module>
-        <module>lwnrdb-client-bom</module>
+        <module>mpp-test-support</module>
+        <module>mpp-client</module>
+        <module>mpp-spring-data</module>
+        <module>mpp-spring-boot-starter</module>
+        <module>mpp-client-bom</module>
     </modules>
 
     <properties>
         <revision>0.1.0-SNAPSHOT</revision>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwnrdb.root>${project.basedir}/../..</lwnrdb.root>
+        <mpp.root>${project.basedir}/../..</mpp.root>
         <minimumCoverage>0.95</minimumCoverage>
         <jackson.version>3.2.4</jackson.version>
         <junit.version>6.1.3</junit.version>
@@ -68,7 +68,7 @@
         <enforcer.plugin.version>3.6.3</enforcer.plugin.version>
         <surefire.version>3.6.0</surefire.version>
         <jacoco.version>0.8.15</jacoco.version>
-        <lwnrdb.jar>${lwnrdb.root}/target/lwnrdb.jar</lwnrdb.jar>
+        <mpp.jar>${mpp.root}/target/mpp.jar</mpp.jar>
         <documentedSources>${project.build.directory}/documented-sources</documentedSources>
     </properties>
 
@@ -125,7 +125,7 @@
             </dependency>
             <dependency>
                 <groupId>io.github.christiancg</groupId>
-                <artifactId>lwnrdb-test-support</artifactId>
+                <artifactId>mpp-test-support</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -272,7 +272,7 @@
                             <rules>
                                 <requireJavaVersion>
                                     <version>[17,)</version>
-                                    <message>The LWNRDB Java client builds on JDK 17 or newer.</message>
+                                    <message>The MPP Java client builds on JDK 17 or newer.</message>
                                 </requireJavaVersion>
                             </rules>
                         </configuration>
@@ -292,7 +292,7 @@
                         </includes>
                         <eclipse>
                             <version>4.33</version>
-                            <file>${lwnrdb.root}/config/eclipse-format.xml</file>
+                            <file>${mpp.root}/config/eclipse-format.xml</file>
                         </eclipse>
                         <toggleOffOn/>
                         <removeUnusedImports/>
@@ -329,7 +329,7 @@
                 </dependencies>
                 <configuration>
                     <rulesets>
-                        <ruleset>${lwnrdb.root}/config/pmd-ruleset.xml</ruleset>
+                        <ruleset>${mpp.root}/config/pmd-ruleset.xml</ruleset>
                     </rulesets>
                     <includeTests>true</includeTests>
                     <targetJdk>17</targetJdk>
@@ -371,7 +371,7 @@
                     <threshold>Medium</threshold>
                     <includeTests>true</includeTests>
                     <failOnError>true</failOnError>
-                    <excludeFilterFile>${lwnrdb.root}/clients/java/config/spotbugs-exclude.xml</excludeFilterFile>
+                    <excludeFilterFile>${mpp.root}/clients/java/config/spotbugs-exclude.xml</excludeFilterFile>
                 </configuration>
                 <executions>
                     <execution>
@@ -396,7 +396,7 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <systemPropertyVariables>
-                                <lwnrdb.jar>${lwnrdb.jar}</lwnrdb.jar>
+                                <mpp.jar>${mpp.jar}</mpp.jar>
                             </systemPropertyVariables>
                         </configuration>
                         <executions>
@@ -427,12 +427,12 @@
                                         <goal>java</goal>
                                     </goals>
                                     <configuration>
-                                        <mainClass>io.github.christiancg.lwnrdb.buildtools.ApiDocInjector</mainClass>
+                                        <mainClass>io.github.christiancg.mpp.buildtools.ApiDocInjector</mainClass>
                                         <includeProjectDependencies>false</includeProjectDependencies>
                                         <includePluginDependencies>true</includePluginDependencies>
                                         <arguments>
                                             <argument>${project.basedir}/src/main/java</argument>
-                                            <argument>${lwnrdb.root}/clients/java/apidocs/${project.artifactId}</argument>
+                                            <argument>${mpp.root}/clients/java/apidocs/${project.artifactId}</argument>
                                             <argument>${documentedSources}</argument>
                                         </arguments>
                                     </configuration>
@@ -441,7 +441,7 @@
                             <dependencies>
                                 <dependency>
                                     <groupId>io.github.christiancg</groupId>
-                                    <artifactId>lwnrdb-client-build-tools</artifactId>
+                                    <artifactId>mpp-client-build-tools</artifactId>
                                     <version>${project.version}</version>
                                 </dependency>
                             </dependencies>
@@ -506,8 +506,8 @@
                             </dependency>
                         </dependencies>
                         <configuration>
-                            <configLocation>${lwnrdb.root}/config/checkstyle.xml</configLocation>
-                            <propertyExpansion>config_loc=${lwnrdb.root}/config</propertyExpansion>
+                            <configLocation>${mpp.root}/config/checkstyle.xml</configLocation>
+                            <propertyExpansion>config_loc=${mpp.root}/config</propertyExpansion>
                             <includeTestSourceDirectory>true</includeTestSourceDirectory>
                             <consoleOutput>true</consoleOutput>
                             <failOnViolation>true</failOnViolation>
@@ -560,8 +560,8 @@
                             <autoPublish>true</autoPublish>
                             <waitUntil>published</waitUntil>
                             <excludeArtifacts>
-                                <excludeArtifact>lwnrdb-client-build-tools</excludeArtifact>
-                                <excludeArtifact>lwnrdb-test-support</excludeArtifact>
+                                <excludeArtifact>mpp-client-build-tools</excludeArtifact>
+                                <excludeArtifact>mpp-test-support</excludeArtifact>
                             </excludeArtifacts>
                         </configuration>
                     </plugin>

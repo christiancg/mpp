@@ -3,7 +3,7 @@ import time
 
 from disk_full.container import DATA, LOGS, LOGS_SIZE, Container
 
-IMAGE = os.environ.get("LAZYFS_IMAGE", "lwnrdb-lazyfs")
+IMAGE = os.environ.get("LAZYFS_IMAGE", "mpp-lazyfs")
 ROOT = "/app/lazyfs-root"
 CONFIG = "/app/lazyfs.toml"
 FAULTS_FIFO = "/tmp/lazyfs.fifo"

@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     AsyncCollection,
-    AsyncLwnrdbClient,
+    AsyncMppClient,
     Filter,
     MapOps,
     MidOps,
@@ -33,7 +33,7 @@ ROWS: list[dict[str, Any]] = [
 
 
 @pytest.fixture
-async def orders(client: AsyncLwnrdbClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
+async def orders(client: AsyncMppClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
     shop = client.database("query_it")
     await shop.create()
     collection = shop.collection("orders")

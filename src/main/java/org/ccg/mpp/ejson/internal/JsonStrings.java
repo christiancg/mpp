@@ -1,0 +1,165 @@
+package org.ccg.mpp.ejson.internal;
+
+public final class JsonStrings {
+    private JsonStrings() {
+    }
+
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+    private static final char LAST_CONTROL_CHARACTER = 0x20;
+    private static final char FIRST_NON_ASCII = 0x80;
+    private static final int SHORT_ESCAPE_WIDTH = 2;
+    private static final int UNICODE_ESCAPE_WIDTH = 6;
+
+    public static String escape(final String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        final var start = firstToEscape(value);
+        if (start == value.length()) {
+            return value;
+        }
+        final var builder = new StringBuilder(value.length() + 8);
+        builder.append(value, 0, start);
+        escapeFrom(builder, value, start);
+        return builder.toString();
+    }
+
+    public static long escapedLength(final String value) {
+        final var length = value.length();
+        long escaped = length;
+        for (var i = 0; i < length; i++) {
+            if (needsEscaping(value, i)) {
+                escaped += escapeWidth(value.charAt(i)) - 1;
+            }
+        }
+        return escaped;
+    }
+
+    private static int escapeWidth(final char c) {
+        return switch (c) {
+            case '"', '\\', '\b', '\f', '\n', '\r', '\t' -> SHORT_ESCAPE_WIDTH;
+            default -> UNICODE_ESCAPE_WIDTH;
+        };
+    }
+
+    public static void appendEscaped(final StringBuilder out, final String value) {
+        if (value == null) {
+            out.append((String) null);
+            return;
+        }
+        final var start = firstToEscape(value);
+        if (start == value.length()) {
+            out.append(value);
+            return;
+        }
+        out.append(value, 0, start);
+        escapeFrom(out, value, start);
+    }
+
+    public static void appendEscaped(final JsonOut out, final String value) {
+        if (value == null) {
+            out.append("null");
+            return;
+        }
+        out.appendEscaped(value);
+    }
+
+    static void appendEscapedRuns(final JsonOut out, final String value) {
+        final var length = value.length();
+        var runStart = 0;
+        for (var i = 0; i < length; i++) {
+            if (needsEscaping(value, i)) {
+                out.append(value, runStart, i);
+                appendEscape(out, value.charAt(i));
+                runStart = i + 1;
+            }
+        }
+        out.append(value, runStart, length);
+    }
+
+    static void appendEscape(final JsonOut out, final char c) {
+        switch (c) {
+            case '"' -> out.append('\\').append('"');
+            case '\\' -> out.append('\\').append('\\');
+            case '\b' -> out.append('\\').append('b');
+            case '\f' -> out.append('\\').append('f');
+            case '\n' -> out.append('\\').append('n');
+            case '\r' -> out.append('\\').append('r');
+            case '\t' -> out.append('\\').append('t');
+            default -> out.append('\\').append('u').append(HEX[(c >> 12) & 0xF]).append(HEX[(c >> 8) & 0xF])
+                    .append(HEX[(c >> 4) & 0xF]).append(HEX[c & 0xF]);
+        }
+    }
+
+    private static int firstToEscape(final String value) {
+        final var length = value.length();
+        var index = 0;
+        while (index < length && !needsEscaping(value, index)) {
+            index++;
+        }
+        return index;
+    }
+
+    private static void escapeFrom(final StringBuilder builder, final String value, final int start) {
+        final var length = value.length();
+        for (var i = start; i < length; i++) {
+            final var c = value.charAt(i);
+            switch (c) {
+                case '"' -> builder.append("\\\"");
+                case '\\' -> builder.append("\\\\");
+                case '\b' -> builder.append("\\b");
+                case '\f' -> builder.append("\\f");
+                case '\n' -> builder.append("\\n");
+                case '\r' -> builder.append("\\r");
+                case '\t' -> builder.append("\\t");
+                default -> appendOther(builder, value, i);
+            }
+        }
+    }
+
+    private static void appendOther(final StringBuilder builder, final String value, final int index) {
+        final var c = value.charAt(index);
+        if (c < LAST_CONTROL_CHARACTER || isLoneSurrogate(value, index)) {
+            appendUnicodeEscape(builder, c);
+        } else {
+            builder.append(c);
+        }
+    }
+
+    public static void appendUnicodeEscape(final StringBuilder builder, final char c) {
+        builder.append("\\u").append(HEX[(c >> 12) & 0xF]).append(HEX[(c >> 8) & 0xF]).append(HEX[(c >> 4) & 0xF])
+                .append(HEX[c & 0xF]);
+    }
+
+    // An unpaired surrogate has no UTF-8 encoding, so emitting it raw corrupts the stored line; the
+    // escaped form round-trips through the lexer unchanged.
+    public static boolean isLoneSurrogate(final String value, final int index) {
+        final var c = value.charAt(index);
+        if (Character.isHighSurrogate(c)) {
+            return index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1));
+        }
+        return Character.isLowSurrogate(c) && (index == 0 || !Character.isHighSurrogate(value.charAt(index - 1)));
+    }
+
+    public static boolean isPlainAscii(final char c) {
+        return c >= LAST_CONTROL_CHARACTER && c < FIRST_NON_ASCII && c != '"' && c != '\\';
+    }
+
+    public static boolean isPlainAscii(final String value) {
+        if (value == null) {
+            return false;
+        }
+        final var length = value.length();
+        for (var i = 0; i < length; i++) {
+            if (!isPlainAscii(value.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean needsEscaping(final String value, final int index) {
+        final var c = value.charAt(index);
+        return c == '"' || c == '\\' || c < LAST_CONTROL_CHARACTER || isLoneSurrogate(value, index);
+    }
+}

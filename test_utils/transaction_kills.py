@@ -209,7 +209,7 @@ def test_a_grouped_commit_halted_after_its_force_keeps_one_copy_of_each_document
 
 
 def run(conn_factory, write_config: Callable[[str], None], recover: Callable[[str], None] = plain_restart):
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-txkill-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-txkill-")
     log_path = os.path.join(work_dir, "server.log")
     write_config(work_dir)
     print("\n  Starting a server for the transaction-record kill cases ...")

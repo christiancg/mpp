@@ -18,7 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import base_utils as b
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-JAR = REPO / "target" / "lwnrdb.jar"
+JAR = REPO / "target" / "mpp.jar"
 DEFAULT_JAVA_HOME = "/Users/christiancoello/Library/Java/JavaVirtualMachines/openjdk-27/Contents/Home"
 DB, COLL, REFS = "prof", "docs", "refs"
 DOCS = 50000
@@ -60,11 +60,11 @@ def free_port() -> int:
 
 class Server:
     def __init__(self, max_memory: str):
-        self.dir = pathlib.Path(tempfile.mkdtemp(prefix="lwnrdb-profile-"))
+        self.dir = pathlib.Path(tempfile.mkdtemp(prefix="mpp-profile-"))
         self.port = free_port()
-        cfg = (REPO / "lwnrdb.cfg").read_text().replace("port=8989", f"port={self.port}")
+        cfg = (REPO / "mpp.cfg").read_text().replace("port=8989", f"port={self.port}")
         cfg += f"\nmaxMemory={max_memory}\ndefaultAdminPassword={b.PASSWORD}\n"
-        (self.dir / "lwnrdb.cfg").write_text(cfg)
+        (self.dir / "mpp.cfg").write_text(cfg)
         log = open(self.dir / "server.out", "w")
         self.proc = subprocess.Popen([str(java_bin() / "java"), "-Xmx1g", "-jar", str(JAR)], cwd=self.dir,
                                      stdout=log, stderr=subprocess.STDOUT)
@@ -139,7 +139,7 @@ def bucket_report(recording: pathlib.Path, units: int, frames: int) -> tuple[flo
         label = next((name for name, key in BUCKETS if key in stack), "other")
         weights[label] += weight
         if frames:
-            own = [short_name(type_name, method) for type_name, method in names if "techhouse" in type_name]
+            own = [short_name(type_name, method) for type_name, method in names if "org/ccg/mpp" in type_name]
             chains[" < ".join(own[:3]) if own else (short_name(*names[0]) if names else "?")] += weight
     shares = [(label, weight / total * 100) for label, weight in weights.most_common()] if total else []
     top = [(chain, weight / total * 100) for chain, weight in chains.most_common(frames)] if total else []
@@ -281,16 +281,16 @@ def verdicts(rows) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Profile LWNRDB's write and read paths with JFR allocation sampling and check the "
+        description="Profile MPP's write and read paths with JFR allocation sampling and check the "
                     "storage-efficiency targets. Builds nothing: run `mvn package -DskipTests` first.")
     parser.add_argument("--out", default=None, help="directory for the .jfr recordings (default: a temp dir)")
     parser.add_argument("--only", choices=("warm", "cold"), default=None, help="run one half only")
     parser.add_argument("--frames", type=int, default=0,
-                        help="also print each phase's top N chains of its first three org.techhouse frames")
+                        help="also print each phase's top N chains of its first three org.ccg.mpp frames")
     args = parser.parse_args()
     if not JAR.exists():
         raise SystemExit(f"{JAR} is missing; build it first")
-    out_dir = pathlib.Path(args.out or tempfile.mkdtemp(prefix="lwnrdb-jfr-"))
+    out_dir = pathlib.Path(args.out or tempfile.mkdtemp(prefix="mpp-jfr-"))
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for half, max_memory, runner in (("warm", "512mb", warm_phases), ("cold", "-1", cold_phases)):

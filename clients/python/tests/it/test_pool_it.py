@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ConnectionLostError, LwnrdbClient
+from mpp import AsyncMppClient, ConnectionLostError, MppClient
 from tests.it.conftest import settings_for
 from tests.support.server_process import ServerProcess
 
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.it
 
 
 async def test_many_concurrent_writers_share_a_small_pool(server: ServerProcess) -> None:
-    async with await AsyncLwnrdbClient.connect(settings_for(server, pool_size=4)) as client:
+    async with await AsyncMppClient.connect(settings_for(server, pool_size=4)) as client:
         shop = client.database("pool_async")
         await shop.create()
         notes = shop.collection("notes")
@@ -23,7 +23,7 @@ async def test_many_concurrent_writers_share_a_small_pool(server: ServerProcess)
 
 
 def test_many_threads_share_one_sync_client(server: ServerProcess) -> None:
-    with LwnrdbClient.connect(settings_for(server, pool_size=4)) as client:
+    with MppClient.connect(settings_for(server, pool_size=4)) as client:
         shop = client.database("pool_sync")
         shop.create()
         notes = shop.collection("notes")
@@ -34,7 +34,7 @@ def test_many_threads_share_one_sync_client(server: ServerProcess) -> None:
 
 
 async def test_closing_the_client_while_requests_run_fails_them_cleanly(server: ServerProcess) -> None:
-    client = await AsyncLwnrdbClient.connect(settings_for(server, pool_size=2, shutdown_timeout=0.5))
+    client = await AsyncMppClient.connect(settings_for(server, pool_size=2, shutdown_timeout=0.5))
     shop = client.database("pool_close")
     await shop.create()
     notes = shop.collection("notes")

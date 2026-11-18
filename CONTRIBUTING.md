@@ -14,7 +14,7 @@ mvn spotless:apply
 
 `mvn verify` is the one that matters. It runs the unit tests and then every quality gate: Spotless, Checkstyle, PMD, CPD and SpotBugs, plus a 95% instruction coverage check. If anything complains the build fails, and so does the pull request. Run `mvn spotless:apply` before you commit so the formatting never gets in the way. To run a single test use `mvn test -Dtest=MyTestClass#myTestMethod`.
 
-The unit tests mirror the package layout under `src/test`. Anything that can be reached over the wire also needs coverage in the integration suites under `test_utils/`, which talk to a real server. Look for the suite that already covers the area you touched and add your cases there. Most of them need a server running on port 8989 with `defaultAdminPassword=Tst-Admin-9xQ2mV` in its `lwnrdb.cfg`, and a few start their own. Each script says which one it is at the top.
+The unit tests mirror the package layout under `src/test`. Anything that can be reached over the wire also needs coverage in the integration suites under `test_utils/`, which talk to a real server. Look for the suite that already covers the area you touched and add your cases there. Most of them need a server running on port 8989 with `defaultAdminPassword=Tst-Admin-9xQ2mV` in its `mpp.cfg`, and a few start their own. Each script says which one it is at the top.
 
 ## Things the build will check for you
 
@@ -38,7 +38,7 @@ Open an issue with the steps to reproduce it, what you expected to happen and wh
 
 ## Releases
 
-Versions are not stored in the pom. The build takes the version from `-Drevision`, and when it is missing it falls back to `1.0-SNAPSHOT`, so a local build always produces `target/lwnrdb.jar`.
+Versions are not stored in the pom. The build takes the version from `-Drevision`, and when it is missing it falls back to `1.0-SNAPSHOT`, so a local build always produces `target/mpp.jar`.
 
 To cut a release, first rename `## [Unreleased]` in `CHANGELOG.md` to the version and the date, for example `## [0.1.0] - 2026-11-20`, check that it names the `protocolVersion` and the `storageFormatVersion`, and merge that into `main`. Then tag the merged commit and push the tag:
 
@@ -47,10 +47,10 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow takes it from there. It stops before building anything when `CHANGELOG.md` has no section for that version. Otherwise it runs the full build with that version, attaches `lwnrdb-0.1.0.jar` to a GitHub release whose notes are that section and publishes the Docker image to `ghcr.io/christiancg/lwnrdb` with the version and `latest` tags, for `linux/amd64` and `linux/arm64`.
+The release workflow takes it from there. It stops before building anything when `CHANGELOG.md` has no section for that version. Otherwise it runs the full build with that version, attaches `mpp-0.1.0.jar` to a GitHub release whose notes are that section and publishes the Docker image to `ghcr.io/christiancg/mpp` with the version and `latest` tags, for `linux/amd64` and `linux/arm64`.
 
 The jar is built once, on the runner's own platform, since it does not depend on the architecture. Only the trimmed JRE (`jlink`) and the runtime layer are built per platform, the arm64 ones under QEMU. To build both images locally:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t lwnrdb .
+docker buildx build --platform linux/amd64,linux/arm64 -t mpp .
 ```

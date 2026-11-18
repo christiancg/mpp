@@ -1,5 +1,5 @@
 name: Feature request
-description: Something you would like LWNRDB to do
+description: Something you would like MPP to do
 labels: [enhancement]
 body:
   - type: textarea

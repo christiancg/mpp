@@ -11,7 +11,7 @@ SEP = "\x1f"
 class ClassifierTest(unittest.TestCase):
 
     def setUp(self):
-        self.root = tempfile.mkdtemp(prefix="lwnrdb-divergence-test-")
+        self.root = tempfile.mkdtemp(prefix="mpp-divergence-test-")
         self.folder = os.path.join(self.root, "db", "durability_db", "pl1")
         os.makedirs(self.folder)
         self.page_bytes = b""

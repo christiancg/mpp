@@ -126,7 +126,7 @@ class PhaseCpuTest(unittest.TestCase):
         reader = Reader([stat(0)])
         meter = PhaseCpu(reader)
 
-        run(meter, ["[lwnrdb] insert   4,000.0 ops/s", "", "PHASE_END orphan 5", "PHASE_END insert x"])
+        run(meter, ["[mpp] insert   4,000.0 ops/s", "", "PHASE_END orphan 5", "PHASE_END insert x"])
 
         self.assertEqual(1, len(reader.readings))
         self.assertEqual({}, meter.cpu_seconds())

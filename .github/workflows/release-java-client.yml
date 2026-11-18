@@ -26,7 +26,7 @@ jobs:
       - name: Unit and integration tests
         run: |
           mvn -B --no-transfer-progress -f clients/java/pom.xml verify -Pintegration \
-            -Drevision="${VERSION#java-client-v}" -Dlwnrdb.jar="$GITHUB_WORKSPACE/target/lwnrdb.jar"
+            -Drevision="${VERSION#java-client-v}" -Dmpp.jar="$GITHUB_WORKSPACE/target/mpp.jar"
 
   publish:
     name: Publish to Maven Central

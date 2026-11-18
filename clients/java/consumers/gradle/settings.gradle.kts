@@ -1,1 +1,1 @@
-rootProject.name = "lwnrdb-gradle-consumer"
+rootProject.name = "mpp-gradle-consumer"

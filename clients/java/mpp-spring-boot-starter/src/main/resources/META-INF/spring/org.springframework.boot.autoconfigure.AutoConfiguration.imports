@@ -1,0 +1,4 @@
+io.github.christiancg.mpp.spring.boot.MppAutoConfiguration
+io.github.christiancg.mpp.spring.boot.MppDataAutoConfiguration
+io.github.christiancg.mpp.spring.boot.MppRepositoriesAutoConfiguration
+io.github.christiancg.mpp.spring.boot.MppHealthContributorAutoConfiguration
