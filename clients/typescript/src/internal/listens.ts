@@ -1,5 +1,5 @@
 import type { Document } from "../document.js";
-import { LwnrdbError } from "../errors/errors.js";
+import { MppError } from "../errors/errors.js";
 import { ErrorCode } from "../errors/error-codes.js";
 import type { PipelineStep } from "../query/types.js";
 import type { ListenHandler, Subscription } from "../subscription.js";
@@ -55,7 +55,7 @@ export class Listens {
                         return subscription;
                     }
                 } catch (error) {
-                    if (!(error instanceof LwnrdbError && error.hasCode(ErrorCode.TOO_MANY_LISTENS))) {
+                    if (!(error instanceof MppError && error.hasCode(ErrorCode.TOO_MANY_LISTENS))) {
                         throw error;
                     }
                 }
@@ -71,7 +71,7 @@ export class Listens {
         });
         if (subscription === undefined) {
             await this.#discard(channel);
-            throw new LwnrdbError("a new listen connection closed before the listen registered");
+            throw new MppError("a new listen connection closed before the listen registered");
         }
         return subscription;
     }

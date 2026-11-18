@@ -1,0 +1,400 @@
+package org.ccg.mpp.simplejs.builtins;
+
+import static org.ccg.mpp.simplejs.internal.interpreter.InterpreterUtils.ownValue;
+
+import java.nio.charset.StandardCharsets;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.ccg.mpp.simplejs.exceptions.JsThrowException;
+import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
+import org.ccg.mpp.simplejs.internal.EventLoop;
+import org.ccg.mpp.simplejs.internal.GlobalSink;
+import org.ccg.mpp.simplejs.internal.JsCoercion;
+import org.ccg.mpp.simplejs.values.JsArray;
+import org.ccg.mpp.simplejs.values.JsArrayBuffer;
+import org.ccg.mpp.simplejs.values.JsBigInt;
+import org.ccg.mpp.simplejs.values.JsBoolean;
+import org.ccg.mpp.simplejs.values.JsDate;
+import org.ccg.mpp.simplejs.values.JsDbDateTime;
+import org.ccg.mpp.simplejs.values.JsDbTime;
+import org.ccg.mpp.simplejs.values.JsFunction;
+import org.ccg.mpp.simplejs.values.JsGeo;
+import org.ccg.mpp.simplejs.values.JsMap;
+import org.ccg.mpp.simplejs.values.JsNativeFunction;
+import org.ccg.mpp.simplejs.values.JsNull;
+import org.ccg.mpp.simplejs.values.JsNumber;
+import org.ccg.mpp.simplejs.values.JsObject;
+import org.ccg.mpp.simplejs.values.JsProxy;
+import org.ccg.mpp.simplejs.values.JsSet;
+import org.ccg.mpp.simplejs.values.JsString;
+import org.ccg.mpp.simplejs.values.JsSymbol;
+import org.ccg.mpp.simplejs.values.JsTypedArray;
+import org.ccg.mpp.simplejs.values.JsUndefined;
+import org.ccg.mpp.simplejs.values.JsValue;
+import org.ccg.mpp.simplejs.values.JsVector;
+
+public final class GlobalFunctionsBuiltins {
+    private static final String URI_UNESCAPED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            + "-_.!~*'()";
+    private static final String URI_RESERVED = ";/?:@&=+$,#";
+    private static final String ESCAPE_UNESCAPED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            + "@*_+-./";
+    private static final char[] HEX = "0123456789ABCDEF".toCharArray();
+    private static final int PERCENT_ESCAPE_WIDTH = 3;
+    private static final int UNICODE_ESCAPE_WIDTH = 6;
+    private static final int MAX_BUILDER_CAPACITY = Integer.MAX_VALUE - 8;
+
+    private GlobalFunctionsBuiltins() {
+    }
+
+    public static final List<String> NAMES = List.of("encodeURI", "encodeURIComponent", "decodeURI",
+            "decodeURIComponent", "escape", "unescape", "structuredClone", "queueMicrotask");
+
+    public static void install(GlobalSink global, EventLoop eventLoop, Invoker invoker, InterpreterOps ops,
+            Intrinsics intrinsics) {
+        define(global, "encodeURI", new JsNativeFunction("encodeURI",
+                (_, args) -> encode(str(args, ops), URI_UNESCAPED + URI_RESERVED, intrinsics, ops)));
+        define(global, "encodeURIComponent", new JsNativeFunction("encodeURIComponent",
+                (_, args) -> encode(str(args, ops), URI_UNESCAPED, intrinsics, ops)));
+        define(global, "decodeURI",
+                new JsNativeFunction("decodeURI", (_, args) -> charged(decode(str(args, ops), true, intrinsics), ops)));
+        define(global, "decodeURIComponent", new JsNativeFunction("decodeURIComponent",
+                (_, args) -> charged(decode(str(args, ops), false, intrinsics), ops)));
+        define(global, "escape", new JsNativeFunction("escape", (_, args) -> escape(str(args, ops), ops)));
+        define(global, "unescape",
+                new JsNativeFunction("unescape", (_, args) -> charged(unescape(str(args, ops)), ops)));
+        define(global, "structuredClone",
+                new JsNativeFunction("structuredClone",
+                        (_, args) -> clone(args.isEmpty() ? JsUndefined.getInstance() : args.getFirst(),
+                                new IdentityHashMap<>(), ops)));
+        define(global, "queueMicrotask", new JsNativeFunction("queueMicrotask", (_, args) -> {
+            final var callback = args.isEmpty() ? JsUndefined.getInstance() : args.getFirst();
+            if (!(callback instanceof JsFunction) && !(callback instanceof JsNativeFunction)) {
+                throw new TypeErrorException("queueMicrotask callback is not a function");
+            }
+            eventLoop.queueMicrotask(() -> invoker.call(callback, JsUndefined.getInstance(), List.of()));
+            return JsUndefined.getInstance();
+        }));
+    }
+
+    private static JsString encode(String input, String unescaped, Intrinsics intrinsics, InterpreterOps ops) {
+        final var out = presized(encodedLength(input, unescaped), ops);
+        var i = 0;
+        while (i < input.length()) {
+            final var cp = input.codePointAt(i);
+            if (cp < 128 && unescaped.indexOf((char) cp) >= 0) {
+                out.append((char) cp);
+            } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+                throw uriError(intrinsics);
+            } else {
+                for (final var b : new String(Character.toChars(cp)).getBytes(StandardCharsets.UTF_8)) {
+                    out.append('%').append(HEX[(b >> 4) & 0xF]).append(HEX[b & 0xF]);
+                }
+            }
+            i += Character.charCount(cp);
+        }
+        return new JsString(out.toString());
+    }
+
+    private static long encodedLength(String input, String unescaped) {
+        var length = 0L;
+        var i = 0;
+        while (i < input.length()) {
+            final var cp = input.codePointAt(i);
+            if (cp < 128 && unescaped.indexOf((char) cp) >= 0) {
+                length++;
+            } else {
+                length += (long) PERCENT_ESCAPE_WIDTH * utf8Length(cp);
+            }
+            i += Character.charCount(cp);
+        }
+        return length;
+    }
+
+    private static int utf8Length(int cp) {
+        if (cp < 0x80) {
+            return 1;
+        }
+        if (cp < 0x800) {
+            return 2;
+        }
+        return cp < 0x10000 ? 3 : 4;
+    }
+
+    private static StringBuilder presized(long length, InterpreterOps ops) {
+        InterpreterOps.chargeChars(ops, length);
+        return new StringBuilder((int) Math.min(length, MAX_BUILDER_CAPACITY));
+    }
+
+    private static String decode(String input, boolean preserveReserved, Intrinsics intrinsics) {
+        final var out = new StringBuilder();
+        var i = 0;
+        while (i < input.length()) {
+            final var c = input.charAt(i);
+            if (c != '%') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            final var first = hexByte(input, i, intrinsics);
+            if ((first & 0x80) == 0) {
+                if (preserveReserved && URI_RESERVED.indexOf((char) first) >= 0) {
+                    out.append(input, i, i + 3);
+                } else {
+                    out.append((char) first);
+                }
+                i += 3;
+            } else {
+                i = decodeSequence(input, i, first, out, intrinsics);
+            }
+        }
+        return out.toString();
+    }
+
+    private static int decodeSequence(String input, int start, int first, StringBuilder out, Intrinsics intrinsics) {
+        final var count = leadingByteCount(first, intrinsics);
+        final var bytes = new byte[count];
+        bytes[0] = (byte) first;
+        var pos = start + 3;
+        for (var k = 1; k < count; k++) {
+            if (pos >= input.length() || input.charAt(pos) != '%') {
+                throw uriError(intrinsics);
+            }
+            bytes[k] = (byte) hexByte(input, pos, intrinsics);
+            pos += 3;
+        }
+        if (!isWellFormedUtf8(bytes)) {
+            throw uriError(intrinsics);
+        }
+        out.append(new String(bytes, StandardCharsets.UTF_8));
+        return pos;
+    }
+
+    private static boolean isWellFormedUtf8(byte[] bytes) {
+        for (var k = 1; k < bytes.length; k++) {
+            if ((bytes[k] & 0xC0) != 0x80) {
+                return false;
+            }
+        }
+        final var lead = bytes[0] & 0xFF;
+        final var second = bytes.length > 1 ? bytes[1] & 0xFF : 0;
+        return switch (bytes.length) {
+            case 2 -> lead >= 0xC2;
+            case 3 -> lead != 0xE0 ? lead != 0xED || second <= 0x9F : second >= 0xA0;
+            default -> lead <= 0xF4 && (lead != 0xF0 || second >= 0x90) && (lead != 0xF4 || second <= 0x8F);
+        };
+    }
+
+    private static int leadingByteCount(int first, Intrinsics intrinsics) {
+        if ((first & 0xE0) == 0xC0) {
+            return 2;
+        }
+        if ((first & 0xF0) == 0xE0) {
+            return 3;
+        }
+        if ((first & 0xF8) == 0xF0) {
+            return 4;
+        }
+        throw uriError(intrinsics);
+    }
+
+    private static int hexByte(String input, int index, Intrinsics intrinsics) {
+        if (index + 2 >= input.length()) {
+            throw uriError(intrinsics);
+        }
+        final var high = asciiHex(input.charAt(index + 1));
+        final var low = asciiHex(input.charAt(index + 2));
+        if (high < 0 || low < 0) {
+            throw uriError(intrinsics);
+        }
+        return (high << 4) | low;
+    }
+
+    private static int asciiHex(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+    }
+
+    private static JsString charged(String text, InterpreterOps ops) {
+        InterpreterOps.chargeChars(ops, text.length());
+        return new JsString(text);
+    }
+
+    private static JsString escape(String input, InterpreterOps ops) {
+        final var out = presized(escapedLength(input), ops);
+        for (var i = 0; i < input.length(); i++) {
+            final var c = input.charAt(i);
+            if (c < 256 && ESCAPE_UNESCAPED.indexOf(c) >= 0) {
+                out.append(c);
+            } else if (c < 256) {
+                out.append('%').append(HEX[(c >> 4) & 0xF]).append(HEX[c & 0xF]);
+            } else {
+                out.append("%u").append(HEX[(c >> 12) & 0xF]).append(HEX[(c >> 8) & 0xF]).append(HEX[(c >> 4) & 0xF])
+                        .append(HEX[c & 0xF]);
+            }
+        }
+        return new JsString(out.toString());
+    }
+
+    private static long escapedLength(String input) {
+        var length = 0L;
+        for (var i = 0; i < input.length(); i++) {
+            final var c = input.charAt(i);
+            if (c < 256 && ESCAPE_UNESCAPED.indexOf(c) >= 0) {
+                length++;
+            } else {
+                length += c < 256 ? PERCENT_ESCAPE_WIDTH : UNICODE_ESCAPE_WIDTH;
+            }
+        }
+        return length;
+    }
+
+    private static String unescape(String input) {
+        final var out = new StringBuilder();
+        var i = 0;
+        while (i < input.length()) {
+            final var c = input.charAt(i);
+            if (c == '%' && i + 1 < input.length() && input.charAt(i + 1) == 'u' && isHex(input, i + 2, 4)) {
+                out.append((char) Integer.parseInt(input.substring(i + 2, i + 6), 16));
+                i += 6;
+            } else if (c == '%' && isHex(input, i + 1, 2)) {
+                out.append((char) Integer.parseInt(input.substring(i + 1, i + 3), 16));
+                i += 3;
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    private static boolean isHex(String input, int start, int length) {
+        if (start + length > input.length()) {
+            return false;
+        }
+        for (var i = start; i < start + length; i++) {
+            if (asciiHex(input.charAt(i)) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static JsValue clone(JsValue value, Map<JsValue, JsValue> seen, InterpreterOps ops) {
+        InterpreterOps.chargeElements(ops, 1);
+        switch (value) {
+            case JsNumber ignored -> {
+                return value;
+            }
+            case JsString ignored -> {
+                return value;
+            }
+            case JsBoolean ignored -> {
+                return value;
+            }
+            case JsBigInt ignored -> {
+                return value;
+            }
+            case JsNull ignored -> {
+                return value;
+            }
+            case JsUndefined ignored -> {
+                return value;
+            }
+            case JsFunction ignored -> throw dataCloneError(value);
+            case JsNativeFunction ignored -> throw dataCloneError(value);
+            case JsSymbol ignored -> throw dataCloneError(value);
+            case JsProxy ignored -> throw dataCloneError(value);
+            default -> {
+                final var existing = seen.get(value);
+                return Objects.requireNonNullElseGet(existing, () -> cloneNested(value, seen, ops));
+            }
+        }
+    }
+
+    private static JsValue cloneNested(JsValue value, Map<JsValue, JsValue> seen, InterpreterOps ops) {
+        NativeDepth.enter(ops);
+        try {
+            return cloneStructured(value, seen, ops);
+        } finally {
+            NativeDepth.leave(ops);
+        }
+    }
+
+    private static JsValue cloneStructured(JsValue value, Map<JsValue, JsValue> seen, InterpreterOps ops) {
+        return switch (value) {
+            case JsArray array -> {
+                final var copy = new JsArray();
+                seen.put(value, copy);
+                for (final var element : array.getElements()) {
+                    copy.push(clone(element, seen, ops));
+                }
+                yield copy;
+            }
+            case JsDate date -> new JsDate(date.getTime());
+            case JsGeo geo -> geo.copy();
+            case JsVector vector -> vector.copy();
+            case JsDbDateTime dateTime -> dateTime.copy();
+            case JsDbTime time -> time.copy();
+            case JsArrayBuffer buffer -> {
+                InterpreterOps.charge(ops, buffer.getBytes().length);
+                yield new JsArrayBuffer(buffer.getBytes().clone());
+            }
+            case JsTypedArray typed -> {
+                InterpreterOps.charge(ops, typed.getBuffer().getBytes().length);
+                final var buffer = new JsArrayBuffer(typed.getBuffer().getBytes().clone());
+                yield new JsTypedArray(typed.kind(), buffer, typed.byteOffset(), typed.length());
+            }
+            case JsMap map -> {
+                final var copy = new JsMap();
+                seen.put(value, copy);
+                for (final var entry : map.entries()) {
+                    copy.set(clone(entry.key(), seen, ops), clone(entry.value(), seen, ops));
+                }
+                yield copy;
+            }
+            case JsSet set -> {
+                final var copy = new JsSet();
+                seen.put(value, copy);
+                for (final var element : set.values()) {
+                    copy.add(clone(element, seen, ops));
+                }
+                yield copy;
+            }
+            case JsObject object -> {
+                final var copy = new JsObject();
+                seen.put(value, copy);
+                for (final var key : object.keys()) {
+                    if (object.isEnumerable(key)) {
+                        copy.set(key, clone(ownValue(object, key, ops), seen, ops));
+                    }
+                }
+                yield copy;
+            }
+            default -> throw dataCloneError(value);
+        };
+    }
+
+    private static TypeErrorException dataCloneError(JsValue value) {
+        return new TypeErrorException(JsCoercion.typeOf(value) + " could not be cloned");
+    }
+
+    private static JsThrowException uriError(Intrinsics intrinsics) {
+        return new JsThrowException(intrinsics.makeError("URIError", "URI malformed"));
+    }
+
+    private static String str(List<JsValue> args, InterpreterOps ops) {
+        return args.isEmpty() ? "undefined" : JsCoercion.toStr(args.getFirst(), ops);
+    }
+
+    private static void define(GlobalSink global, String name, JsValue value) {
+        global.declareBuiltin(name, value);
+    }
+}

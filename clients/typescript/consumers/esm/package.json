@@ -1,5 +1,5 @@
 {
-    "name": "lwnrdb-client-consumer-esm",
+    "name": "mpp-client-consumer-esm",
     "private": true,
     "type": "module"
 }

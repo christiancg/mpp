@@ -1164,7 +1164,7 @@ def main():
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
         if r.get("status") != "OK":
             print(f"\n[ERROR] Cannot authenticate as admin: {r.get('message')}")
-            print("        Make sure the server is running and lwnrdb.cfg has the correct")
+            print("        Make sure the server is running and mpp.cfg has the correct")
             print(f"        defaultAdminUsername={ADMIN_USERNAME} / defaultAdminPassword={ADMIN_PASSWORD} (base_utils.PASSWORD).\n")
             sys.exit(1)
 

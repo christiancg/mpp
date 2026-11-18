@@ -48,7 +48,7 @@ FIXTURES = HERE / "fixtures"
 REPORT = ROOT / "test_log" / "test262-report.md"
 FAILURES = ROOT / "test_log" / "test262-failures.tsv"
 CLASSPATH = os.pathsep.join([str(ROOT / "target" / "test-classes"), str(ROOT / "target" / "classes")])
-WORKER_CLASS = "org.techhouse.unit.simplejs.test262.Test262Worker"
+WORKER_CLASS = "org.ccg.mpp.unit.simplejs.test262.Test262Worker"
 
 DEFAULT_TIMEOUT = 10.0
 BATCH_SIZE = 40

@@ -15,8 +15,8 @@ import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordingFile;
 
 public class ProfileReport {
-    private static final String PROJECT_PACKAGE = "org.techhouse";
-    private static final String CLIENT_MARKER = "[lwnrdb]";
+    private static final String PROJECT_PACKAGE = "org.ccg.mpp";
+    private static final String CLIENT_MARKER = "[mpp]";
     private static final String STARTUP = "initializing";
     private static final double MEBIBYTE = 1024.0 * 1024.0;
 

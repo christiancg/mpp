@@ -1,13 +1,5 @@
 import { beforeAll, describe, expect, test } from "vitest";
-import {
-    and,
-    type Collection,
-    type Document,
-    field,
-    LwnrdbError,
-    NotFoundError,
-    type Stored,
-} from "../../src/index.js";
+import { and, type Collection, type Document, field, MppError, NotFoundError, type Stored } from "../../src/index.js";
 import { serverIt } from "./server-it.js";
 
 const it = serverIt();
@@ -41,7 +33,7 @@ describe("documents", () => {
         expect(await orders.insert({ _id: "i-1", status: "new" })).toEqual({ id: "i-1", inserted: true });
         const refused = orders.insert({ _id: "i-1", status: "replaced" });
         await expect(refused).rejects.toMatchObject({ rawCode: "409-18" });
-        await expect(refused).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(refused).rejects.toBeInstanceOf(MppError);
         expect(await orders.findById("i-1")).toEqual({ _id: "i-1", status: "new" });
         const generated = await orders.insert({ status: "fresh" });
         expect(generated.inserted).toBe(true);
@@ -61,7 +53,7 @@ describe("documents", () => {
         });
         const refused = orders.saveAll([{ _id: "d-1" }, { _id: "d-1" }]);
         await expect(refused).rejects.toMatchObject({ rawCode: "400-3" });
-        await expect(refused).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(refused).rejects.toBeInstanceOf(MppError);
     });
 
     test("delete removes the document and a missing one is reported", async () => {

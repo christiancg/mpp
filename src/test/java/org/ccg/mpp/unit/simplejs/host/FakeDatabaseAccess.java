@@ -1,0 +1,133 @@
+package org.ccg.mpp.unit.simplejs.host;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.simplejs.exceptions.JsThrowException;
+import org.ccg.mpp.simplejs.host.BulkSaveOutcome;
+import org.ccg.mpp.simplejs.host.DatabaseAccess;
+import org.ccg.mpp.simplejs.values.EJsonInterop;
+import org.ccg.mpp.simplejs.values.JsObject;
+import org.ccg.mpp.simplejs.values.JsString;
+
+public class FakeDatabaseAccess implements DatabaseAccess {
+    public final List<String> calls = new ArrayList<>();
+    public JsonObject nextFindResult;
+    public String denyMessage;
+    public boolean rejectNestedTransaction;
+    public long nextDeletedCount;
+    public long nextUpdatedCount;
+    private boolean inTransaction;
+
+    @Override
+    public JsonObject findById(String db, String coll, String id) {
+        calls.add("findById:" + db + "/" + coll + "/" + id);
+        maybeDeny();
+        return nextFindResult;
+    }
+
+    @Override
+    public List<JsonObject> aggregate(String db, String coll, JsonArray pipeline) {
+        calls.add("aggregate:" + db + "/" + coll + "/" + pipeline.size());
+        maybeDeny();
+        return List.of(single());
+    }
+
+    @Override
+    public JsonObject save(String db, String coll, JsonObject document) {
+        calls.add("save:" + db + "/" + coll);
+        maybeDeny();
+        return document;
+    }
+
+    @Override
+    public JsonObject insert(String db, String coll, JsonObject document) {
+        calls.add("insert:" + db + "/" + coll);
+        maybeDeny();
+        return document;
+    }
+
+    @Override
+    public BulkSaveOutcome bulkSave(String db, String coll, List<JsonObject> documents) {
+        calls.add("bulkSave:" + db + "/" + coll + "/" + documents.size());
+        maybeDeny();
+        return new BulkSaveOutcome(List.of("b1"), List.of("b2"));
+    }
+
+    @Override
+    public void delete(String db, String coll, String id) {
+        calls.add("delete:" + db + "/" + coll + "/" + id);
+        maybeDeny();
+    }
+
+    @Override
+    public long deleteWhere(String db, String coll, JsonObject condition) {
+        calls.add("deleteWhere:" + db + "/" + coll + "/" + condition.get("field").asJsonString().getValue());
+        maybeDeny();
+        return nextDeletedCount;
+    }
+
+    @Override
+    public long updateWhere(String db, String coll, JsonObject condition, JsonObject patch) {
+        calls.add("updateWhere:" + db + "/" + coll + "/" + condition.get("field").asJsonString().getValue() + "/"
+                + patch.size());
+        maybeDeny();
+        return nextUpdatedCount;
+    }
+
+    @Override
+    public void beginTransaction() {
+        calls.add("beginTransaction");
+        maybeDeny();
+        if (rejectNestedTransaction && inTransaction) {
+            throwError("A transaction is already active on this script");
+        }
+        inTransaction = true;
+    }
+
+    @Override
+    public void commitTransaction() {
+        calls.add("commitTransaction");
+        inTransaction = false;
+    }
+
+    @Override
+    public void rollbackTransaction() {
+        calls.add("rollbackTransaction");
+        inTransaction = false;
+    }
+
+    @Override
+    public List<String> listCollections(String db) {
+        calls.add("listCollections:" + db);
+        maybeDeny();
+        return List.of("c1", "c2");
+    }
+
+    @Override
+    public List<String> listDatabases() {
+        calls.add("listDatabases");
+        maybeDeny();
+        return List.of("d1");
+    }
+
+    private void maybeDeny() {
+        if (denyMessage != null) {
+            throwError(denyMessage);
+        }
+    }
+
+    private static void throwError(String message) {
+        final var error = new JsObject();
+        error.set("name", new JsString("Error"));
+        error.set("message", new JsString(message));
+        throw new JsThrowException(error);
+    }
+
+    private static JsonObject single() {
+        final var object = new JsObject();
+        object.set("_id", new JsString("agg1"));
+        return (JsonObject) EJsonInterop.toEjson(object);
+    }
+}

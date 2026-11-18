@@ -6,16 +6,16 @@
 
     <parent>
         <groupId>io.github.christiancg</groupId>
-        <artifactId>lwnrdb-client-parent</artifactId>
+        <artifactId>mpp-client-parent</artifactId>
         <version>${revision}</version>
     </parent>
 
-    <artifactId>lwnrdb-client-build-tools</artifactId>
-    <name>LWNRDB Java client build tools</name>
-    <description>Build-time tooling of the LWNRDB Java client; never published.</description>
+    <artifactId>mpp-client-build-tools</artifactId>
+    <name>MPP Java client build tools</name>
+    <description>Build-time tooling of the MPP Java client; never published.</description>
 
     <properties>
-        <lwnrdb.root>${project.basedir}/../../..</lwnrdb.root>
+        <mpp.root>${project.basedir}/../../..</mpp.root>
         <maven.deploy.skip>true</maven.deploy.skip>
         <skipPublishing>true</skipPublishing>
     </properties>
@@ -43,8 +43,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
-                        <lwnrdb.javaRoot>${lwnrdb.root}/clients/java</lwnrdb.javaRoot>
-                        <lwnrdb.apiModules>lwnrdb-client,lwnrdb-spring-data,lwnrdb-spring-boot-starter</lwnrdb.apiModules>
+                        <mpp.javaRoot>${mpp.root}/clients/java</mpp.javaRoot>
+                        <mpp.apiModules>mpp-client,mpp-spring-data,mpp-spring-boot-starter</mpp.apiModules>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

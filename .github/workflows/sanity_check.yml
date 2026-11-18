@@ -25,8 +25,8 @@ jobs:
       - name: Upload jar
         uses: actions/upload-artifact@v7
         with:
-          name: lwnrdb-jar
-          path: target/lwnrdb.jar
+          name: mpp-jar
+          path: target/mpp.jar
           retention-days: 1
 
   unit-tests:
@@ -170,7 +170,7 @@ jobs:
       - name: Test the client against Spring Boot's Jackson
         run: >-
           mvn -B --no-transfer-progress -f clients/java/pom.xml -Djackson.version=3.1.7 -Djacoco.skip=true
-          -pl lwnrdb-client,lwnrdb-spring-data,lwnrdb-spring-boot-starter -am test
+          -pl mpp-client,mpp-spring-data,mpp-spring-boot-starter -am test
       - name: Build the Javadoc and sources jars
         run: mvn -B --no-transfer-progress -f clients/java/pom.xml -P javadoc -DskipTests -Djacoco.skip=true package
       - name: Install the snapshot for the consumers
@@ -252,16 +252,16 @@ jobs:
             10.0.x
             11.0.x
       - name: Check formatting
-        run: dotnet format Lwnrdb.slnx --verify-no-changes
+        run: dotnet format Mpp.slnx --verify-no-changes
       - name: Build (analyzers and warnings as errors, API docs through DocGen)
-        run: dotnet build Lwnrdb.slnx -c Release
+        run: dotnet build Mpp.slnx -c Release
       - name: Unit tests with 95% line and 90% branch coverage (net10.0)
-        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net10.0 --no-build /p:CollectCoverage=true /p:Threshold=\"95,90\" /p:ThresholdType=\"line,branch\" /p:ThresholdStat=total
+        run: dotnet test tests/Mpp.Client.Tests -c Release -f net10.0 --no-build /p:CollectCoverage=true /p:Threshold=\"95,90\" /p:ThresholdType=\"line,branch\" /p:ThresholdStat=total
       - name: Unit tests (net11.0)
-        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net11.0 --no-build
+        run: dotnet test tests/Mpp.Client.Tests -c Release -f net11.0 --no-build
       - name: Pack and run the consumer against the package
         run: |
-          dotnet pack src/Lwnrdb.Client -c Release -o artifacts --no-build
+          dotnet pack src/Mpp.Client -c Release -o artifacts --no-build
           dotnet run --project consumers/Console
 
   integration:
@@ -350,20 +350,20 @@ jobs:
             run: |
               mvn -B --no-transfer-progress -f clients/java/pom.xml verify -Pintegration -Dtest=NONE \
                 -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true \
-                -Dlwnrdb.jar="$GITHUB_WORKSPACE/target/lwnrdb.jar"
+                -Dmpp.jar="$GITHUB_WORKSPACE/target/mpp.jar"
 
           - name: client-typescript
             start_server: false
             node: true
             run: |
               npm ci --prefix clients/typescript
-              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" npm run test:it --prefix clients/typescript
+              MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" npm run test:it --prefix clients/typescript
 
           - name: client-dotnet
             start_server: false
             dotnet: true
             run: |
-              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" dotnet test clients/dotnet/tests/Lwnrdb.Client.IntegrationTests -c Release
+              MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" dotnet test clients/dotnet/tests/Mpp.Client.IntegrationTests -c Release
 
           - name: client-python
             start_server: false
@@ -372,7 +372,7 @@ jobs:
               cd clients/python
               python -m pip install --upgrade pip
               python -m pip install --group dev -e .
-              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" python -m pytest tests/it -m it
+              MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" python -m pytest tests/it -m it
 
           - name: metadata-limits
             start_server: false
@@ -447,7 +447,7 @@ jobs:
           - name: disk-full
             start_server: false
             run: |
-              docker build -q -t lwnrdb-disk-full -f test_utils/disk_full/Dockerfile .
+              docker build -q -t mpp-disk-full -f test_utils/disk_full/Dockerfile .
               python3 test_utils/test_disk_full.py
 
           - name: fuzz
@@ -494,15 +494,15 @@ jobs:
       - name: Download jar
         uses: actions/download-artifact@v8
         with:
-          name: lwnrdb-jar
+          name: mpp-jar
           path: target
       - name: Set admin credentials for integration tests
-        run: echo "defaultAdminPassword=Tst-Admin-9xQ2mV" >> lwnrdb.cfg
+        run: echo "defaultAdminPassword=Tst-Admin-9xQ2mV" >> mpp.cfg
       - name: Start server
         if: ${{ matrix.start_server }}
         run: |
-          echo "maxMemory=${{ matrix.max_memory }}" >> lwnrdb.cfg
-          java -Xmx${{ matrix.xmx }} -jar target/lwnrdb.jar > server.log 2>&1 &
+          echo "maxMemory=${{ matrix.max_memory }}" >> mpp.cfg
+          java -Xmx${{ matrix.xmx }} -jar target/mpp.jar > server.log 2>&1 &
           echo $! > server.pid
           for _ in $(seq 1 150); do
             nc -z 127.0.0.1 8989 && break
@@ -515,7 +515,7 @@ jobs:
         run: ${{ matrix.run }}
       - name: Stop server
         if: ${{ always() && matrix.start_server }}
-        run: pkill -f lwnrdb.jar || true
+        run: pkill -f mpp.jar || true
 
   test262:
     name: test262 Conformance (${{ matrix.shard }}/4)

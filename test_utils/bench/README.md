@@ -1,12 +1,12 @@
 # Engine benchmark
 
-Runs the same workload against lwnrdb, MySQL, PostgreSQL, MongoDB and Couchbase, each in a Docker container with the
+Runs the same workload against mpp, MySQL, PostgreSQL, MongoDB and Couchbase, each in a Docker container with the
 same CPU and memory limits, and prints a side-by-side comparison.
 
 ```bash
 cd test_utils/bench
 python3 run_bench.py                                   # all engines, 2 CPUs and 4g each, 100k documents
-python3 run_bench.py --engines lwnrdb,mongo --cpus 4 --memory 8g
+python3 run_bench.py --engines mpp,mongo --cpus 4 --memory 8g
 python3 run_bench.py --docs 500000 --concurrency 16 --ops-scale 2
 python3 run_bench.py --durability synced               # every engine syncs every write
 python3 report.py results/<run-id>                     # render a finished run again
@@ -23,16 +23,16 @@ same compose network as the engine, so no traffic goes through the Docker Deskto
 | `--cpus` | `2` | CPUs per engine container, pinned to cpuset `0..cpus-1`; the client gets the rest |
 | `--memory` | `4g` | memory per engine container, swap disabled |
 | `--durability` | `relaxed` | `relaxed` or `synced`, applied to every engine (see below) |
-| `--heap-percent` | `35` | `-XX:MaxRAMPercentage` of the lwnrdb container; `maxMemory` is set to half the heap |
-| `--java-opts=...` | none | extra JVM flags for lwnrdb; use the equals sign, since a value starting with a dash reads as a flag |
+| `--heap-percent` | `35` | `-XX:MaxRAMPercentage` of the mpp container; `maxMemory` is set to half the heap |
+| `--java-opts=...` | none | extra JVM flags for mpp; use the equals sign, since a value starting with a dash reads as a flag |
 | `--keep` | off | leave the last engine running afterwards |
-| `--no-build` | off | reuse the built `lwnrdb-bench-server` and `lwnrdb-bench-client` images |
+| `--no-build` | off | reuse the built `mpp-bench-server` and `mpp-bench-client` images |
 
 Every other flag goes to `bench_client.py`: `--docs` (100000), `--batch` (500), `--payload` (512 bytes),
 `--concurrency` (8 client processes), `--ops-scale` (1.0), `--warmup` (0.1), `--bulk-warmup` (0.5), `--seed` (42) and
 `--phases` (a comma-separated subset; `bulk_insert` always runs, since it loads the data).
 
-The lwnrdb server runs G1, like the Docker image, and logs its collections to `/tmp/gc.log`. The G1 pause and full GC
+The mpp server runs G1, like the Docker image, and logs its collections to `/tmp/gc.log`. The G1 pause and full GC
 rows of `summary.md` come from that log. Results from before the bench moved from a 70% heap with a 2 GiB `maxMemory`
 to the current defaults have a memory column that isn't comparable with later runs.
 
@@ -44,7 +44,7 @@ to the current defaults have a memory column that isn't comparable with later ru
 
   | Engine | Setting | Share of `--memory` |
   |---|---|---|
-  | lwnrdb | `-XX:MaxRAMPercentage` / `maxMemory` | `--heap-percent` heap / half of it as cache |
+  | mpp | `-XX:MaxRAMPercentage` / `maxMemory` | `--heap-percent` heap / half of it as cache |
   | MySQL | `innodb_buffer_pool_size` | 50% |
   | PostgreSQL | `shared_buffers` / `effective_cache_size` | 25% / 75% |
   | MongoDB | `wiredTigerCacheSizeGB` | 50% of (memory - 1 GiB), its default formula |
@@ -54,13 +54,13 @@ to the current defaults have a memory column that isn't comparable with later ru
 
   | Engine | `relaxed` (no sync per commit) | `synced` (every write synced) |
   |---|---|---|
-  | lwnrdb | `syncWrites=false` | `syncWrites=true` |
+  | mpp | `syncWrites=false` | `syncWrites=true` |
   | MySQL | `innodb_flush_log_at_trx_commit=2`, no binlog | `innodb_flush_log_at_trx_commit=1`, no binlog |
   | PostgreSQL | `synchronous_commit=off` | `synchronous_commit=on` |
   | MongoDB | `w:1`, journal flushed every 100 ms | `w:1, j:true` on every write |
   | Couchbase | no durability level | `PERSIST_TO_MAJORITY` (single node: persisted locally) |
 
-- Same read guarantees. lwnrdb's index reads see every acknowledged write, so Couchbase queries run with
+- Same read guarantees. mpp's index reads see every acknowledged write, so Couchbase queries run with
   `REQUEST_PLUS` scan consistency instead of its eventually consistent default.
 - Same data in each engine's own idiom. Document stores take the document as is, and MySQL and PostgreSQL use a typed
   table with the same eight columns. Every engine indexes `category` and `price` before the load and nothing else
@@ -108,7 +108,7 @@ write phase leaves behind is billed to that phase. Results from before 2026-11-0
 comparable with later ones. `python3 -m unittest discover -s test_utils/bench -p "test_*.py"` runs the bench's own
 tests.
 
-Run-to-run spread of the same build, five runs of `run_bench.py --engines lwnrdb --durability synced --ops-scale 2`
+Run-to-run spread of the same build, five runs of `run_bench.py --engines mpp --durability synced --ops-scale 2`
 (coefficient of variation):
 
 | phase | throughput | CPU per operation |
@@ -137,7 +137,7 @@ CPU profile shows.
 
 ## File syscall audit
 
-`test_utils/tools/audit_file_syscalls.py` runs lwnrdb alone in a container under `strace`, loads 10k documents with two
+`test_utils/tools/audit_file_syscalls.py` runs mpp alone in a container under `strace`, loads 10k documents with two
 indexes and synced writes, then traces each kind of operation on its own and prints the file syscalls per operation by
 file kind, the time spent in syncs, and the write-ahead log checkpoints. With `--concurrency N` the phases run from N
 clients, and `ops per .wal sync` shows the real group commit size. Durations are measured under `strace`, so only
@@ -155,7 +155,7 @@ The budgets in the script only go down: lower one when a change removes calls, n
 
 ## CPU and allocation profile per phase
 
-`test_utils/tools/profile_bench_cpu.py` runs the same workload against lwnrdb with Java Flight Recorder on, under the
+`test_utils/tools/profile_bench_cpu.py` runs the same workload against mpp with Java Flight Recorder on, under the
 same limits, and keeps the recording and a timestamped client log. `ProfileReport.java` splits the samples per phase
 and prints the hottest frames, the time attributed to the nearest project method, and the sampled allocations. Any
 extra names you pass get their own share.

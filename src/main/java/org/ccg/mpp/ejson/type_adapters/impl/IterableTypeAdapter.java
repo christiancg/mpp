@@ -1,0 +1,52 @@
+package org.ccg.mpp.ejson.type_adapters.impl;
+
+import java.util.Objects;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.stream.StreamSupport;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.internal.CharJsonOut;
+import org.ccg.mpp.ejson.internal.JsonOut;
+import org.ccg.mpp.ejson.type_adapters.TypeAdapter;
+import org.ccg.mpp.ejson.type_adapters.TypeAdapterFactory;
+
+public class IterableTypeAdapter<T> implements TypeAdapter<Iterable<T>> {
+
+    private final TypeAdapter<T> elementAdapter;
+
+    public IterableTypeAdapter(Class<T> tClass) {
+        this.elementAdapter = Objects.requireNonNull(TypeAdapterFactory.getAdapter(tClass));
+    }
+
+    @Override
+    public String toJson(Iterable<T> value) {
+        final var out = new CharJsonOut();
+        toJson(value, out);
+        return out.toString();
+    }
+
+    @Override
+    public void toJson(Iterable<T> value, JsonOut out) {
+        out.append('[');
+        var first = true;
+        for (final var element : value) {
+            if (!first) {
+                out.append(',');
+            }
+            first = false;
+            elementAdapter.toJson(element, out);
+        }
+        out.append(']');
+    }
+
+    @Override
+    public Iterable<T> fromJson(JsonBaseElement value) {
+        if (value instanceof JsonArray arr) {
+            return StreamSupport.stream(Spliterators.spliteratorUnknownSize(arr.iterator(), Spliterator.ORDERED), false)
+                    .map(elementAdapter::fromJson).toList();
+        } else {
+            return null;
+        }
+    }
+}

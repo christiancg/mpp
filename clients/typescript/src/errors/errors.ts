@@ -1,19 +1,19 @@
 import type { Status } from "../protocol/status.js";
 import { errorCodeDetails, type ErrorCodeDetails } from "./error-codes.js";
 
-export interface LwnrdbErrorOptions {
+export interface MppErrorOptions {
     readonly code?: string | undefined;
     readonly status?: Status | undefined;
     readonly operation?: string | undefined;
     readonly cause?: unknown;
 }
 
-export class LwnrdbError extends Error {
+export class MppError extends Error {
     readonly rawCode: string | undefined;
     readonly status: Status | undefined;
     readonly operation: string | undefined;
 
-    constructor(message: string, options: LwnrdbErrorOptions = {}) {
+    constructor(message: string, options: MppErrorOptions = {}) {
         super(message, options.cause === undefined ? undefined : { cause: options.cause });
         this.name = new.target.name;
         this.rawCode = options.code;
@@ -30,26 +30,26 @@ export class LwnrdbError extends Error {
     }
 }
 
-export class AuthenticationError extends LwnrdbError {}
+export class AuthenticationError extends MppError {}
 
-export class ForbiddenError extends LwnrdbError {}
+export class ForbiddenError extends MppError {}
 
-export class NotFoundError extends LwnrdbError {}
+export class NotFoundError extends MppError {}
 
-export class ConflictError extends LwnrdbError {}
+export class ConflictError extends MppError {}
 
-export class ListenEndedError extends LwnrdbError {}
+export class ListenEndedError extends MppError {}
 
-export class UnavailableError extends LwnrdbError {}
+export class UnavailableError extends MppError {}
 
-export class UnknownOutcomeError extends LwnrdbError {}
+export class UnknownOutcomeError extends MppError {}
 
-export class ConnectionLostError extends LwnrdbError {}
+export class ConnectionLostError extends MppError {}
 
 export class RequestTimeoutError extends ConnectionLostError {}
 
-export class ServerClosedConnectionError extends LwnrdbError {}
+export class ServerClosedConnectionError extends MppError {}
 
-export class PoolExhaustedError extends LwnrdbError {}
+export class PoolExhaustedError extends MppError {}
 
-export class MappingError extends LwnrdbError {}
+export class MappingError extends MppError {}

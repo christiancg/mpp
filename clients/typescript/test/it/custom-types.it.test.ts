@@ -9,7 +9,7 @@ import {
     GeoPoint,
     LocalDateTime,
     LocalTime,
-    LwnrdbClient,
+    MppClient,
     MappingError,
     nearest,
     Order,
@@ -217,7 +217,7 @@ describe("custom value types", () => {
     });
 
     test("a Date is stored through the configured temporal zone", async () => {
-        const zoned = await LwnrdbClient.connect(it.settings({ temporalZone: "America/Lima" }));
+        const zoned = await MppClient.connect(it.settings({ temporalZone: "America/Lima" }));
         try {
             const instant = new Date(Date.UTC(2024, 0, 1, 15, 0));
             await zoned

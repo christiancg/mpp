@@ -1,11 +1,11 @@
-# LWNRDB operations guide
+# MPP operations guide
 
-How to run an LWNRDB server for other people: what to set before the first start, how much memory and disk it needs,
+How to run an MPP server for other people: what to set before the first start, how much memory and disk it needs,
 how to secure, watch, back up and stop it, what its log lines mean and how to recover when something goes wrong.
 
 To try it on your own machine first, follow the [Quickstart](../QUICKSTART.md). The wire protocol is in
 [protocol.md](protocol.md), clusters are in [clustering.md](clustering.md) and upgrades in
-[compatibility.md](compatibility.md). LWNRDB is still experimental (see the [README](../README.md#status)), so this
+[compatibility.md](compatibility.md). MPP is still experimental (see the [README](../README.md#status)), so this
 guide describes what the server does today, not a promise that it is ready for data you can't afford to lose.
 
 - [Deployment checklist](#deployment-checklist)
@@ -30,7 +30,7 @@ guide describes what the server does today, not a promise that it is ready for d
 | Runtime | JDK 27 or newer, or the Docker image | The build requires it |
 | Admin password | `defaultAdminPassword` for the first start, then a second admin with [`CREATE_USER`](protocol.md#create_user-admin-only) | The server won't start without one, and a lost admin password can't be reset ([Bootstrap](#bootstrap), [Recovery](#a-lost-admin-password)) |
 | Data folder | `filePath` on a local disk that honours `fsync`, with `syncWrites=true` | Otherwise a power loss can lose acknowledged writes ([Durability](#durability)) |
-| File modes | `chmod 700` on `filePath` and `logPath`, `chmod 600` on `lwnrdb.cfg` and the keystore | They hold password hashes, data and secrets ([File permissions](#file-permissions)) |
+| File modes | `chmod 700` on `filePath` and `logPath`, `chmod 600` on `mpp.cfg` and the keystore | They hold password hashes, data and secrets ([File permissions](#file-permissions)) |
 | Network | `bindAddress` set to the interface clients use | Blank binds every interface |
 | TLS | `tlsEnabled=true`, a CA-issued keystore and your own `tlsKeystorePassword` | Without it passwords and documents travel in plaintext ([TLS](#tls--secure-connections)) |
 | Limits | Every protective limit above `0` | `0` turns a limit off ([Security hardening](#security-hardening)) |
@@ -44,29 +44,29 @@ guide describes what the server does today, not a promise that it is ready for d
 
 ## Running the server
 
-The server ships without an admin password, so put one in the `lwnrdb.cfg` of the working directory before the first
+The server ships without an admin password, so put one in the `mpp.cfg` of the working directory before the first
 start:
 
 ```bash
 mvn clean package -DskipTests
-echo "defaultAdminPassword=<choose-a-strong-password>" >> lwnrdb.cfg
-java -XX:+UseG1GC -XX:G1PeriodicGCInterval=60000 -Djdk.nio.maxCachedBufferSize=262144 -jar target/lwnrdb.jar
+echo "defaultAdminPassword=<choose-a-strong-password>" >> mpp.cfg
+java -XX:+UseG1GC -XX:G1PeriodicGCInterval=60000 -Djdk.nio.maxCachedBufferSize=262144 -jar target/mpp.jar
 ```
 
 Keep those three JVM flags, they are explained in [Sizing](#sizing).
 
-With Docker, set `LWNRDB_ADMIN_PASSWORD` and the entrypoint writes it into the container's config. There is no build
+With Docker, set `MPP_ADMIN_PASSWORD` and the entrypoint writes it into the container's config. There is no build
 argument for it, because a password given to `docker build` stays in the image layers. For anything else, including
-the TLS and cluster secrets, mount your own `lwnrdb.cfg` over the image's (and then put the password in that file, the
+the TLS and cluster secrets, mount your own `mpp.cfg` over the image's (and then put the password in that file, the
 variable can't write into a read-only mount):
 
 ```bash
-docker build -t lwnrdb .
-docker run -p 8989:8989 -v ./db:/app/db -v ./lwnrdb.cfg:/app/lwnrdb.cfg:ro lwnrdb
+docker build -t mpp .
+docker run -p 8989:8989 -v ./db:/app/db -v ./mpp.cfg:/app/mpp.cfg:ro mpp
 ```
 
-The image runs as the unprivileged `lwnrdb` user, so a host folder mounted over `/app/db`, `/app/logs` or `/app/certs`
-must be writable by its uid (`docker run --rm --entrypoint id lwnrdb` prints it). It also has a `HEALTHCHECK`, see
+The image runs as the unprivileged `mpp` user, so a host folder mounted over `/app/db`, `/app/logs` or `/app/certs`
+must be writable by its uid (`docker run --rm --entrypoint id mpp` prints it). It also has a `HEALTHCHECK`, see
 [Health checks](#health-checks).
 
 ### On Windows
@@ -80,12 +80,12 @@ Windows, Linux and macOS as they are. What differs:
 - The owner-only file modes are POSIX only. On NTFS put `filePath`, `logPath` and the keystore under a folder only the
   server's account can read.
 - Windows Defender Firewall blocks `java.exe` until you allow it:
-  `New-NetFirewallRule -DisplayName lwnrdb -Direction Inbound -Protocol TCP -LocalPort 8989 -Action Allow`.
+  `New-NetFirewallRule -DisplayName mpp -Direction Inbound -Protocol TCP -LocalPort 8989 -Action Allow`.
 - Ctrl+C in the server's console runs the normal shutdown. `Stop-Process` or Task Manager is a hard kill, and the next
   start recovers as after a crash.
 - Each connection holds a platform thread on Windows, so keep that in mind when you size `maxConnections`.
 - Windows PowerShell 5.1 strips the double quotes inside `--exec '<json>'`. Put the requests in a file instead:
-  `cmd /c "java -jar lwnrdb.jar --exec < commands.jsonl"`.
+  `cmd /c "java -jar mpp.jar --exec < commands.jsonl"`.
 
 ## Bootstrap
 
@@ -97,26 +97,26 @@ On the first start, when no admin user exists, the server creates one from `defa
   already exists.
 - `defaultAdminPassword` is blank or shorter than 8 characters and no admin exists yet.
 
-Once the admin exists both keys are ignored and you can remove the password from `lwnrdb.cfg`. The server only checks
+Once the admin exists both keys are ignored and you can remove the password from `mpp.cfg`. The server only checks
 the configured value, never the stored hash, so if your admin was created with `administrator` in an older setup,
 change its password with [`SET_PASSWORD`](protocol.md#set_password).
 
 ## Configuration
 
-The server reads `lwnrdb.cfg` from its working directory. It only needs the keys you want to change, every missing key
+The server reads `mpp.cfg` from its working directory. It only needs the keys you want to change, every missing key
 takes the default below. Lines starting with `#` are comments. Every value is checked at startup, and any invalid one
 stops the server with a `FATAL` line listing all of the problems.
 
 Sizes are written like `64Kb`, `2Mb` or `1Gb`, times are in milliseconds. For the protective limits, `0` turns the
 limit off and the server names it in a `SECURITY WARNING` at every start.
 
-A typical production `lwnrdb.cfg`:
+A typical production `mpp.cfg`:
 
 ```
 bindAddress=10.0.0.5
 defaultAdminPassword=<choose-a-strong-password>
 tlsEnabled=true
-tlsKeystorePath=certs/lwnrdb.p12
+tlsKeystorePath=certs/mpp.p12
 tlsKeystorePassword=<your-keystore-password>
 # the metrics port leaves loopback, so it needs a token
 metricsPort=9100
@@ -160,7 +160,7 @@ shutdownTimeoutMs=8000
 | Key | Default | What it does |
 |---|---|---|
 | `tlsEnabled` | `false` | Encrypt client connections and refuse plaintext ones |
-| `tlsKeystorePath` | `certs/lwnrdb.p12` | PKCS12 keystore with the key and certificate. A self-signed one is generated here if missing |
+| `tlsKeystorePath` | `certs/mpp.p12` | PKCS12 keystore with the key and certificate. A self-signed one is generated here if missing |
 | `tlsKeystorePassword` | `change_it` | Password of the keystore |
 
 ### Metrics endpoint
@@ -453,7 +453,7 @@ And the server as a whole:
 | Cluster tombstones | One line per deleted document, for `tombstoneRetentionMs` (1 day) |
 | Logs | `(maxLogFiles + 1) x 2 x maxLogFileSize`, 1.6 GB with the defaults |
 
-`lwnrdb_live_bytes` and [`GET_DATABASE_STATS`](protocol.md#get_database_stats) give the live document bytes. Keep free
+`mpp_live_bytes` and [`GET_DATABASE_STATS`](protocol.md#get_database_stats) give the live document bytes. Keep free
 at least the size of the biggest collection's files, plus twice `walCheckpointBytes` for every collection written at
 once, plus `snapshotMaxBytes` while dumps run. On a full disk the server stays up and recovers once space is back
 ([Disk full](#disk-full)), but every write fails until then.
@@ -469,7 +469,7 @@ clean startup log:
 | `SECURITY WARNING: tlsEnabled=false, so client connections are plaintext` | `tlsEnabled=true` and a CA-issued keystore ([TLS](#tls--secure-connections)) |
 | `SECURITY WARNING: tlsKeystorePassword is still the shipped value` | Your own `tlsKeystorePassword` |
 | `SECURITY WARNING: these limits are set to 0, which turns them off` | A positive value for each key it names, unless something in front of the server enforces it |
-| `SECURITY WARNING: the data folder (filePath) at ... is accessible by group or other users` (also the log folder, the keystore and `lwnrdb.cfg`) | The `chmod` the line prints ([File permissions](#file-permissions)) |
+| `SECURITY WARNING: the data folder (filePath) at ... is accessible by group or other users` (also the log folder, the keystore and `mpp.cfg`) | The `chmod` the line prints ([File permissions](#file-permissions)) |
 | `SECURITY WARNING: the metrics endpoint on port ... without a metricsToken` | `metricsToken`, or `metricsBindAddress=127.0.0.1` |
 | `SECURITY WARNING: clusterTlsEnabled=false` | `clusterTlsEnabled=true` with one keystore shared by every node |
 | `SECURITY WARNING: scriptFetchAllowlist names ... exactly` | Removing that internal host from `scriptFetchAllowlist`, unless scripts must reach it |
@@ -483,7 +483,7 @@ Beyond that:
 - Give each application its own user with the narrowest grant that works ([permission model](protocol.md#permission-model)),
   not the admin.
 - Leave `triggersEnabled` off unless you use triggers, and turn `scriptsEnabled` off if nobody runs scripts.
-- Remove the admin password from `lwnrdb.cfg` once the first admin exists.
+- Remove the admin password from `mpp.cfg` once the first admin exists.
 
 ### TLS / secure connections
 
@@ -502,7 +502,7 @@ Without TLS, passwords and documents cross the network in plaintext, so keep suc
 
 On POSIX filesystems every folder the server creates (data, logs, the keystore's folder) is `0700` and a generated
 keystore is `0600`. The server never changes the mode of something that already exists. Instead it warns about the data
-folder, the log folder, the keystore and `lwnrdb.cfg` (which holds the admin, keystore and cluster secrets) when group
+folder, the log folder, the keystore and `mpp.cfg` (which holds the admin, keystore and cluster secrets) when group
 or other users can read them, and prints the `chmod` that fixes it. A Docker volume is often created `0755`, so expect
 that warning until you tighten it.
 
@@ -519,7 +519,7 @@ a TLS proxy in front before exposing it. At most four scrapes are served at once
 
 ```yaml
 scrape_configs:
-  - job_name: lwnrdb
+  - job_name: mpp
     static_configs:
       - targets: ["db-host:9100"]
     authorization:
@@ -528,7 +528,7 @@ scrape_configs:
 
 In Docker, set `metricsBindAddress=0.0.0.0` and a `metricsToken`, and publish the port (`-p 9100:9100`).
 
-Every metric starts with `lwnrdb_`. A scrape takes no lock, so it answers while a collection is busy. Totals cover all
+Every metric starts with `mpp_`. A scrape takes no lock, so it answers while a collection is busy. Totals cover all
 user databases, never one collection.
 
 | Metric | Type | Labels | Meaning |
@@ -560,7 +560,7 @@ The histogram buckets go from 0.5 ms to 10 s.
 
 - The image runs the jar's `--health` client every 30 seconds after a 60-second start period, so `docker ps` shows
   `healthy` once the server is `READY`.
-- Anywhere else, run `java -jar lwnrdb.jar --health --host <host> --port <port>` (add `--tls`, and `--insecure` for a
+- Anywhere else, run `java -jar mpp.jar --health --host <host> --port <port>` (add `--tls`, and `--insecure` for a
   self-signed certificate). It needs no password and exits `0` only when the server is `READY`.
 - A load balancer can send [`SERVER_INFO`](protocol.md#server_info) without logging in. `SYNCING` is a cluster node
   still catching up and `SHUTTING_DOWN` answers everything with `503-13`. Only route to `READY`.
@@ -571,18 +571,18 @@ Starting points in PromQL. Tune the windows to your traffic.
 
 | Condition | Means | First action |
 |---|---|---|
-| `up{job="lwnrdb"} == 0` | The endpoint doesn't answer | Check the process and the [startup log](#logs) |
-| `increase(lwnrdb_fsync_failures_total[5m]) > 0` | The disk refused to persist a write | [A failed fsync](#a-failed-fsync) |
-| `histogram_quantile(0.99, sum by (le) (rate(lwnrdb_fsync_duration_seconds_bucket[5m]))) > 0.05` | Forces take over 50 ms, and every write waits for them | Check the disk's latency and what else writes to it |
-| `lwnrdb_in_doubt_transactions > 0` for 10 minutes | A distributed transaction lost its coordinator | [In-doubt distributed transactions](#in-doubt-distributed-transactions) |
-| `increase(lwnrdb_triggers_total{outcome="dead_lettered"}[1h]) > 0` | A trigger kept failing and was set aside | [Dead-lettered trigger runs](#dead-lettered-trigger-runs) |
-| `increase(lwnrdb_triggers_total{outcome="dropped"}[1h]) > 0`, or the same for `lwnrdb_schedules_total` | A full queue dropped a run | Raise the queue size or slow down what fires it |
-| `deriv(lwnrdb_background_queued{queue="index"}[15m]) > 0` for 15 minutes | Index updates fall behind the writes | Writes will start answering `503-16`, check CPU and disk |
-| `lwnrdb_heap_used_bytes / lwnrdb_heap_max_bytes > 0.9` for 15 minutes | The heap is nearly full | [Sizing](#sizing) |
-| `lwnrdb_unsent_response_bytes / lwnrdb_unsent_response_limit_bytes > 0.8` | Clients read slower than they ask | Reads will start answering `503-17`, find the slow client |
-| `rate(lwnrdb_connections_refused_total[5m]) > 0` | Connections hit a cap | Raise it, or find the client that leaks connections |
-| `sum by (code) (rate(lwnrdb_requests_total{code=~"5.."}[5m])) > 0` | Server-side errors | Look the code up in the [error table](protocol.md#error-codes) |
-| `rate(lwnrdb_scripts_rejected_total[5m]) > 0` | Every script slot was busy | Raise `maxConcurrentScripts` or find the slow script in `script_runs` |
+| `up{job="mpp"} == 0` | The endpoint doesn't answer | Check the process and the [startup log](#logs) |
+| `increase(mpp_fsync_failures_total[5m]) > 0` | The disk refused to persist a write | [A failed fsync](#a-failed-fsync) |
+| `histogram_quantile(0.99, sum by (le) (rate(mpp_fsync_duration_seconds_bucket[5m]))) > 0.05` | Forces take over 50 ms, and every write waits for them | Check the disk's latency and what else writes to it |
+| `mpp_in_doubt_transactions > 0` for 10 minutes | A distributed transaction lost its coordinator | [In-doubt distributed transactions](#in-doubt-distributed-transactions) |
+| `increase(mpp_triggers_total{outcome="dead_lettered"}[1h]) > 0` | A trigger kept failing and was set aside | [Dead-lettered trigger runs](#dead-lettered-trigger-runs) |
+| `increase(mpp_triggers_total{outcome="dropped"}[1h]) > 0`, or the same for `mpp_schedules_total` | A full queue dropped a run | Raise the queue size or slow down what fires it |
+| `deriv(mpp_background_queued{queue="index"}[15m]) > 0` for 15 minutes | Index updates fall behind the writes | Writes will start answering `503-16`, check CPU and disk |
+| `mpp_heap_used_bytes / mpp_heap_max_bytes > 0.9` for 15 minutes | The heap is nearly full | [Sizing](#sizing) |
+| `mpp_unsent_response_bytes / mpp_unsent_response_limit_bytes > 0.8` | Clients read slower than they ask | Reads will start answering `503-17`, find the slow client |
+| `rate(mpp_connections_refused_total[5m]) > 0` | Connections hit a cap | Raise it, or find the client that leaks connections |
+| `sum by (code) (rate(mpp_requests_total{code=~"5.."}[5m])) > 0` | Server-side errors | Look the code up in the [error table](protocol.md#error-codes) |
+| `rate(mpp_scripts_rejected_total[5m]) > 0` | Every script slot was busy | Raise `maxConcurrentScripts` or find the slow script in `script_runs` |
 
 ## Logs
 
@@ -590,7 +590,7 @@ Every entry goes to `logPath` and to standard output, so `docker logs` shows it 
 `yyyy-MM-dd.log`, rolled over to `yyyy-MM-dd.1.log` once it reaches `maxLogFileSize`. Files older than `maxLogFiles` days
 are deleted.
 
-A line looks like `14:02:11.348519-INFO-org.techhouse.ServerMain - LWNRDB 0.1.0 starting`. An exception adds ` -> `
+A line looks like `14:02:11.348519-INFO-org.ccg.mpp.ServerMain - MPP 0.1.0 starting`. An exception adds ` -> `
 with its class and message, then one stack frame per line, then each cause the same way after `Caused by: `. A message
 is always one line, so `grep` finds whole entries.
 
@@ -602,7 +602,7 @@ Every refusal is one `FATAL` line and exit status `1`. Nothing on disk changes, 
 
 | Line starts with | Cause and action |
 |---|---|
-| `Configuration validation failed, the application will not start:` | Every invalid key follows, separated by a literal `\n`. Fix `lwnrdb.cfg` ([Configuration](#configuration)) |
+| `Configuration validation failed, the application will not start:` | Every invalid key follows, separated by a literal `\n`. Fix `mpp.cfg` ([Configuration](#configuration)) |
 | `Insecure configuration, the application will not start:` | A weak or missing `defaultAdminPassword` ([Bootstrap](#bootstrap)), or script fetch outside the jar. The line says which |
 | `The server will not start: .../format.json says this folder holds storage format` | The data folder belongs to another release. The line says which one to run ([compatibility.md](compatibility.md#the-format-stamp)) |
 | `The server will not start:` followed by anything else | The server can't prepare `filePath` or `logPath`, for example a missing permission. The line names the path |
@@ -646,15 +646,15 @@ while writes go on, and writes plain requests that `--restore` replays. The READ
 
 ### A scheduled dump
 
-Run it as the admin so every database is included, and keep the password in `LWNRDB_PASSWORD`, not on the command line:
+Run it as the admin so every database is included, and keep the password in `MPP_PASSWORD`, not on the command line:
 
 ```sh
 #!/bin/sh
 set -eu
-out=/backups/lwnrdb-$(date +%F).ldump.gz
-java -jar /opt/lwnrdb/lwnrdb.jar --dump --compress --host db.internal --tls > "$out.partial"
+out=/backups/mpp-$(date +%F).ldump.gz
+java -jar /opt/mpp/mpp.jar --dump --compress --host db.internal --tls > "$out.partial"
 mv "$out.partial" "$out"
-find /backups -name 'lwnrdb-*.ldump.gz' -mtime +14 -delete
+find /backups -name 'mpp-*.ldump.gz' -mtime +14 -delete
 ```
 
 The client exits with `1` when the dump stops and `3` when it can't connect or log in, so `set -e` leaves only the
@@ -679,11 +679,11 @@ A backup is only as good as its last restore. Restore into a scratch server on a
 
 ```sh
 mkdir -p /tmp/drill && cd /tmp/drill
-printf 'port=9899\ndefaultAdminPassword=%s\n' "$DRILL_PASSWORD" > lwnrdb.cfg
-java -XX:+UseG1GC -jar /opt/lwnrdb/lwnrdb.jar &
-until java -jar /opt/lwnrdb/lwnrdb.jar --health --port 9899 > /dev/null 2>&1; do sleep 1; done
-LWNRDB_PASSWORD="$DRILL_PASSWORD" java -jar /opt/lwnrdb/lwnrdb.jar --restore --port 9899 < /backups/lwnrdb-2026-11-12.ldump.gz
-LWNRDB_PASSWORD="$DRILL_PASSWORD" java -jar /opt/lwnrdb/lwnrdb.jar --exec '{"type":"GET_DATABASE_STATS"}' --port 9899
+printf 'port=9899\ndefaultAdminPassword=%s\n' "$DRILL_PASSWORD" > mpp.cfg
+java -XX:+UseG1GC -jar /opt/mpp/mpp.jar &
+until java -jar /opt/mpp/mpp.jar --health --port 9899 > /dev/null 2>&1; do sleep 1; done
+MPP_PASSWORD="$DRILL_PASSWORD" java -jar /opt/mpp/mpp.jar --restore --port 9899 < /backups/mpp-2026-11-12.ldump.gz
+MPP_PASSWORD="$DRILL_PASSWORD" java -jar /opt/mpp/mpp.jar --exec '{"type":"GET_DATABASE_STATS"}' --port 9899
 ```
 
 Compare each collection's `entryCount` with production at the time of the dump, then stop the scratch server and
@@ -763,7 +763,7 @@ Free space under `filePath` (and `logPath` if it's the same disk), then watch th
 
 ### A failed fsync
 
-`lwnrdb_fsync_failures_total` goes up and the write that needed the force fails. The server never trusts a file whose
+`mpp_fsync_failures_total` goes up and the write that needed the force fails. The server never trusts a file whose
 force failed and rebuilds it from the write-ahead log at the next checkpoint. Find out why the disk refused (full,
 failing, a network filesystem that lost its server) before relying on the node again.
 
@@ -799,7 +799,7 @@ one with [`RESOLVE_TRIGGER_RUN`](protocol.md#resolve_trigger_run-admin-only). Th
 ### In-doubt distributed transactions
 
 When a cluster transaction's coordinator dies, the other nodes resolve it if any of them knows the outcome. When none
-does, `lwnrdb_in_doubt_transactions` stays above zero and the transaction keeps its locks. Bring the coordinator back
+does, `mpp_in_doubt_transactions` stays above zero and the transaction keeps its locks. Bring the coordinator back
 if you can. Otherwise find it with [`LIST_TRANSACTIONS`](protocol.md#list_transactions-admin-only), decide the outcome
 from its per-node status and force it with [`RESOLVE_TRANSACTION`](protocol.md#resolve_transaction-admin-only)
 ([clustering.md](clustering.md#transactions)).

@@ -9,7 +9,7 @@ import { WireConnection } from "./wire-connection.js";
 
 export type SocketOpener = (address: ServerAddress, settings: ResolvedSettings) => Promise<Socket>;
 
-const INSECURE_WARNING = "LWNRDB TLS certificate and hostname checks are disabled; use this only in development";
+const INSECURE_WARNING = "MPP TLS certificate and hostname checks are disabled; use this only in development";
 
 function tlsSocket(address: ServerAddress, tls: TlsSettings): Socket {
     const insecure = tls.insecure === true;
@@ -59,7 +59,7 @@ export class ConnectionFactory {
         this.#encoder = encoder;
         this.#opener = opener;
         if (settings.tls?.insecure === true) {
-            process.emitWarning(INSECURE_WARNING, { code: "LWNRDB_INSECURE_TLS" });
+            process.emitWarning(INSECURE_WARNING, { code: "MPP_INSECURE_TLS" });
         }
     }
 

@@ -215,7 +215,7 @@ def test_large_collection_under_tight_memory(c):
     cap = snap.get("memory", {}).get("maxMemoryBytes", 0)
     if cap > 0 and on_disk <= cap:
         print(f"  [note] on-disk size ({on_disk}B) <= cap ({cap}B): lower maxMemory in "
-              f"lwnrdb.cfg (and -Xmx) to actually stress the streaming path.")
+              f"mpp.cfg (and -Xmx) to actually stress the streaming path.")
     r = agg(c, COLL, [field_filter("v", "GREATER_THAN_EQUALS", 0)])
     check_status("Full scan of entire collection completes (OK)", r, "OK")
     got = len(r.get("results") or [])
@@ -298,7 +298,7 @@ def dirty_find(c: Conn, id_: str) -> dict:
 def test_dirty_find_by_id_under_tight_memory():
     section("Dirty FIND_BY_ID answers present and absent ids while the pk index is not resident")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-stream-tight-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-stream-tight-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, TIGHT_PORT, maxMemory="64kb")
     proc = None
@@ -369,7 +369,7 @@ def main():
     bu.banner("Streaming / targeted-fetch read path test suite", HOST, PORT)
     print(f"  Plan: load {NUM_DOCS} docs (~{(NUM_DOCS * PAYLOAD_BYTES) // (1024*1024)}MB) "
           f"across multiple pages, index status+email, leave v unindexed.")
-    print(f"        Tune maxMemory in lwnrdb.cfg low (and -Xmx) to stress the streaming guard.")
+    print("        Tune maxMemory in mpp.cfg low (and -Xmx) to stress the streaming guard.")
 
     with Conn() as c:
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)

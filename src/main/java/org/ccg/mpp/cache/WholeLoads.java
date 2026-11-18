@@ -1,0 +1,242 @@
+package org.ccg.mpp.cache;
+
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.nio.channels.ClosedByInterruptException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.FieldIndexEntry;
+import org.ccg.mpp.data.IndexKind;
+import org.ccg.mpp.data.PkIndexEntry;
+import org.ccg.mpp.fs.FileSystem;
+
+public final class WholeLoads {
+    public interface Admission {
+        boolean admits(long estimatedBytes);
+    }
+
+    private interface Load<T> {
+        T run() throws IOException;
+    }
+
+    public static final long MAX_BYTE_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final Object LEADER_INTERRUPTED = new Object();
+
+    private final Supplier<FileSystem> fileSystem;
+    private final Semaphore transientPermits;
+    private final int maxPins;
+    private final long byteBudget;
+    private final long maxByteWaitNanos;
+    private final ReentrantLock reservations = new ReentrantLock();
+    private final Condition released = reservations.newCondition();
+    private final Map<String, CompletableFuture<Object>> inFlight = new ConcurrentHashMap<>();
+    private long reservedBytes;
+    private int pins;
+
+    public WholeLoads(Supplier<FileSystem> fileSystem, int transientLoadPermits) {
+        this(fileSystem, transientLoadPermits,
+                (long) (Runtime.getRuntime().maxMemory() * Globals.TRANSIENT_LOAD_HEAP_FRACTION), MAX_BYTE_WAIT_NANOS);
+    }
+
+    public WholeLoads(Supplier<FileSystem> fileSystem, int transientLoadPermits, long byteBudget,
+            long maxByteWaitNanos) {
+        this.fileSystem = fileSystem;
+        final var permits = Math.max(1, transientLoadPermits);
+        this.transientPermits = new Semaphore(permits, true);
+        this.maxPins = permits - 1;
+        this.byteBudget = byteBudget;
+        this.maxByteWaitNanos = maxByteWaitNanos;
+    }
+
+    public synchronized boolean tryPin() {
+        if (pins >= maxPins || !transientPermits.tryAcquire()) {
+            return false;
+        }
+        pins++;
+        return true;
+    }
+
+    public synchronized void unpin() {
+        if (pins > 0) {
+            pins--;
+            transientPermits.release();
+        }
+    }
+
+    public synchronized int pinned() {
+        return pins;
+    }
+
+    public List<PkIndexEntry> pkIndex(String dbName, String collName, boolean lockHeld, Admission admission)
+            throws IOException {
+        final Load<List<PkIndexEntry>> load = () -> {
+            final var estimate = CacheSizeEstimator
+                    .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(dbName, collName));
+            return run(admission.admits(estimate), estimate, () -> fs().readWholePkIndexFile(dbName, collName));
+        };
+        return lockHeld ? once("pk|" + Cache.getCollectionIdentifier(dbName, collName), load) : load.run();
+    }
+
+    public List<PkIndexEntry> transientPkIndex(String dbName, String collName) throws IOException {
+        final var estimate = CacheSizeEstimator
+                .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(dbName, collName));
+        return run(false, estimate, () -> fs().readWholePkIndexFile(dbName, collName));
+    }
+
+    public <T> List<FieldIndexEntry<T>> fieldIndex(String dbName, String collName, String fieldName, Class<T> indexType,
+            Admission admission) throws IOException {
+        final var key = "field|" + Cache.getCollectionIdentifier(dbName, collName) + "|"
+                + Cache.getIndexIdentifier(fieldName, indexType);
+        return once(key, () -> {
+            final var bytes = fs().indexFileBytes(dbName, collName, fieldName, IndexKind.fileLabel(indexType));
+            final var estimate = CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes);
+            return run(admission.admits(estimate), estimate,
+                    () -> fs().readWholeFieldIndexFiles(dbName, collName, fieldName, indexType));
+        });
+    }
+
+    public List<FieldIndexEntry<String>> hashIndex(String dbName, String collName, String fieldName, IndexKind kind,
+            Admission admission) throws IOException {
+        final var key = "hash|" + Cache.getCollectionIdentifier(dbName, collName) + "|"
+                + Cache.getHashIndexIdentifier(fieldName, kind.label());
+        return once(key, () -> {
+            final var bytes = fs().indexFileBytes(dbName, collName, fieldName, kind.label());
+            final var estimate = CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes);
+            return run(admission.admits(estimate), estimate,
+                    () -> fs().readWholeHashIndexFile(dbName, collName, fieldName, kind));
+        });
+    }
+
+    private FileSystem fs() {
+        return fileSystem.get();
+    }
+
+    public int availablePermits() {
+        return transientPermits.availablePermits();
+    }
+
+    public int loadsInFlight() {
+        return inFlight.size();
+    }
+
+    private <T> T once(String key, Load<T> load) throws IOException {
+        while (true) {
+            final var mine = new CompletableFuture<>();
+            final var running = inFlight.putIfAbsent(key, mine);
+            if (running == null) {
+                return lead(key, mine, load);
+            }
+            final var shared = awaitShared(running);
+            if (shared != LEADER_INTERRUPTED) {
+                @SuppressWarnings("unchecked")
+                final var typed = (T) shared;
+                return typed;
+            }
+        }
+    }
+
+    private <T> T lead(String key, CompletableFuture<Object> mine, Load<T> load) throws IOException {
+        try {
+            final var loaded = load.run();
+            mine.complete(loaded);
+            return loaded;
+        } catch (IOException | RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            throw e;
+        } finally {
+            inFlight.remove(key, mine);
+            if (!mine.isDone()) {
+                mine.completeExceptionally(new IOException("The shared load " + key + " ended without a result"));
+            }
+        }
+    }
+
+    private static Object awaitShared(CompletableFuture<Object> running) throws IOException {
+        try {
+            return running.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Interrupted while waiting for another caller's load of the same index");
+        } catch (ExecutionException e) {
+            return rethrow(e.getCause());
+        }
+    }
+
+    private static Object rethrow(Throwable cause) throws IOException {
+        return switch (cause) {
+            case InterruptedIOException _, ClosedByInterruptException _ -> LEADER_INTERRUPTED;
+            case IOException io -> throw io;
+            case RuntimeException runtime -> throw runtime;
+            case Error error -> throw error;
+            case null, default -> throw new IOException(cause);
+        };
+    }
+
+    private <T> T run(boolean admissible, long estimatedBytes, Load<T> load) throws IOException {
+        if (admissible) {
+            return load.run();
+        }
+        try {
+            transientPermits.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Interrupted while waiting for a transient load permit");
+        }
+        try {
+            final var reserved = reserve(estimatedBytes);
+            try {
+                return load.run();
+            } finally {
+                unreserve(reserved);
+            }
+        } finally {
+            transientPermits.release();
+        }
+    }
+
+    private long reserve(long estimatedBytes) throws InterruptedIOException {
+        final var bytes = Math.max(0L, estimatedBytes);
+        reservations.lock();
+        try {
+            var left = maxByteWaitNanos;
+            while (reservedBytes > 0L && reservedBytes + bytes > byteBudget && left > 0L) {
+                left = released.awaitNanos(left);
+            }
+            reservedBytes += bytes;
+            return bytes;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Interrupted while waiting for room for a transient load");
+        } finally {
+            reservations.unlock();
+        }
+    }
+
+    private void unreserve(long bytes) {
+        reservations.lock();
+        try {
+            reservedBytes -= bytes;
+            released.signalAll();
+        } finally {
+            reservations.unlock();
+        }
+    }
+
+    public long reservedBytes() {
+        reservations.lock();
+        try {
+            return reservedBytes;
+        } finally {
+            reservations.unlock();
+        }
+    }
+}

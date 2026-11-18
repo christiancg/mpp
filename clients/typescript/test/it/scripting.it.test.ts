@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import {
     type Database,
-    LwnrdbError,
+    MppError,
     TriggerEvent,
     TriggerRunDecision,
     TriggerRunStatus,
@@ -43,9 +43,9 @@ describe("scripting", () => {
         expect((await shop.procedures().call("double_it", { n: 21 })).value).toBe(42);
         await expect(
             shop.procedures().save({ name: "double_it", script: "return 0;", ifVersion: version + 10 }),
-        ).rejects.toBeInstanceOf(LwnrdbError);
+        ).rejects.toBeInstanceOf(MppError);
         await shop.procedures().delete("double_it");
-        await expect(shop.procedures().call("double_it")).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(shop.procedures().call("double_it")).rejects.toBeInstanceOf(MppError);
     });
 
     test("triggers fire, test, reject and list", async () => {

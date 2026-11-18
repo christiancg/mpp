@@ -5,9 +5,9 @@
     <RollForward>Major</RollForward>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <RootNamespace>Lwnrdb.Consumer</RootNamespace>
+    <RootNamespace>Mpp.Consumer</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Lwnrdb.Client" Version="0.0.0-dev" />
+    <PackageReference Include="Mpp.Client" Version="0.0.0-dev" />
   </ItemGroup>
 </Project>

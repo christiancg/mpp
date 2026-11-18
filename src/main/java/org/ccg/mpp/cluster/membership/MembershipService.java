@@ -1,0 +1,393 @@
+package org.ccg.mpp.cluster.membership;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+import org.ccg.mpp.cluster.ClusterConfig;
+import org.ccg.mpp.cluster.MembershipListener;
+import org.ccg.mpp.cluster.MembershipView;
+import org.ccg.mpp.cluster.NodeAddress;
+import org.ccg.mpp.cluster.NodeInfo;
+import org.ccg.mpp.cluster.NodeState;
+import org.ccg.mpp.cluster.PeerConnectionPool;
+import org.ccg.mpp.cluster.msg.ClusterMessage;
+import org.ccg.mpp.cluster.msg.ClusterMessageType;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.log.Logger;
+import org.ccg.mpp.ops.ScriptAdmission;
+import org.ccg.mpp.ops.ScriptLoad;
+
+public class MembershipService {
+    private final Logger logger = Logger.logFor(MembershipService.class);
+    private final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);
+    private final PeerConnectionPool pool = IocContainer.get(PeerConnectionPool.class);
+    private final ScriptLoad scriptLoad = IocContainer.get(ScriptLoad.class);
+    private final ScriptAdmission scriptAdmission = IocContainer.get(ScriptAdmission.class);
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final Map<String, NodeInfo> members = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastSeen = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastProbe = new ConcurrentHashMap<>();
+    private final Map<String, Evicted> evicted = new ConcurrentHashMap<>();
+    private final List<MembershipListener> listeners = new CopyOnWriteArrayList<>();
+    private final AtomicLong heartbeatCounter = new AtomicLong();
+    private final AtomicBoolean changed = new AtomicBoolean();
+    private final ReentrantLock notifyLock = new ReentrantLock();
+    // Pushed in by AdminAntiEntropyService rather than read from it: it already depends on this service, and
+    // the IoC container resolves fields during construction, so a field back to it would recurse.
+    private volatile boolean adminSyncing;
+    private volatile NodeInfo self;
+    private ScheduledExecutorService scheduler;
+
+    public void addListener(MembershipListener listener) {
+        listeners.add(listener);
+    }
+
+    public NodeInfo getSelf() {
+        return self;
+    }
+
+    public void setAdminSyncing(boolean syncing) {
+        adminSyncing = syncing;
+    }
+
+    public MembershipView membershipView() {
+        return new MembershipView(members.values());
+    }
+
+    public void bootstrap(NodeInfo self) {
+        this.self = self;
+        members.put(self.getNodeId(), self);
+        lastSeen.put(self.getNodeId(), System.currentTimeMillis());
+        notifyListenersInOrder();
+    }
+
+    public void start() {
+        bootstrap(buildSelf(resolveNodeId()));
+        joinSeeds();
+        scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            final var thread = new Thread(runnable, "cluster-gossip");
+            thread.setDaemon(true);
+            return thread;
+        });
+        final var interval = clusterConfig.gossipIntervalMs();
+        scheduler.scheduleAtFixedRate(this::gossipTickSafely, interval, interval, TimeUnit.MILLISECONDS);
+        logger.info("Cluster node " + self.getNodeId() + " started on " + self.address());
+    }
+
+    public void stop() {
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+        pool.closeAll();
+    }
+
+    private void joinSeeds() {
+        for (var seed : clusterConfig.seeds()) {
+            if (seed.getHost().equals(self.getHost()) && seed.getPort() == self.getPort()) {
+                continue;
+            }
+            try {
+                final var response = pool.request(seed, message(ClusterMessageType.JOIN_REQUEST),
+                        clusterConfig.replicationAckTimeoutMs());
+                mergeAll(response.getMembers());
+            } catch (Exception e) {
+                logger.warning("Could not join seed " + seed + ": " + e.getMessage());
+            }
+        }
+        maybeNotify();
+    }
+
+    public void gossipTickSafely() {
+        try {
+            gossipTick();
+        } catch (Exception e) {
+            logger.error("Error during gossip tick", e);
+        }
+    }
+
+    public void gossipTick() {
+        final var now = System.currentTimeMillis();
+        self.setHeartbeat(heartbeatCounter.incrementAndGet());
+        self.setScriptLoad(scriptLoad.current());
+        self.setScriptCapacity(scriptAdmission.capacity());
+        self.setAdminSyncing(adminSyncing);
+        lastSeen.put(self.getNodeId(), now);
+        gossipToPeers();
+        detectFailures(now);
+        maybeNotify();
+    }
+
+    private void gossipToPeers() {
+        final var live = new ArrayList<NodeAddress>();
+        final var probes = new ArrayList<NodeAddress>();
+        final var now = System.currentTimeMillis();
+        for (final var member : members.values()) {
+            if (member.getNodeId().equals(self.getNodeId())) {
+                continue;
+            }
+            if (member.getState() == NodeState.ALIVE) {
+                live.add(member.address());
+            } else if (probeIsDue(member.getNodeId(), now)) {
+                probes.add(member.address());
+            }
+        }
+        final var payload = snapshot();
+        final var timeout = clusterConfig.replicationAckTimeoutMs();
+        probes.forEach(address -> gossipTo(address, payload, timeout, null));
+        if (live.isEmpty()) {
+            return;
+        }
+        final var done = new CountDownLatch(live.size());
+        live.forEach(address -> gossipTo(address, payload, timeout, done));
+        try {
+            if (!done.await(timeout, TimeUnit.MILLISECONDS)) {
+                logger.warning("Gossip round did not complete within " + timeout + "ms");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean probeIsDue(String nodeId, long now) {
+        final var last = lastProbe.get(nodeId);
+        if (last != null && now - last < clusterConfig.deadProbeIntervalMs()) {
+            return false;
+        }
+        lastProbe.put(nodeId, now);
+        return true;
+    }
+
+    private void gossipTo(NodeAddress address, List<NodeInfo> payload, long timeout, CountDownLatch done) {
+        Thread.ofVirtual().name("cluster-gossip").start(() -> {
+            try {
+                final var message = new ClusterMessage(null, ClusterMessageType.GOSSIP, clusterConfig.secret(), self,
+                        payload);
+                mergeAll(pool.request(address, message, timeout).getMembers());
+            } catch (Exception e) {
+                logger.warning("Gossip to " + address + " failed: " + e.getMessage());
+            } finally {
+                if (done != null) {
+                    done.countDown();
+                }
+            }
+        });
+    }
+
+    public ClusterMessage handleJoin(ClusterMessage request) {
+        merge(request.getSender());
+        maybeNotify();
+        return message(ClusterMessageType.JOIN_RESPONSE);
+    }
+
+    public ClusterMessage handleGossip(ClusterMessage request) {
+        merge(request.getSender());
+        mergeAll(request.getMembers());
+        maybeNotify();
+        return message(ClusterMessageType.GOSSIP_ACK);
+    }
+
+    public void detectFailures(long nowMillis) {
+        for (var member : members.values()) {
+            if (member.getNodeId().equals(self.getNodeId())) {
+                continue;
+            }
+            final var elapsed = nowMillis - lastSeen.getOrDefault(member.getNodeId(), 0L);
+            if (elapsed > clusterConfig.deadEvictionMs()) {
+                members.remove(member.getNodeId());
+                lastSeen.remove(member.getNodeId());
+                lastProbe.remove(member.getNodeId());
+                evicted.put(member.getNodeId(), new Evicted(nowMillis, member.getIncarnation()));
+                changed.set(true);
+                logger.warning("Evicted node " + member.getNodeId() + " from the membership view after " + elapsed
+                        + "ms without contact");
+                continue;
+            }
+            final NodeState newState;
+            if (elapsed > clusterConfig.deadTimeoutMs()) {
+                newState = NodeState.DEAD;
+            } else if (elapsed > clusterConfig.suspectTimeoutMs()) {
+                newState = NodeState.SUSPECT;
+            } else {
+                newState = NodeState.ALIVE;
+            }
+            if (member.getState() != newState) {
+                member.setState(newState);
+                changed.set(true);
+            }
+        }
+    }
+
+    private void mergeAll(List<NodeInfo> incoming) {
+        if (incoming == null) {
+            return;
+        }
+        for (var node : incoming) {
+            merge(node);
+        }
+    }
+
+    private void merge(NodeInfo incoming) {
+        if (incoming == null || incoming.getNodeId() == null || incoming.getNodeId().equals(selfId())) {
+            return;
+        }
+        if (wasRecentlyEvicted(incoming)) {
+            return;
+        }
+        final var becameChanged = new AtomicBoolean();
+        members.compute(incoming.getNodeId(), (id, existing) -> {
+            if (existing == null) {
+                lastSeen.put(id, System.currentTimeMillis());
+                becameChanged.set(true);
+                final var joined = new NodeInfo(id, incoming.getHost(), incoming.getPort(),
+                        incoming.getState() != null ? incoming.getState() : NodeState.ALIVE, incoming.getIncarnation(),
+                        incoming.getHeartbeat());
+                joined.copyTelemetryFrom(incoming);
+                return joined;
+            }
+            final var fresher = incoming.getIncarnation() > existing.getIncarnation()
+                    || (incoming.getIncarnation() == existing.getIncarnation()
+                            && incoming.getHeartbeat() > existing.getHeartbeat());
+            if (fresher) {
+                existing.setIncarnation(incoming.getIncarnation());
+                existing.setHeartbeat(incoming.getHeartbeat());
+                existing.setHost(incoming.getHost());
+                existing.setPort(incoming.getPort());
+                existing.copyTelemetryFrom(incoming);
+                lastSeen.put(id, System.currentTimeMillis());
+                if (existing.getState() != NodeState.ALIVE) {
+                    lastProbe.remove(id);
+                    existing.setState(NodeState.ALIVE);
+                    becameChanged.set(true);
+                }
+            }
+            return existing;
+        });
+        if (becameChanged.get()) {
+            changed.set(true);
+        }
+    }
+
+    private String selfId() {
+        return self != null ? self.getNodeId() : null;
+    }
+
+    private void maybeNotify() {
+        notifyLock.lock();
+        try {
+            if (changed.getAndSet(false)) {
+                notifyListeners();
+            }
+        } finally {
+            notifyLock.unlock();
+        }
+    }
+
+    private void notifyListenersInOrder() {
+        notifyLock.lock();
+        try {
+            notifyListeners();
+        } finally {
+            notifyLock.unlock();
+        }
+    }
+
+    private void notifyListeners() {
+        final var view = membershipView();
+        for (var listener : listeners) {
+            listener.onMembershipChanged(view);
+        }
+    }
+
+    private ClusterMessage message(ClusterMessageType type) {
+        return new ClusterMessage(null, type, clusterConfig.secret(), self, snapshot());
+    }
+
+    private List<NodeInfo> snapshot() {
+        return members.values().stream().filter(member -> member.getState() != NodeState.DEAD).toList();
+    }
+
+    private record Evicted(long atMillis, long incarnation) {
+    }
+
+    private boolean wasRecentlyEvicted(NodeInfo incoming) {
+        final var record = evicted.get(incoming.getNodeId());
+        if (record == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() - record.atMillis() > clusterConfig.deadEvictionMs()
+                || incoming.getIncarnation() > record.incarnation()) {
+            evicted.remove(incoming.getNodeId());
+            return false;
+        }
+        return true;
+    }
+
+    private NodeInfo buildSelf(String nodeId) {
+        return new NodeInfo(nodeId, clusterConfig.advertisedAddress(), clusterConfig.clusterPort(), NodeState.ALIVE,
+                System.currentTimeMillis(), 0L, 0, scriptAdmission.capacity());
+    }
+
+    public String resolveNodeId() {
+        final var configured = clusterConfig.configuredNodeId();
+        if (configured != null && !configured.isBlank()) {
+            return configured.trim();
+        }
+        final var path = fs.nodeIds().file();
+        try {
+            final var content = fs.nodeIds().read();
+            if (content != null) {
+                final var stored = content.trim();
+                if (isWellFormedNodeId(stored)) {
+                    return stored;
+                }
+                throw new IllegalStateException("The node id at " + path + " is not a valid uuid. A truncated or"
+                        + " corrupt id silently changes this node's identity, which reshuffles hash-ring ownership"
+                        + " and orphans every trigger run stamped under the old one. Repair or delete the file,"
+                        + " or set nodeId in the configuration.");
+            }
+            final var generated = UUID.randomUUID().toString();
+            fs.nodeIds().write(generated);
+            return generated;
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not persist the node id at " + path + ". An ephemeral id changes"
+                    + " this node's identity on every restart, so it must not start clustered without one.", e);
+        }
+    }
+
+    public String persistedNodeId() {
+        try {
+            final var content = fs.nodeIds().read();
+            if (content == null) {
+                return null;
+            }
+            final var stored = content.trim();
+            return isWellFormedNodeId(stored) ? stored : null;
+        } catch (IOException e) {
+            logger.warning("Could not read the node id at " + fs.nodeIds().file() + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean isWellFormedNodeId(String candidate) {
+        if (candidate.isBlank()) {
+            return false;
+        }
+        try {
+            return UUID.fromString(candidate).toString().equals(candidate);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+}

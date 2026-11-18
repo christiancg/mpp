@@ -1,0 +1,58 @@
+package org.ccg.mpp.ops;
+
+import java.util.stream.Collectors;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.PeerNames;
+import org.ccg.mpp.cluster.msg.TxReplicationPayload;
+import org.ccg.mpp.concurrency.ResourceLocking;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.listen.ListenManager;
+import org.ccg.mpp.log.Logger;
+
+public final class ReplicatedTxApplyHelper {
+    private static final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
+    private static final ListenManager listenManager = IocContainer.get(ListenManager.class);
+    private static final Logger logger = Logger.logFor(ReplicatedTxApplyHelper.class);
+
+    private ReplicatedTxApplyHelper() {
+    }
+
+    public static boolean apply(TxReplicationPayload payload, long timeoutMillis) {
+        if (payload == null || payload.getEntries().isEmpty() || payload.getEntries().stream()
+                .anyMatch(entry -> entry == null || !PeerNames.collection(entry.getDbName(), entry.getCollName()))) {
+            return false;
+        }
+        final var collIds = payload.getEntries().stream()
+                .map(entry -> Cache.getCollectionIdentifier(entry.getDbName(), entry.getCollName()))
+                .collect(Collectors.toSet());
+        try {
+            return applyUnderWriteLocks(payload, collIds, timeoutMillis);
+        } catch (Exception e) {
+            logger.error("Failed to apply replicated transaction batch", e);
+            return false;
+        }
+    }
+
+    private static boolean applyUnderWriteLocks(TxReplicationPayload payload, java.util.Set<String> collIds,
+            long timeoutMillis) throws Exception {
+        final ResourceLocking.LockedAction<Boolean> applyEntries = () -> {
+            if (!payload.getEntries().stream().allMatch(ReplicatedApplyHelper::versionsWithinSkew)) {
+                return false;
+            }
+            if (payload.getEntries().stream().anyMatch(ReplicatedApplyHelper::belongsToAnotherIncarnation)) {
+                logger.warning("Refusing a replicated transaction batch: one of its collections was dropped and"
+                        + " re-created since the batch was built");
+                return false;
+            }
+            try (var batch = listenManager.openBatch(collIds)) {
+                for (final var entry : payload.getEntries()) {
+                    if (!ReplicatedApplyHelper.applyLocked(entry, batch)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        };
+        return locks.withWriteLocks(collIds, timeoutMillis, applyEntries);
+    }
+}

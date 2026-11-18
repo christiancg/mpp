@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from lwnrdb import ConnectionLostError, LwnrdbError, MappingError, RequestTimeoutError, ServerClosedConnectionError
-from lwnrdb._internal.values_codec import JsonObject
-from lwnrdb._internal.wire_connection import WireConnection, decode_line
+from mpp import ConnectionLostError, MappingError, MppError, RequestTimeoutError, ServerClosedConnectionError
+from mpp._internal.values_codec import JsonObject
+from mpp._internal.wire_connection import WireConnection, decode_line
 from tests.support.fake_server import FakeServer, Session
 from tests.support.recording_channel import ok
 
@@ -42,9 +42,9 @@ async def test_a_line_that_is_not_json_fails_only_the_oldest_request(fake: FakeS
     first = asyncio.create_task(connection.request({"type": "SAVE", "n": 1}, 5))
     second = asyncio.create_task(connection.request({"type": "SAVE", "n": 2}, 5))
     third = asyncio.create_task(connection.request({"type": "SAVE", "n": 3}, 5))
-    with pytest.raises(LwnrdbError, match="The command is not valid"):
+    with pytest.raises(MppError, match="The command is not valid"):
         await first
-    with pytest.raises(LwnrdbError, match="refused the request"):
+    with pytest.raises(MppError, match="refused the request"):
         await second
     assert (await third)["n"] == 1
     assert connection.is_open
@@ -58,7 +58,7 @@ async def test_an_overlong_reply_fails_its_request_and_keeps_the_connection(fake
 
     fake.responder = answer
     connection = await _connect(fake, max_reply_bytes=100)
-    with pytest.raises(LwnrdbError, match="max_reply_bytes"):
+    with pytest.raises(MppError, match="max_reply_bytes"):
         await connection.request({"type": "AGGREGATE", "big": True}, 5)
     assert (await connection.request({"type": "AGGREGATE"}, 5))["payload"] == "y"
     connection.close()
@@ -95,7 +95,7 @@ async def test_an_unsolicited_close_fails_every_pending_request(fake: FakeServer
         session.send({"type": "CLOSE_CONNECTION", "status": "ERROR", "message": "backlog", "errorCode": "413-1"})
 
     fake.responder = answer
-    closed: list[LwnrdbError] = []
+    closed: list[MppError] = []
     connection = await _connect(fake)
     connection.on_close(closed.append)
     with pytest.raises(ServerClosedConnectionError, match="backlog") as caught:

@@ -1,0 +1,69 @@
+package org.ccg.mpp.unit.ejson.type_adapters.impl;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.ejson.EJson;
+import org.ccg.mpp.ejson.elements.JsonBoolean;
+import org.ccg.mpp.ejson.elements.JsonPrimitive;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ejson.type_adapters.impl.JsonPrimitiveTypeAdapter;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class JsonPrimitiveTypeAdapterTest {
+
+    @BeforeEach
+    public void setUp() {
+        new EJson();
+    }
+
+    @Test
+    public void test_boolean_primitive_to_json() {
+        JsonPrimitiveTypeAdapter adapter = new JsonPrimitiveTypeAdapter();
+
+        JsonBoolean booleanValue = JsonBoolean.of(true);
+
+        String result = adapter.toJson(booleanValue);
+
+        assertEquals("true", result);
+    }
+
+    @Test
+    public void test_json_primitive_string_value_conversion() {
+        JsonPrimitiveTypeAdapter adapter = new JsonPrimitiveTypeAdapter();
+        JsonPrimitive<String> primitive = new JsonString("test");
+
+        String result = adapter.toJson(primitive);
+
+        assertEquals("\"test\"", result);
+    }
+
+    @Test
+    public void test_null_json_primitive_handling() {
+        JsonPrimitiveTypeAdapter adapter = new JsonPrimitiveTypeAdapter();
+        String result = adapter.toJson(null);
+
+        assertEquals("null", result);
+    }
+
+    @Test
+    public void test_boolean_element_converts_to_primitive() {
+        JsonPrimitiveTypeAdapter adapter = new JsonPrimitiveTypeAdapter();
+        JsonBoolean boolElement = JsonBoolean.of(true);
+
+        JsonPrimitive<?> result = adapter.fromJson(boolElement);
+
+        assertNotNull(result);
+        assertTrue(result.isJsonBoolean());
+        assertEquals(true, result.getValue());
+    }
+
+    @Test
+    public void test_null_input_returns_null() {
+        JsonPrimitiveTypeAdapter adapter = new JsonPrimitiveTypeAdapter();
+
+        JsonPrimitive<?> result = adapter.fromJson(null);
+
+        assertNull(result);
+    }
+}

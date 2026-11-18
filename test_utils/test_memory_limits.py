@@ -88,7 +88,7 @@ def assert_eviction_actually_happened(label: str, snapshot: dict):
     if on_disk <= cap:
         print(f"  [skip] {label}: on-disk size ({on_disk}B) does not exceed cap "
               f"({cap}B) — eviction is not expected to fire. "
-              f"Lower maxMemory in lwnrdb.cfg to actually exercise this.")
+              f"Lower maxMemory in mpp.cfg to actually exercise this.")
         return
     check(
         f"{label}: with on-disk={on_disk}B > cap={cap}B, cache holds only {used}B (subset)",
@@ -156,7 +156,7 @@ def test_mass_insert_with_eviction(c):
     check(
         f"Server stayed responsive during mass insert (max probe latency = {max_probe_ms:.1f} ms, budget = {LATENCY_BUDGET_MS} ms)",
         max_probe_ms < LATENCY_BUDGET_MS,
-        detail=f"if this fails the eviction sweep is likely blocking the request path",
+        detail="if this fails the eviction sweep is likely blocking the request path",
     )
     return sample_ids
 
@@ -216,7 +216,7 @@ def test_repeated_full_scan(c):
         counts.append(r.get("status"))
 
     check(
-        f"All 5 full scans returned OK",
+        "All 5 full scans returned OK",
         all(c == "OK" for c in counts),
         detail=f"statuses={counts}",
     )
@@ -308,7 +308,7 @@ def load_admission_fixture(c: Conn):
 def test_index_admission_evicts_documents_under_a_full_cache():
     section(f"Index admission evicts documents when scans have filled a {ADMISSION_MAX_MEMORY} cache")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-admission-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-admission-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, ADMISSION_PORT, maxMemory=ADMISSION_MAX_MEMORY, syncWrites=False)
     proc = None
@@ -440,7 +440,7 @@ def test_correctness_after_the_pk_list_is_evicted(c: Conn):
 
 def run_tight_memory_phase():
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-tight-memory-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-tight-memory-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, OWN_PORT, maxMemory=TIGHT_MAX_MEMORY)
     print(f"\n  Starting an own server on {HOST}:{OWN_PORT} with maxMemory={TIGHT_MAX_MEMORY} ...")
@@ -485,7 +485,7 @@ def load_auto_memory_fixture(c: Conn) -> list:
 def test_auto_max_memory_follows_heap():
     section(f"maxMemory=auto takes {AUTO_SHARE:.0%} of a -Xmx{AUTO_XMX} heap and survives {AUTO_DOCS} documents")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-auto-memory-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-auto-memory-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, AUTO_PORT)
     proc = None
@@ -572,7 +572,7 @@ def test_server_still_alive(c):
 def main():
     bu.banner("Memory limits & eviction test suite", HOST, PORT)
     print(f"  Plan: insert ~{(DOCS_PER_COLLECTION * PAYLOAD_BYTES * 2) // (1024*1024)}MB total")
-    print(f"        Tune maxMemory in lwnrdb.cfg low (e.g. 4mb) to force eviction.")
+    print("        Tune maxMemory in mpp.cfg low (e.g. 4mb) to force eviction.")
 
     with Conn() as c:
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)

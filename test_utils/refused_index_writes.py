@@ -193,7 +193,7 @@ def test_file_answers_follow_a_growing_log_and_its_folds(c: Conn, work_dir: str)
 
 def run_refused_index_phase():
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-refused-index-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-refused-index-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, REFUSED_PORT, maxMemory=REFUSED_MAX_MEMORY)
     print(f"\n  Starting an own server on {HOST}:{REFUSED_PORT} with maxMemory={REFUSED_MAX_MEMORY} ...")

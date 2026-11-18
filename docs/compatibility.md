@@ -1,6 +1,6 @@
 # Compatibility and upgrades
 
-LWNRDB is at 0.x and still experimental. This page says what can change from one release to the next, how the server
+MPP is at 0.x and still experimental. This page says what can change from one release to the next, how the server
 protects a data folder from a release that can't read it, and how to move your data to a new release.
 
 ## Version numbers
@@ -50,11 +50,11 @@ A refusal is one `FATAL` line and exit status `1`, and the folder is left exactl
 file and says what to do:
 
 ```
-/data/db/format.json says this folder holds storage format 2 (written by lwnrdb 0.3.0), but this release (0.2.0)
-reads only format 1. Run lwnrdb 0.3.0 or newer on this folder.
+/data/db/format.json says this folder holds storage format 2 (written by mpp 0.3.0), but this release (0.2.0)
+reads only format 1. Run mpp 0.3.0 or newer on this folder.
 
-/data/db/format.json says this folder holds storage format 1 (written by lwnrdb 0.1.0), but this release (0.2.0)
-reads only format 2. Dump it with lwnrdb 0.1.0 (java -jar lwnrdb.jar --dump ... > backup.jsonl), then start this
+/data/db/format.json says this folder holds storage format 1 (written by mpp 0.1.0), but this release (0.2.0)
+reads only format 2. Dump it with mpp 0.1.0 (java -jar mpp.jar --dump ... > backup.jsonl), then start this
 release on an empty filePath and restore it (--restore < backup.jsonl).
 ```
 
@@ -73,7 +73,7 @@ If it is different:
 
 1. With the old release still running, dump everything as an admin, so every database is included:
    ```bash
-   java -jar lwnrdb.jar --dump --password ... > backup.jsonl
+   java -jar mpp.jar --dump --password ... > backup.jsonl
    ```
 2. Stop the old server and keep its folder until the new one is verified.
 3. Start the new release on an empty `filePath`, with a `defaultAdminPassword` for its first admin.
@@ -81,7 +81,7 @@ If it is different:
    never leave the server ([operations.md](operations.md#what-a-dump-does-not-carry)).
 5. Restore into it:
    ```bash
-   java -jar lwnrdb.jar --restore --password ... < backup.jsonl
+   java -jar mpp.jar --restore --password ... < backup.jsonl
    ```
 
 A dump reads each database from one consistent snapshot, so step 1 can run while the application keeps writing. Writes

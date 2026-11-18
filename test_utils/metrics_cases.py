@@ -60,7 +60,7 @@ def scrape() -> dict:
 
 
 def value(samples: dict, name: str, **labels) -> float:
-    return samples.get((f"lwnrdb_{name}", tuple(sorted(labels.items()))), 0.0)
+    return samples.get((f"mpp_{name}", tuple(sorted(labels.items()))), 0.0)
 
 
 def requests(samples: dict, operation: str, status: str, code: str = "") -> float:
@@ -86,7 +86,7 @@ def test_a_scrape_is_prometheus_text():
 
 
 def test_build_info_matches_server_info():
-    section("lwnrdb_build_info names what SERVER_INFO names")
+    section("mpp_build_info names what SERVER_INFO names")
     with Conn.authenticated() as c:
         info = c.send({"type": "SERVER_INFO"}).get("server") or {}
     labels = {"version": info.get("version"), "protocol_version": str(info.get("protocolVersion")),
@@ -126,7 +126,7 @@ def test_requests_are_counted_by_operation_status_and_code():
 
 
 def test_the_connection_gauge_follows_open_connections():
-    section("lwnrdb_connections follows the open client connections")
+    section("mpp_connections follows the open client connections")
     baseline = value(scrape(), "connections")
     opened = [Conn.authenticated(), Conn.authenticated()]
     try:
@@ -140,7 +140,7 @@ def test_the_connection_gauge_follows_open_connections():
 
 
 def test_the_document_total_matches_database_stats():
-    section("lwnrdb_documents agrees with GET_DATABASE_STATS")
+    section("mpp_documents agrees with GET_DATABASE_STATS")
 
     def stats_entries():
         with Conn.authenticated() as c:
@@ -166,7 +166,7 @@ def documented_metrics(guide_text: str) -> set:
 def test_every_scraped_family_is_documented():
     section("Every metric family a scrape returns has a row in docs/operations.md")
     status, _, body = _request()
-    families = {line.split(" ")[2].removeprefix("lwnrdb_") for line in body.splitlines() if line.startswith("# TYPE ")}
+    families = {line.split(" ")[2].removeprefix("mpp_") for line in body.splitlines() if line.startswith("# TYPE ")}
     with open(GUIDE, encoding="utf-8") as guide:
         documented = documented_metrics(guide.read())
     check("The scrape answers 200 and returns families", status == 200 and len(families) > 0, f"status={status}")
@@ -190,7 +190,7 @@ def test_refusals():
 
 def test_a_metrics_port_equal_to_the_client_port_refuses_to_start(write_config, port: int):
     section("A metricsPort equal to port refuses to start")
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-metrics-collision-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-metrics-collision-")
     write_config(work_dir, port, metricsPort=port)
     log_path = os.path.join(work_dir, "server.out")
     code = bu.run_until_exit(work_dir, log_path)
@@ -200,7 +200,7 @@ def test_a_metrics_port_equal_to_the_client_port_refuses_to_start(write_config, 
 
 
 def run_all(write_config, port: int):
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-metrics-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-metrics-")
     write_config(work_dir, port, metricsPort=METRICS_PORT, metricsToken=TOKEN)
     log_path = os.path.join(work_dir, "server.log")
     print(f"  Metrics phase working dir: {work_dir}")

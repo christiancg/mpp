@@ -432,7 +432,7 @@ def main():
 
     bu.require_jar()
 
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-scriptcontrol-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-scriptcontrol-")
     log_path = os.path.join(work_dir, "server.log")
     print(f"  Working dir: {work_dir}")
 

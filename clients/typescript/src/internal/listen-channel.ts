@@ -1,5 +1,5 @@
 import type { Document } from "../document.js";
-import type { ListenEndedError, LwnrdbError } from "../errors/errors.js";
+import type { ListenEndedError, MppError } from "../errors/errors.js";
 import type { ListenHandler, Subscription } from "../subscription.js";
 import { isListenEnd } from "./frame-router.js";
 import type { RequestEncoder } from "./request-encoder.js";
@@ -215,7 +215,7 @@ export class ListenChannel {
         }
     }
 
-    async #lost(cause: LwnrdbError): Promise<void> {
+    async #lost(cause: MppError): Promise<void> {
         this.#closing = true;
         const lost = [...this.#registrations.values()];
         this.#registrations.clear();

@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from lwnrdb import ConnectionLostError, PoolExhaustedError
-from lwnrdb._internal.connection_factory import ConnectionFactory
-from lwnrdb._internal.connection_pool import ConnectionPool
-from lwnrdb._internal.request_encoder import RequestEncoder
+from mpp import ConnectionLostError, PoolExhaustedError
+from mpp._internal.connection_factory import ConnectionFactory
+from mpp._internal.connection_pool import ConnectionPool
+from mpp._internal.request_encoder import RequestEncoder
 from tests.support.fake_server import FakeServer
 
 

@@ -4,20 +4,20 @@ import asyncio
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ConflictError, LwnrdbClient
+from mpp import AsyncMppClient, ConflictError, MppClient
 
 pytestmark = pytest.mark.it
 SERVER_CONFIG = {"transactionIdleTimeoutMs": "4000"}
 
 
-async def _bank(client: AsyncLwnrdbClient, name: str) -> None:
+async def _bank(client: AsyncMppClient, name: str) -> None:
     database = client.database(name)
     await database.create()
     await database.collection("accounts").create()
     await database.collection("ledger").create()
 
 
-async def test_a_commit_is_visible_and_reads_inside_see_their_own_writes(client: AsyncLwnrdbClient) -> None:
+async def test_a_commit_is_visible_and_reads_inside_see_their_own_writes(client: AsyncMppClient) -> None:
     await _bank(client, "tx_commit")
     async with client.transaction() as tx:
         accounts = tx.collection("tx_commit", "accounts")
@@ -31,13 +31,13 @@ async def test_a_commit_is_visible_and_reads_inside_see_their_own_writes(client:
     assert await client.database("tx_commit").collection("accounts").find_by_id("a") is not None
 
 
-async def _save_then_fail(client: AsyncLwnrdbClient) -> None:
+async def _save_then_fail(client: AsyncMppClient) -> None:
     async with client.transaction() as tx:
         await tx.collection("tx_rollback", "accounts").save({"_id": "f"})
         raise RuntimeError("body")
 
 
-async def test_a_rollback_and_a_failing_body_leave_nothing(client: AsyncLwnrdbClient) -> None:
+async def test_a_rollback_and_a_failing_body_leave_nothing(client: AsyncMppClient) -> None:
     await _bank(client, "tx_rollback")
     transaction = await client.begin_transaction()
     await transaction.collection("tx_rollback", "accounts").save({"_id": "r"})
@@ -47,7 +47,7 @@ async def test_a_rollback_and_a_failing_body_leave_nothing(client: AsyncLwnrdbCl
     assert await client.database("tx_rollback").collection("accounts").query().to_list() == []
 
 
-async def test_an_idle_transaction_is_rolled_back_by_the_server(client: AsyncLwnrdbClient) -> None:
+async def test_an_idle_transaction_is_rolled_back_by_the_server(client: AsyncMppClient) -> None:
     await _bank(client, "tx_idle")
     transaction = await client.begin_transaction()
     await transaction.collection("tx_idle", "accounts").save({"_id": "idle"})
@@ -58,7 +58,7 @@ async def test_an_idle_transaction_is_rolled_back_by_the_server(client: AsyncLwn
     assert await client.database("tx_idle").collection("accounts").find_by_id("idle") is None
 
 
-async def test_transactions_on_different_collections_run_concurrently(client: AsyncLwnrdbClient) -> None:
+async def test_transactions_on_different_collections_run_concurrently(client: AsyncMppClient) -> None:
     await _bank(client, "tx_parallel")
     first = await client.begin_transaction()
     second = await client.begin_transaction()
@@ -71,13 +71,13 @@ async def test_transactions_on_different_collections_run_concurrently(client: As
     assert await database.collection("ledger").find_by_id("y") is not None
 
 
-def _save_then_refuse(client: LwnrdbClient) -> None:
+def _save_then_refuse(client: MppClient) -> None:
     with client.transaction() as tx:
         tx.collection("tx_sync", "accounts").save({"_id": "dropped"})
         raise ValueError("nope")
 
 
-def test_the_sync_client_commits_and_rolls_back(sync_client: LwnrdbClient) -> None:
+def test_the_sync_client_commits_and_rolls_back(sync_client: MppClient) -> None:
     bank = sync_client.database("tx_sync")
     bank.create()
     bank.collection("accounts").create()

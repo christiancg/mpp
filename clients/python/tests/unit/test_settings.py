@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lwnrdb import DEFAULT_RETRY_POLICY, NO_RETRIES, ClientSettings, Credentials, RetryPolicy, ServerAddress
+from mpp import DEFAULT_RETRY_POLICY, NO_RETRIES, ClientSettings, Credentials, RetryPolicy, ServerAddress
 
 
 def test_defaults() -> None:

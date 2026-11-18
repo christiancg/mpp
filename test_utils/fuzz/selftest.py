@@ -152,7 +152,7 @@ def _test_clean_report_names_the_start_seed() -> None:
 
 
 def _test_report_append_writes_nothing_without_a_path() -> None:
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-report-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-report-")
     path = os.path.join(work_dir, "summary.md")
     append(None, "x")
     append(path, "a")

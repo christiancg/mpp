@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { ConflictError, field, LwnrdbError } from "../../src/index.js";
+import { ConflictError, field, MppError } from "../../src/index.js";
 import { serverIt } from "./server-it.js";
 
 const it = serverIt();
@@ -23,7 +23,7 @@ describe("databases, collections, indexes and schemas", () => {
         const conflict = it.client.database("case_DB").create();
         await expect(conflict).rejects.toBeInstanceOf(ConflictError);
         await expect(conflict).rejects.toMatchObject({ rawCode: "409-11" });
-        await expect(it.client.database("Admin").create()).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(it.client.database("Admin").create()).rejects.toBeInstanceOf(MppError);
         expect(() => it.client.database("no")).toThrow(TypeError);
     });
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lwnrdb._internal.custom_values import looks_custom, parse_custom_exact
+from mpp._internal.custom_values import looks_custom, parse_custom_exact
 
 
 def _same_custom_value(left: str, right: str) -> bool:

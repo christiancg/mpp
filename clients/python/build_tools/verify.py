@@ -22,7 +22,7 @@ def _steps(dist: Path) -> list[tuple[str, list[str]]]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="lwnrdb-dist-") as folder:
+    with tempfile.TemporaryDirectory(prefix="mpp-dist-") as folder:
         for name, command in _steps(Path(folder)):
             sys.stdout.write(f"==> {name}\n")
             sys.stdout.flush()

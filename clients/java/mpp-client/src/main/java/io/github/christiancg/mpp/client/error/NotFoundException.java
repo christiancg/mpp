@@ -1,0 +1,9 @@
+package io.github.christiancg.mpp.client.error;
+
+import io.github.christiancg.mpp.client.protocol.Status;
+
+public class NotFoundException extends MppException {
+    public NotFoundException(String message, String rawCode, Status status) {
+        super(message, rawCode, status);
+    }
+}

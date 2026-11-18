@@ -8,7 +8,7 @@ export const ADMIN = "admin";
 export const PASSWORD = "Tst-Admin-9xQ2mV";
 const STARTUP_MS = 90_000;
 const STOP_MS = 30_000;
-const DEFAULT_JAR = join(import.meta.dirname, "..", "..", "..", "..", "target", "lwnrdb.jar");
+const DEFAULT_JAR = join(import.meta.dirname, "..", "..", "..", "..", "target", "mpp.jar");
 
 function freePort(): Promise<number> {
     return new Promise((resolvePort, reject) => {
@@ -54,11 +54,11 @@ export class ServerProcess {
     }
 
     static async start(overrides: Record<string, string> = {}): Promise<ServerProcess> {
-        const jar = resolve(process.env.LWNRDB_JAR ?? DEFAULT_JAR);
+        const jar = resolve(process.env.MPP_JAR ?? DEFAULT_JAR);
         if (!existsSync(jar)) {
             throw new Error(`no server jar at ${jar}; run mvn package -DskipTests at the repository root`);
         }
-        const workDir = mkdtempSync(join(tmpdir(), "lwnrdb-it-"));
+        const workDir = mkdtempSync(join(tmpdir(), "mpp-it-"));
         const port = await freePort();
         const config: Record<string, string> = {
             port: String(port),
@@ -69,7 +69,7 @@ export class ServerProcess {
             ...overrides,
         };
         writeFileSync(
-            join(workDir, "lwnrdb.cfg"),
+            join(workDir, "mpp.cfg"),
             Object.entries(config)
                 .map(([key, value]) => `${key}=${value}\n`)
                 .join(""),

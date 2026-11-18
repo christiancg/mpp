@@ -18,9 +18,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import base_utils as b
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-JAR = REPO / "target" / "lwnrdb.jar"
-IMAGE = "lwnrdb-syscall-audit"
-CONTAINER = "lwnrdb-syscall-audit"
+JAR = REPO / "target" / "mpp.jar"
+IMAGE = "mpp-syscall-audit"
+CONTAINER = "mpp-syscall-audit"
 DB, COLL = "audit", "docs"
 SEED_DOCS = 10000
 BULK_DOCS = 2000
@@ -81,14 +81,14 @@ class Container:
             shutil.copy(JAR, context / "app.jar")
             (context / "Dockerfile").write_text(DOCKERFILE)
             sh("docker", "build", "-q", "-t", IMAGE, str(context))
-        cfg = work / "lwnrdb.cfg"
+        cfg = work / "mpp.cfg"
         cfg.write_text("port=8989\nfilePath=db\nlogPath=logs\ndefaultAdminUsername=admin\n"
                        f"defaultAdminPassword={b.PASSWORD}\nmaxMemory=256mb\nsyncWrites=true\n")
         cfg.chmod(0o644)
         self.port = free_port()
         sh("docker", "rm", "-f", CONTAINER, check=False)
         sh("docker", "run", "-d", "--name", CONTAINER, "--cap-add", "SYS_PTRACE", "--cpus", "2", "-p",
-           f"{self.port}:8989", "-v", f"{self.out}:/out", "-v", f"{cfg}:/app/lwnrdb.cfg:ro", IMAGE, "java",
+           f"{self.port}:8989", "-v", f"{self.out}:/out", "-v", f"{cfg}:/app/mpp.cfg:ro", IMAGE, "java",
            "-XX:+UseG1GC", "-jar", "app.jar")
         b.configure(port=self.port)
         self.await_ready()
@@ -330,7 +330,7 @@ def main() -> None:
     budgets = parse_budgets(args.budget)
     if not args.no_build and not JAR.exists():
         raise SystemExit(f"{JAR} is missing: run mvn clean package -DskipTests first")
-    work = pathlib.Path(tempfile.mkdtemp(prefix="lwnrdb-syscalls-"))
+    work = pathlib.Path(tempfile.mkdtemp(prefix="mpp-syscalls-"))
     container = Container(work, build=not args.no_build)
     try:
         audit = Audit(container, args.ops, args.concurrency)

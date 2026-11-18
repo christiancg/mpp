@@ -1,5 +1,5 @@
 import type { Document, DocumentCodec, Stored } from "./document.js";
-import { ConnectionLostError, LwnrdbError, UnknownOutcomeError } from "./errors/errors.js";
+import { ConnectionLostError, MppError, UnknownOutcomeError } from "./errors/errors.js";
 import { withChannel, type ClientContext } from "./internal/client-context.js";
 import { identityCodec, rowCodec } from "./internal/codecs.js";
 import { CollectionOps, type RowCodec } from "./internal/collection-ops.js";
@@ -141,7 +141,7 @@ export class Transaction implements AsyncDisposable {
 
     #requireOpen(): void {
         if (this.#finished) {
-            throw new LwnrdbError("the transaction is already committed or rolled back");
+            throw new MppError("the transaction is already committed or rolled back");
         }
     }
 }

@@ -1,0 +1,315 @@
+package org.ccg.mpp.unit.config;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import org.ccg.mpp.config.ConfigReader;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class ConfigReaderTest {
+
+    @BeforeEach
+    public void setUp() {
+        final var originalConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        if (originalConfigFile.exists()) {
+            if (!originalConfigFile.renameTo(new File(Globals.FILE_CONFIG_NAME + ".moved"))) {
+                fail("Could not rename config file");
+            }
+        }
+    }
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        final var movedConfigFile = new File(Globals.FILE_CONFIG_NAME + ".moved");
+        if (movedConfigFile.exists()) {
+            if (!movedConfigFile.renameTo(new File(Globals.FILE_CONFIG_NAME))) {
+                fail("Failed returning to original file");
+            }
+        }
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        Configuration.getInstance();
+    }
+
+    @Test
+    public void test_load_configuration_from_default_file() {
+        Map<String, String> expectedConfig = new HashMap<>();
+        expectedConfig.put("port", "8989");
+        expectedConfig.put("maxConnections", "100");
+        expectedConfig.put("maxFailedAuthAttempts", "5");
+        expectedConfig.put("authFailureDelayBaseMs", "250");
+        expectedConfig.put("authFailureDelayMaxMs", "30000");
+        expectedConfig.put("maxConcurrentPasswordChecks", "0");
+        expectedConfig.put("authVerifierCacheEnabled", "true");
+        expectedConfig.put("filePath", "db");
+        expectedConfig.put("backgroundProcessingThreads", "10");
+        expectedConfig.put("logPath", "logs");
+        expectedConfig.put("logLevel", "INFO");
+        expectedConfig.put("maxLogFiles", "7");
+        expectedConfig.put("maxPageSize", "2Mb");
+        expectedConfig.put("syncWrites", "true");
+        expectedConfig.put("walCheckpointBytes", "8Mb");
+        expectedConfig.put("walIdleCheckpointMs", "60000");
+        expectedConfig.put("maxEntrySize", "1Mb");
+        expectedConfig.put("schemaValidationBudget", "5000000");
+        expectedConfig.put("schemaMaxPatternLength", "4096");
+        expectedConfig.put("schemaMaxPatterns", "256");
+        expectedConfig.put("schemaPatternCacheMaxBytes", "32Mb");
+        expectedConfig.put("defaultAdminUsername", "admin");
+        expectedConfig.put("defaultAdminPassword", "");
+        expectedConfig.put("maxMemory", "auto");
+        expectedConfig.put("transactionLockTimeoutMs", "5000");
+        expectedConfig.put("tlsEnabled", "false");
+        expectedConfig.put("tlsKeystorePath", "certs/mpp.p12");
+        expectedConfig.put("tlsKeystorePassword", "change_it");
+        expectedConfig.put("clusterEnabled", "false");
+        expectedConfig.put("clusterPort", "9990");
+        expectedConfig.put("clusterBindAddress", "0.0.0.0");
+        expectedConfig.put("bindAddress", "");
+        expectedConfig.put("metricsPort", "0");
+        expectedConfig.put("metricsBindAddress", "127.0.0.1");
+        expectedConfig.put("metricsToken", "");
+        expectedConfig.put("clusterAdvertisedAddress", "127.0.0.1");
+        expectedConfig.put("clusterSeeds", "");
+        expectedConfig.put("nodeId", "");
+        expectedConfig.put("clusterExpectedSize", "1");
+        expectedConfig.put("gossipIntervalMs", "1000");
+        expectedConfig.put("suspectTimeoutMs", "5000");
+        expectedConfig.put("deadTimeoutMs", "15000");
+        expectedConfig.put("deadEvictionMs", "86400000");
+        expectedConfig.put("deadProbeIntervalMs", "10000");
+        expectedConfig.put("replicationAckTimeoutMs", "5000");
+        expectedConfig.put("virtualNodesPerNode", "128");
+        expectedConfig.put("readFallbackToLocal", "true");
+        expectedConfig.put("scriptRoutingEnabled", "true");
+        expectedConfig.put("scriptLocalityWeight", "50");
+        expectedConfig.put("clusterTlsEnabled", "false");
+        expectedConfig.put("clusterSecret", "");
+        expectedConfig.put("clusterMaxFrameSize", "256Mb");
+        expectedConfig.put("clusterHandshakeTimeoutMs", "5000");
+        expectedConfig.put("clusterMaxClockSkewMs", "3600000");
+        expectedConfig.put("antiEntropyIntervalMs", "60000");
+        expectedConfig.put("tombstoneRetentionMs", "86400000");
+        putScriptingDefaults(expectedConfig);
+        putSecurityLimitDefaults(expectedConfig);
+
+        Map<String, String> actualConfig = ConfigReader.loadConfiguration();
+
+        assertEquals(expectedConfig, actualConfig);
+    }
+
+    private static void putScriptingDefaults(Map<String, String> expectedConfig) {
+        expectedConfig.put("scriptTimeZone", "UTC");
+        expectedConfig.put("scriptLocale", "en-US");
+        expectedConfig.put("scriptsEnabled", "true");
+        expectedConfig.put("scriptInstructionBudget", "10000000");
+        expectedConfig.put("scriptTimeoutMs", "5000");
+        expectedConfig.put("scriptMaxDepth", "200");
+        expectedConfig.put("scriptMaxSourceBytes", "256Kb");
+        expectedConfig.put("scriptMaxLogLines", "1000");
+        expectedConfig.put("scriptMaxLogLineChars", "4096");
+        expectedConfig.put("scriptMaxMemoryBytes", "64Mb");
+        expectedConfig.put("scriptMaxArrayLength", "16777216");
+        expectedConfig.put("scriptMaxResultBytes", "16Mb");
+        expectedConfig.put("scriptCursorBatchSize", "500");
+        expectedConfig.put("scriptCursorMaxBatchSize", "5000");
+        expectedConfig.put("maxConcurrentScripts", "16");
+        expectedConfig.put("scriptQueueWaitMs", "250");
+        expectedConfig.put("maxConcurrentScriptsPerUser", "4");
+        expectedConfig.put("maxConcurrentScriptsPerDatabase", "8");
+        expectedConfig.put("scriptRunHistoryEnabled", "true");
+        expectedConfig.put("scriptRunHistoryKinds", "CALL_PROCEDURE,TRIGGER,SCHEDULE");
+        expectedConfig.put("scriptRunHistoryRetentionMs", "604800000");
+        expectedConfig.put("scriptRunHistoryIncludeLogs", "false");
+        expectedConfig.put("scriptRunHistoryMaxErrorChars", "2000");
+        expectedConfig.put("scriptRunHistoryMaxQueued", "10000");
+        expectedConfig.put("scriptRunHistoryMaxRows", "100000");
+        expectedConfig.put("scriptRunHistorySweepMs", "3600000");
+        expectedConfig.put("scriptFetchEnabled", "true");
+        expectedConfig.put("scriptFetchAllowlist", "*");
+        expectedConfig.put("scriptFetchTimeoutMs", "5000");
+        expectedConfig.put("scriptFetchMaxResponseBytes", "1Mb");
+        expectedConfig.put("scriptFetchMaxConcurrent", "8");
+        expectedConfig.put("metadataCacheMaxBytes", "72Mb");
+        expectedConfig.put("metadataCacheMaxEntries", "4096");
+        expectedConfig.put("procedureCacheSize", "128");
+        expectedConfig.put("procedureCacheMaxBytes", "16Mb");
+        expectedConfig.put("maxProceduresPerDatabase", "500");
+        expectedConfig.put("maxCollectionsPerDatabase", "1000");
+        expectedConfig.put("maxDatabases", "1000");
+        expectedConfig.put("maxIndexesPerCollection", "64");
+        expectedConfig.put("triggersEnabled", "false");
+        expectedConfig.put("triggerThreads", "2");
+        expectedConfig.put("triggerQueueSize", "10000");
+        expectedConfig.put("triggerQueueMaxBytes", "64Mb");
+        expectedConfig.put("triggerMaxPerCollection", "50");
+        expectedConfig.put("triggerMaxDepth", "3");
+        expectedConfig.put("triggerTimeoutMs", "1000");
+        expectedConfig.put("shutdownTimeoutMs", "15000");
+        expectedConfig.put("maxRequestSize", "64Mb");
+        expectedConfig.put("clientOutboundQueueMaxBytes", "16Mb");
+        expectedConfig.put("maxUnsentResponseBytes", "0");
+        expectedConfig.put("clientWriteStallTimeoutMs", "30000");
+        expectedConfig.put("authTimeoutMs", "10000");
+        expectedConfig.put("transactionIdleTimeoutMs", "30000");
+        expectedConfig.put("triggerRunLogEnabled", "true");
+        expectedConfig.put("triggerRunRetentionMs", "86400000");
+        expectedConfig.put("triggerMaxAttempts", "3");
+        expectedConfig.put("triggerRetryBackoffMs", "1000");
+        expectedConfig.put("triggerRetryMaxBackoffMs", "60000");
+        expectedConfig.put("triggerDeadLetterRetentionMs", "604800000");
+        expectedConfig.put("triggerDeadLetterMaxRuns", "10000");
+        expectedConfig.put("beforeHookInstructionBudget", "200000");
+        expectedConfig.put("beforeHookTimeoutMs", "200");
+        expectedConfig.put("schedulesEnabled", "true");
+        expectedConfig.put("scheduleThreads", "2");
+        expectedConfig.put("scheduleQueueSize", "100");
+        expectedConfig.put("scheduleTickMs", "1000");
+        expectedConfig.put("scheduleRefreshMs", "60000");
+        expectedConfig.put("scheduleTimeoutMs", "30000");
+        expectedConfig.put("scheduleMaxPerDatabase", "100");
+        expectedConfig.put("scheduleMaxTotalPerUser", "500");
+        expectedConfig.put("scheduleMinIntervalMs", "1000");
+        expectedConfig.put("faultInjectionEnabled", "false");
+        expectedConfig.put("powerLossShadowPath", "");
+        expectedConfig.put("scriptTextImportEnabled", "false");
+        expectedConfig.put("scriptProcedureImportEnabled", "true");
+        expectedConfig.put("aggregationScriptInstructionBudget", "1000000");
+        expectedConfig.put("aggregationScriptTimeoutMs", "2000");
+        expectedConfig.put("aggregationScriptMaxSourceBytes", "16Kb");
+    }
+
+    @Test
+    public void test_tls_keys_fall_back_to_defaults_when_missing() throws IOException {
+        String configContent = "port=8989\nmaxConnections=100\n";
+        File configFile = new File(
+                Paths.get(".").toAbsolutePath().normalize() + Globals.FILE_SEPARATOR + Globals.FILE_CONFIG_NAME);
+        try {
+            Files.writeString(configFile.toPath(), configContent);
+            var config = ConfigReader.loadConfiguration();
+            assertEquals("false", config.get("tlsEnabled"));
+            assertEquals("certs/mpp.p12", config.get("tlsKeystorePath"));
+            assertEquals("change_it", config.get("tlsKeystorePassword"));
+        } finally {
+            final var deleted = configFile.delete();
+            assertTrue(deleted);
+        }
+    }
+
+    @Test
+    public void test_handle_empty_configuration_file() {
+        File configFile = new File(
+                Paths.get(".").toAbsolutePath().normalize() + Globals.FILE_SEPARATOR + Globals.FILE_CONFIG_NAME);
+        try {
+            try {
+                Files.write(configFile.toPath(), Collections.emptyList(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                fail("Failed to create empty configuration file for testing.");
+            }
+
+            Map<String, String> actualConfig = ConfigReader.loadConfiguration();
+
+            assertNotNull(actualConfig);
+            assertFalse(actualConfig.isEmpty());
+        } finally {
+            if (!configFile.delete()) {
+                fail("Failed to delete empty configuration file.");
+            }
+        }
+    }
+
+    @Test
+    public void test_config_file_with_invalid_property_line() throws IOException {
+        String configContent = "port=8989\nnot_a_valid_property\nmaxConnections=100\n";
+        File configFile = new File(
+                Paths.get(".").toAbsolutePath().normalize() + Globals.FILE_SEPARATOR + Globals.FILE_CONFIG_NAME);
+        try {
+            Files.writeString(configFile.toPath(), configContent);
+            var config = ConfigReader.loadConfiguration();
+            assertNotNull(config);
+            assertEquals("8989", config.get("port"));
+        } finally {
+            final var deleted = configFile.delete();
+            assertTrue(deleted);
+        }
+    }
+
+    @Test
+    public void test_config_file_ignores_comments_and_blank_lines() throws IOException {
+        String configContent = "# this is a comment\n\nport=8989\n   # indented comment\nmaxConnections=100\n";
+        File configFile = new File(
+                Paths.get(".").toAbsolutePath().normalize() + Globals.FILE_SEPARATOR + Globals.FILE_CONFIG_NAME);
+        try {
+            Files.writeString(configFile.toPath(), configContent);
+            var config = ConfigReader.loadConfiguration();
+            assertNotNull(config);
+            assertEquals("8989", config.get("port"));
+            assertEquals("100", config.get("maxConnections"));
+            assertFalse(config.containsKey("# this is a comment"));
+        } finally {
+            final var deleted = configFile.delete();
+            assertTrue(deleted);
+        }
+    }
+
+    @Test
+    public void test_config_file_value_with_equals_sign() throws IOException {
+        String configContent = "defaultAdminPassword=ab=cd=ef\n";
+        File configFile = new File(
+                Paths.get(".").toAbsolutePath().normalize() + Globals.FILE_SEPARATOR + Globals.FILE_CONFIG_NAME);
+        try {
+            Files.writeString(configFile.toPath(), configContent);
+            var config = ConfigReader.loadConfiguration();
+            assertNotNull(config);
+            assertEquals("ab=cd=ef", config.get("defaultAdminPassword"));
+        } finally {
+            final var deleted = configFile.delete();
+            assertTrue(deleted);
+        }
+    }
+
+    private static void putSecurityLimitDefaults(Map<String, String> expectedConfig) {
+        expectedConfig.put("maxUnauthenticatedConnectionsPerAddress", "16");
+        expectedConfig.put("maxUnauthenticatedInvalidRequests", "5");
+        expectedConfig.put("maxLogFileSize", "100Mb");
+        expectedConfig.put("transactionMaxOps", "100000");
+        expectedConfig.put("transactionMaxBytes", "256Mb");
+        expectedConfig.put("transactionTotalMaxBytes", "auto");
+        expectedConfig.put("transactionMaxAgeMs", "600000");
+        expectedConfig.put("snapshotMaxBytes", "1Gb");
+        expectedConfig.put("snapshotMaxOpen", "4");
+        expectedConfig.put("snapshotIdleTimeoutMs", "300000");
+        expectedConfig.put("maxListensPerConnection", "64");
+        expectedConfig.put("maxListens", "10000");
+        expectedConfig.put("maxListensPerUser", "256");
+        expectedConfig.put("listenMaxRequestBytes", "1Mb");
+        expectedConfig.put("listenMaxRetainedBytes", "64Mb");
+        expectedConfig.put("listenRerunTimeoutMs", "10000");
+        expectedConfig.put("listenThreads", "2");
+        expectedConfig.put("maxFilterOperands", "10000");
+        expectedConfig.put("deleteMaxMatches", "100000");
+        expectedConfig.put("updateMaxMatches", "100000");
+        expectedConfig.put("maxVectorDimensions", "16384");
+        expectedConfig.put("aggregateTimeoutMs", "300000");
+        expectedConfig.put("aggregateMaxResultBytes", "auto");
+        expectedConfig.put("aggregateTotalHeldBytes", "auto");
+        expectedConfig.put("indexScanFallbackPercent", "25");
+        expectedConfig.put("backgroundQueueMaxEvents", "200000");
+        expectedConfig.put("backgroundBacklogWaitMs", "5000");
+        expectedConfig.put("transientLoadPermits", "4");
+        expectedConfig.put("scriptHeapCeilingPercent", "75");
+        expectedConfig.put("scheduleMaxTimeoutMs", "300000");
+    }
+}

@@ -1,0 +1,97 @@
+package org.ccg.mpp.cluster;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
+import org.ccg.mpp.cluster.msg.ClusterMessage;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.conn.SocketClosing;
+import org.ccg.mpp.conn.tls.TlsContextFactory;
+import org.ccg.mpp.ioc.IocContainer;
+
+public class PeerConnectionPool {
+    private final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);
+    private final Configuration configuration = Configuration.getInstance();
+    private final Map<NodeAddress, PeerConnection> connections = new ConcurrentHashMap<>();
+    private final ReentrantLock lock = new ReentrantLock();
+    private volatile SocketFactory socketFactory;
+
+    public ClusterMessage request(NodeAddress address, ClusterMessage message, long timeoutMs)
+            throws IOException, InterruptedException, TimeoutException {
+        final var connection = getOrCreate(address);
+        try {
+            return connection.sendRequest(message, timeoutMs);
+        } catch (IOException e) {
+            // Only a transport failure condemns the socket, never a timeout: every peer shares one connection,
+            // so dropping it would fail the concurrent gossip and replication riding on it and cost the quorum.
+            drop(address, connection);
+            throw e;
+        }
+    }
+
+    private PeerConnection getOrCreate(NodeAddress address) throws IOException {
+        lock.lock();
+        try {
+            var connection = connections.get(address);
+            if (connection != null && !connection.isClosed()) {
+                return connection;
+            }
+            // Connect with a bounded timeout so a hanging connect to one peer (e.g. a black-holed host)
+            // holds the pool lock for at most replicationAckTimeoutMs instead of the OS default.
+            final var socket = socketFactory().createSocket();
+            if (socket instanceof SSLSocket sslSocket) {
+                sslSocket.setEnabledProtocols(TlsContextFactory.enabledProtocols());
+            }
+            try {
+                socket.connect(new InetSocketAddress(address.getHost(), address.getPort()),
+                        (int) clusterConfig.replicationAckTimeoutMs());
+            } catch (IOException e) {
+                // Distinct from every later failure: nothing was written, so the peer cannot have acted on
+                // this request. Callers that would otherwise have to assume the worst rely on the difference.
+                throw new PeerUnreachableException("Could not connect to " + address, e);
+            }
+            socket.setTcpNoDelay(true);
+            SocketClosing.boundTlsClose(socket);
+            connection = new PeerConnection(socket);
+            connections.put(address, connection);
+            return connection;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void drop(NodeAddress address, PeerConnection connection) {
+        connection.close();
+        connections.remove(address, connection);
+    }
+
+    private SocketFactory socketFactory() {
+        var factory = socketFactory;
+        if (factory == null) {
+            lock.lock();
+            try {
+                factory = socketFactory;
+                if (factory == null) {
+                    factory = clusterConfig.tlsEnabled()
+                            ? TlsContextFactory.createSocketFactory(configuration)
+                            : SocketFactory.getDefault();
+                    socketFactory = factory;
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+        return factory;
+    }
+
+    public void closeAll() {
+        for (var entry : Map.copyOf(connections).entrySet()) {
+            drop(entry.getKey(), entry.getValue());
+        }
+    }
+}

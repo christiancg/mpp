@@ -1,0 +1,247 @@
+package org.ccg.mpp.simplejs.builtins.regex;
+
+import static org.ccg.mpp.simplejs.internal.interpreter.InterpreterUtils.isCallable;
+import static org.ccg.mpp.simplejs.internal.regex.RegexFlags.LAST_INDEX;
+import static org.ccg.mpp.simplejs.values.JsLimits.MAX_SAFE_INTEGER;
+
+import java.util.List;
+import org.ccg.mpp.simplejs.builtins.InterpreterOps;
+import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
+import org.ccg.mpp.simplejs.internal.JsCoercion;
+import org.ccg.mpp.simplejs.internal.regex.RegexMatch;
+import org.ccg.mpp.simplejs.internal.regex.RegexMatcher;
+import org.ccg.mpp.simplejs.internal.regex.RegexStepBudget;
+import org.ccg.mpp.simplejs.values.JsArray;
+import org.ccg.mpp.simplejs.values.JsNativeFunction;
+import org.ccg.mpp.simplejs.values.JsNull;
+import org.ccg.mpp.simplejs.values.JsNumber;
+import org.ccg.mpp.simplejs.values.JsObject;
+import org.ccg.mpp.simplejs.values.JsRegExp;
+import org.ccg.mpp.simplejs.values.JsString;
+import org.ccg.mpp.simplejs.values.JsUndefined;
+import org.ccg.mpp.simplejs.values.JsValue;
+
+public final class RegexExec {
+    public static final String EXEC = "exec";
+
+    public static JsValue builtinExec(JsValue target, JsRegExp state, String input, InterpreterOps ops) {
+        final var stateful = state.isGlobal() || state.isSticky();
+        final var start = startIndex(target, stateful, input, ops);
+        if (start < 0) {
+            return JsNull.getInstance();
+        }
+        final var matcher = RegexMatcher.exec(state.getProgram(), input, start, state.isSticky(), budgetFor(ops));
+        if (matcher == null) {
+            resetLastIndex(target, stateful, ops);
+            return JsNull.getInstance();
+        }
+        if (stateful) {
+            writeLastIndex(target, matcher.end(), ops);
+        }
+        final var result = buildMatchResult(matcher, input, state);
+        if (state.hasIndices()) {
+            addIndices(result, matcher, state);
+        }
+        return result;
+    }
+
+    public static boolean builtinTest(JsValue target, JsRegExp state, String input, InterpreterOps ops) {
+        final var stateful = state.isGlobal() || state.isSticky();
+        final var start = startIndex(target, stateful, input, ops);
+        if (start < 0) {
+            return false;
+        }
+        final var end = RegexMatcher.matchEnd(state.getProgram(), input, start, state.isSticky(), budgetFor(ops));
+        if (end < 0) {
+            resetLastIndex(target, stateful, ops);
+            return false;
+        }
+        if (stateful) {
+            writeLastIndex(target, end, ops);
+        }
+        return true;
+    }
+
+    private static int startIndex(JsValue target, boolean stateful, String input, InterpreterOps ops) {
+        final var read = toLength(readLastIndex(target, ops), ops);
+        final var lastIndex = stateful ? read : 0;
+        if (lastIndex > input.length()) {
+            writeLastIndex(target, 0, ops);
+            return -1;
+        }
+        return (int) lastIndex;
+    }
+
+    public static JsValue readLastIndex(JsValue target, InterpreterOps ops) {
+        if (ops == null) {
+            return target instanceof JsRegExp regexp ? regexp.getLastIndex() : new JsNumber(0);
+        }
+        return ops.getMember(target, new JsString(LAST_INDEX));
+    }
+
+    public static void resetLastIndex(JsValue target, boolean stateful, InterpreterOps ops) {
+        if (stateful) {
+            writeLastIndex(target, 0, ops);
+        }
+    }
+
+    public static void writeLastIndex(JsValue target, int value, InterpreterOps ops) {
+        if (ops == null) {
+            if (target instanceof JsRegExp regexp) {
+                regexp.setLastIndex(value);
+            }
+            return;
+        }
+        setOrThrow(target, new JsNumber(value), ops);
+    }
+
+    public static void setOrThrow(JsValue target, JsValue value, InterpreterOps ops) {
+        if (!ops.setMember(target, new JsString(LAST_INDEX), value)) {
+            throw new TypeErrorException("Cannot assign to read only property 'lastIndex'");
+        }
+    }
+
+    public static double toLength(JsValue value, InterpreterOps ops) {
+        final var number = JsCoercion.toNumber(value, ops);
+        if (Double.isNaN(number) || number <= 0) {
+            return 0;
+        }
+        return Math.min(Math.floor(number), MAX_SAFE_INTEGER);
+    }
+
+    public static void addIndices(JsArray result, RegexMatch matcher, JsRegExp regexp) {
+        final var indices = new JsArray();
+        for (var i = 0; i <= matcher.groupCount(); i++) {
+            indices.push(pair(matcher.start(i), matcher.end(i)));
+        }
+        final var names = groupNames(regexp);
+        if (names.isEmpty()) {
+            indices.setProperty("groups", JsUndefined.getInstance());
+        } else {
+            final var groups = new JsObject();
+            for (final var groupName : names) {
+                final var alias = participatingGroup(regexp, groupName, matcher);
+                groups.set(groupName,
+                        alias == null ? JsUndefined.getInstance() : pair(matcher.start(alias), matcher.end(alias)));
+            }
+            indices.setProperty("groups", groups);
+        }
+        result.setProperty("indices", indices);
+    }
+
+    public static JsValue pair(int start, int end) {
+        if (start < 0) {
+            return JsUndefined.getInstance();
+        }
+        return new JsArray(List.of(new JsNumber(start), new JsNumber(end)));
+    }
+
+    public static JsArray buildMatchResult(RegexMatch matcher, String input, JsRegExp regexp) {
+        final var result = new JsArray();
+        final var count = matcher.groupCount();
+        for (var i = 0; i <= count; i++) {
+            result.push(groupValue(matcher.group(i)));
+        }
+        result.setProperty("index", new JsNumber(matcher.start()));
+        result.setProperty("input", new JsString(input));
+        final var names = groupNames(regexp);
+        if (names.isEmpty()) {
+            result.setProperty("groups", JsUndefined.getInstance());
+        } else {
+            final var groups = new JsObject();
+            for (final var groupName : names) {
+                final var alias = participatingGroup(regexp, groupName, matcher);
+                groups.set(groupName, alias == null ? JsUndefined.getInstance() : groupValue(matcher.group(alias)));
+            }
+            result.setProperty("groups", groups);
+        }
+        return result;
+    }
+
+    public static List<String> groupNames(JsRegExp regexp) {
+        return List.copyOf(regexp.getGroupAliases().keySet());
+    }
+
+    public static Integer participatingGroup(JsRegExp regexp, String name, RegexMatch matcher) {
+        final var aliases = regexp.getGroupAliases().get(name);
+        if (aliases == null) {
+            return null;
+        }
+        for (final var alias : aliases) {
+            if (matcher.start(alias) >= 0) {
+                return alias;
+            }
+        }
+        return null;
+    }
+
+    public static JsValue groupValue(String value) {
+        return value == null ? JsUndefined.getInstance() : new JsString(value);
+    }
+
+    public static JsValue regExpExec(JsValue rx, String s, InterpreterOps ops) {
+        return execStep(rx, s, ops).result();
+    }
+
+    public static boolean regExpTest(JsValue rx, String s, InterpreterOps ops) {
+        final var execFn = ops.getMember(rx, new JsString(EXEC));
+        if (rx instanceof JsRegExp regexp && isBuiltinExec(execFn)) {
+            ops.tick();
+            ops.tick();
+            return builtinTest(rx, regexp, s, ops);
+        }
+        return !(execStep(rx, execFn, s, ops).result() instanceof JsNull);
+    }
+
+    public static ExecStep execStep(JsValue rx, String s, InterpreterOps ops) {
+        return execStep(rx, ops.getMember(rx, new JsString(EXEC)), s, ops);
+    }
+
+    private static ExecStep execStep(JsValue rx, JsValue execFn, String s, InterpreterOps ops) {
+        if (isCallable(execFn)) {
+            final var result = ops.call(execFn, rx, List.of(new JsString(s)));
+            if (!(result instanceof JsObject) && !(result instanceof JsArray) && !(result instanceof JsNull)) {
+                throw new TypeErrorException("RegExp exec method returned something other than an object or null");
+            }
+            return new ExecStep(result, isBuiltinExec(execFn));
+        }
+        if (rx instanceof JsRegExp regexp) {
+            return new ExecStep(builtinExec(rx, regexp, s, ops), true);
+        }
+        throw new TypeErrorException("RegExp.prototype.exec method is not generic");
+    }
+
+    private static boolean isBuiltinExec(JsValue execFn) {
+        return execFn instanceof JsNativeFunction function && EXEC.equals(function.getName());
+    }
+
+    public record ExecStep(JsValue result, boolean builtin) {
+    }
+
+    private static RegexStepBudget budgetFor(InterpreterOps ops) {
+        return ops == null ? RegexStepBudget.UNLIMITED : new TickingBudget(ops);
+    }
+
+    private static final class TickingBudget implements RegexStepBudget {
+        private static final int STEPS_PER_TICK = 64;
+
+        private final InterpreterOps ops;
+        private int steps;
+
+        private TickingBudget(InterpreterOps ops) {
+            this.ops = ops;
+        }
+
+        @Override
+        public void step() {
+            steps++;
+            if (steps == STEPS_PER_TICK) {
+                steps = 0;
+                ops.tick();
+            }
+        }
+    }
+
+    private RegexExec() {
+    }
+}

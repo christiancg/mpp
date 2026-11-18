@@ -5,13 +5,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using Lwnrdb.Client;
-using Lwnrdb.Client.Linq;
-using Lwnrdb.Client.Query;
-using Lwnrdb.Client.Values;
-using static Lwnrdb.Client.Query.Filters;
+using Mpp.Client;
+using Mpp.Client.Linq;
+using Mpp.Client.Query;
+using Mpp.Client.Values;
+using static Mpp.Client.Query.Filters;
 
-namespace Lwnrdb.Consumer;
+namespace Mpp.Consumer;
 
 public sealed class Purchase
 {
@@ -33,7 +33,7 @@ public static class Program
         using var server = new TcpListener(IPAddress.Loopback, 0);
         server.Start();
         _ = AnswerEverythingAsync(server);
-        await using var client = await LwnrdbClient.ConnectAsync(new ClientSettings
+        await using var client = await MppClient.ConnectAsync(new ClientSettings
         {
             Hosts = [new ServerAddress("127.0.0.1", ((IPEndPoint)server.LocalEndpoint).Port)],
         });
@@ -55,7 +55,7 @@ public static class Program
         Console.WriteLine(methodSyntax);
         Console.WriteLine(querySyntax);
         var near = purchases.AsQueryable()
-            .Where(p => LwnrdbFunctions.Distance(p.Location, new GeoPoint(40.71, -74.0)) < 1000)
+            .Where(p => MppFunctions.Distance(p.Location, new GeoPoint(40.71, -74.0)) < 1000)
             .ToQuery();
         Console.WriteLine(near);
         Console.WriteLine((await purchases.AsQueryable().Where(p => p.PlacedAt < new DateTime(2024, 1, 1)).ToListAsync()).Count);

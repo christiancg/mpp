@@ -1,6 +1,6 @@
 # Clustering
 
-Several LWNRDB nodes can run as one cluster. Every node holds all the data, so losing a node never loses data, and a
+Several MPP nodes can run as one cluster. Every node holds all the data, so losing a node never loses data, and a
 client can talk to any node. What is split between the nodes is the work: each collection has one owner node that
 coordinates its writes and keeps it in cache, so the cache of the whole cluster is the sum of the nodes' caches.
 
@@ -11,7 +11,7 @@ The cluster is eventually consistent, with last-write-wins per document. It is n
 
 ## Setting up a cluster
 
-Each node needs at least this in its `lwnrdb.cfg`:
+Each node needs at least this in its `mpp.cfg`:
 
 ```
 clusterEnabled=true
@@ -156,7 +156,7 @@ its locks. Nothing releases them on a timer, because a guess could commit on one
 [`LIST_TRANSACTIONS`](protocol.md#list_transactions-admin-only) shows these transactions across the cluster with each
 node's status, and [`RESOLVE_TRANSACTION`](protocol.md#resolve_transaction-admin-only) forces a commit or an abort on
 every node once you know which one is right. They also show up in `GET_DATABASE_STATS`, in the
-`lwnrdb_in_doubt_transactions` metric and in periodic warnings.
+`mpp_in_doubt_transactions` metric and in periodic warnings.
 
 The answers that are specific to a cluster:
 
@@ -306,7 +306,7 @@ What it doesn't promise:
 - It is not linearizable. Ownership comes from each node's own view of the membership, so right after a node joins or
   leaves two nodes can briefly both think they own a collection. Writes accepted on both sides are settled by
   last-write-wins, so one of them is overwritten without anyone being told. Preventing that would need a consensus
-  protocol, which LWNRDB doesn't have.
+  protocol, which MPP doesn't have.
 - `503-3`, `503-8` and `503-7` mean the outcome is unknown. The write may well be applied, and then it will spread.
 - A transaction whose collections changed owner right before it replicated answers `OK` without having reached a
   majority. It isn't lost, since it has the newest version and anti-entropy spreads it, but the answer promises more

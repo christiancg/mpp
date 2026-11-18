@@ -3,14 +3,14 @@ import {
     field,
     GeoPoint,
     LocalDateTime,
-    LwnrdbClient,
+    MppClient,
     MapOps,
     MidOps,
     Order,
     type DocumentCodec,
     type Stored,
     type Subscription,
-} from "lwnrdb-client";
+} from "mpp-client";
 
 interface Placed {
     readonly _id?: string;
@@ -30,7 +30,7 @@ const invoices: DocumentCodec<Invoice> = {
     decode: (document) => ({ id: String(document["_id"]), cents: Number(document["cents"]) }),
 };
 
-export async function topActive(client: LwnrdbClient): Promise<Stored<Placed>[]> {
+export async function topActive(client: MppClient): Promise<Stored<Placed>[]> {
     const orders = client.database("shop").collection<Placed>("orders");
     await orders.save({
         status: "active",
@@ -52,13 +52,13 @@ export async function topActive(client: LwnrdbClient): Promise<Stored<Placed>[]>
     return rows;
 }
 
-export async function invoiceTotal(client: LwnrdbClient): Promise<number> {
+export async function invoiceTotal(client: MppClient): Promise<number> {
     const collection = client.database("billing").collection("invoices", invoices);
     const invoice: Invoice | undefined = await collection.findById("i-1");
     return invoice?.cents ?? 0;
 }
 
-export async function watch(client: LwnrdbClient, totals: number[]): Promise<Subscription> {
+export async function watch(client: MppClient, totals: number[]): Promise<Subscription> {
     await using transaction = await client.beginTransaction();
     await transaction.collection<Placed>("shop", "orders").delete("o-1");
     await transaction.commit();

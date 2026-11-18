@@ -1,0 +1,45 @@
+package org.ccg.mpp.unit.ops.auth;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.auth.AuthorizationResult;
+import org.junit.jupiter.api.Test;
+
+public class AuthorizationResultTest {
+    @Test
+    public void test_allow_result_is_allowed() {
+        final var result = AuthorizationResult.allow();
+        assertTrue(result.isAllowed());
+        assertNull(result.getReason());
+    }
+
+    @Test
+    public void test_deny_result_is_not_allowed() {
+        final var result = AuthorizationResult.deny("no permission");
+        assertFalse(result.isAllowed());
+        assertEquals("no permission", result.getReason());
+        assertEquals(ErrorCode.NO_PERMISSIONS, result.getErrorCode());
+    }
+
+    @Test
+    public void test_deny_carries_the_given_error_code() {
+        final var result = AuthorizationResult.deny("source", ErrorCode.SOURCE_REQUIRES_MANAGE);
+        assertFalse(result.isAllowed());
+        assertEquals(ErrorCode.SOURCE_REQUIRES_MANAGE, result.getErrorCode());
+    }
+
+    @Test
+    public void test_deny_with_empty_reason() {
+        final var result = AuthorizationResult.deny("");
+        assertFalse(result.isAllowed());
+        assertEquals("", result.getReason());
+    }
+
+    @Test
+    public void allow_is_one_shared_instance() {
+        final var first = AuthorizationResult.allow();
+        assertSame(first, AuthorizationResult.allow());
+        assertTrue(AuthorizationResult.allow().isAllowed());
+    }
+}

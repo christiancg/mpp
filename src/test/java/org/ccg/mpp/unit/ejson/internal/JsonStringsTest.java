@@ -1,0 +1,123 @@
+package org.ccg.mpp.unit.ejson.internal;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+
+import java.util.Random;
+import org.ccg.mpp.ejson.internal.JsonStrings;
+import org.junit.jupiter.api.Test;
+
+// U+0020 is spelled as an escape because it is the boundary of RFC 8259's control-character
+// escaping range: everything below it is escaped, the space itself passes through.
+@SuppressWarnings("UnnecessaryUnicodeEscape")
+public class JsonStringsTest {
+    private static final String ESCAPE_ALPHABET = "ab\"\\\b\f\n\r\t\u0000\u001f\u007f\u00e9\u2028\ud800\udc00\ud834\udd1e/";
+
+    @Test
+    public void test_escapes_quote_and_backslash() {
+        assertEquals("he said \\\"hi\\\"", JsonStrings.escape("he said \"hi\""));
+        assertEquals("C:\\\\tmp", JsonStrings.escape("C:\\tmp"));
+    }
+
+    @Test
+    public void test_escapes_named_control_characters() {
+        assertEquals("\\b", JsonStrings.escape("\b"));
+        assertEquals("\\f", JsonStrings.escape("\f"));
+        assertEquals("\\n", JsonStrings.escape("\n"));
+        assertEquals("\\r", JsonStrings.escape("\r"));
+        assertEquals("\\t", JsonStrings.escape("\t"));
+        assertEquals("line1\\nline2", JsonStrings.escape("line1\nline2"));
+    }
+
+    @Test
+    public void test_escapes_other_control_characters_as_unicode() {
+        assertEquals("\\u0000", JsonStrings.escape("\u0000"));
+        assertEquals("\\u0001", JsonStrings.escape("\u0001"));
+        assertEquals("\\u001f", JsonStrings.escape("\u001F"));
+        assertEquals("a\\u000bb", JsonStrings.escape("a\u000Bb"));
+    }
+
+    @Test
+    public void test_passes_through_printable_characters() {
+        final var plain = "plain text 123";
+        assertSame(plain, JsonStrings.escape(plain));
+        assertEquals("café 😀", JsonStrings.escape("café 😀"));
+        assertEquals("\u0020", JsonStrings.escape("\u0020"));
+    }
+
+    @Test
+    public void test_null_and_empty_input() {
+        assertNull(JsonStrings.escape(null));
+        assertEquals("", JsonStrings.escape(""));
+    }
+
+    @Test
+    public void test_escape_after_clean_prefix() {
+        assertEquals("abc\\ndef", JsonStrings.escape("abc\ndef"));
+    }
+
+    // An unpaired surrogate cannot be encoded as UTF-8, so it is escaped rather than emitted raw
+    @Test
+    public void test_escapes_lone_surrogates() {
+        assertEquals("\\ud834", JsonStrings.escape("\uD834"));
+        assertEquals("\\udd1e", JsonStrings.escape("\uDD1E"));
+        assertEquals("a\\ud834b", JsonStrings.escape("a\uD834b"));
+        assertEquals("\\ud834\\ud834", JsonStrings.escape("\uD834\uD834"));
+    }
+
+    @Test
+    public void test_keeps_surrogate_pairs() {
+        final var pair = "𝄞";
+        assertSame(pair, JsonStrings.escape(pair));
+        assertEquals("a𝄞b", JsonStrings.escape("a𝄞b"));
+    }
+
+    @Test
+    public void appendEscapedMatchesEscape() {
+        final var rng = new Random(42L);
+        for (var sample = 0; sample < 20_000; sample++) {
+            final var value = new StringBuilder();
+            final var length = rng.nextInt(24);
+            for (var index = 0; index < length; index++) {
+                value.append(ESCAPE_ALPHABET.charAt(rng.nextInt(ESCAPE_ALPHABET.length())));
+            }
+            final var text = value.toString();
+            final var out = new StringBuilder("prefix:");
+
+            JsonStrings.appendEscaped(out, text);
+
+            assertEquals("prefix:" + JsonStrings.escape(text), out.toString(), text);
+        }
+    }
+
+    @Test
+    public void escapedLengthMatchesEscape() {
+        final var rng = new Random(7L);
+        for (var sample = 0; sample < 20_000; sample++) {
+            final var value = new StringBuilder();
+            final var length = rng.nextInt(24);
+            for (var index = 0; index < length; index++) {
+                value.append(ESCAPE_ALPHABET.charAt(rng.nextInt(ESCAPE_ALPHABET.length())));
+            }
+            final var text = value.toString();
+            assertEquals(JsonStrings.escape(text).length(), JsonStrings.escapedLength(text), text);
+        }
+        assertEquals(6_000, JsonStrings.escapedLength("\u0001".repeat(1000)));
+        assertEquals(0, JsonStrings.escapedLength(""));
+    }
+
+    @Test
+    public void appendEscapedWithoutEscapesAppendsTheSameInstanceContent() {
+        final var plain = "plain text with caf\u00e9 and \ud834\udd1e";
+        final var out = new StringBuilder();
+
+        JsonStrings.appendEscaped(out, plain);
+
+        assertSame(plain, JsonStrings.escape(plain));
+        assertEquals(plain, out.toString());
+        final var nothing = new StringBuilder();
+        JsonStrings.appendEscaped(nothing, null);
+        assertEquals("null", nothing.toString());
+    }
+}

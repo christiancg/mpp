@@ -1,6 +1,6 @@
 # SimpleJS
 
-SimpleJS is the JavaScript engine built into LWNRDB, so you can run your own code inside the database: ad-hoc scripts,
+SimpleJS is the JavaScript engine built into MPP, so you can run your own code inside the database: ad-hoc scripts,
 stored procedures, triggers, before-write hooks, scheduled procedures and pipeline steps. Like everything else in the
 project it has no dependencies. The lexer, parser, interpreter and regex engine are all written here.
 

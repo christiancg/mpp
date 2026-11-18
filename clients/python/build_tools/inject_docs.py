@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = ROOT / "src" / "lwnrdb"
+PACKAGE = ROOT / "src" / "mpp"
 APIDOCS = ROOT / "apidocs"
 FUNCTIONS_DOC = "functions"
 _DUNDERS = frozenset({"__enter__", "__exit__", "__aenter__", "__aexit__"})
@@ -56,7 +56,7 @@ def exported_names(package: Path) -> list[str]:
         ):
             value = ast.literal_eval(node.value)
             return [str(name) for name in value]
-    raise DocsError("lwnrdb/__init__.py has no __all__")
+    raise DocsError("mpp/__init__.py has no __all__")
 
 
 def _body_on_own_line(node: ast.FunctionDef | ast.AsyncFunctionDef, lines: list[str]) -> bool:

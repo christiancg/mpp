@@ -44,29 +44,29 @@ not reset it; a new connection starts again at zero.
 
 Authenticate (must be done before any protected operation). The admin password is whatever `defaultAdminPassword`
 held when the first admin was bootstrapped; these examples use the integration suites' value (`base_utils.PASSWORD`),
-`Tst-Admin-9xQ2mV`, which is what a server started for the suites has in its `lwnrdb.cfg`.
+`Tst-Admin-9xQ2mV`, which is what a server started for the suites has in its `mpp.cfg`.
 
 ```json
 {"type": "AUTHENTICATE", "username": "admin", "password": "Tst-Admin-9xQ2mV"}
 ```
 
 Startup refusal (no wire example: the server never opens its port). With `defaultAdminPassword=administrator` in
-`lwnrdb.cfg` (any letter case, whether or not an admin already exists), a commonly used password such as
+`mpp.cfg` (any letter case, whether or not an admin already exists), a commonly used password such as
 `password123`, the same value as `defaultAdminUsername`, or a blank/missing `defaultAdminPassword` while no admin
 user exists yet, the process logs one FATAL line and exits non-zero:
 
 ```
-FATAL-org.techhouse.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is the well-known shipped value 'administrator'. Set a different password in lwnrdb.cfg, or remove the key if an admin user already exists.
-FATAL-org.techhouse.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is one of the most commonly used passwords. Set a stronger one in lwnrdb.cfg, or remove the key if an admin user already exists.
-FATAL-org.techhouse.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is the same as defaultAdminUsername. Set a different password in lwnrdb.cfg, or remove the key if an admin user already exists.
-FATAL-org.techhouse.AdminPasswordGuard - Insecure configuration, the application will not start: no admin user exists and defaultAdminPassword is not set. Set defaultAdminPassword in lwnrdb.cfg (at least 8 characters) to create the first admin.
+FATAL-org.ccg.mpp.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is the well-known shipped value 'administrator'. Set a different password in mpp.cfg, or remove the key if an admin user already exists.
+FATAL-org.ccg.mpp.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is one of the most commonly used passwords. Set a stronger one in mpp.cfg, or remove the key if an admin user already exists.
+FATAL-org.ccg.mpp.AdminPasswordGuard - Insecure configuration, the application will not start: defaultAdminPassword is the same as defaultAdminUsername. Set a different password in mpp.cfg, or remove the key if an admin user already exists.
+FATAL-org.ccg.mpp.AdminPasswordGuard - Insecure configuration, the application will not start: no admin user exists and defaultAdminPassword is not set. Set defaultAdminPassword in mpp.cfg (at least 8 characters) to create the first admin.
 ```
 
 Once an admin exists, a blank `defaultAdminPassword` starts normally and the existing admin keeps its password.
 
 A connection past `maxConnections` (100 by default) gets a single `CLOSE_CONNECTION` frame carrying `503-1`
 and is closed before it can send anything. There is no command for it: set `maxConnections=2` in
-`lwnrdb.cfg` and open a third connection.
+`mpp.cfg` and open a third connection.
 
 A request line longer than the limit → `400-22`, sent as a `CLOSE_CONNECTION` frame, and the connection is
 closed. The limit is 64Kb until the connection authenticates and `maxRequestSize` (`64Mb` by default) after.
@@ -185,8 +185,8 @@ in one transaction, then save one in a second transaction on another collection:
 
 The second transaction stays usable: commit the first and the retried `SAVE` buffers.
 
-A connection whose response write moves less than 64 KB in `clientWriteStallTimeoutMs` (30000 by default, at least
-1000) is closed by the server and its transaction rolled back; the three non-readers above are closed once it
+A connection whose response write moves less than 64 KB in `clientWriteStallTimeoutMs` (30000 by default, at
+least 1000) is closed by the server and its transaction rolled back; the three non-readers above are closed once it
 passes, which frees the budget for the fourth, and so is a connection that reads a large response 16 KB at a time with
 a pause of half the timeout between reads.
 
@@ -541,7 +541,7 @@ A repeated `_id` within one request is rejected → `400-3`
 ```
 
 A document larger than `maxEntrySize` (`1Mb` by default) → `400-2`, and nothing is written. To try it by hand,
-set `maxEntrySize=1Kb` in `lwnrdb.cfg` and send a document whose `blob` alone is over a kilobyte:
+set `maxEntrySize=1Kb` in `mpp.cfg` and send a document whose `blob` alone is over a kilobyte:
 
 ```json
 {"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "too-big", "blob": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
@@ -1621,7 +1621,7 @@ Delete dbadmin
 
 Scripts (`RUN_SCRIPT`)
 
-Scripting is on by default; with `scriptsEnabled=false` in `lwnrdb.cfg` every `RUN_SCRIPT` below is
+Scripting is on by default; with `scriptsEnabled=false` in `mpp.cfg` every `RUN_SCRIPT` below is
 refused with `403-2`. A script is scoped to the request's `databaseName` and may use any collection in
 it; `db.name` is that database, so a script never hardcodes it.
 
@@ -1868,7 +1868,7 @@ A locale argument resolves to the closest locale the JDK ships: private-use subt
 
 A source larger than `scriptMaxSourceBytes` (`256Kb` by default) → `400-10`, before anything is parsed. The
 same cap refuses a `SAVE_PROCEDURE` and a pipeline `SCRIPT` operator. To try it by hand, set
-`scriptMaxSourceBytes=1Kb` in `lwnrdb.cfg` and send any script over a kilobyte.
+`scriptMaxSourceBytes=1Kb` in `mpp.cfg` and send any script over a kilobyte.
 
 Unknown database → `404-4`
 
@@ -2048,7 +2048,7 @@ cluster it is the executing node's `host:clusterPort`.
 {"type": "LIST_SCRIPTS"}
 ```
 
-While it runs, admission is also visible. With `maxConcurrentScripts=1` in `lwnrdb.cfg`, a second script on
+While it runs, admission is also visible. With `maxConcurrentScripts=1` in `mpp.cfg`, a second script on
 connection B waits `scriptQueueWaitMs` (250 ms by default) for a permit and is then refused → `503-6`. The
 message names the limit that refused it; `maxConcurrentScriptsPerUser` (4 by default) and
 `maxConcurrentScriptsPerDatabase` (8 by default) refuse the same way, without waiting. A fifth concurrent script
@@ -3004,7 +3004,7 @@ A trigger runs a stored procedure after a committed write. It fires asynchronous
 reject or modify the write — use a collection schema for that — and it runs with the authority of
 whoever installed it (`definer`), not the writer's. Installing, deleting or testing one needs admin,
 ownership, or `MANAGE` together with `READ_WRITE` on the collection. Set `triggersEnabled=true` in
-`lwnrdb.cfg` for triggers to actually fire; the DDL below works either way.
+`mpp.cfg` for triggers to actually fire; the DDL below works either way.
 
 The procedure a trigger will call — its `args` carry the event, the document and who wrote it
 
@@ -3332,7 +3332,7 @@ Deleting a procedure a schedule still references is refused → `400-16`
 
 A database holding `scheduleMaxPerDatabase` schedules (100 by default) refuses a new one → `400-17`.
 Re-saving one it already holds is still allowed. To try it by hand, set `scheduleMaxPerDatabase=1` in
-`lwnrdb.cfg` before running this section: `everyTwoSeconds` is then the only schedule it can hold, the other
+`mpp.cfg` before running this section: `everyTwoSeconds` is then the only schedule it can hold, the other
 saves above are refused, and so is this one.
 
 ```json

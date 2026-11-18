@@ -4,7 +4,7 @@ import {
     ConflictError,
     ForbiddenError,
     ListenEndedError,
-    LwnrdbError,
+    MppError,
     NotFoundError,
     UnavailableError,
     UnknownOutcomeError,
@@ -29,7 +29,7 @@ describe("raise", () => {
         ["503-2", UnavailableError],
         ["500-33", UnknownOutcomeError],
         ["500-34", UnknownOutcomeError],
-        ["400-1", LwnrdbError],
+        ["400-1", MppError],
     ])("%s maps by its range", (code, type) => {
         const error = raise({ type: "SAVE", status: "ERROR", message: "no", errorCode: code });
         expect(error).toBeInstanceOf(type);
@@ -60,7 +60,7 @@ describe("check and the readers", () => {
         expect(check(frame)).toBe(frame);
         expect(check({ status: "NO_OPERATION" })).toEqual({ status: "NO_OPERATION" });
         expect(check({})).toEqual({});
-        expect(() => check({ status: "ERROR" })).toThrow(LwnrdbError);
+        expect(() => check({ status: "ERROR" })).toThrow(MppError);
     });
 
     test("read lists, texts, numbers and booleans defensively", () => {

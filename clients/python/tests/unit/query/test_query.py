@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from lwnrdb import AsyncDatabase, MapOps, MidOps, Order, field
-from lwnrdb.query.types import CountStep, LimitStep, SkipStep
+from mpp import AsyncDatabase, MapOps, MidOps, Order, field
+from mpp.query.types import CountStep, LimitStep, SkipStep
 from tests.support.recording_channel import RecordingChannel, ok, recording_context
 
 

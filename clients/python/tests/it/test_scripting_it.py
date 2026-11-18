@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     AsyncDatabase,
-    AsyncLwnrdbClient,
-    LwnrdbError,
+    AsyncMppClient,
+    MppError,
     ProcedureDefinition,
     ScheduleDefinition,
     TriggerDefinition,
@@ -25,7 +25,7 @@ SERVER_CONFIG = {"triggersEnabled": "true", "triggerMaxAttempts": "1", "triggerR
 
 
 @pytest.fixture
-async def shop(client: AsyncLwnrdbClient) -> AsyncIterator[AsyncDatabase]:
+async def shop(client: AsyncMppClient) -> AsyncIterator[AsyncDatabase]:
     database = client.database("script_it")
     await database.create()
     for name in ("orders", "audit", "notes"):
@@ -56,10 +56,10 @@ async def test_procedures_are_saved_listed_called_and_deleted(shop: AsyncDatabas
     ]
     assert with_source[0].source
     assert (await procedures.call("double_it", {"n": 21})).value == 42
-    with pytest.raises(LwnrdbError):
+    with pytest.raises(MppError):
         await procedures.save(ProcedureDefinition("double_it", "return 0;", if_version=version + 10))
     await procedures.delete("double_it")
-    with pytest.raises(LwnrdbError):
+    with pytest.raises(MppError):
         await procedures.call("double_it")
 
 
@@ -87,7 +87,7 @@ async def test_triggers_fire_test_reject_and_list(shop: AsyncDatabase) -> None:
     assert len(await orders.triggers().list()) == 2
     assert {"audit", "guard"} <= {trigger.name for trigger in await shop.list_triggers()}
     assert (await orders.triggers().test("guard", TriggerEvent.CREATED, {"_id": "t1"})).decision
-    with pytest.raises(LwnrdbError, match="total missing") as refused:
+    with pytest.raises(MppError, match="total missing") as refused:
         await orders.save({"_id": "o1"})
     assert refused.value.raw_code == "400-21"
     await orders.save({"_id": "o2", "total": 5})
@@ -98,7 +98,7 @@ async def test_triggers_fire_test_reject_and_list(shop: AsyncDatabase) -> None:
     assert await orders.triggers().list() == []
 
 
-async def test_dead_trigger_runs_are_listed_and_resolved(client: AsyncLwnrdbClient, shop: AsyncDatabase) -> None:
+async def test_dead_trigger_runs_are_listed_and_resolved(client: AsyncMppClient, shop: AsyncDatabase) -> None:
     await shop.procedures().save(ProcedureDefinition("always_fails", 'throw new Error("boom");'))
     notes = shop.collection("notes")
     await notes.triggers().save(TriggerDefinition("failing", "always_fails", (TriggerEvent.CREATED,)))
@@ -122,9 +122,9 @@ async def test_schedules_are_saved_listed_and_deleted(shop: AsyncDatabase) -> No
     assert await schedules.list() == []
 
 
-async def test_a_long_script_is_listed_and_cancelled(client: AsyncLwnrdbClient, shop: AsyncDatabase) -> None:
+async def test_a_long_script_is_listed_and_cancelled(client: AsyncMppClient, shop: AsyncDatabase) -> None:
     running = asyncio.create_task(shop.run_script("let i = 0;\nwhile (true) { i++; }"))
     scripts = await eventually(lambda: client.admin().scripts().list(), lambda listed: len(listed) > 0)
     assert await client.admin().scripts().cancel(scripts[0].run_id)
-    with contextlib.suppress(LwnrdbError):
+    with contextlib.suppress(MppError):
         await running

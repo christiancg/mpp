@@ -1,6 +1,6 @@
 # Protocol contract
 
-The machine-readable contract the LWNRDB clients are tested against. The readable version, with the framing, how
+The machine-readable contract the MPP clients are tested against. The readable version, with the framing, how
 replies are matched, the retry rules and every operation, is the [wire protocol reference](../../docs/protocol.md).
 
 ## Catalogue files
@@ -15,7 +15,7 @@ They are generated from the server's code and never edited by hand. After changi
 custom type on the server, regenerate them from the repository root:
 
 ```bash
-mvn test -Dtest=ProtocolCatalogueTest -Dlwnrdb.protocol.regenerate=true
+mvn test -Dtest=ProtocolCatalogueTest -Dmpp.protocol.regenerate=true
 ```
 
 Without the flag the test fails whenever a file differs from what the server would generate.

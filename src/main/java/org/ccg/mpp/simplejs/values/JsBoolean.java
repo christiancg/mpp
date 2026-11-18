@@ -1,0 +1,25 @@
+package org.ccg.mpp.simplejs.values;
+
+public final class JsBoolean extends JsValue {
+    public static final JsBoolean TRUE = new JsBoolean(true);
+    public static final JsBoolean FALSE = new JsBoolean(false);
+
+    private final boolean value;
+
+    private JsBoolean(boolean value) {
+        this.value = value;
+    }
+
+    public static JsBoolean of(boolean value) {
+        return value ? TRUE : FALSE;
+    }
+
+    public boolean getValue() {
+        return value;
+    }
+
+    @Override
+    public JsValueType getType() {
+        return JsValueType.BOOLEAN;
+    }
+}

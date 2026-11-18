@@ -1,0 +1,437 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
+
+import java.net.InetAddress;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.ClusterCoordinator;
+import org.ccg.mpp.concurrency.ResourceLocking;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.OperationProcessor;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.OperationType;
+import org.ccg.mpp.ops.TransactionOperationHelper;
+import org.ccg.mpp.ops.req.BulkSaveRequest;
+import org.ccg.mpp.ops.req.CommitTransactionRequest;
+import org.ccg.mpp.ops.req.DeleteRequest;
+import org.ccg.mpp.ops.req.RollbackTransactionRequest;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.ops.req.StartTransactionRequest;
+import org.ccg.mpp.ops.tx.TransactionWrites;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.ccg.mpp.test.TransactionRecordCalls;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class TransactionOperationHelperTest {
+    final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
+    final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+    final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
+
+    private Thread startWriteLockHolder(CountDownLatch acquired, CountDownLatch release) {
+        final var holder = new Thread(() -> {
+            if (locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL)) {
+                acquired.countDown();
+                try {
+                    if (!release.await(30, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Lock holder timed out waiting for the release signal");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                }
+            }
+        });
+        holder.start();
+        return holder;
+    }
+
+    @Test
+    public void test_held_locks_survive_a_failed_cross_thread_release() throws Exception {
+        final var coll = "cross_thread_coll";
+        processor.processMessage(new org.ccg.mpp.ops.req.CreateCollectionRequest(TestGlobals.DB, coll));
+        final var clientId = clientTracker.registerForwardedClient("cross");
+        TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
+        final var holder = new Thread(() -> {
+            TransactionOperationHelper.start(clientId);
+            final var request = new SaveRequest(TestGlobals.DB, coll);
+            final var object = new JsonObject();
+            object.add("_id", new JsonString("stranded"));
+            request.setObject(object);
+            request.set_id("stranded");
+            TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
+        });
+        holder.start();
+        holder.join(5000);
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        org.junit.jupiter.api.Assertions.assertFalse(transaction.getHeldLocks().isEmpty());
+
+        TransactionOperationHelper.rollback(clientId);
+
+        org.junit.jupiter.api.Assertions.assertFalse(transaction.getHeldLocks().isEmpty(),
+                "a release that could not run on this thread must keep the record so the owner can still free it");
+    }
+
+    @Test
+    public void test_a_commit_keeps_the_transaction_registered_while_a_lock_is_still_held() {
+        final var clientId = clientTracker.registerForwardedClient("unreleasable");
+        TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
+        TransactionOperationHelper.start(clientId);
+        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var object = new JsonObject();
+        object.add("_id", new JsonString("commit-stranded"));
+        request.setObject(object);
+        request.set_id("commit-stranded");
+        TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        final var notHeldHere = TestGlobals.DB + "|never_locked_coll";
+        transaction.getHeldLocks().add(notHeldHere);
+
+        final var response = TransactionOperationHelper.commit(clientId);
+
+        assertEquals(OperationStatus.OK, response.getStatus());
+        assertEquals(transaction, clientTracker.getActiveTransaction(clientId),
+                "clearing the registration would destroy the only record naming the lock");
+        assertEquals(java.util.Set.of(notHeldHere), transaction.getHeldLocks());
+        clientTracker.clearActiveTransaction(clientId);
+        clientTracker.removeById(clientId);
+    }
+
+    @BeforeAll
+    static void setUpBeforeClass() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+    }
+
+    @AfterAll
+    public static void tearDownAll() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    @BeforeEach
+    void resetClientTracker() throws Exception {
+        TestUtils.resetClients();
+    }
+
+    private UUID newClient() {
+        final var socket = mock(Socket.class);
+        final var addr = mock(InetAddress.class);
+        when(socket.getInetAddress()).thenReturn(addr);
+        when(addr.getHostAddress()).thenReturn("127.0.0.1");
+        return clientTracker.addClient(socket);
+    }
+
+    private SaveRequest saveRequest(String id) {
+        final var req = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var obj = new JsonObject();
+        obj.add("_id", new JsonString(id));
+        req.setObject(obj);
+        req.set_id(id);
+        return req;
+    }
+
+    @Test
+    public void test_isAllowedDuringTransaction_whitelist() {
+        for (final var allowed : new OperationType[]{OperationType.START_TRANSACTION, OperationType.COMMIT_TRANSACTION,
+                OperationType.ROLLBACK_TRANSACTION, OperationType.SAVE, OperationType.BULK_SAVE, OperationType.DELETE,
+                OperationType.FIND_BY_ID, OperationType.AGGREGATE, OperationType.CLOSE_CONNECTION,
+                OperationType.SERVER_INFO}) {
+            assertTrue(TransactionOperationHelper.isAllowedDuringTransaction(allowed), allowed + " should be allowed");
+        }
+        for (final var blocked : new OperationType[]{OperationType.CREATE_COLLECTION, OperationType.DROP_COLLECTION,
+                OperationType.CREATE_INDEX, OperationType.LISTEN, OperationType.CREATE_DATABASE}) {
+            assertFalse(TransactionOperationHelper.isAllowedDuringTransaction(blocked), blocked + " should be blocked");
+        }
+    }
+
+    @Test
+    public void test_isAllowedOnAbortedTransaction_whitelist() {
+        for (final var allowed : new OperationType[]{OperationType.ROLLBACK_TRANSACTION,
+                OperationType.COMMIT_TRANSACTION, OperationType.CLOSE_CONNECTION, OperationType.SERVER_INFO}) {
+            assertTrue(TransactionOperationHelper.isAllowedOnAbortedTransaction(allowed),
+                    allowed + " should be allowed on an aborted transaction");
+        }
+        for (final var blocked : new OperationType[]{OperationType.SAVE, OperationType.BULK_SAVE, OperationType.DELETE,
+                OperationType.FIND_BY_ID, OperationType.AGGREGATE, OperationType.START_TRANSACTION}) {
+            assertFalse(TransactionOperationHelper.isAllowedOnAbortedTransaction(blocked),
+                    blocked + " should be blocked on an aborted transaction");
+        }
+    }
+
+    @Test
+    public void test_abort_in_place_without_a_transaction_is_a_noop() {
+        final var clientId = newClient();
+        TransactionOperationHelper.abortInPlace(clientId);
+        assertNull(clientTracker.getActiveTransaction(clientId));
+    }
+
+    @Test
+    public void test_lock_timeout_aborts_the_transaction_and_refuses_retries() throws Exception {
+        final var config = Configuration.getInstance();
+        final var originalTimeout = config.getTransactionLockTimeoutMs();
+        // Shrink the lock-acquisition timeout so the buffered write aborts quickly instead of waiting
+        // the multi-second production default.
+        TestUtils.setPrivateField(config, "transactionLockTimeoutMs", 200L);
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+
+        final var acquired = new CountDownLatch(1);
+        final var release = new CountDownLatch(1);
+        final var holder = startWriteLockHolder(acquired, release);
+        assertTrue(acquired.await(5, TimeUnit.SECONDS));
+        try {
+            final var response = processor.processMessage(saveRequest("txn-timeout-1"), clientId);
+            assertEquals("409-5", response.getErrorCode());
+            final var aborted = clientTracker.getActiveTransaction(clientId);
+            assertNotNull(aborted);
+            assertTrue(aborted.isAborted());
+            final var retried = processor.processMessage(saveRequest("txn-timeout-1"), clientId);
+            assertEquals("409-9", retried.getErrorCode());
+            processor.processMessage(new RollbackTransactionRequest(), clientId);
+            assertNull(clientTracker.getActiveTransaction(clientId));
+        } finally {
+            release.countDown();
+            holder.join(5000);
+            TestUtils.setPrivateField(config, "transactionLockTimeoutMs", originalTimeout);
+        }
+    }
+
+    @Test
+    public void test_cleanup_on_disconnect_clears_transaction_and_releases_locks() {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-disc-1"), clientId);
+
+        TransactionOperationHelper.cleanupOnDisconnect(clientId);
+
+        assertNull(clientTracker.getActiveTransaction(clientId));
+        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+    }
+
+    @Test
+    public void test_cleanup_on_disconnect_no_transaction_is_noop() {
+        final var clientId = newClient();
+        TransactionOperationHelper.cleanupOnDisconnect(clientId);
+        assertNull(clientTracker.getActiveTransaction(clientId));
+    }
+
+    @Test
+    public void test_cleanup_orphans_at_startup_removes_buffered_ops() throws Exception {
+        final var cache = IocContainer.get(org.ccg.mpp.cache.Cache.class);
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-orphan-1"), clientId);
+        // Simulate a crash: the buffered op record is on disk/in the index, but we drop the in-memory
+        // transaction without committing or rolling back.
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        TransactionRecordCalls.persistBufferedOps(transaction);
+        for (final var collId : transaction.getHeldLocks()) {
+            locks.releaseWrite(collId);
+        }
+        clientTracker.clearActiveTransaction(clientId);
+        assertFalse(cache.getTransactionPkIndexes().isEmpty());
+
+        TransactionOperationHelper.cleanupOrphansAtStartup();
+
+        assertTrue(cache.getTransactionPkIndexes().isEmpty());
+        TransactionOperationHelper.cleanupOrphansAtStartup();
+        assertTrue(cache.getTransactionPkIndexes().isEmpty());
+    }
+
+    private void deleteAllBufferedOps() throws Exception {
+        final var cache = IocContainer.get(Cache.class);
+        AdminOperationHelper.deleteTransactionOps(new ArrayList<>(cache.getTransactionPkIndexes().keySet()));
+    }
+
+    @Test
+    public void test_commit_error_returns_500_24() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-commit-err"), clientId);
+        try (var mocked = mockStatic(AdminOperationHelper.class)) {
+            mocked.when(() -> AdminOperationHelper.writeTransactionRecords(any(), any()))
+                    .thenThrow(new RuntimeException("boom"));
+            final var response = processor.processMessage(new CommitTransactionRequest(), clientId);
+            assertEquals("500-24", response.getErrorCode());
+        }
+        assertNull(clientTracker.getActiveTransaction(clientId));
+        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        deleteAllBufferedOps();
+    }
+
+    @Test
+    public void test_rollback_error_returns_500_24() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-rollback-err"), clientId);
+        try (var mocked = mockStatic(AdminOperationHelper.class)) {
+            mocked.when(() -> AdminOperationHelper.deleteTransactionOps(any())).thenThrow(new RuntimeException("boom"));
+            final var response = processor.processMessage(new RollbackTransactionRequest(), clientId);
+            assertEquals("500-24", response.getErrorCode());
+        }
+        assertNull(clientTracker.getActiveTransaction(clientId));
+        deleteAllBufferedOps();
+    }
+
+    @Test
+    public void test_cleanup_on_disconnect_swallows_delete_error() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-disc-err"), clientId);
+        try (var mocked = mockStatic(AdminOperationHelper.class)) {
+            mocked.when(() -> AdminOperationHelper.deleteTransactionOps(any())).thenThrow(new RuntimeException("boom"));
+            TransactionOperationHelper.cleanupOnDisconnect(clientId);
+        }
+        assertNull(clientTracker.getActiveTransaction(clientId));
+        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        deleteAllBufferedOps();
+    }
+
+    @Test
+    public void test_buffer_save_error_returns_500_24() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        try (var mocked = mockStatic(TransactionWrites.class, CALLS_REAL_METHODS)) {
+            mocked.when(() -> TransactionWrites.isVisible(any(), any(), any(), any()))
+                    .thenThrow(new RuntimeException("boom"));
+            final var response = processor.processMessage(saveRequest("txn-buf-err"), clientId);
+            assertEquals("500-24", response.getErrorCode());
+        }
+        processor.processMessage(new RollbackTransactionRequest(), clientId);
+        deleteAllBufferedOps();
+    }
+
+    @Test
+    public void test_buffer_bulk_save_error_returns_500_24() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var objects = new ArrayList<JsonObject>();
+        final var obj = new JsonObject();
+        obj.add("_id", new JsonString("txn-bulk-err"));
+        objects.add(obj);
+        bulk.setObjects(objects);
+        try (var mocked = mockStatic(TransactionWrites.class, CALLS_REAL_METHODS)) {
+            mocked.when(() -> TransactionWrites.isVisible(any(), any(), any(), any()))
+                    .thenThrow(new RuntimeException("boom"));
+            final var response = processor.processMessage(bulk, clientId);
+            assertEquals("500-24", response.getErrorCode());
+        }
+        processor.processMessage(new RollbackTransactionRequest(), clientId);
+        deleteAllBufferedOps();
+    }
+
+    @Test
+    public void test_buffer_delete_error_returns_500_24() throws Exception {
+        final var clientId = newClient();
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        processor.processMessage(saveRequest("txn-deleteme"), clientId);
+        processor.processMessage(new CommitTransactionRequest(), clientId);
+
+        processor.processMessage(new StartTransactionRequest(), clientId);
+        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        delete.set_id("txn-deleteme");
+        try (var mocked = mockStatic(TransactionWrites.class, CALLS_REAL_METHODS)) {
+            mocked.when(() -> TransactionWrites.documentForDeletedTrigger(any(), any(), any(), any(), any()))
+                    .thenThrow(new RuntimeException("boom"));
+            final var response = processor.processMessage(delete, clientId);
+            assertEquals("500-24", response.getErrorCode());
+        }
+        processor.processMessage(new RollbackTransactionRequest(), clientId);
+        deleteAllBufferedOps();
+    }
+
+    private static ClusterCoordinator swapCoordinator(ClusterCoordinator replacement) throws Exception {
+        final var field = TransactionOperationHelper.class.getDeclaredField("coordinator");
+        field.setAccessible(true);
+        final var original = (ClusterCoordinator) field.get(null);
+        field.set(null, replacement);
+        return original;
+    }
+
+    @Test
+    public void test_commit_rechecks_ownership_for_a_forwarded_tx_session_client() throws Exception {
+        final var sessionId = "session-" + UUID.randomUUID();
+        final var session = clientTracker.registerTxSession(sessionId, "alice", "nodeB");
+        final var clientId = session.clientId();
+        try {
+            TransactionOperationHelper.start(clientId);
+            TransactionOperationHelper.bufferSave(saveRequest("txn-ownership-moved"),
+                    clientTracker.getActiveTransaction(clientId));
+
+            final var mockCoordinator = mock(ClusterCoordinator.class);
+            when(mockCoordinator.stillOwns(TestGlobals.DB, TestGlobals.COLL)).thenReturn(false);
+            final var original = swapCoordinator(mockCoordinator);
+            try {
+                final var response = TransactionOperationHelper.commit(clientId);
+                assertEquals("421-1", response.getErrorCode());
+            } finally {
+                swapCoordinator(original);
+            }
+
+            assertNull(clientTracker.getActiveTransaction(clientId));
+            assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            deleteAllBufferedOps();
+        } finally {
+            clientTracker.removeTxSession(sessionId);
+        }
+    }
+
+    @Test
+    public void test_commit_still_applies_when_ownership_is_retained() throws Exception {
+        final var sessionId = "session-" + UUID.randomUUID();
+        TestUtils.ensureAdminUser("alice");
+        final var session = clientTracker.registerTxSession(sessionId, "alice", "nodeB");
+        final var clientId = session.clientId();
+        try {
+            TransactionOperationHelper.start(clientId);
+            TransactionOperationHelper.bufferSave(saveRequest("txn-ownership-retained"),
+                    clientTracker.getActiveTransaction(clientId));
+
+            final var mockCoordinator = mock(ClusterCoordinator.class);
+            when(mockCoordinator.stillOwns(TestGlobals.DB, TestGlobals.COLL)).thenReturn(true);
+            final var original = swapCoordinator(mockCoordinator);
+            try {
+                final var response = TransactionOperationHelper.commit(clientId);
+                assertEquals(OperationStatus.OK, response.getStatus(),
+                        "commit must still succeed when ownership was retained");
+            } finally {
+                swapCoordinator(original);
+            }
+
+            assertNull(clientTracker.getActiveTransaction(clientId));
+            assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        } finally {
+            clientTracker.removeTxSession(sessionId);
+        }
+    }
+}

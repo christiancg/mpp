@@ -1,3 +1,4 @@
+ARG BUILDPLATFORM
 FROM --platform=$BUILDPLATFORM maven:3.10.0-eclipse-temurin-27-alpine AS build
 
 ARG REVISION=1.0-SNAPSHOT
@@ -29,19 +30,19 @@ ENV JAVA_HOME=/opt/jre
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 COPY --from=jre /jre /opt/jre
-COPY --from=build /app/target/lwnrdb.jar /app/app.jar
+COPY --from=build /app/target/mpp.jar /app/app.jar
 
 WORKDIR /app
 
-COPY lwnrdb.cfg /app
+COPY mpp.cfg /app
 COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY --chmod=755 healthcheck.sh /app/healthcheck.sh
 
-RUN addgroup -S lwnrdb && adduser -S -G lwnrdb lwnrdb \
+RUN addgroup -S mpp && adduser -S -G mpp mpp \
     && mkdir -p /app/db /app/logs /app/certs \
-    && chown -R lwnrdb:lwnrdb /app
+    && chown -R mpp:mpp /app
 
-USER lwnrdb
+USER mpp
 
 VOLUME /app/db
 VOLUME /app/logs

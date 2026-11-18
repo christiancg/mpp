@@ -12,7 +12,7 @@ The server's id for the transaction.
 
 ## start
 
-Internal: use `LwnrdbClient.beginTransaction()` or `LwnrdbClient.transaction(body)`.
+Internal: use `MppClient.beginTransaction()` or `MppClient.transaction(body)`.
 
 @param lease the pooled connection the transaction keeps
 @param parent the client's context
@@ -30,7 +30,7 @@ Names a collection whose reads and writes belong to this transaction.
 @param collection the collection name
 @param codec optional mapping between your type and stored documents
 @returns the collection
-@throws LwnrdbError when the transaction already ended
+@throws MppError when the transaction already ended
 
 ## commit
 

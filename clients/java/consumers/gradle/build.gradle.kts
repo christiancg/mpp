@@ -2,7 +2,7 @@ plugins {
     java
 }
 
-val lwnrdbVersion: String = providers.gradleProperty("lwnrdbVersion").getOrElse("0.1.0-SNAPSHOT")
+val mppVersion: String = providers.gradleProperty("mppVersion").getOrElse("0.1.0-SNAPSHOT")
 
 repositories {
     mavenLocal()
@@ -14,6 +14,6 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 dependencies {
-    implementation(platform("io.github.christiancg:lwnrdb-client-bom:$lwnrdbVersion"))
-    implementation("io.github.christiancg:lwnrdb-client")
+    implementation(platform("io.github.christiancg:mpp-client-bom:$mppVersion"))
+    implementation("io.github.christiancg:mpp-client")
 }

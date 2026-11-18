@@ -5,12 +5,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from lwnrdb import ConnectionLostError, LwnrdbError, RetryPolicy, UnavailableError, UnknownOutcomeError
-from lwnrdb._internal.connection_factory import ConnectionFactory
-from lwnrdb._internal.connection_pool import ConnectionPool
-from lwnrdb._internal.request_channel import PinnedChannel, PooledChannel, is_retryable, jittered_backoff
-from lwnrdb._internal.request_encoder import RequestEncoder
-from lwnrdb._internal.values_codec import JsonObject
+from mpp import ConnectionLostError, MppError, RetryPolicy, UnavailableError, UnknownOutcomeError
+from mpp._internal.connection_factory import ConnectionFactory
+from mpp._internal.connection_pool import ConnectionPool
+from mpp._internal.request_channel import PinnedChannel, PooledChannel, is_retryable, jittered_backoff
+from mpp._internal.request_encoder import RequestEncoder
+from mpp._internal.values_codec import JsonObject
 from tests.support.fake_server import FakeServer, Responder, Session
 from tests.support.recording_channel import error, ok
 
@@ -69,7 +69,7 @@ async def test_codes_that_may_have_applied_are_never_retried(
 ) -> None:
     fake.responder = _fail_first(1, code)
     delays: list[float] = []
-    with pytest.raises(LwnrdbError):
+    with pytest.raises(MppError):
         await _channel(fake, pools, delays).send("SAVE", {"type": "SAVE"})
     assert delays == []
 
@@ -109,7 +109,7 @@ async def test_a_pinned_channel_refuses_operations_not_allowed_in_a_transaction(
     pool = ConnectionPool(ConnectionFactory(fake.settings(), RequestEncoder()))
     lease = await pool.borrow()
     channel = PinnedChannel(lease.connection, 5.0)
-    with pytest.raises(LwnrdbError, match="CREATE_DATABASE is not allowed inside a transaction"):
+    with pytest.raises(MppError, match="CREATE_DATABASE is not allowed inside a transaction"):
         await channel.send("CREATE_DATABASE", {"type": "CREATE_DATABASE"})
     assert (await channel.send("SAVE", {"type": "SAVE"}))["status"] == "OK"
     lease.release()

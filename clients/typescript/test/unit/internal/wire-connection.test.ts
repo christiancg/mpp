@@ -1,11 +1,6 @@
 import { connect } from "node:net";
 import { afterEach, describe, expect, test } from "vitest";
-import {
-    ConnectionLostError,
-    LwnrdbError,
-    RequestTimeoutError,
-    ServerClosedConnectionError,
-} from "../../../src/index.js";
+import { ConnectionLostError, MppError, RequestTimeoutError, ServerClosedConnectionError } from "../../../src/index.js";
 import type { JsonObject } from "../../../src/internal/values-codec.js";
 import { WireConnection } from "../../../src/internal/wire-connection.js";
 import { FakeServer, type Responder } from "../../support/fake-server.js";
@@ -56,7 +51,7 @@ describe("WireConnection", () => {
         const connection = await open((request, session) => {
             session.sendRaw(request.n === 1 ? "[1]\n\n" : `${JSON.stringify(ok(request))}\n`);
         });
-        await expect(connection.send({ type: "SAVE", n: 1 })).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(connection.send({ type: "SAVE", n: 1 })).rejects.toBeInstanceOf(MppError);
         await expect(connection.send({ type: "SAVE", n: 2 })).resolves.toMatchObject({ status: "OK" });
         connection.close();
     });
@@ -72,7 +67,7 @@ describe("WireConnection", () => {
 
     test("a timeout rejects with RequestTimeoutError and closes the connection", async () => {
         const connection = await open(silent);
-        const closed = new Promise<LwnrdbError>((resolve) => {
+        const closed = new Promise<MppError>((resolve) => {
             connection.onClose(resolve);
         });
         await expect(connection.request({ type: "SAVE" }, 50)).rejects.toBeInstanceOf(RequestTimeoutError);
@@ -119,7 +114,7 @@ describe("WireConnection", () => {
 
     test("a reply nobody asked for closes the connection", async () => {
         const connection = await open(silent);
-        const closed = new Promise<LwnrdbError>((resolve) => {
+        const closed = new Promise<MppError>((resolve) => {
             connection.onClose(resolve);
         });
         const session = await server?.awaitSession(0);
@@ -136,7 +131,7 @@ describe("WireConnection", () => {
                 throw new Error("handler broke");
             }
         });
-        const closed = new Promise<LwnrdbError>((resolve) => {
+        const closed = new Promise<MppError>((resolve) => {
             connection.onClose(resolve);
         });
         const pending = connection.send({ type: "LISTEN" });

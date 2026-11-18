@@ -1,6 +1,6 @@
 # Database
 
-One database of the server. Obtained from `LwnrdbClient.database(name)`; the name is validated
+One database of the server. Obtained from `MppClient.database(name)`; the name is validated
 locally, and nothing is sent until a method is called.
 
 ## name

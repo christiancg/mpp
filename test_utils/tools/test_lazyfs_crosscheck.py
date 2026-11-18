@@ -179,7 +179,7 @@ class InconclusiveTest(unittest.TestCase):
 class AppendDefectTest(unittest.TestCase):
 
     def setUp(self):
-        self.scratch = tempfile.mkdtemp(prefix="lwnrdb-crosscheck-test-")
+        self.scratch = tempfile.mkdtemp(prefix="mpp-crosscheck-test-")
         self.folder = os.path.join(self.scratch, crosscheck.AT_POWER_LOSS, "db", "durability_db", "pl2")
         os.makedirs(self.folder)
 

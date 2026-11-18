@@ -10,11 +10,11 @@ def engine_report(engine: str, container: dict) -> dict:
 
 class FooterTest(unittest.TestCase):
     def test_g1_pause_rows_render_count_p99_max_and_full_gcs(self):
-        lwnrdb = engine_report("lwnrdb", {"memory_peak": None, "data_bytes": None,
+        mpp = engine_report("mpp", {"memory_peak": None, "data_bytes": None,
                                           "gc_pauses": {"count": 41, "p99_ms": 3.125, "max_ms": 12.5,
                                                         "full_gcs": 1}})
         mysql = engine_report("mysql", {"memory_peak": None, "data_bytes": None, "gc_pauses": None})
-        lines = report._footer([lwnrdb, mysql])
+        lines = report._footer([mpp, mysql])
         self.assertIn("| G1 pauses: count / p99 ms / max ms | 41 / 3.12 / 12.50 | — |", lines)
         self.assertIn("| G1 full GCs | 1 | — |", lines)
 

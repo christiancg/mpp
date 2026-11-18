@@ -1,0 +1,47 @@
+package org.ccg.mpp.simplejs.values;
+
+import org.ccg.mpp.simplejs.internal.temporal.Iso8601Fields;
+import org.ccg.mpp.simplejs.internal.temporal.TemporalFormatter;
+
+public final class JsTemporalPlainYearMonth extends JsValue {
+    private PropertyTable table;
+    private final Iso8601Fields fields;
+
+    public JsTemporalPlainYearMonth(Iso8601Fields fields) {
+        this.fields = fields;
+    }
+
+    public Iso8601Fields fields() {
+        return fields;
+    }
+
+    public int year() {
+        return fields.year();
+    }
+
+    public int month() {
+        return fields.month();
+    }
+
+    public int referenceISODay() {
+        return fields.day();
+    }
+
+    @Override
+    public String toString() {
+        return TemporalFormatter.formatYearMonth(fields);
+    }
+
+    @Override
+    public PropertyTable ownProperties() {
+        if (table == null) {
+            table = new PropertyTable();
+        }
+        return table;
+    }
+
+    @Override
+    public JsValueType getType() {
+        return JsValueType.TEMPORAL_PLAIN_YEAR_MONTH;
+    }
+}

@@ -1,0 +1,60 @@
+package org.ccg.mpp.ops;
+
+import java.util.List;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.ClusterConfig;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.resp.OperationResponse;
+
+public final class CollectionReadinessGuard {
+    private static final Cache cache = IocContainer.get(Cache.class);
+    private static final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);
+
+    private CollectionReadinessGuard() {
+    }
+
+    public static OperationResponse check(OperationType type, String dbName, String collName) {
+        if (cache.getAdminCollectionEntry(dbName, collName) != null) {
+            return null;
+        }
+        return clusterConfig.isEnabled()
+                ? new OperationResponse(type, ErrorCode.COLLECTION_NOT_READY)
+                : new OperationResponse(type, ErrorCode.COLLECTION_NOT_FOUND);
+    }
+
+    public static OperationResponse precheck(OperationType type, String dbName, String collName) {
+        try {
+            return check(type, dbName, collName);
+        } catch (RuntimeException deferredToTheLockedCheck) {
+            return null;
+        }
+    }
+
+    public static OperationResponse precheckRead(OperationType type, String dbName, List<String> collNames) {
+        try {
+            return checkRead(type, dbName, collNames);
+        } catch (RuntimeException deferredToTheLockedCheck) {
+            return null;
+        }
+    }
+
+    public static OperationResponse checkRead(OperationType type, String dbName, List<String> collNames) {
+        if (isAdminDatabase(dbName)) {
+            return null;
+        }
+        for (final var collName : collNames) {
+            if (!Globals.SCRIPT_RUNS_COLLECTION_NAME.equals(collName)) {
+                final var refusal = check(type, dbName, collName);
+                if (refusal != null) {
+                    return refusal;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isAdminDatabase(String dbName) {
+        return Globals.ADMIN_DB_NAME.equals(dbName) || Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    }
+}

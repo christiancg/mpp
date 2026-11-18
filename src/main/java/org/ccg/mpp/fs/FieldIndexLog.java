@@ -1,0 +1,247 @@
+package org.ccg.mpp.fs;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.FieldIndexEntry;
+import org.ccg.mpp.log.Logger;
+
+final class FieldIndexLog {
+    private static final Logger logger = Logger.logFor(FieldIndexLog.class);
+    private static final Map<String, Map<String, Long>> unforced = new ConcurrentHashMap<>();
+    private static final AtomicLong appends = new AtomicLong();
+    private static final Map<String, Long> stamps = new ConcurrentHashMap<>();
+    private static final AtomicLong stampClock = new AtomicLong();
+    private static final Map<String, Long> generations = new ConcurrentHashMap<>();
+    private static final Map<String, Long> logLengths = new ConcurrentHashMap<>();
+    private static final Map<String, Long> baseLengths = new ConcurrentHashMap<>();
+    private static final String ADD = "+";
+    private static final String REMOVE = "-";
+    private static final int PREFIX_LENGTH = ADD.length() + Globals.ID_SEPARATOR.length();
+    private static final String APPEND_ROLLBACK_FAILURE = "Could not roll back a failed field index log append;"
+            + " REINDEX rebuilds the index from the stored documents";
+
+    private FieldIndexLog() {
+    }
+
+    private static void rememberUnforced(File log) {
+        final var file = log.getAbsoluteFile();
+        unforced.computeIfAbsent(file.getParent(), _ -> new ConcurrentHashMap<>()).put(file.getPath(),
+                appends.incrementAndGet());
+    }
+
+    static void forceUnforced(File collectionFolder, ForceGroup group) {
+        final var logs = unforced.get(collectionFolder.getAbsolutePath());
+        if (logs == null) {
+            return;
+        }
+        for (final var entry : List.copyOf(logs.entrySet())) {
+            final var path = entry.getKey();
+            final var append = entry.getValue();
+            final var file = new File(path);
+            if (file.exists()) {
+                group.add(file.toPath());
+                group.onceForced(() -> logs.remove(path, append));
+            } else {
+                logs.remove(path, append);
+            }
+        }
+    }
+
+    static void forgetUnder(File folder) {
+        final var prefix = folder.getAbsolutePath();
+        unforced.keySet().removeIf(path -> path.equals(prefix) || path.startsWith(prefix + File.separator));
+        stamps.keySet().removeIf(path -> path.startsWith(prefix + File.separator));
+        generations.keySet().removeIf(path -> path.startsWith(prefix + File.separator));
+        forgetFilesUnder(folder);
+    }
+
+    static void forgetFilesUnder(File folder) {
+        final var prefix = folder.getAbsolutePath() + File.separator;
+        logLengths.keySet().removeIf(path -> path.startsWith(prefix));
+        baseLengths.keySet().removeIf(path -> path.startsWith(prefix));
+        IndexLogMemo.SHARED.forgetUnder(folder);
+    }
+
+    static long stampOf(File base) {
+        return stamps.getOrDefault(base.getAbsolutePath(), 0L);
+    }
+
+    private static void restamp(File base) {
+        stamps.put(base.getAbsolutePath(), stampClock.incrementAndGet());
+    }
+
+    static long generationOf(File log) {
+        return generations.getOrDefault(log.getAbsolutePath(), 0L);
+    }
+
+    static void replaced(File base) {
+        restamp(base);
+        baseLengths.remove(base.getAbsolutePath());
+        rewritten(FilePaths.logFileOf(base));
+    }
+
+    private static void rewritten(File log) {
+        final var path = log.getAbsolutePath();
+        logLengths.remove(path);
+        generations.put(path, stampClock.incrementAndGet());
+        IndexLogMemo.SHARED.invalidate(log);
+    }
+
+    enum Replayed {
+        CLEAN, ABSENT, UNRECOGNISED
+    }
+
+    static void append(File base, File log, List<IndexLogChange> changes) throws IOException {
+        append(base, log, changes, 1);
+    }
+
+    record AppendOutcome(boolean due, long logBytes, long baseBytes) {
+        boolean pastResidentCeiling() {
+            return logBytes >= Globals.RESIDENT_INDEX_FOLD_CEILING
+                    * Math.max(baseBytes, Globals.FIELD_INDEX_LOG_MIN_BYTES);
+        }
+    }
+
+    static AppendOutcome append(File base, File log, List<IndexLogChange> changes, int foldDivisor) throws IOException {
+        final var content = encode(changes);
+        final var known = logLengths.get(log.getAbsolutePath());
+        final long logBytes;
+        if (content.size() > 0) {
+            logBytes = appendContent(base, log, content, known);
+        } else {
+            logBytes = known != null ? known : log.length();
+        }
+        final var baseBytes = baseLengthOf(base);
+        return new AppendOutcome(logBytes >= Math.max(baseBytes / foldDivisor, Globals.FIELD_INDEX_LOG_MIN_BYTES),
+                logBytes, baseBytes);
+    }
+
+    private static long appendContent(File base, File log, ByteArrayOutputStream content, Long known)
+            throws IOException {
+        final long lengthBeforeAppend;
+        if (known == null) {
+            FileLocks.cutUnterminatedTail(log);
+            rewritten(log);
+            lengthBeforeAppend = log.length();
+        } else {
+            lengthBeforeAppend = known;
+        }
+        var appended = false;
+        try {
+            if (known == null) {
+                OwnerOnly.ensureOwnerOnlyFile(log.toPath());
+            }
+            try (var out = new FileOutputStream(log, true)) {
+                content.writeTo(out);
+            }
+            appended = true;
+            restamp(base);
+            rememberUnforced(log);
+            final var lengthAfterAppend = lengthBeforeAppend + content.size();
+            logLengths.put(log.getAbsolutePath(), lengthAfterAppend);
+            return lengthAfterAppend;
+        } finally {
+            if (!appended) {
+                rewritten(log);
+                if (log.length() != lengthBeforeAppend) {
+                    FileLocks.truncateTo(log, lengthBeforeAppend, APPEND_ROLLBACK_FAILURE);
+                }
+            }
+        }
+    }
+
+    private static long baseLengthOf(File base) {
+        return baseLengths.computeIfAbsent(base.getAbsolutePath(), _ -> base.length());
+    }
+
+    private static ByteArrayOutputStream encode(List<IndexLogChange> changes) throws IOException {
+        final var out = new ByteArrayOutputStream();
+        for (final var change : changes) {
+            writeLine(out, ADD, change.fileKey(), change.added());
+            writeLine(out, REMOVE, change.fileKey(), change.removed());
+        }
+        return out;
+    }
+
+    private static void writeLine(ByteArrayOutputStream out, String sign, String fileKey, List<String> ids)
+            throws IOException {
+        if (ids.isEmpty()) {
+            return;
+        }
+        final var line = new StringBuilder(sign).append(Globals.ID_SEPARATOR).append(fileKey);
+        for (final var id : ids) {
+            line.append(Globals.ID_SEPARATOR).append(FieldIndexEntry.escapeIndexToken(id));
+        }
+        out.write(line.append(Globals.NEWLINE).toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    static <T> Replayed replay(File log, LinkedHashMap<String, FieldIndexEntry<T>> byKey, String label,
+            Function<String, FieldIndexEntry<T>> parser) throws IOException {
+        final byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(log.toPath());
+        } catch (NoSuchFileException e) {
+            return Replayed.ABSENT;
+        }
+        var parsed = 0;
+        var dropped = false;
+        var start = 0;
+        while (start < bytes.length) {
+            final var end = FileLocks.lineEnd(bytes, start);
+            if (end >= bytes.length) {
+                logger.warning("Ignoring the unterminated last line of " + log.getName()
+                        + ": it was torn by an interrupted append");
+                break;
+            }
+            if (end > start) {
+                if (apply(new String(bytes, start, end - start, StandardCharsets.UTF_8), byKey, parser)) {
+                    parsed++;
+                } else {
+                    dropped = true;
+                    logger.warning("Ignoring a malformed " + label + " index log line in " + log.getName()
+                            + ". Run REINDEX on this collection to rebuild it from the stored documents.");
+                }
+            }
+            start = FileLocks.nextLineStart(bytes, end);
+        }
+        return dropped && parsed == 0 ? Replayed.UNRECOGNISED : Replayed.CLEAN;
+    }
+
+    private static <T> boolean apply(String line, LinkedHashMap<String, FieldIndexEntry<T>> byKey,
+            Function<String, FieldIndexEntry<T>> parser) {
+        final var adds = line.startsWith(ADD + Globals.ID_SEPARATOR);
+        if (!adds && !line.startsWith(REMOVE + Globals.ID_SEPARATOR)) {
+            return false;
+        }
+        final FieldIndexEntry<T> change;
+        try {
+            change = parser.apply(line.substring(PREFIX_LENGTH));
+        } catch (RuntimeException e) {
+            return false;
+        }
+        final var key = FieldIndexEntry.fileKeyOf(change.getValue());
+        final var existing = byKey.get(key);
+        if (adds) {
+            if (existing == null) {
+                byKey.put(key, change);
+            } else {
+                existing.getIds().addAll(change.getIds());
+            }
+        } else if (existing != null) {
+            existing.getIds().removeAll(change.getIds());
+        }
+        return true;
+    }
+}

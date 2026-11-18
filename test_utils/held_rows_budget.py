@@ -77,7 +77,7 @@ class PointReader(threading.Thread):
 def test_group_by_over_budget_is_refused_not_oom():
     section(f"GROUP_BY over {HELD_DOCS} documents with aggregateMaxResultBytes={HELD_BUDGET} under -Xmx{HELD_XMX}")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-held-rows-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-held-rows-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, HELD_PORT, aggregateMaxResultBytes=HELD_BUDGET, syncWrites=False)
     proc = None
@@ -138,7 +138,7 @@ def load_in_batches(c: Conn, coll: str, docs: list, batch: int) -> list:
 def test_skewed_rows_and_an_indexed_join_fan_in_are_refused():
     section(f"Skewed rows and an indexed JOIN fan-in are charged under aggregateMaxResultBytes={SKEW_BUDGET}")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-held-skew-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-held-skew-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, HELD_PORT, aggregateMaxResultBytes=SKEW_BUDGET, maxMemory="1mb", syncWrites=False)
     proc = None
@@ -247,7 +247,7 @@ def concurrent_group_bys(port: int) -> list:
 def test_concurrent_aggregations_share_one_budget():
     section(f"Concurrent pipelines share aggregateTotalHeldBytes={POOL_BUDGET}; a bounded SORT is charged too")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-held-pool-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-held-pool-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, HELD_PORT, aggregateMaxResultBytes=POOL_PER_REQUEST,
                     aggregateTotalHeldBytes=POOL_BUDGET, syncWrites=False)

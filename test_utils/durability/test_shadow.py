@@ -9,7 +9,7 @@ from durability import shadow
 class EagerRebuildTest(unittest.TestCase):
 
     def setUp(self):
-        self.root = tempfile.mkdtemp(prefix="lwnrdb-shadow-test-")
+        self.root = tempfile.mkdtemp(prefix="mpp-shadow-test-")
         self.data = os.path.join(self.root, "db")
         self.shadow_root = os.path.join(self.root, "shadow")
         os.makedirs(os.path.join(self.data, "coll"))

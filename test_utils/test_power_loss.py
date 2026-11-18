@@ -77,8 +77,8 @@ def auto_rebuild(seed: int, mode: str) -> str:
 
 def run_seed(seed: int, mode: str, rebuild: str = AUTO) -> Run:
     rng = random.Random(seed * 7919 + MODE_SALT[mode])
-    run = Run(seed, mode, work_dir=tempfile.mkdtemp(prefix=f"lwnrdb-powerloss-{seed}-"))
-    shadow_root = tempfile.mkdtemp(prefix=f"lwnrdb-powerloss-shadow-{seed}-")
+    run = Run(seed, mode, work_dir=tempfile.mkdtemp(prefix=f"mpp-powerloss-{seed}-"))
+    shadow_root = tempfile.mkdtemp(prefix=f"mpp-powerloss-shadow-{seed}-")
     log_path = os.path.join(run.work_dir, "server.log")
     bu.write_config(run.work_dir, PORT, powerLossShadowPath=shadow_root, **SERVER_SETTINGS)
     proc = bu.start_server(run.work_dir, log_path, port=PORT)
@@ -119,14 +119,14 @@ def strict_recovery(shadow_roots: dict):
 
 
 def case_config(work_dir: str, shadow_roots: dict) -> None:
-    shadow_roots.setdefault(work_dir, tempfile.mkdtemp(prefix="lwnrdb-powerloss-case-shadow-"))
+    shadow_roots.setdefault(work_dir, tempfile.mkdtemp(prefix="mpp-powerloss-case-shadow-"))
     bu.write_config(work_dir, PORT, powerLossShadowPath=shadow_roots[work_dir], **CASE_SETTINGS)
 
 
 def run_cases() -> None:
     section("Every hand-written kill case, replayed as a power loss with a strict rebuild")
     shadow_roots = {}
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-powerloss-cases-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-powerloss-cases-")
     log_path = os.path.join(work_dir, "server.log")
     case_config(work_dir, shadow_roots)
     proc = bu.start_server(work_dir, log_path, port=PORT)

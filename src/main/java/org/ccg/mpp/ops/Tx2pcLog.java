@@ -1,0 +1,281 @@
+package org.ccg.mpp.ops;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.data.admin.AdminTransactionEntry;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ioc.IocContainer;
+
+// The coordinator marker's presence is the commit point: present means committed, absent means presumed-abort.
+public final class Tx2pcLog {
+    private static final Cache cache = IocContainer.get(Cache.class);
+    private static final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+    private static final String COORDINATOR_ADDRESS_FIELD = "coordinatorAddress";
+    private static final String COLLECTIONS_FIELD = "collections";
+    private static final String PARTICIPANTS_FIELD = "participants";
+    private static final String SESSION_ID_FIELD = "sessionId";
+    private static final String PREPARED_AT_FIELD = "preparedAt";
+    private static final String OP_IDS_FIELD = "opIds";
+    private static final String OUTCOME_FIELD = "outcome";
+    private static final String RESOLVED_AT_FIELD = "resolvedAt";
+    private static final String OUTCOME_COMMITTED = "committed";
+    private static final String OUTCOME_ABORTED = "aborted";
+    private static final String REPLY_CODE_FIELD = "replyCode";
+
+    public record Outcome(boolean committed, String replyCode) {
+    }
+
+    public enum Status {
+        COMMITTED, ABORTED, PREPARED, UNKNOWN, NO_RECORD
+    }
+
+    private Tx2pcLog() {
+    }
+
+    private static String markerId(String dtxId, String suffix) {
+        return dtxId + Globals.COLL_IDENTIFIER_SEPARATOR + suffix;
+    }
+
+    public static void recordParticipantPrepared(String dtxId, String coordinatorAddress, List<String> participants,
+            List<String> collections) throws Exception {
+        recordParticipantPrepared(dtxId, coordinatorAddress, participants, collections, List.of(), null);
+    }
+
+    public static void recordParticipantPrepared(String dtxId, String coordinatorAddress, List<String> participants,
+            List<String> collections, List<AdminTransactionEntry> ops) throws Exception {
+        recordParticipantPrepared(dtxId, coordinatorAddress, participants, collections, ops, null);
+    }
+
+    public static void recordParticipantPrepared(String dtxId, String coordinatorAddress, List<String> participants,
+            List<String> collections, List<AdminTransactionEntry> ops, List<String> opIds) throws Exception {
+        final var payload = new JsonObject();
+        payload.addProperty(COORDINATOR_ADDRESS_FIELD, coordinatorAddress);
+        payload.add(PARTICIPANTS_FIELD, stringArray(participants));
+        payload.add(COLLECTIONS_FIELD, stringArray(collections));
+        if (opIds != null) {
+            payload.add(OP_IDS_FIELD, stringArray(opIds));
+        }
+        payload.addProperty(PREPARED_AT_FIELD, Long.toString(System.currentTimeMillis()));
+        final var records = new ArrayList<>(ops);
+        records.add(AdminTransactionEntry.marker(dtxId, AdminTransactionEntry.MARKER_PARTICIPANT,
+                AdminTransactionEntry.OP_TYPE_PARTICIPANT_PREPARED, payload));
+        AdminOperationHelper.writeTransactionRecords(records, List.of());
+    }
+
+    public static void recordOutcome(String dtxId, boolean committed, String replyCode) throws Exception {
+        AdminOperationHelper.saveTransactionOp(outcomeMarker(dtxId, committed, replyCode));
+    }
+
+    public static AdminTransactionEntry outcomeMarker(String dtxId, boolean committed, String replyCode) {
+        final var payload = new JsonObject();
+        payload.addProperty(OUTCOME_FIELD, committed ? OUTCOME_COMMITTED : OUTCOME_ABORTED);
+        payload.addProperty(REPLY_CODE_FIELD, replyCode == null ? "" : replyCode);
+        payload.addProperty(RESOLVED_AT_FIELD, Long.toString(System.currentTimeMillis()));
+        return AdminTransactionEntry.marker(dtxId, AdminTransactionEntry.MARKER_OUTCOME,
+                AdminTransactionEntry.OP_TYPE_TRANSACTION_OUTCOME, payload);
+    }
+
+    public static String participantMarkerId(String dtxId) {
+        return markerId(dtxId, AdminTransactionEntry.MARKER_PARTICIPANT);
+    }
+
+    public static void deleteOutcomeMarker(String dtxId) throws Exception {
+        AdminOperationHelper.deleteTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_OUTCOME)));
+    }
+
+    public static Status status(String dtxId, String selfAddress) throws Exception {
+        final var prepared = isPrepared(dtxId);
+        final var restartedUndecided = prepared && coordinatorRestartedUndecided(dtxId, selfAddress);
+        final var active = clientTracker.hasActiveTransaction(dtxId);
+        if (isCommitted(dtxId) || TxCommitLog.isLocallyCommitted(dtxId)) {
+            return Status.COMMITTED;
+        }
+        final var outcome = readOutcome(dtxId);
+        if (outcome != null) {
+            return outcome.committed() ? Status.COMMITTED : Status.ABORTED;
+        }
+        if (prepared) {
+            return restartedUndecided ? Status.NO_RECORD : Status.PREPARED;
+        }
+        return active ? Status.UNKNOWN : Status.NO_RECORD;
+    }
+
+    private static boolean coordinatorRestartedUndecided(String dtxId, String selfAddress) throws Exception {
+        if (selfAddress == null || clientTracker.hasActiveTransaction(dtxId)) {
+            return false;
+        }
+        final var marker = readParticipantMarker(dtxId);
+        return marker != null && selfAddress.equals(marker.coordinatorAddress());
+    }
+
+    public static boolean hasOutcome(String dtxId) {
+        return cache.getPkIndexTransaction(markerId(dtxId, AdminTransactionEntry.MARKER_OUTCOME)) != null;
+    }
+
+    public static Outcome readOutcome(String dtxId) throws Exception {
+        if (!hasOutcome(dtxId)) {
+            return null;
+        }
+        final var entries = AdminOperationHelper
+                .readTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_OUTCOME)));
+        if (entries.isEmpty()) {
+            return null;
+        }
+        final var payload = entries.getFirst().getPayload();
+        final var replyCode = payload.has(REPLY_CODE_FIELD)
+                ? payload.get(REPLY_CODE_FIELD).asJsonString().getValue()
+                : "";
+        return new Outcome(OUTCOME_COMMITTED.equals(payload.get(OUTCOME_FIELD).asJsonString().getValue()), replyCode);
+    }
+
+    public static void garbageCollectOutcomes(long retentionMs) throws Exception {
+        final var expired = new ArrayList<String>();
+        for (final var markerId : OutcomeMarkers.resolvedBefore(System.currentTimeMillis() - retentionMs)) {
+            final var dtxId = OutcomeMarkers.dtxIdOf(markerId);
+            if (!isPrepared(dtxId) && !TxCommitLog.isLocallyCommitted(dtxId)) {
+                expired.add(markerId);
+            }
+        }
+        if (!expired.isEmpty()) {
+            AdminOperationHelper.deleteTransactionOps(expired);
+        }
+    }
+
+    static long resolvedAtOf(AdminTransactionEntry marker) {
+        final var payload = marker.getPayload();
+        return payload != null && payload.has(RESOLVED_AT_FIELD)
+                ? Long.parseLong(payload.get(RESOLVED_AT_FIELD).asJsonString().getValue())
+                : System.currentTimeMillis();
+    }
+
+    public static void recordCoordinatorCommit(String dtxId, String sessionId, List<String> participants)
+            throws Exception {
+        AdminOperationHelper.saveTransactionOp(coordinatorMarker(dtxId, sessionId, participants));
+    }
+
+    public static AdminTransactionEntry coordinatorMarker(String dtxId, String sessionId, List<String> participants) {
+        final var payload = new JsonObject();
+        payload.addProperty(SESSION_ID_FIELD, sessionId);
+        payload.add(PARTICIPANTS_FIELD, stringArray(participants));
+        return AdminTransactionEntry.marker(dtxId, AdminTransactionEntry.MARKER_COORDINATOR,
+                AdminTransactionEntry.OP_TYPE_COORDINATOR_COMMIT, payload);
+    }
+
+    public static void deleteParticipantMarker(String dtxId) throws Exception {
+        AdminOperationHelper.deleteTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_PARTICIPANT)));
+    }
+
+    public static void deleteCoordinatorMarker(String dtxId) throws Exception {
+        AdminOperationHelper.deleteTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_COORDINATOR)));
+    }
+
+    public static boolean isCommitted(String dtxId) {
+        return cache.getPkIndexTransaction(markerId(dtxId, AdminTransactionEntry.MARKER_COORDINATOR)) != null;
+    }
+
+    public static boolean isPrepared(String dtxId) {
+        return cache.getPkIndexTransaction(markerId(dtxId, AdminTransactionEntry.MARKER_PARTICIPANT)) != null;
+    }
+
+    public static List<String> preparedDtxIds() {
+        return dtxIdsWithSuffix(AdminTransactionEntry.MARKER_PARTICIPANT);
+    }
+
+    public static List<String> committedDtxIds() {
+        return dtxIdsWithSuffix(AdminTransactionEntry.MARKER_COORDINATOR);
+    }
+
+    public static List<String> outcomeDtxIds() {
+        return dtxIdsWithSuffix(AdminTransactionEntry.MARKER_OUTCOME);
+    }
+
+    public static ParticipantMarker readParticipantMarker(String dtxId) throws Exception {
+        final var entries = AdminOperationHelper
+                .readTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_PARTICIPANT)));
+        if (entries.isEmpty()) {
+            return null;
+        }
+        final var payload = entries.getFirst().getPayload();
+        final var preparedAt = payload.has(PREPARED_AT_FIELD)
+                ? Long.parseLong(payload.get(PREPARED_AT_FIELD).asJsonString().getValue())
+                : 0L;
+        return new ParticipantMarker(payload.get(COORDINATOR_ADDRESS_FIELD).asJsonString().getValue(),
+                readStringArray(payload, PARTICIPANTS_FIELD), readStringArray(payload, COLLECTIONS_FIELD), preparedAt,
+                payload.has(OP_IDS_FIELD) ? readStringArray(payload, OP_IDS_FIELD) : null);
+    }
+
+    public static List<String> readCoordinatorParticipants(String dtxId) throws Exception {
+        final var entries = AdminOperationHelper
+                .readTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_COORDINATOR)));
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+        return readStringArray(entries.getFirst().getPayload(), PARTICIPANTS_FIELD);
+    }
+
+    public static String readCoordinatorSessionId(String dtxId) throws Exception {
+        final var entries = AdminOperationHelper
+                .readTransactionOps(List.of(markerId(dtxId, AdminTransactionEntry.MARKER_COORDINATOR)));
+        if (entries.isEmpty()) {
+            return null;
+        }
+        final var payload = entries.getFirst().getPayload();
+        if (!payload.has(SESSION_ID_FIELD) || payload.get(SESSION_ID_FIELD).isJsonNull()) {
+            return null;
+        }
+        return payload.get(SESSION_ID_FIELD).asJsonString().getValue();
+    }
+
+    // Slice op ids are {dtxId}|{seq}; the numeric-suffix test is what excludes the marker records.
+    public static List<String> sliceOpIds(String dtxId) {
+        final var prefix = dtxId + Globals.COLL_IDENTIFIER_SEPARATOR;
+        final var result = new ArrayList<String>();
+        for (final var key : cache.getTransactionPkIndexes().keySet()) {
+            if (key.startsWith(prefix)) {
+                final var suffix = key.substring(prefix.length());
+                if (suffix.chars().allMatch(Character::isDigit)) {
+                    result.add(key);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static List<String> dtxIdsWithSuffix(String suffix) {
+        final var tail = Globals.COLL_IDENTIFIER_SEPARATOR + suffix;
+        final var result = new ArrayList<String>();
+        for (final var key : cache.getTransactionPkIndexes().keySet()) {
+            if (key.endsWith(tail)) {
+                result.add(key.substring(0, key.length() - tail.length()));
+            }
+        }
+        return result;
+    }
+
+    private static JsonArray stringArray(List<String> values) {
+        final var array = new JsonArray();
+        if (values != null) {
+            for (final var value : values) {
+                array.add(new JsonString(value));
+            }
+        }
+        return array;
+    }
+
+    private static List<String> readStringArray(JsonObject payload, String field) {
+        final var result = new ArrayList<String>();
+        for (final var element : payload.get(field).asJsonArray().asList()) {
+            result.add(element.asJsonString().getValue());
+        }
+        return result;
+    }
+
+    public record ParticipantMarker(String coordinatorAddress, List<String> participants, List<String> collections,
+            long preparedAt, List<String> opIds) {
+    }
+}

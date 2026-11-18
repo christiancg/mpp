@@ -1,0 +1,142 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.IOException;
+import java.util.List;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ops.AggregationOperationHelper;
+import org.ccg.mpp.ops.req.agg.BaseAggregationStep;
+import org.ccg.mpp.ops.req.agg.ConjunctionOperatorType;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.operators.ConjunctionOperator;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.ccg.mpp.ops.req.agg.step.FilterAggregationStep;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class FilterConjunctionDedupTest {
+    @BeforeEach
+    public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+    }
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.standardTearDown();
+    }
+
+    private static JsonObject doc(String id, String role, String active) {
+        final var obj = new JsonObject();
+        if (id != null) {
+            obj.add(Globals.PK_FIELD, new JsonString(id));
+        }
+        obj.addProperty("role", role);
+        obj.addProperty("active", active);
+        return obj;
+    }
+
+    private static FieldOperator eq(String field, String value) {
+        return new FieldOperator(FieldOperatorType.EQUALS, field, new JsonString(value));
+    }
+
+    private static BaseAggregationStep conjunction(ConjunctionOperatorType type) {
+        return new FilterAggregationStep(
+                new ConjunctionOperator(type, List.of(eq("role", "admin"), eq("active", "yes"))));
+    }
+
+    private static List<JsonObject> run(List<JsonObject> source, BaseAggregationStep step) throws IOException {
+        return AggregationOperationHelper.processStepsOnStream(List.of(step), source.stream());
+    }
+
+    @Test
+    public void test_or_emits_a_matching_document_once() throws IOException {
+        final var source = List.of(doc("a", "admin", "yes"), doc("b", "admin", "no"), doc("c", "user", "yes"),
+                doc("d", "user", "no"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.OR));
+
+        assertEquals(List.of("a", "b", "c"),
+                result.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).sorted().toList(),
+                "a document matching both OR branches must be emitted once");
+    }
+
+    @Test
+    public void test_or_keeps_the_first_occurrence_order() throws IOException {
+        final var source = List.of(doc("a", "admin", "yes"), doc("b", "user", "yes"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.OR));
+
+        assertEquals(List.of("a", "b"),
+                result.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList(),
+                "OR must keep first-occurrence order, as distinct() did");
+    }
+
+    @Test
+    public void test_or_keeps_equal_rows_without_an_id() throws IOException {
+        final var source = List.of(doc(null, "admin", "yes"), doc(null, "admin", "yes"), doc(null, "user", "yes"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.OR));
+
+        assertEquals(3, result.size(), "a conjunction filters rows; it must not collapse two equal rows into one");
+    }
+
+    @Test
+    public void test_and_emits_each_matching_document_once() throws IOException {
+        final var source = List.of(doc("a", "admin", "yes"), doc("b", "admin", "no"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.AND));
+
+        assertEquals(List.of("a"),
+                result.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList());
+    }
+
+    @Test
+    public void test_xor_emits_each_matching_document_once() throws IOException {
+        final var source = List.of(doc("a", "admin", "yes"), doc("b", "admin", "no"), doc("c", "user", "yes"),
+                doc("d", "user", "no"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.XOR));
+
+        assertEquals(List.of("b", "c"),
+                result.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).sorted().toList());
+    }
+
+    @Test
+    public void test_nand_and_nor_emit_each_document_once() throws IOException {
+        final var source = List.of(doc("a", "admin", "yes"), doc("b", "admin", "no"), doc("c", "user", "yes"));
+
+        final var nand = run(source, conjunction(ConjunctionOperatorType.NAND));
+        final var nor = run(source, conjunction(ConjunctionOperatorType.NOR));
+
+        assertEquals(List.of("b", "c"),
+                nand.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).sorted().toList());
+        assertEquals(List.of(), nor.stream().map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList());
+    }
+
+    @Test
+    public void test_and_without_an_id_keys_on_the_row_itself() throws IOException {
+        final var source = List.of(doc(null, "admin", "yes"), doc(null, "user", "yes"));
+
+        final var result = run(source, conjunction(ConjunctionOperatorType.AND));
+
+        assertEquals(1, result.size());
+        assertEquals("admin", result.getFirst().get("role").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_every_conjunction_without_an_id_emits_each_row_once() throws IOException {
+        final var source = List.of(doc(null, "admin", "yes"), doc(null, "admin", "no"), doc(null, "user", "yes"));
+
+        assertEquals(1, run(source, conjunction(ConjunctionOperatorType.AND)).size());
+        assertEquals(2, run(source, conjunction(ConjunctionOperatorType.XOR)).size());
+        assertEquals(2, run(source, conjunction(ConjunctionOperatorType.NAND)).size());
+        assertEquals(0, run(source, conjunction(ConjunctionOperatorType.NOR)).size());
+        assertEquals(3, run(source, conjunction(ConjunctionOperatorType.OR)).size());
+    }
+}

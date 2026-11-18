@@ -2,7 +2,7 @@ import { Admin } from "./admin/admin.js";
 import type { ServerInfo } from "./admin/types.js";
 import { Database } from "./database.js";
 import type { Document } from "./document.js";
-import { LwnrdbError } from "./errors/errors.js";
+import { MppError } from "./errors/errors.js";
 import type { ClientContext } from "./internal/client-context.js";
 import { ConnectionFactory, openSocket, type SocketOpener } from "./internal/connection-factory.js";
 import { ConnectionPool } from "./internal/connection-pool.js";
@@ -22,13 +22,13 @@ export interface ClientDependencies {
 
 export type TransactionBody<V> = (transaction: Transaction) => Promise<V> | V;
 
-let connectClient: (settings: ClientSettings, dependencies: ClientDependencies) => Promise<LwnrdbClient>;
+let connectClient: (settings: ClientSettings, dependencies: ClientDependencies) => Promise<MppClient>;
 
-export function connectWith(settings: ClientSettings, dependencies: ClientDependencies): Promise<LwnrdbClient> {
+export function connectWith(settings: ClientSettings, dependencies: ClientDependencies): Promise<MppClient> {
     return connectClient(settings, dependencies);
 }
 
-export class LwnrdbClient implements AsyncDisposable {
+export class MppClient implements AsyncDisposable {
     readonly settings: ResolvedSettings;
     readonly #pool: ConnectionPool;
     readonly #listens: Listens;
@@ -57,7 +57,7 @@ export class LwnrdbClient implements AsyncDisposable {
 
     static {
         connectClient = async (settings, dependencies) => {
-            const client = new LwnrdbClient(resolveSettings(settings), dependencies);
+            const client = new MppClient(resolveSettings(settings), dependencies);
             try {
                 const lease = await client.#pool.borrow();
                 lease.release();
@@ -69,7 +69,7 @@ export class LwnrdbClient implements AsyncDisposable {
         };
     }
 
-    static connect(settings: ClientSettings = {}): Promise<LwnrdbClient> {
+    static connect(settings: ClientSettings = {}): Promise<MppClient> {
         return connectClient(settings, {});
     }
 
@@ -95,7 +95,7 @@ export class LwnrdbClient implements AsyncDisposable {
     async changePassword(currentPassword: string, newPassword: string): Promise<void> {
         const username = this.#context.username;
         if (username === undefined) {
-            throw new LwnrdbError("the client has no credentials to change");
+            throw new MppError("the client has no credentials to change");
         }
         await this.#context.channel.send(
             "SET_PASSWORD",
@@ -117,7 +117,7 @@ export class LwnrdbClient implements AsyncDisposable {
         try {
             result = await body(transaction);
         } catch (error) {
-            await LwnrdbClient.#rollbackQuietly(transaction);
+            await MppClient.#rollbackQuietly(transaction);
             throw error;
         }
         if (transaction.isOpen) {

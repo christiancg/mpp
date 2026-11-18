@@ -1,4 +1,4 @@
-export { LwnrdbClient, type TransactionBody } from "./client.js";
+export { MppClient, type TransactionBody } from "./client.js";
 export { Database } from "./database.js";
 export { Collection } from "./collection.js";
 export { Transaction, TransactionCollection } from "./transaction.js";
@@ -49,7 +49,7 @@ export {
     ConnectionLostError,
     ForbiddenError,
     ListenEndedError,
-    LwnrdbError,
+    MppError,
     MappingError,
     NotFoundError,
     PoolExhaustedError,
@@ -57,7 +57,7 @@ export {
     ServerClosedConnectionError,
     UnavailableError,
     UnknownOutcomeError,
-    type LwnrdbErrorOptions,
+    type MppErrorOptions,
 } from "./errors/errors.js";
 export { ERROR_CODES, ErrorCode, type ErrorCodeDetails } from "./errors/error-codes.js";
 export { OPERATIONS, Operation, type OperationDetails, type OperationScope } from "./protocol/operations.js";

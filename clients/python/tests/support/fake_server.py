@@ -7,8 +7,8 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from lwnrdb import ClientSettings, ServerAddress
-from lwnrdb._internal.values_codec import JsonObject
+from mpp import ClientSettings, ServerAddress
+from mpp._internal.values_codec import JsonObject
 from tests.support.recording_channel import ok
 
 Responder = Callable[[JsonObject, "Session"], Awaitable[None] | None]

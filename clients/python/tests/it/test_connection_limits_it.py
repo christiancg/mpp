@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from lwnrdb import AsyncLwnrdbClient, ServerClosedConnectionError
+from mpp import AsyncMppClient, ServerClosedConnectionError
 
 pytestmark = pytest.mark.it
 SERVER_CONFIG = {"maxRequestSize": "128Kb", "maxEntrySize": "64Kb"}
 
 
-async def test_an_oversized_request_closes_its_connection_and_the_pool_recovers(client: AsyncLwnrdbClient) -> None:
+async def test_an_oversized_request_closes_its_connection_and_the_pool_recovers(client: AsyncMppClient) -> None:
     shop = client.database("limits_it")
     await shop.create()
     notes = shop.collection("notes")

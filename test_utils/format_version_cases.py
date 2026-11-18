@@ -108,7 +108,7 @@ def test_the_original_stamp_starts_and_serves_the_data(work_dir: str, port: int,
 
 
 def run_all(write_config, port: int):
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-client-format-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-client-format-")
     write_config(work_dir, port)
     original = test_a_fresh_folder_is_stamped(work_dir, port)
     test_a_newer_format_refuses_to_start(work_dir, port, json.loads(original))
