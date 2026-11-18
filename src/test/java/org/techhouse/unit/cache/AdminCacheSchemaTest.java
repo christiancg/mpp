@@ -1,0 +1,93 @@
+package org.techhouse.unit.cache;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.techhouse.cache.AdminCache;
+import org.techhouse.ejson.EJson;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ex.MetadataReadException;
+import org.techhouse.fs.FileSystem;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.test.TestGlobals;
+import org.techhouse.test.TestUtils;
+
+public class AdminCacheSchemaTest {
+    private final AdminCache adminCache = IocContainer.get(AdminCache.class);
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final EJson eJson = IocContainer.get(EJson.class);
+
+    @BeforeAll
+    static void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+    }
+
+    @AfterAll
+    static void tearDown() throws Exception {
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    @BeforeEach
+    void reset() throws Exception {
+        adminCache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+    }
+
+    private JsonObject schema(String type) {
+        final var s = new JsonObject();
+        s.add("type", new JsonString(type));
+        return s;
+    }
+
+    @Test
+    public void test_absent_schema_returns_null() {
+        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_put_then_get() {
+        final var s = schema("object");
+        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, s);
+        assertEquals(s, adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_lazy_load_from_disk() throws Exception {
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.toJson(schema("string")));
+        assertEquals(schema("string"), adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_remove() {
+        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, schema("object"));
+        adminCache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_remove_for_database() {
+        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, schema("object"));
+        adminCache.removeCollectionSchemasForDatabase(TestGlobals.DB);
+        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_a_read_failure_is_not_cached_as_absence() throws Exception {
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\": \"obj");
+
+        assertThrows(MetadataReadException.class,
+                () -> adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.toJson(schema("object")));
+        assertEquals(schema("object"), adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL),
+                "a failed read must not be remembered as a definitive absence");
+    }
+}

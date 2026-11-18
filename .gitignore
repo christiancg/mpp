@@ -1,0 +1,91 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### Qodo ###
+.qodo/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Claude ###
+CLAUDE.md
+.claude/
+
+### Node ###
+node_modules/
+clients/typescript/dist/
+clients/typescript/coverage/
+clients/typescript/*.tgz
+
+### Plans (local-only, not tracked) ###
+plans/
+
+### DB files ###
+logs/
+db/
+/test/
+
+### Test logs ###
+test_log/
+test_utils/bench/results/
+test_utils/bench/generated/
+
+### test262 corpus (fetched, never committed) ###
+# Anchored: an unanchored `test262/` would also ignore the worker's Java package
+# (src/test/java/org/techhouse/unit/simplejs/test262/).
+/test262/
+
+### TLS keystores (auto-generated, contain private keys — never commit) ###
+certs/
+*.p12
+*.jks
+
+### Python ###
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+clients/python/dist/
+clients/python/.coverage
+clients/python/coverage.xml
+
+### Client library builds ###
+.flattened-pom.xml
+.gradle/
+
+### .NET ###
+clients/dotnet/**/bin/
+clients/dotnet/**/obj/
+clients/dotnet/artifacts/
+clients/dotnet/**/TestResults/

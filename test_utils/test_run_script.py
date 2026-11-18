@@ -1,0 +1,2219 @@
+import http.server
+import os
+import re
+import tempfile
+import threading
+import time
+
+import base_utils as bu
+from base_utils import check, check_code, check_field, check_result, check_status, section
+
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("SCRIPT_TEST_PORT", "8995"))
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = bu.PASSWORD
+
+DB = "script_test_db"
+OTHER_DB = "script_other_db"
+COLL = "docs"
+COLL2 = "more"
+
+bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+INSTRUCTION_BUDGET = 2_000_000
+TIMEOUT_MS = 5_000
+MAX_DEPTH = 64
+MAX_SOURCE_BYTES = 8 * 1024
+COMPILED_CACHE_MAX_BYTES = "100Kb"
+MAX_LOG_LINES = 5
+MAX_LOG_LINE_CHARS = 200
+MAX_MEMORY_BYTES = 4 * 1024 * 1024
+MAX_RESULT_BYTES = 64 * 1024
+MAX_ARRAY_LENGTH = 50_000
+CURSOR_BATCH_SIZE = 100
+CURSOR_MAX_BATCH_SIZE = 500
+MAX_PROCEDURES_PER_DATABASE = 40
+PROCEDURE_CAP_DB = "script_proc_cap_db"
+
+BIG_COLL = "big"
+EMPTY_COLL = "empty"
+BIG_DOCS = 300
+BIG_PAYLOAD_CHARS = 8 * 1024
+SHIPPED_TIMEOUT_MS = 5_000
+
+
+def check_failed_script(label: str, response: dict, expected_code: str, message_contains: str = ""):
+    ok = (response.get("status") == "ERROR" and response.get("errorCode") == expected_code
+          and message_contains in (response.get("message") or ""))
+    check(label, ok,
+          f"expected {expected_code} containing {message_contains!r} got "
+          f"{response.get('errorCode')} msg={response.get('message')!r}")
+
+
+def check_stack(label: str, response: dict, frames_contain=(), min_frames: int = 1):
+    stack = response.get("stack")
+    ok = isinstance(stack, list) and len(stack) >= min_frames \
+        and all(any(needle in frame for frame in stack) for needle in frames_contain)
+    check(label, ok, f"expected >= {min_frames} frames containing {list(frames_contain)!r} got {stack!r}")
+
+
+def check_no_stack(label: str, response: dict):
+    check(label, not response.get("stack"), f"expected no stack, got {response.get('stack')!r}")
+
+
+class Conn(bu.Conn):
+    def run(self, script: str, args=None, db=DB) -> dict:
+        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+        if args is not None:
+            payload["args"] = args
+        return self.send(payload)
+
+    def save_procedure(self, name: str, script: str, db=DB, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+        payload.update(extra)
+        return self.send(payload)
+
+admin_conn = Conn.authenticated
+
+
+def write_config(work_dir: str, scripts_enabled: bool, procedure_imports_enabled: bool = True,
+                 history_kinds: str = "CALL_PROCEDURE,TRIGGER,SCHEDULE", history_enabled: bool = True,
+                 fetch_enabled: bool = False, fetch_allowlist: str = "", fetch_timeout_ms: int = 5000,
+                 fetch_max_response_bytes: str = "1Mb", fetch_max_concurrent: int = 8,
+                 text_import_enabled: bool = False):
+    bu.write_config(work_dir, PORT,
+                    scriptsEnabled=scripts_enabled,
+                    scriptInstructionBudget=INSTRUCTION_BUDGET,
+                    scriptTimeoutMs=TIMEOUT_MS,
+                    scriptMaxDepth=MAX_DEPTH,
+                    scriptMaxSourceBytes=MAX_SOURCE_BYTES,
+                    scriptMaxLogLines=MAX_LOG_LINES,
+                    scriptMaxLogLineChars=MAX_LOG_LINE_CHARS,
+                    scriptMaxMemoryBytes=MAX_MEMORY_BYTES,
+                    scriptMaxResultBytes=MAX_RESULT_BYTES,
+                    scriptMaxArrayLength=MAX_ARRAY_LENGTH,
+                    scriptCursorBatchSize=CURSOR_BATCH_SIZE,
+                    scriptCursorMaxBatchSize=CURSOR_MAX_BATCH_SIZE,
+                    scriptTextImportEnabled=text_import_enabled,
+                    scriptProcedureImportEnabled=procedure_imports_enabled,
+                    scriptTimeZone="UTC",
+                    scriptLocale="en-US",
+                    scriptRunHistoryEnabled=history_enabled,
+                    scriptRunHistoryKinds=history_kinds,
+                    scriptRunHistoryRetentionMs=604800000,
+                    scriptRunHistoryIncludeLogs=False,
+                    scriptRunHistoryMaxErrorChars=2000,
+                    scriptFetchEnabled=fetch_enabled,
+                    scriptFetchAllowlist=fetch_allowlist,
+                    scriptFetchTimeoutMs=fetch_timeout_ms,
+                    scriptFetchMaxResponseBytes=fetch_max_response_bytes,
+                    scriptFetchMaxConcurrent=fetch_max_concurrent,
+                    procedureCacheMaxBytes=COMPILED_CACHE_MAX_BYTES,
+                    maxProceduresPerDatabase=MAX_PROCEDURES_PER_DATABASE)
+
+
+class FetchFixture:
+
+    def __init__(self):
+        self.requests = []
+        handler_requests = self.requests
+
+        # noinspection PyPep8Naming
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def _respond(self, status, body, content_type="text/plain"):
+                payload = body.encode()
+                self.send_response(status)
+                self.send_header("content-type", content_type)
+                self.send_header("content-length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def do_GET(self):
+                handler_requests.append(self.path)
+                if self.path == "/hello":
+                    self._respond(200, "hello")
+                elif self.path == "/big":
+                    self._respond(200, "x" * 4096)
+                elif self.path == "/slow":
+                    time.sleep(3.0)
+                    self._respond(200, "late")
+                elif self.path == "/endless":
+                    self._endless()
+                else:
+                    self._respond(404, "no")
+
+            def _endless(self):
+                self.send_response(200)
+                self.send_header("content-type", "text/plain")
+                self.end_headers()
+                chunk = b"x" * 4096
+                try:
+                    while True:
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                except OSError:
+                    pass
+
+            def do_POST(self):
+                handler_requests.append(self.path)
+                length = int(self.headers.get("content-length") or 0)
+                self._respond(200, self.rfile.read(length).decode(), "application/json")
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def setup_data(conn: Conn):
+    section("Setup")
+    for db in (DB, OTHER_DB):
+        conn.send({"type": "DROP_DATABASE", "databaseName": db})
+        check_status(f"CREATE_DATABASE {db}", conn.send({"type": "CREATE_DATABASE", "databaseName": db}), "OK")
+    for coll in (COLL, COLL2, BIG_COLL, EMPTY_COLL):
+        check_status(f"create collection {coll}",
+                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+    check_status("create collection in the other database",
+                 conn.send({"type": "CREATE_COLLECTION", "databaseName": OTHER_DB, "collectionName": COLL}), "OK")
+    docs = [
+        {"_id": "d1", "name": "alpha", "n": 1, "tags": ["x", "y"]},
+        {"_id": "d2", "name": "beta", "n": 5, "tags": ["y"]},
+        {"_id": "d3", "name": "gamma", "n": 9, "tags": []},
+    ]
+    check_status("seed documents",
+                 conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": docs}), "OK")
+    payload = "x" * BIG_PAYLOAD_CHARS
+    seeded = True
+    for start in range(0, BIG_DOCS, 50):
+        batch = [{"_id": f"big{i:04d}", "payload": payload} for i in range(start, start + 50)]
+        response = conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": BIG_COLL, "objects": batch})
+        seeded = seeded and response.get("status") == "OK"
+    check(f"seed {BIG_DOCS} large documents into {BIG_COLL}", seeded)
+
+
+def test_basics(conn: Conn):
+    section("Basics and the result contract")
+    check_result("top-level return", conn.run("return 1 + 1;"), 2)
+    check_result("export default", conn.run("export default 'defaulted';"), "defaulted")
+    check_result("named exports", conn.run("export const a = 1;\nexport const b = 'two';"),
+                 {"a": 1, "b": "two"})
+    check_result("no value at all is JSON null", conn.run("const unused = 1;"), None)
+    check_result("a hex literal past 2^63 is a number, not a lexer crash",
+                 conn.run("return [0x1_0000_0000_0000_0000 === 2 ** 64, 0b1" + "0" * 70 + " === 2 ** 70];"),
+                 [True, True])
+    check_result("returned promise is awaited",
+                 conn.run("return (async () => { await null; return 'awaited'; })();"), "awaited")
+    check_result("objects and arrays round-trip",
+                 conn.run("return { list: [1, 2, 3], nested: { ok: true }, missing: null };"),
+                 {"list": [1, 2, 3], "nested": {"ok": True}, "missing": None})
+    check_failed_script("a rejected promise fails the run",
+                        conn.run("return Promise.reject(new Error('nope'));"), "400-9", "Error: nope")
+    check_result("an accessor-valued property is read through its getter",
+                 conn.run("return { get total() { return 6 * 7; }, plain: 1 };"), {"total": 42, "plain": 1})
+    check_failed_script("a throwing getter fails the run",
+                        conn.run("return { get bad() { throw new RangeError('nope'); } };"),
+                        "400-9", "RangeError: nope")
+
+
+def test_stack_traces(conn: Conn):
+    section("Stack traces")
+    thrown = conn.run("function inner() {\n"
+                      "  throw new Error('boom');\n"
+                      "}\n"
+                      "function outer() {\n"
+                      "  inner();\n"
+                      "}\n"
+                      "outer();")
+    check_failed_script("a nested throw fails the run", thrown, "400-9", "Error: boom")
+    check_stack("frames name each function", thrown, ("inner (", "outer (", "main:"), min_frames=3)
+    frames = thrown.get("stack") or []
+    check("the innermost frame comes first", bool(frames) and frames[0].startswith("inner ("),
+          f"stack={frames!r}")
+    check("frames carry a line and column", bool(frames) and re.search(r":\d+:\d+\)$", frames[0]) is not None,
+          f"stack={frames!r}")
+
+    runtime = conn.run("function read() {\n"
+                       "  const x = null;\n"
+                       "  return x.total;\n"
+                       "}\n"
+                       "read();")
+    check_code("a runtime TypeError fails the run", runtime, "ERROR", "400-9")
+    check_stack("a runtime error carries frames too", runtime, ("read (",))
+
+    check_no_stack("a successful run carries no stack", conn.run("return 1;"))
+
+    check_no_stack("an instruction-budget abort carries no stack", conn.run("while (true) {}"))
+    check_no_stack("a depth abort carries no stack",
+                   conn.run("function recurse(n) { return recurse(n + 1); }\nreturn recurse(0);"))
+
+    deep = conn.run("function down(n) {\n"
+                    "  if (n === 0) { throw new Error('bottom'); }\n"
+                    "  return down(n - 1);\n"
+                    "}\n"
+                    "down(60);")
+    deep_frames = deep.get("stack") or []
+    check("a deep stack is truncated with a marker",
+          bool(deep_frames) and deep_frames[-1].startswith("... "), f"stack tail={deep_frames[-1:]!r}")
+
+
+def test_pending_promise(conn: Conn):
+    section("A result promise that never settles")
+    check_code("a never-settling returned promise is reported",
+               conn.run("return new Promise(function () {});"), "ERROR", "400-20")
+    check_code("a never-settling default export is reported",
+               conn.run("export default new Promise(function () {});"), "ERROR", "400-20")
+    check_result("an explicit null result is still a value", conn.run("return null;"), None)
+    check_result("a promise settled by a timer still succeeds",
+                 conn.run("return new Promise(function (resolve) { setTimeout(function () "
+                          "{ resolve('late'); }, 5); });"), "late")
+
+
+def test_compiled_script_cache(conn: Conn):
+    section("Compiled-script cache")
+    for attempt in range(3):
+        check_result(f"the same source answers identically (run {attempt + 1})",
+                     conn.run("return 6 * 7;"), 42)
+    for attempt in range(3):
+        check_failed_script(f"a syntax error stays 400-9 (run {attempt + 1})",
+                            conn.run("return (;"), "400-9", "SyntaxError")
+    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    entries = ((stats.get("stats") or {}).get("scripts") or {}).get("compiledCacheEntries")
+    check("the cache reports its entry count", isinstance(entries, (int, float)) and entries >= 1,
+          f"compiledCacheEntries={entries!r}")
+    oversized = "let s = 0;\n" + "s += 1;\n" * 900 + "return s;"
+    for attempt in range(2):
+        check_result(f"a program past procedureCacheMaxBytes still runs (run {attempt + 1})", conn.run(oversized), 900)
+    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    after = ((stats.get("stats") or {}).get("scripts") or {}).get("compiledCacheEntries")
+    check("but it is not kept in the compiled cache", after == entries,
+          f"compiledCacheEntries before={entries!r} after={after!r}")
+
+
+def test_procedure_cache_checks_the_source_text(conn: Conn):
+    section("Compiled procedure cache")
+    call = {"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "cached_proc"}
+    check_status("save a procedure for the compiled cache", conn.save_procedure("cached_proc", "return 70;"), "OK")
+    for attempt in range(2):
+        check_result(f"a cached procedure answers from its source (call {attempt + 1})", conn.send(call), 70)
+    check_status("re-save it with a source differing only at the end",
+                 conn.save_procedure("cached_proc", "return 71;"), "OK")
+    check_result("the next call runs the new source", conn.send(call), 71)
+    check_status("drop the cached procedure",
+                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "cached_proc"}), "OK")
+
+
+def test_console_output(conn: Conn):
+    section("Console output")
+    response = conn.run("console.log('one'); console.log('two'); return 'done';")
+    check_result("script value alongside logs", response, "done")
+    check("logs are returned in order", response.get("logs") == ["one", "two"],
+          f"logs={response.get('logs')!r}")
+    check("logsTruncated is false when nothing was dropped", response.get("logsTruncated") is False,
+          f"logsTruncated={response.get('logsTruncated')!r}")
+
+    over = conn.run("for (let i = 0; i < 8; i++) console.log('line ' + i);\nreturn 'logged';")
+    check(f"only the newest {MAX_LOG_LINES} lines are kept",
+          over.get("logs") == [f"line {i}" for i in range(3, 8)], f"logs={over.get('logs')!r}")
+    check("logsTruncated reports the drop", over.get("logsTruncated") is True,
+          f"logsTruncated={over.get('logsTruncated')!r}")
+
+    clipped = conn.run("console.log('x'.repeat(500)); return 'clipped';")
+    lines = clipped.get("logs") or [""]
+    check(f"an overlong line is clipped to {MAX_LOG_LINE_CHARS} chars", len(lines[0]) == MAX_LOG_LINE_CHARS,
+          f"len={len(lines[0])}")
+
+    errored = conn.run("console.log('before the throw'); throw new TypeError('boom');")
+    check_failed_script("a failed run still returns its logs", errored, "400-9", "TypeError: boom")
+    check("logs survive the failure", errored.get("logs") == ["before the throw"],
+          f"logs={errored.get('logs')!r}")
+
+
+def test_sandbox_limits(conn: Conn):
+    section("Sandbox limits")
+    check_code("an infinite loop exhausts the instruction budget",
+               conn.run("while (true) {}"), "ERROR", "400-11")
+    check_code("unbounded recursion hits the depth cap",
+               conn.run("function recurse(n) { return recurse(n + 1); }\nreturn recurse(0);"), "ERROR", "400-11")
+    check_code("waiting past the deadline times out",
+               conn.run("return (async () => { await new Promise(r => setTimeout(r, 60000)); return 'never'; })();"),
+               "ERROR", "408-1")
+    oversized = "// padding\n" + ("x".ljust(80, 'x') + "\n") * 120 + "return 1;"
+    check("the oversized source is actually over the cap", len(oversized.encode()) > MAX_SOURCE_BYTES,
+          f"bytes={len(oversized.encode())}")
+    check_code("a source over the size cap is rejected", conn.run(oversized), "ERROR", "400-10")
+    check_result("a script just under the caps still runs",
+                 conn.run("let total = 0;\nfor (let i = 0; i < 1000; i++) total += i;\nreturn total;"), 499500)
+    check_code("a single oversized allocation exceeds the memory budget",
+               conn.run('return "x".repeat(100000000);'), "ERROR", "400-12")
+    check_code("string doubling exceeds the memory budget",
+               conn.run('let s = "x";\nfor (let i = 0; i < 40; i++) { s = s + s; }\nreturn s.length;'),
+               "ERROR", "400-12")
+    check_code("a pre-sized array-like exceeds the memory budget",
+               conn.run("return Array.from({length: 2000000000}).length;"), "ERROR", "400-12")
+    check_result("a script allocating well under the memory budget still runs",
+                 conn.run('return "x".repeat(1000).length;'), 1000)
+    check_result("incremental string building is not penalised by the memory budget",
+                 conn.run('let s = "";\nfor (let i = 0; i < 20000; i++) s += "x";\nreturn s.length;'), 20000)
+    check_code("a runaway getter hits the instruction budget",
+               conn.run("return { get n() { while (true) {} } };"), "ERROR", "400-11")
+    started = time.monotonic()
+    redos = conn.run("return /(x+x+)+y/.test('x'.repeat(800) + '!');")
+    elapsed = time.monotonic() - started
+    check("a catastrophic RegExp ends with the instruction budget or the deadline",
+          redos.get("status") == "ERROR" and redos.get("errorCode") in ("400-11", "408-1"),
+          f"got {redos.get('errorCode')} msg={redos.get('message')!r}")
+    check("and inside scriptTimeoutMs plus slack", elapsed < TIMEOUT_MS / 1000 + 5, f"elapsed={elapsed:.1f}s")
+    check_result("a benign RegExp still matches", conn.run("return /a(b+)c/.exec('xabbbc')[1];"), "bbb")
+
+
+def test_regexp_test_answers_like_exec(conn: Conn):
+    section("RegExp.prototype.test answers like exec without building its result")
+    check_result("test agrees with exec and moves lastIndex the same way for global and sticky regexes",
+                 conn.run("const out = [];\n"
+                          "for (const flags of ['', 'g', 'y', 'gy', 'i', 'u']) {\n"
+                          "  const a = new RegExp('b+', flags), b = new RegExp('b+', flags);\n"
+                          "  for (const s of ['abbabbb', 'bb', 'xyz', 'Bb', '']) {\n"
+                          "    for (let k = 0; k < 3; k++) out.push(a.test(s) === (b.exec(s) !== null) "
+                          "&& a.lastIndex === b.lastIndex);\n"
+                          "  }\n"
+                          "}\n"
+                          "return out.every(x => x);"), True)
+    check_result("a global test walks lastIndex through the matches",
+                 conn.run("const r = /b+/g; const out = [];\n"
+                          "for (let k = 0; k < 3; k++) out.push(r.test('abbabbb') + ':' + r.lastIndex);\n"
+                          "return out;"), ["true:3", "true:7", "false:0"])
+    check_result("a user-defined exec is still called by test",
+                 conn.run("const r = /a/; let calls = 0;\n"
+                          "r.exec = function (s) { calls++; return s === 'a' ? {} : null; };\n"
+                          "return [r.test('a'), r.test('b'), calls];"), [True, False, 2])
+    loop = "const r = /ab+c/; let c = 0;\nfor (let i = 0; i < 1000; i++) { if ("
+    via_test = conn.run(loop + "r.test('xxabbbcxx')) c++; }\nreturn c;")
+    via_exec = conn.run(loop + "r.exec('xxabbbcxx') !== null) c++; }\nreturn c;")
+    test_instructions = (via_test.get("metrics") or {}).get("instructions", 0)
+    exec_instructions = (via_exec.get("metrics") or {}).get("instructions", 0)
+    check("test is charged two instructions per call over exec, as before",
+          via_test.get("result") == 1000 and test_instructions - exec_instructions == 2000,
+          f"test={test_instructions} exec={exec_instructions} result={via_test.get('result')!r}")
+
+
+def test_native_recursion_is_an_error_not_a_hang(conn: Conn):
+    section("Native recursion over script data is bounded")
+    nest = "let a = [];\nfor (let i = 0; i < 20000; i++) { a = [a]; }\n"
+    cases = [
+        ("JSON.parse of 20000 nested arrays", "return JSON.parse('['.repeat(20000) + ']'.repeat(20000)).length;"),
+        ("String() of nested arrays", nest + "return String(a).length;"),
+        ("flat(Infinity) of nested arrays", nest + "return a.flat(Infinity).length;"),
+        ("structuredClone of nested arrays", nest + "return structuredClone(a).length;"),
+        ("JSON.stringify of nested arrays", nest + "return JSON.stringify(a).length;"),
+    ]
+    for label, script in cases:
+        check_failed_script(f"{label} is a RangeError, not a hang", conn.run(script), "400-9",
+                            "Maximum nesting depth exceeded")
+    check_result("the RangeError is catchable",
+                 conn.run(nest + "try { JSON.stringify(a); } catch (e) { return e.name; }"), "RangeError")
+    check_result("250 levels of JSON still parse",
+                 conn.run("let d = 0;\nfor (let x = JSON.parse('['.repeat(250) + ']'.repeat(250)); "
+                          "Array.isArray(x); x = x[0]) d++;\nreturn d;"), 250)
+    for _ in range(20):
+        conn.run(cases[3][1])
+    check_result("capacity is intact after more hostile runs than maxConcurrentScripts", conn.run("return 7;"), 7)
+
+
+def test_native_loops_are_budgeted(conn: Conn):
+    section("Native loops and BigInt are budgeted")
+    started = time.time()
+    check_code("a sparse 4-billion scan exhausts the instruction budget",
+               conn.run("return new Array(2 ** 32 - 1).indexOf(1);"), "ERROR", "400-11")
+    check("… quickly", time.time() - started < 5, f"took {time.time() - started:.2f}s")
+    check_code("an array-like of 2^53 - 1 exhausts it too",
+               conn.run("return Array.prototype.includes.call({ length: 2 ** 53 - 1 }, 1);"), "ERROR", "400-11")
+    check_failed_script("a huge BigInt power is a RangeError", conn.run("return String(3n ** 100000000n).length;"),
+                        "400-9", "Maximum BigInt size exceeded")
+    check_failed_script("a huge BigInt shift too", conn.run("return String(1n << (2n ** 40n)).length;"),
+                        "400-9", "Maximum BigInt size exceeded")
+    check_code("splitting a 32M-char string exceeds the memory budget",
+               conn.run('return "a,".repeat(2 ** 24).split(",").length;'), "ERROR", "400-12")
+    check_result("ordinary BigInt arithmetic still works", conn.run("return String(2n ** 100n);"),
+                 "1267650600228229401496703205376")
+    wide = "const x = 1n << 4000000n;"
+    check_result("one concatenation of a 4M-bit BigInt still answers", conn.run(wide + " return (x + '').length;"),
+                 1204120)
+    for label, body in (("x + ''", "const s = x + '';"), ("a template", "const s = `${x}`;"),
+                        ("({})[x]", "({})[x];")):
+        started = time.monotonic()
+        looped = conn.run(wide + " for (;;) { " + body + " }")
+        elapsed = time.monotonic() - started
+        check(f"converting a wide BigInt with {label} in a loop is charged and paced",
+              looped.get("status") == "ERROR" and looped.get("errorCode") in ("400-11", "400-12", "408-1"),
+              f"got {looped.get('errorCode')} msg={looped.get('message')!r}")
+        check("… and ends inside scriptTimeoutMs plus slack", elapsed < TIMEOUT_MS / 1000 + 5,
+              f"elapsed={elapsed:.1f}s")
+    check_result("the server is still serving", conn.run("return [1, 2, 3].indexOf(3);"), 2)
+
+
+def test_unbudgeted_native_work_is_bounded(conn: Conn):
+    section("Native work that used to escape the budgets is bounded")
+    check_failed_script("a BigInt parse past 65536 digits is a RangeError",
+                        conn.run("return BigInt('9'.repeat(70000)).toString().length;"), "400-9")
+    check_result("a BigInt parse at 65536 digits still works",
+                 conn.run("return BigInt('9'.repeat(65536)).toString().length;"), 65536)
+    started = time.monotonic()
+    compare = conn.run("const s = 'x'.repeat(1 << 18), t = s + 'y'; while (true) { s.localeCompare(t); }")
+    elapsed = time.monotonic() - started
+    check("a localeCompare loop over large strings ends with the instruction budget or the deadline",
+          compare.get("status") == "ERROR" and compare.get("errorCode") in ("400-11", "408-1"),
+          f"got {compare.get('errorCode')} msg={compare.get('message')!r}")
+    check("and inside scriptTimeoutMs plus slack", elapsed < TIMEOUT_MS / 1000 + 5, f"elapsed={elapsed:.1f}s")
+    dag = "let a = [1]; for (let i = 0; i < 40; i++) { a = [a, a]; }"
+    check_code("stringifying a shared-reference DAG exceeds the memory budget",
+               conn.run(dag + " return JSON.stringify(a).length;"), "ERROR", "400-12")
+    check_code("returning a shared-reference DAG exceeds the memory budget",
+               conn.run(dag + " return a;"), "ERROR", "400-12")
+    started = time.monotonic()
+    check_result("a generator that yields in finally does not park the run",
+                 conn.run("function* g() { try { yield 1; } finally { yield 99; } }"
+                          " const it = g(); it.next(); return 7;"), 7)
+    check("… and it returns promptly", time.monotonic() - started < 5,
+          f"took {time.monotonic() - started:.2f}s")
+    check_result("the server is still serving", conn.run("return 1 + 1;"), 2)
+    for attempt in range(3):
+        check_failed_script(f"source nested past the parser limit is a SyntaxError (run {attempt + 1})",
+                            conn.run("return " + "(" * 400 + "1" + ")" * 400 + ";"), "400-9", "levels deep")
+    check_result("nesting well inside the limit still runs",
+                 conn.run("return " + "(" * 100 + "1" + ")" * 100 + ";"), 1)
+
+
+def test_native_work_hardened_after_the_third_audit(conn: Conn):
+    section("Sparse enumeration, string search, parseInt, promises and error text are bounded")
+    sparse = "const a = []; a.length = 2 ** 32 - 1; a[5] = 'five';"
+    started = time.monotonic()
+    check_result("for-in over a 4-billion sparse length visits only the populated index",
+                 conn.run(sparse + " const keys = []; for (const k in a) keys.push(k); return keys;"), ["5"])
+    check_result("Object.keys over it does too", conn.run(sparse + " return Object.keys(a);"), ["5"])
+    check("… and both return promptly", time.monotonic() - started < 5, f"took {time.monotonic() - started:.2f}s")
+    check_code("spreading it exceeds the memory budget", conn.run(sparse + " return [...a].length;"), "ERROR", "400-12")
+    check_result("parseInt of a 1M-digit run is Infinity without a quadratic parse",
+                 conn.run("return parseInt('9'.repeat(1000000)) === Infinity;"), True)
+    started = time.monotonic()
+    search = conn.run("const s = 'a'.repeat(1 << 20), t = 'a'.repeat(1 << 10) + 'b'; while (true) { s.indexOf(t); }")
+    elapsed = time.monotonic() - started
+    check("a worst-case indexOf loop ends with the instruction budget or the deadline",
+          search.get("status") == "ERROR" and search.get("errorCode") in ("400-11", "408-1"),
+          f"got {search.get('errorCode')} msg={search.get('message')!r}")
+    check("and inside scriptTimeoutMs plus slack", elapsed < TIMEOUT_MS / 1000 + 5, f"elapsed={elapsed:.1f}s")
+    check_result("a worst-case indexOf still answers correctly",
+                 conn.run("const s = 'a'.repeat(1 << 20) + 'b', t = 'a'.repeat(64) + 'b'; return s.indexOf(t);"),
+                 (1 << 20) - 64)
+    check_code("a flood of promises exceeds the memory budget",
+               conn.run("for (let i = 0; i < 100000; i++) { Promise.resolve(i); } return 1;"), "ERROR", "400-12")
+    check_result("a generator finalizer that starts another generator does not break cleanup",
+                 conn.run("function* inner() { yield 1; yield 2; }"
+                          " function* outer() { try { yield 1; } finally { inner().next(); } }"
+                          " const o = outer(); o.next(); return 'done';"), "done")
+    huge = conn.run("throw new Error('x'.repeat(100000));")
+    message = huge.get("message") or ""
+    check("a huge error message is clipped to scriptMaxLogLineChars",
+          huge.get("errorCode") == "400-9" and message == "Error: " + "x" * MAX_LOG_LINE_CHARS,
+          f"got {huge.get('errorCode')} with a {len(message)}-char message")
+    check_result("the server is still serving", conn.run("return 1 + 1;"), 2)
+
+
+def test_allocations_are_charged_before_they_happen(conn: Conn):
+    section("Allocations proportional to a script-supplied length are charged first")
+    check_failed_script("an array-like past scriptMaxArrayLength handed to apply is refused",
+                        conn.run(f"return Math.max.apply(null, {{ length: {MAX_ARRAY_LENGTH + 1} }});"),
+                        "400-30", "ScriptArrayTooLargeError")
+    check_result("an array-like at the cap still applies",
+                 conn.run("return (function () { return arguments.length; })"
+                          f".apply(null, {{ length: {MAX_ARRAY_LENGTH} }});"), MAX_ARRAY_LENGTH)
+    check_code("the refusal cannot be caught",
+               conn.run("try { Reflect.apply(Math.max, null, { length: 2 ** 30 }); } catch (e) { return 'caught'; }"),
+               "ERROR", "400-30")
+    check_code("Array.fromAsync over a huge array-like is refused",
+               conn.run("return (await Array.fromAsync({ length: 2 ** 40 })).length;"), "ERROR", "400-30")
+    check_code("Vector.from over a huge array-like is refused",
+               conn.run("return Vector.from({ length: 2 ** 30 }).toString();"), "ERROR", "400-30")
+    check_code("growing an array through its length exceeds the memory budget",
+               conn.run("const a = []; a.length = 1 << 22; return a.length;"), "ERROR", "400-12")
+    check_code("writing far past an array's end exceeds it too",
+               conn.run("const a = []; a[(1 << 22) - 1] = 1; return a.length;"), "ERROR", "400-12")
+    check_code("ArrayBuffer.slice(-Infinity) is charged for the bytes it copies",
+               conn.run("const b = new ArrayBuffer(1 << 20); const kept = [];"
+                        " for (let i = 0; i < 8; i++) { kept.push(b.slice(-Infinity)); } return kept.length;"),
+               "ERROR", "400-12")
+    check_code("a typed-array sort is charged for its boxed copy",
+               conn.run("const t = new Uint8Array(1 << 20); t.sort(); return 1;"), "ERROR", "400-12")
+    check_code("normalize is charged for its worst-case expansion",
+               conn.run("return '\\uFDFA'.repeat(1 << 17).normalize('NFKC').length;"), "ERROR", "400-12")
+    check_code("an indented JSON.stringify is charged for its indentation",
+               conn.run("let o = new Array(20000).fill(1); for (let i = 0; i < 200; i++) { o = [o]; }"
+                        " return JSON.stringify(o, null, 10).length;"), "ERROR", "400-12")
+    check_code("a db.save payload sharing one string is charged per occurrence",
+               conn.run('import db from "db";\n'
+                        "const s = 'x'.repeat(1 << 16); const doc = { _id: 'dag' };\n"
+                        "for (let i = 0; i < 40; i++) { doc['f' + i] = s; }\n"
+                        f'db.save(db.name, "{COLL}", doc);'), "ERROR", "400-12")
+    check_result("… and nothing was written",
+                 conn.run(f'import db from "db";\nreturn db.findById(db.name, "{COLL}", "dag") === null;'), True)
+    check_result("saves inside the budget are credited back, so a loop of them still runs",
+                 conn.run('import db from "db";\n'
+                          "const s = 'x'.repeat(50000);\n"
+                          f'for (let i = 0; i < 20; i++) {{ db.save(db.name, "{COLL}", {{ _id: "loop", body: s }}); }}\n'
+                          'return "saved";'), "saved")
+    for label, script, expected in [
+        ("400k single-character appends", "let s = ''; for (let i = 0; i < 400000; i++) s += 'x'; return s.length;",
+         400_000),
+        ("a 40k-row CSV built with +=",
+         "let s = ''; const row = 'x'.repeat(19) + '\\n'; for (let i = 0; i < 40000; i++) s += row; return s.length;",
+         800_000),
+        ("a 10k-row report built with a template literal",
+         "let s = ''; for (let i = 0; i < 10000; i++) s = `${s}row ${i % 10}\\n`; return s.length;", 60_000),
+    ]:
+        response, elapsed = timed_run(conn, script)
+        check_result(f"{label} finish with the right length", response, expected)
+        check("… well inside scriptTimeoutMs", elapsed < TIMEOUT_MS / 1000, f"took {elapsed:.2f}s")
+    check_code("a template literal counts against scriptMaxMemoryBytes like +",
+               conn.run("const c = 'x'.repeat(1000); let s = ''; for (let i = 0; i < 3000; i++) s = `${s}${c}`;"
+                        " return s.length;"), "ERROR", "400-12")
+    check_result("the server is still serving", conn.run("return [1, 2, 3].length;"), 3)
+
+
+def timed_run(conn: Conn, script: str):
+    started = time.time()
+    response = conn.run(script)
+    return response, time.time() - started
+
+
+def check_refused_in_time(label: str, response: dict, elapsed: float, codes=("400-12", "408-1")):
+    check(label, response.get("status") == "ERROR" and response.get("errorCode") in codes,
+          f"expected one of {codes}, got {response.get('errorCode')} msg={response.get('message')!r}")
+    check("… within scriptTimeoutMs + 2s", elapsed < SHIPPED_TIMEOUT_MS / 1000 + 2, f"took {elapsed:.2f}s")
+
+
+def test_private_use_locale_tags_do_not_grow_the_heap(conn: Conn):
+    section("Locale tags resolve to an available locale, so a loop of private-use tags leaks nothing")
+    for _ in range(3):
+        looped, elapsed = timed_run(conn, "for (let i = 0; ; i++) { (1.5).toLocaleString('en-x-' + i.toString(36)); }")
+        check_refused_in_time("a loop of distinct en-x-* tags ends at the run's own budget", looped, elapsed,
+                              ("400-11", "408-1"))
+    check_result("a busy script afterwards is not refused by the heap ceiling",
+                 conn.run("let n = 0; for (let i = 0; i < 100000; i++) { n += i % 7; } return n;"), 299995)
+    check_result("a private-use tag formats as its base locale",
+                 conn.run("return (1234.5).toLocaleString('de-DE-x-abc');"), "1.234,5")
+    check_result("an unknown language falls back to the script locale",
+                 conn.run("return (1234.5).toLocaleString('qqq');"), "1,234.5")
+    check_failed_script("an ill-formed tag is a RangeError",
+                        conn.run("return (1).toLocaleString('en_US@@');"), "400-9", "RangeError")
+
+
+def test_script_charging_gaps_at_shipped_limits(conn: Conn):
+    section("Script memory and deadline bypasses at the shipped limits")
+    big_int, elapsed = timed_run(conn, "const x = 1n << (2n ** 23n); const kept = [];"
+                                       " for (let i = 0; i < 100; i++) { kept.push(~x); } return kept.length;")
+    check_refused_in_time("retaining BigInt ~x is charged", big_int, elapsed, ("400-12",))
+    text, elapsed = timed_run(conn, "const x = 1n << (2n ** 16n); const kept = [];"
+                                    " for (let i = 0; i < 3000; i++) { kept.push(String(x)); } return kept.length;")
+    check_refused_in_time("retaining String(bigint) is charged", text, elapsed, ("400-12",))
+    fill, elapsed = timed_run(conn, "const a = []; a[2 ** 24] = 1; a.fill(1, 2 ** 24 - 1, 2 ** 24); return a.length;")
+    check_refused_in_time("fill into a sparse tail is charged for the holes it pads", fill, elapsed, ("400-12",))
+    parsed, elapsed = timed_run(conn, "return JSON.parse('[' + '[],'.repeat(3200000) + '[]]').length;")
+    check_refused_in_time("JSON.parse is charged per node", parsed, elapsed)
+    own_keys, elapsed = timed_run(conn, "return Reflect.ownKeys(new Proxy({}, {"
+                                        " ownKeys: () => ({ length: 2 ** 31 - 1 }) })).length;")
+    check_refused_in_time("a Proxy ownKeys array-like is refused before it is copied", own_keys, elapsed,
+                          ("400-12", "400-30", "408-1"))
+    replacer, elapsed = timed_run(conn, "const keys = Array.from({ length: 300000 }, (_, i) => 'k' + i);"
+                                        " return JSON.stringify({ k7: 7 }, keys);")
+    check_result("a JSON.stringify replacer of 300000 keys answers", replacer, '{"k7":7}')
+    check("… well inside the deadline", elapsed < SHIPPED_TIMEOUT_MS / 1000, f"took {elapsed:.2f}s")
+    check_result("a global replace does not keep every match alive",
+                 conn.run("return 'a'.repeat(2500000).replace(/a/g, 'b').length;"), 2500000)
+    encoded, elapsed = timed_run(conn, "return encodeURIComponent('é'.repeat(6000000)).length;")
+    check_refused_in_time("encodeURIComponent past the budget is refused", encoded, elapsed)
+    check_result("the server is still serving", conn.run("return [1, 2, 3].length;"), 3)
+
+
+def test_run_metrics(conn: Conn):
+    section("Run metrics")
+    ok = conn.run("let total = 0;\nfor (let i = 0; i < 500; i++) total += i;\nreturn total;")
+    metrics = ok.get("metrics") or {}
+    check("a successful run reports every metric field",
+          set(metrics) == {"instructions", "instructionBudget", "peakMemoryBytes", "memoryBudget",
+                           "dbOperations", "durationMs"},
+          f"metrics={metrics!r}")
+    check("the budgets echo the configured sandbox",
+          metrics.get("instructionBudget") == INSTRUCTION_BUDGET
+          and metrics.get("memoryBudget") == MAX_MEMORY_BYTES,
+          f"metrics={metrics!r}")
+    check("instructions are counted and stay under the budget",
+          0 < metrics.get("instructions", 0) < INSTRUCTION_BUDGET, f"metrics={metrics!r}")
+
+    small = (conn.run("let t = 0;\nfor (let i = 0; i < 10; i++) t += i;\nreturn t;")
+             .get("metrics") or {}).get("instructions", 0)
+    big = (conn.run("let t = 0;\nfor (let i = 0; i < 2000; i++) t += i;\nreturn t;")
+           .get("metrics") or {}).get("instructions", 0)
+    check("a bigger loop costs more instructions", big > small, f"small={small} big={big}")
+
+    exhausted = conn.run("while (true) {}")
+    check_code("the runaway run still fails", exhausted, "ERROR", "400-11")
+    check("a run that exhausted its budget still reports metrics",
+          (exhausted.get("metrics") or {}).get("instructions", 0) > 0,
+          f"metrics={exhausted.get('metrics')!r}")
+
+    timed_out = conn.run("return (async () => { await new Promise(r => setTimeout(r, 60000)); return 1; })();")
+    check_code("the slow run still times out", timed_out, "ERROR", "408-1")
+    check("a timed-out run still reports metrics",
+          (timed_out.get("metrics") or {}).get("instructions", 0) > 0,
+          f"metrics={timed_out.get('metrics')!r}")
+
+    reads = conn.run(f'import db from "db";\n'
+                     f'db.findById(db.name, "{COLL}", "absent-a");\n'
+                     f'db.findById(db.name, "{COLL}", "absent-b");\n'
+                     f'db.aggregate(db.name, "{COLL}", [{{ type: "COUNT" }}]);\n'
+                     f'return "ok";')
+    check("dbOperations counts the host calls the script made",
+          (reads.get("metrics") or {}).get("dbOperations") == 3, f"metrics={reads.get('metrics')!r}")
+
+    walk = conn.run(f'import db from "db";\n'
+                    f'const cur = db.cursor(db.name, "{COLL}", '
+                    f'[{{ type: "SORT", fieldName: "_id", ascending: true }}], {{ batchSize: 2 }});\n'
+                    f'let seen = 0;\n'
+                    f'for (const doc of cur) seen++;\n'
+                    f'return seen;')
+    check("a cursor walk reports a peak above zero",
+          (walk.get("metrics") or {}).get("peakMemoryBytes", 0) > 0, f"metrics={walk.get('metrics')!r}")
+    check("the peak never exceeds the budget",
+          0 < (walk.get("metrics") or {}).get("peakMemoryBytes", 0) <= MAX_MEMORY_BYTES,
+          f"metrics={walk.get('metrics')!r}")
+
+
+def test_history_kinds(conn: Conn):
+    section("Run history kinds")
+    check_result("an ad-hoc run still works", conn.run("return 'unrecorded';"), "unrecorded")
+    time.sleep(1.0)
+    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+                          "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
+    ad_hoc = [row for row in (response.get("results") or []) if row.get("kind") == "RUN_SCRIPT"]
+    check("an ad-hoc run is not recorded under the default kinds", not ad_hoc, f"rows={ad_hoc!r}")
+
+
+def test_a_script_cannot_mutate_the_run_history(conn: Conn):
+    section("Reserved collections are closed to scripts")
+
+    forged = conn.run("import db from 'db';"
+                      " db.save(db.name, 'script_runs', { _id: 'forged', kind: 'RUN_SCRIPT' });"
+                      " return 'wrote';")
+    check("a script cannot forge a run-history row", forged.get("status") != "OK", f"got {forged!r}")
+
+    erased = conn.run("import db from 'db'; db.delete(db.name, 'script_runs', 'forged'); return 'deleted';")
+    check("a script cannot erase a run-history row", erased.get("status") != "OK", f"got {erased!r}")
+
+    readable = conn.run("import db from 'db';"
+                        " return db.aggregate(db.name, 'script_runs', []).length >= 0;")
+    check_result("a script can still read the run history", readable, True)
+
+    bad_id = conn.run("import db from 'db';"
+                      " db.save(db.name, '" + COLL + "', { _id: 'has spaces!', v: 1 });"
+                      " return 'wrote';")
+    check("a script cannot write an _id the client API refuses", bad_id.get("status") != "OK", f"got {bad_id!r}")
+
+    too_deep = conn.run("import db from 'db';"
+                        " let doc = { v: 1 }; for (let i = 0; i < 300; i++) { doc = { a: doc }; }"
+                        " db.save(db.name, '" + COLL + "', { _id: 'too_deep', n: doc });"
+                        " return 'wrote';")
+    check("a script cannot write a document nested past the limit", too_deep.get("status") != "OK",
+          f"got {too_deep!r}")
+    check("and the connection still answers afterwards", conn.run("return 1;").get("result") == 1)
+
+
+def test_history_kinds_enabled(conn: Conn):
+    section("Run history with RUN_SCRIPT recorded")
+    check_result("a recorded ad-hoc run", conn.run("let t = 0; for (let i = 0; i < 20; i++) t += i; return t;"), 190)
+
+    def recorded_runs() -> list:
+        response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+                              "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
+        return [row for row in (response.get("results") or []) if row.get("kind") == "RUN_SCRIPT"]
+
+    rows = bu.wait_until(recorded_runs, timeout_s=15.0, interval_s=0.3) or []
+    check("the ad-hoc run is recorded once the kind is configured", bool(rows), f"rows={rows!r}")
+    if rows:
+        check("the row reports the outcome", rows[0].get("outcome") == "ok", f"row={rows[0]!r}")
+        check("the row carries metrics",
+              (rows[0].get("metrics") or {}).get("instructions", 0) > 0, f"row={rows[0]!r}")
+        check("an ad-hoc run has no collection of its own", rows[0].get("collection") is None, f"row={rows[0]!r}")
+        indexed = conn.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": "script_runs",
+                             "fieldName": "outcome"})
+        check("CREATE_INDEX on script_runs succeeds once a run has created it", indexed.get("status") == "OK",
+              f"got {indexed!r}")
+        is_null = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+                             "aggregationSteps": [{"type": "FILTER", "operator": {
+                                 "type": "FIELD", "field": "collection",
+                                 "fieldOperatorType": "EQUALS", "value": None}}]})
+        matched = {row.get("_id") for row in (is_null.get("results") or [])}
+        check("EQUALS null finds the freshly written row the response showed as null",
+              rows[0].get("_id") in matched, f"matched={matched!r} row={rows[0]!r}")
+        not_null = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+                              "aggregationSteps": [{"type": "FILTER", "operator": {
+                                  "type": "FIELD", "field": "collection",
+                                  "fieldOperatorType": "NOT_EQUALS", "value": None}}]})
+        check("NOT_EQUALS null excludes that same row",
+              rows[0].get("_id") not in {row.get("_id") for row in (not_null.get("results") or [])},
+              f"got {not_null.get('results')!r}")
+
+
+def test_fetch_unavailable(conn: Conn):
+    section("fetch is unavailable by default")
+    check("fetch exists as a global",
+          conn.run("return typeof fetch;").get("result") == "function", "fetch should still be declared")
+    check_failed_script("calling it is refused when the capability is off",
+                        conn.run("return fetch('http://127.0.0.1:1/x').then(r => r.status);"),
+                        "400-9", "fetch is not available")
+
+
+def test_fetch(conn: Conn, base_url: str, fixture):
+    section("Outbound fetch (test_fetch_exact_entry_overrides_block: 127.0.0.1 is listed exactly)")
+    fixture.requests.clear()
+
+    got = conn.run(f"const res = await fetch('{base_url}/hello');\n"
+                   "return { ok: res.ok, status: res.status, body: await res.text() };")
+    check("a GET reaches the fixture", (got.get("result") or {}).get("body") == "hello", f"got {got}")
+    check("… and reports its status", (got.get("result") or {}).get("status") == 200, f"got {got}")
+    check("… and ok", (got.get("result") or {}).get("ok") is True, f"got {got}")
+
+    posted = conn.run(f"const res = await fetch('{base_url}/echo', {{ method: 'POST', "
+                      "body: JSON.stringify({ n: 7 }), headers: { 'content-type': 'application/json' } });\n"
+                      "return (await res.json()).n;")
+    check_result("a POST round-trips a JSON body", posted, 7)
+
+    before = len(fixture.requests)
+    denied = conn.run("return fetch('http://elsewhere.invalid/x').then(r => r.status);")
+    check_failed_script("a host outside the allowlist is refused", denied, "400-9", "host not allowed")
+    check("… without reaching the network", len(fixture.requests) == before, f"requests={fixture.requests!r}")
+
+    oversized = conn.run(f"return fetch('{base_url}/big').then(r => r.text());")
+    check_failed_script("a response over the cap fails", oversized, "400-9", "exceeds maximum size")
+
+    slow = conn.run(f"return fetch('{base_url}/slow').then(r => r.text());")
+    check_failed_script("a response past the timeout fails", slow, "400-9", "")
+
+    check_status("store a fetching procedure",
+                 conn.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": "fetcher",
+                            "script": f"const res = await fetch('{base_url}/hello');\nreturn await res.text();"}),
+                 "OK")
+    called = conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "fetcher"})
+    check("a stored procedure may fetch", called.get("result") == "hello", f"got {called}")
+
+
+def test_fetch_errors_do_not_leak_connect_details(conn: Conn):
+    section("fetch reports no connect detail")
+    refused = conn.run("return fetch('http://127.0.0.1:1/x').then(r => r.status);")
+    check_failed_script("a refused connection is the bare fetch failed", refused, "400-9", "fetch failed")
+    message = refused.get("message") or ""
+    check("… without the cause or the port", "refused" not in message.lower() and ":1" not in message,
+          f"message={message!r}")
+    caught = conn.run("try { await fetch('http://127.0.0.1:1/x'); return 'reached'; }\n"
+                      "catch (e) { return e.name + ':' + e.message; }")
+    check_result("… and the TypeError is catchable", caught, "TypeError:fetch failed")
+
+
+def test_fetch_response_cap_streaming(conn: Conn, base_url: str):
+    section("fetch stops reading a body at the cap")
+    started = time.time()
+    endless = conn.run(f"return fetch('{base_url}/endless').then(r => r.text().then(t => t.length));")
+    elapsed = time.time() - started
+    check_failed_script("an endless body fails as oversized", endless, "400-9", "exceeds maximum size")
+    check("… within the fetch timeout", elapsed < 1.5, f"took {elapsed:.2f}s")
+    check_result("the server is still serving", conn.run("return 1;"), 1)
+
+
+def test_fetch_concurrency_cap(conn: Conn, base_url: str):
+    section("fetch in-flight cap per run")
+    settled = conn.run(f"const all = [1, 2, 3].map(() => fetch('{base_url}/slow'));\n"
+                       "const outcomes = await Promise.allSettled(all);\n"
+                       "return outcomes.map(o => o.status === 'rejected' ? o.reason.message : 'ok');")
+    reasons = settled.get("result") or []
+    check("exactly one of three concurrent fetches is over the cap of 2",
+          reasons.count("fetch: too many concurrent requests") == 1, f"got {settled}")
+    check_result("a later fetch is admitted once the earlier ones settled",
+                 conn.run(f"return (await fetch('{base_url}/hello')).status;"), 200)
+
+
+def test_fetch_blocks_private_ranges_under_wildcard(conn: Conn, base_url: str, fixture, server_port: int):
+    section("fetch under '*' reaches only public hosts")
+    fixture.requests.clear()
+    fixture_port = base_url.rsplit(":", 1)[1]
+    targets = [f"{base_url}/hello", "http://169.254.169.254/latest/meta-data/", "http://10.0.0.1/",
+               "http://[::1]:1/", f"http://localhost:{fixture_port}/hello", f"https://2130706433:{fixture_port}/hello",
+               f"http://127.0.0.1:{server_port}/", "http://[::ffff:127.0.0.1]:1/", "http://100.64.0.1/",
+               "file:///etc/passwd"]
+    for target in targets:
+        refused = conn.run(f"return fetch('{target}').then(r => r.status);")
+        check_failed_script(f"{target} is refused", refused, "400-9", "host not allowed")
+    check("… and none of them reached the fixture", fixture.requests == [], f"requests={fixture.requests!r}")
+
+
+def test_locale_arguments(conn: Conn):
+    section("Locale arguments")
+    check_result("localeCompare honours an explicit locale",
+                 conn.run("return ['z', 'ä'].sort((a, b) => a.localeCompare(b, 'sv')).join('');"), "zä")
+    check_result("… and differs from the host locale",
+                 conn.run("return ['z', 'ä'].sort((a, b) => a.localeCompare(b, 'en')).join('');"), "äz")
+    check_result("base sensitivity ignores accents",
+                 conn.run("return 'a'.localeCompare('á', 'en', { sensitivity: 'base' });"), 0)
+    check_failed_script("a malformed tag is a RangeError",
+                        conn.run("return 'a'.localeCompare('b', '!');"), "400-9", "RangeError")
+    check_result("toLocaleString honours it too",
+                 conn.run("return (1234.5).toLocaleString('de-DE');"), "1.234,5")
+
+
+def test_request_validation(conn: Conn):
+    section("Request validation")
+    check_code("unknown database", conn.run("return 1;", db="no_such_db"), "NOT_FOUND", "404-4")
+    check_code("the reserved admin database", conn.run("return 1;", db="admin"), "ERROR", "400-1")
+    check_code("the reserved admin_pages database", conn.run("return 1;", db="admin_pages"), "ERROR", "400-1")
+    check_code("a missing script", conn.send({"type": "RUN_SCRIPT", "databaseName": DB}), "ERROR", "400-1")
+    check_code("a blank script", conn.run("   "), "ERROR", "400-1")
+    check_code("a malformed database name", conn.run("return 1;", db="ab"), "ERROR", "400-1")
+    check_failed_script("a syntax error is reported as a script failure",
+                        conn.run("function ("), "400-9", "SyntaxError")
+
+    check_status("open a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
+    check_code("RUN_SCRIPT is refused inside a transaction", conn.run("return 1;"), "ERROR", "409-6")
+    check_status("roll the transaction back", conn.send({"type": "ROLLBACK_TRANSACTION"}), "OK")
+
+
+def test_host_reads(conn: Conn):
+    section("Host interface — reads")
+    check_result("db.name is the scoped database", conn.run('import db from "db";\nreturn db.name;'), DB)
+    check_result("findById returns the document",
+                 conn.run(f'import db from "db";\nreturn db.findById(db.name, "{COLL}", "d2");'),
+                 {"_id": "d2", "name": "beta", "n": 5, "tags": ["y"]})
+    check_result("findById of a missing document is null",
+                 conn.run(f'import db from "db";\nreturn db.findById(db.name, "{COLL}", "nope") === null;'), True)
+    check_result("aggregate with a filter",
+                 conn.run('import db from "db";\n'
+                          "const pipeline = [{ type: 'FILTER', operator: "
+                          "{ fieldOperatorType: 'GREATER_THAN_EQUALS', field: 'n', value: 5 } }];\n"
+                          f'return db.aggregate(db.name, "{COLL}", pipeline).map(d => d._id).sort();'),
+                 ["d2", "d3"])
+    check_result("aggregate with a count step",
+                 conn.run('import db from "db";\n'
+                          f'return db.aggregate(db.name, "{COLL}", [{{ type: "COUNT" }}])[0].count;'), 3)
+    check_result("an empty pipeline result is an empty array",
+                 conn.run('import db from "db";\n'
+                          "const pipeline = [{ type: 'FILTER', operator: "
+                          "{ fieldOperatorType: 'EQUALS', field: 'name', value: 'nobody' } }];\n"
+                          f'return db.aggregate(db.name, "{COLL}", pipeline).length;'), 0)
+    check_result("listCollections lists the scoped database",
+                 conn.run('import db from "db";\nreturn db.listCollections(db.name).sort();'),
+                 sorted([COLL, COLL2, BIG_COLL, EMPTY_COLL]))
+    check_result("listDatabases answers only the scope",
+                 conn.run('import db from "db";\nreturn db.listDatabases();'), [DB])
+    check_result("findById in a collection that was never created throws, as a write there does",
+                 conn.run('import db from "db";\n'
+                          'try { db.findById(db.name, "never_created", "x"); return "read"; }\n'
+                          'catch (e) { return e.message; }'), "Collection not found")
+    check_result("aggregate over a collection that was never created throws too",
+                 conn.run('import db from "db";\n'
+                          'try { db.aggregate(db.name, "never_created", [{ type: "COUNT" }]); return "read"; }\n'
+                          'catch (e) { return e.message; }'), "Collection not found")
+
+
+def test_host_writes(conn: Conn):
+    section("Host interface — writes")
+    check_result("save then read back",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "w1", name: "written", n: 42 }});\n'
+                          f'return db.findById(db.name, "{COLL}", "w1").n;'), 42)
+    check_result("a getter-valued property is persisted, not dropped",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "g1", get computed() {{ return 21 * 2; }} }});\n'
+                          f'return db.findById(db.name, "{COLL}", "g1").computed;'), 42)
+    check_result("save is an upsert",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "w1", name: "updated", n: 43 }});\n'
+                          f'return db.findById(db.name, "{COLL}", "w1").name;'), "updated")
+    check_result("bulkSave reports inserted and updated ids",
+                 conn.run('import db from "db";\n'
+                          f'const outcome = db.bulkSave(db.name, "{COLL}", '
+                          '[{ _id: "b1", n: 1 }, { _id: "w1", n: 44 }]);\n'
+                          "return { inserted: outcome.inserted, updated: outcome.updated };"),
+                 {"inserted": ["b1"], "updated": ["w1"]})
+    check_result("delete removes the document",
+                 conn.run('import db from "db";\n'
+                          f'db.delete(db.name, "{COLL}", "b1");\n'
+                          f'return db.findById(db.name, "{COLL}", "b1") === null;'), True)
+    check_result("deleting an absent document is a no-op",
+                 conn.run('import db from "db";\n'
+                          f'db.delete(db.name, "{COLL}", "never-existed");\nreturn "no-op";'), "no-op")
+    check_result("deleteWhere deletes every match and returns the count",
+                 conn.run('import db from "db";\n'
+                          f'db.bulkSave(db.name, "{COLL}", [{{ _id: "dw1", purge: true }}, {{ _id: "dw2", purge: true }},'
+                          ' { _id: "dw3", purge: false }]);\n'
+                          f'const n = db.deleteWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "purge", value: true });\n'
+                          f'return [n, db.findById(db.name, "{COLL}", "dw1") === null,'
+                          f' db.findById(db.name, "{COLL}", "dw3") !== null];'), [2, True, True])
+    check_result("deleteWhere matching nothing returns 0",
+                 conn.run('import db from "db";\n'
+                          f'return db.deleteWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "purge", value: "never" });'), 0)
+    check_result("deleteWhere inside a transaction commits with it",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "dwt", purge: "tx" }});\n'
+                          'let n = 0;\n'
+                          f'db.transaction(() => {{ n = db.deleteWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "purge", value: "tx" }); });\n'
+                          f'return [n, db.findById(db.name, "{COLL}", "dwt") === null];'), [1, True])
+    check_result("updateWhere merges into every match and returns the count",
+                 conn.run('import db from "db";\n'
+                          f'db.bulkSave(db.name, "{COLL}", [{{ _id: "uw1", bump: true, keep: 1 }},'
+                          ' { _id: "uw2", bump: true, keep: 2 }, { _id: "uw3", bump: false, keep: 3 }]);\n'
+                          f'const n = db.updateWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "bump", value: true }, { state: "bumped" });\n'
+                          f'const one = db.findById(db.name, "{COLL}", "uw1");\n'
+                          f'const three = db.findById(db.name, "{COLL}", "uw3");\n'
+                          'return [n, one.state, one.keep, three.state === undefined];'), [2, "bumped", 1, True])
+    check_result("updateWhere matching nothing returns 0",
+                 conn.run('import db from "db";\n'
+                          f'return db.updateWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "bump", value: "never" }, { state: "x" });'), 0)
+    check_result("updateWhere inside a transaction commits with it",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "uwt", bump: "tx" }});\n'
+                          'let n = 0;\n'
+                          f'db.transaction(() => {{ n = db.updateWhere(db.name, "{COLL}",'
+                          ' { fieldOperatorType: "EQUALS", field: "bump", value: "tx" }, { state: "in-tx" }); });\n'
+                          f'return [n, db.findById(db.name, "{COLL}", "uwt").state];'), [1, "in-tx"])
+    check_result("a document written by a script is visible to the wire protocol",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "visible", via: "script" }});\nreturn "saved";'),
+                 "saved")
+    check_status("… and FIND_BY_ID sees it",
+                 conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "visible"}), "OK")
+
+
+def test_a_script_array_is_stored_as_the_script_sees_it(conn: Conn):
+    section("Host interface — a stored array matches what the script sees")
+    check_result("an index getter, a getter-only slot and a proxy are stored by their values",
+                 conn.run('import db from "db";\n'
+                          "const a = [1, 2, 3];\n"
+                          "Object.defineProperty(a, 1, { get() { return 42; }, enumerable: true });\n"
+                          "const c = [];\n"
+                          "Object.defineProperty(c, 0, { get() { return 7; }, enumerable: true });\n"
+                          "const p = new Proxy({ v: 1 }, { get(t, k) { return k === 'v' ? 99 : t[k]; } });\n"
+                          f'db.save(db.name, "{COLL}", {{ _id: "arr1", a, c, p }});\n'
+                          f'const back = db.findById(db.name, "{COLL}", "arr1");\n'
+                          "return { a: back.a, c: back.c, p: back.p };"),
+                 {"a": [1, 42, 3], "c": [7], "p": {"v": 99}})
+    check_result("an array past the dense limit is refused with a catchable TypeError and nothing is stored",
+                 conn.run('import db from "db";\n'
+                          "const b = [];\n"
+                          "b[20000000] = 1;\n"
+                          "let refused = null;\n"
+                          f'try {{ db.save(db.name, "{COLL}", {{ _id: "arr2", b }}); }} '
+                          "catch (e) { refused = e.name; }\n"
+                          f'return {{ refused, stored: db.findById(db.name, "{COLL}", "arr2") !== null }};'),
+                 {"refused": "TypeError", "stored": False})
+
+
+def test_host_round_trip_keeps_custom_spelling(conn: Conn):
+    section("Host interface — a re-saved document keeps its custom spellings")
+    spellings = {"loc": "#geo(45,-122)", "at": "#datetime(2024-01-01T10:00:00)",
+                 "time": "#time(10:00:00)", "vec": "#vector(1,2)"}
+    check_status("write custom values over the wire",
+                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                            "object": {"_id": "spell", **spellings}}), "OK")
+    check_result("re-save the document read back, untouched and as a structured clone",
+                 conn.run('import db from "db";\n'
+                          f'const doc = db.findById(db.name, "{COLL}", "spell");\n'
+                          f'db.save(db.name, "{COLL}", {{ ...doc, touched: true }});\n'
+                          f'db.save(db.name, "{COLL}", {{ ...structuredClone(doc), _id: "spell-clone" }});\n'
+                          'return "saved";'), "saved")
+    for doc_id in ("spell", "spell-clone"):
+        stored = conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                            "_id": doc_id}).get("object") or {}
+        for field, spelling in spellings.items():
+            check(f"{doc_id}: {field} is stored exactly as written", stored.get(field) == spelling,
+                  f"expected {spelling!r}, got {stored.get(field)!r}")
+
+
+def test_temporal_bridge_keeps_fractions(conn: Conn):
+    section("Host interface — a value rebuilt from Temporal keeps its fraction of a second")
+    written = {"at": "#datetime(2024-01-01T10:00:00.123)", "time": "#time(10:00:00.123)"}
+    check_status("write sub-second custom values over the wire",
+                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                            "object": {"_id": "fraction", **written}}), "OK")
+    check_result("re-save them rebuilt through toTemporal()",
+                 conn.run('import db from "db";\n'
+                          f'const doc = db.findById(db.name, "{COLL}", "fraction");\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "fraction", '
+                          "at: DbDateTime.from(doc.at.toTemporal()), time: DbTime.from(doc.time.toTemporal()) });\n"
+                          'return "saved";'), "saved")
+    stored = conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                        "_id": "fraction"}).get("object") or {}
+    for field, spelling in written.items():
+        check(f"{field} keeps its milliseconds through the Temporal bridge", stored.get(field) == spelling,
+              f"expected {spelling!r}, got {stored.get(field)!r}")
+
+
+def test_transactions(conn: Conn):
+    section("Host interface — transactions")
+    check_result("a transaction commits both collections",
+                 conn.run('import db from "db";\n'
+                          "db.transaction(() => {\n"
+                          f'  db.save(db.name, "{COLL}", {{ _id: "tx1", from: "tx" }});\n'
+                          f'  db.save(db.name, "{COLL2}", {{ _id: "tx2", from: "tx" }});\n'
+                          "});\n"
+                          f'return [db.findById(db.name, "{COLL}", "tx1") !== null, '
+                          f'db.findById(db.name, "{COLL2}", "tx2") !== null];'), [True, True])
+    check_result("a throw inside the callback rolls everything back",
+                 conn.run('import db from "db";\n'
+                          "let message = null;\n"
+                          "try {\n"
+                          "  db.transaction(() => {\n"
+                          f'    db.save(db.name, "{COLL}", {{ _id: "tx-rb", from: "tx" }});\n'
+                          "    throw new Error('abort');\n"
+                          "  });\n"
+                          "} catch (e) { message = e.message; }\n"
+                          f'return {{ message, written: db.findById(db.name, "{COLL}", "tx-rb") !== null }};'),
+                 {"message": "abort", "written": False})
+    check_result("an async transaction callback is refused",
+                 conn.run('import db from "db";\n'
+                          "try { db.transaction(async () => {}); return 'accepted'; }\n"
+                          "catch (e) { return e.constructor.name; }"), "TypeError")
+    check_result("writes still work after a rolled-back transaction",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "after-tx", ok: true }});\n'
+                          f'return db.findById(db.name, "{COLL}", "after-tx").ok;'), True)
+
+
+def test_scope_and_failures(conn: Conn):
+    section("Database scope and failure surfacing")
+    check_result("another database is unreachable",
+                 conn.run('import db from "db";\n'
+                          f'try {{ db.findById("{OTHER_DB}", "{COLL}", "d1"); return "reached"; }}\n'
+                          "catch (e) { return e.message; }"),
+                 f"This script may only access database '{DB}'")
+    check_result("the admin database is unreachable",
+                 conn.run('import db from "db";\n'
+                          'try { db.findById("admin", "users", "admin"); return "reached"; }\n'
+                          "catch (e) { return e instanceof Error; }"), True)
+    check_result("a refused write throws into the script",
+                 conn.run('import db from "db";\n'
+                          'try { db.save(db.name, "neverCreated", { _id: "x" }); return "wrote"; }\n'
+                          "catch (e) { return e instanceof Error; }"), True)
+    check_failed_script("an unhandled refusal fails the run",
+                        conn.run('import db from "db";\n'
+                                 'db.save(db.name, "neverCreated", { _id: "x" });'), "400-9")
+    check_result("an unknown module specifier is catchable",
+                 conn.run("try { await import('nope'); return 'loaded'; }\n"
+                          "catch (e) { return e.message; }"), "Cannot find module 'nope'")
+
+
+def test_schema_interaction(conn: Conn):
+    section("Collection schemas apply to a script's writes")
+    schema = {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}
+    check_status("attach a schema to the second collection",
+                 conn.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL2, "schema": schema}),
+                 "OK")
+    check_result("a compliant write is accepted",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL2}", {{ _id: "s-ok", name: "fine" }});\nreturn "saved";'), "saved")
+    check_result("a non-compliant write is refused inside the script",
+                 conn.run('import db from "db";\n'
+                          f'try {{ db.save(db.name, "{COLL2}", {{ _id: "s-bad", other: 1 }}); return "wrote"; }}\n'
+                          "catch (e) { return e instanceof Error; }"), True)
+    check_status("remove the schema",
+                 conn.send({"type": "DELETE_SCHEMA", "databaseName": DB, "collectionName": COLL2}), "OK")
+
+
+def test_arguments(conn: Conn):
+    section("Arguments")
+    check_result("named access", conn.run('import args from "args";\nreturn args.name;', {"name": "alpha"}), "alpha")
+    check_result("bracket access", conn.run('import args from "args";\nreturn args["n"] * 2;', {"n": 21}), 42)
+    check_result("nested objects and arrays",
+                 conn.run('import args from "args";\nreturn args.outer.inner[1];',
+                          {"outer": {"inner": ["a", "b"]}}), "b")
+    check_result("a missing argument is undefined",
+                 conn.run('import args from "args";\nreturn args.absent === undefined;', {"present": 1}), True)
+    check_result("no args at all yields an empty object",
+                 conn.run('import args from "args";\nreturn Object.keys(args).length;'), 0)
+    check_result("namespace import form",
+                 conn.run('import * as args from "args";\nreturn args.value;', {"value": "ns"}), "ns")
+    check_result("arguments drive a query",
+                 conn.run('import db from "db";\nimport args from "args";\n'
+                          "const pipeline = [{ type: 'FILTER', operator: "
+                          "{ fieldOperatorType: 'EQUALS', field: 'name', value: args.wanted } }];\n"
+                          f'return db.aggregate(db.name, "{COLL}", pipeline)[0]._id;', {"wanted": "gamma"}), "d3")
+    check_result("dynamic import of the args module",
+                 conn.run("const mod = await import('args');\nreturn mod.default.k;", {"k": "dyn"}), "dyn")
+
+
+def test_custom_types(conn: Conn):
+    section("Host interface — EJson custom types")
+    check_result("Geo round-trips through the database",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "geo1", loc: Geo.from("#geo(40.4,-3.7)") }});\n'
+                          f'const stored = db.findById(db.name, "{COLL}", "geo1");\n'
+                          "return { lat: stored.loc.lat, lng: stored.loc.lng, text: stored.loc.toString() };"),
+                 {"lat": 40.4, "lng": -3.7, "text": "#geo(40.4,-3.7)"})
+    check_result("Vector round-trips through the database",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "vec1", v: Vector.from([1, 2, 3]) }});\n'
+                          f'const stored = db.findById(db.name, "{COLL}", "vec1");\n'
+                          "return { length: stored.v.length, first: stored.v.at(0) };"),
+                 {"length": 3, "first": 1})
+    check_result("DbDateTime exposes its components and bridges to Temporal",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", '
+                          '{ _id: "dt1", at: DbDateTime.from("#datetime(2024-07-12T12:30:00)") });\n'
+                          f'const stored = db.findById(db.name, "{COLL}", "dt1");\n'
+                          "return { year: stored.at.year, hour: stored.at.hour, "
+                          "temporal: stored.at.toTemporal().toString().slice(0, 10) };"),
+                 {"year": 2024, "hour": 12, "temporal": "2024-07-12"})
+    check_result("DbTime round-trips",
+                 conn.run('import db from "db";\n'
+                          f'db.save(db.name, "{COLL}", {{ _id: "t1", when: DbTime.from("#time(23:15:42)") }});\n'
+                          f'return db.findById(db.name, "{COLL}", "t1").when.toString();'), "#time(23:15:42)")
+    check_result("a geo value is queryable from the wire after a script wrote it",
+                 conn.run('import db from "db";\nreturn typeof Geo.from("#geo(1,2)").geoHash;'), "string")
+
+
+def test_value_guards(conn: Conn):
+    section("Host interface — values a document cannot hold")
+    for label, literal in (("1/0", "1/0"), ("-1/0", "-1/0"), ("0/0", "0/0"),
+                           ("an overflow", "Number.MAX_VALUE * 2")):
+        check_failed_script(f"storing {label} is refused", conn.run(
+            'import db from "db";\n'
+            f'db.save(db.name, "{COLL}", {{ _id: "nonfinite", v: {literal} }});'),
+            "400-9", "is not a JSON number")
+    check_result("the refusal is catchable inside the script", conn.run(
+        'import db from "db";\n'
+        f'try {{ db.save(db.name, "{COLL}", {{ _id: "nonfinite", v: 1/0 }}); return "saved"; }}\n'
+        "catch (e) { return e.name; }"), "TypeError")
+    check_failed_script("returning a non-finite number is refused too",
+                        conn.run("return 1/0;"), "400-9", "is not a JSON number")
+    check_code("no refused write reached the collection",
+               conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                          "_id": "nonfinite"}), "NOT_FOUND", "404-2")
+
+    check_failed_script("an unregistered custom type is refused", conn.run(
+        'import db from "db";\n'
+        f'db.save(db.name, "{COLL}", {{ _id: "badcustom", f: "#nosuch(1)" }});'),
+        "400-9", "nosuch")
+    check_failed_script("a malformed custom value is refused", conn.run(
+        'import db from "db";\n'
+        f'db.save(db.name, "{COLL}", {{ _id: "badcustom", f: "#geo(bad)" }});'), "400-9", "Cannot serialize")
+    for label, literal in (("a key shaped like an unregistered custom type", '{ _id: "badcustom", "#nosuch(1)": 1 }'),
+                           ("a key shaped like a malformed custom value",
+                            '{ _id: "badcustom", nested: { "#geo(bad)": 1 } }')):
+        check_failed_script(f"a script storing {label} is refused", conn.run(
+            'import db from "db";\n'
+            f'db.save(db.name, "{COLL}", {literal});'), "400-9")
+    check_code("neither reached the collection",
+               conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                          "_id": "badcustom"}), "NOT_FOUND", "404-2")
+
+    check_result("a custom-shaped string stores as the custom type the wire would build", conn.run(
+        'import db from "db";\n'
+        f'db.save(db.name, "{COLL}", {{ _id: "promoted", loc: "#geo(3.0,4.0)" }});\n'
+        f'const stored = db.findById(db.name, "{COLL}", "promoted");\n'
+        "return [typeof stored.loc, stored.loc.lat, stored.loc.toString()];"),
+        ["object", 3, "#geo(3.0,4.0)"])
+    check_status("store an unnormalised custom value from a script", conn.run(
+        'import db from "db";\n'
+        f'db.save(db.name, "{COLL}", {{ _id: "promoted2", loc: "#geo(1,2)" }});'), "OK")
+    check_field("promotion keeps the raw wire text rather than normalising it",
+                conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                           "_id": "promoted2"}), "object.loc", "#geo(1,2)")
+    check_result("JSON.stringify still treats a custom-shaped string as a string",
+                 conn.run("return JSON.stringify({ a: '#geo(1,2)', b: 1/0 });"),
+                 '{"a":"#geo(1,2)","b":null}')
+
+
+def test_db_module_arity(conn: Conn):
+    section("Host interface - a db call with too few arguments")
+    for label, call in (("db.save", f'db.save("{COLL}", {{ _id: "arity" }})'),
+                        ("db.aggregate", f'db.aggregate(db.name, "{COLL}")'),
+                        ("db.bulkSave", f'db.bulkSave("{COLL}", [{{ _id: "arity" }}])'),
+                        ("db.cursor", f'db.cursor(db.name, "{COLL}")'),
+                        ("db.delete", f'db.delete(db.name, "{COLL}")'),
+                        ("db.deleteWhere", f'db.deleteWhere(db.name, "{COLL}")'),
+                        ("db.updateWhere", f'db.updateWhere(db.name, "{COLL}", {{ field: "a" }})'),
+                        ("db.findById", f'db.findById(db.name, "{COLL}")')):
+        check_failed_script(f"{label} with too few arguments is a TypeError",
+                            conn.run(f'import db from "db";\n{call};'), "400-9", "TypeError")
+        check_status(f"the connection still answers after {label} was refused",
+                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                                "_id": "arity"}), "NOT_FOUND")
+
+    check_result("the refusal is catchable inside the script", conn.run(
+        'import db from "db";\n'
+        f'try {{ db.save("{COLL}", {{ _id: "arity" }}); return "saved"; }}\n'
+        "catch (e) { return e.name; }"), "TypeError")
+    check_failed_script("a third argument of the wrong shape is refused the same way",
+                        conn.run('import db from "db";\n'
+                                 f'db.aggregate(db.name, "{COLL}", {{}});'), "400-9", "TypeError")
+    check_failed_script("an empty bulkSave array reaches request validation, not the arity guard",
+                        conn.run('import db from "db";\n'
+                                 f'db.bulkSave(db.name, "{COLL}", []);'),
+                        "400-9", "at least one object")
+
+
+def test_db_insert(conn: Conn):
+    section("Host interface - db.insert never overwrites")
+    check_result("an insert of a new id returns the stored document", conn.run(
+        'import db from "db";\n'
+        f'return db.insert(db.name, "{COLL}", {{ _id: "insert-once", v: 1 }}).v;'), 1)
+    check_failed_script("a second insert of the same id throws",
+                        conn.run('import db from "db";\n'
+                                 f'db.insert(db.name, "{COLL}", {{ _id: "insert-once", v: 2 }});'),
+                        "400-9", "A document with this _id already exists")
+    check_result("the refusal is catchable and the script carries on", conn.run(
+        'import db from "db";\n'
+        'let refused = false;\n'
+        f'try {{ db.insert(db.name, "{COLL}", {{ _id: "insert-once", v: 3 }}); }} catch (e) {{ refused = true; }}\n'
+        f'db.insert(db.name, "{COLL}", {{ _id: "insert-after", v: 4 }});\n'
+        'return refused;'), True)
+    check_field("the stored document keeps its first body", conn.send(
+        {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "insert-once"}), "object.v", 1)
+    check_field("the write after the caught refusal landed", conn.send(
+        {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "insert-after"}), "object.v", 4)
+    check_failed_script("db.insert without a document is a TypeError",
+                        conn.run('import db from "db";\n'
+                                 f'db.insert(db.name, "{COLL}", 5);'),
+                        "400-9", "db.insert expects a document")
+
+
+def test_db_save_rejects_a_non_string_id(conn: Conn):
+    section("Host interface - db.save with an _id that is not a string")
+    for label, literal in (("a number", "123"), ("a boolean", "true"), ("an object", "{ a: 1 }"),
+                           ("an array", "[1]"), ("null", "null")):
+        check_failed_script(f"{label} _id is a validation error, not an InternalError",
+                            conn.run('import db from "db";\n'
+                                     f'db.save(db.name, "{COLL}", {{ _id: {literal}, v: 1 }});'),
+                            "400-9", "_id must be a string")
+        check_status(f"the connection still answers after {label} was refused",
+                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                                "_id": "non-string-id"}), "NOT_FOUND")
+
+    check_result("the refusal is catchable inside the script", conn.run(
+        'import db from "db";\n'
+        f'try {{ db.save(db.name, "{COLL}", {{ _id: 123, v: 1 }}); return "saved"; }}\n'
+        "catch (e) { return e.message.indexOf(\"_id must be a string\") >= 0 ? \"refused\" : e.message; }"),
+        "refused")
+    check_result("a valid string _id still saves", conn.run(
+        'import db from "db";\n'
+        f'return db.save(db.name, "{COLL}", {{ _id: "string-id-ok", v: 1 }})._id;'), "string-id-ok")
+    check_failed_script("a string _id that breaks the charset is still refused",
+                        conn.run('import db from "db";\n'
+                                 f'db.save(db.name, "{COLL}", {{ _id: "not valid!", v: 1 }});'),
+                        "400-9", "")
+
+
+def test_db_delete_refuses_a_non_string_id(conn: Conn):
+    section("Host interface - db.delete and db.findById with an id that is not a string")
+    for doc_id in ("undefined", "5"):
+        check_status(f"save a document whose _id is {doc_id!r} over the wire",
+                     conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                                "object": {"_id": doc_id, "v": 1}}), "OK")
+    for label, call in (("db.delete with no id", f'db.delete(db.name, "{COLL}")'),
+                        ("db.delete with a number id", f'db.delete(db.name, "{COLL}", 5)'),
+                        ("db.findById with a number id", f'db.findById(db.name, "{COLL}", 5)'),
+                        ("db.delete with a number collection", 'db.delete(db.name, 7, "5")')):
+        check_failed_script(f"{label} is a TypeError", conn.run(f'import db from "db";\n{call};'),
+                            "400-9", "TypeError")
+    for doc_id in ("undefined", "5"):
+        check_status(f"the document whose _id is {doc_id!r} survived the refused deletes",
+                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                                "_id": doc_id}), "OK")
+    check_result("the refusal is catchable inside the script", conn.run(
+        'import db from "db";\n'
+        f'try {{ db.delete(db.name, "{COLL}", 5); return "deleted"; }}\n'
+        "catch (e) { return e.name; }"), "TypeError")
+    check_result("a string id that happens to read 'undefined' is still deletable", conn.run(
+        'import db from "db";\n'
+        f'db.delete(db.name, "{COLL}", "undefined");\n'
+        f'return db.findById(db.name, "{COLL}", "undefined");'), None)
+    check_status("clean up the numeric-looking id", conn.send({"type": "DELETE", "databaseName": DB,
+                                                               "collectionName": COLL, "_id": "5"}), "OK")
+
+
+def test_db_aggregate_refuses_an_unparseable_pipeline(conn: Conn):
+    section("Host interface - db.aggregate / db.cursor with a pipeline the parser cannot read")
+    for label, pipeline in (("a FILTER step with no operator", '[{ type: "FILTER" }]'),
+                            ("an unknown step type", '[{ type: "NOPE" }]')):
+        check_failed_script(f"db.aggregate with {label} is an Error, not an InternalError",
+                            conn.run('import db from "db";\n'
+                                     f'db.aggregate(db.name, "{COLL}", {pipeline});'),
+                            "400-9", "Error: The command is not valid")
+        check_result(f"db.aggregate with {label} is catchable inside the script", conn.run(
+            'import db from "db";\n'
+            f'try {{ db.aggregate(db.name, "{COLL}", {pipeline}); return "returned"; }}\n'
+            "catch (e) { return e.name; }"), "Error")
+        check_result(f"db.cursor with {label} is catchable inside the script", conn.run(
+            'import db from "db";\n'
+            f'try {{ for (const doc of db.cursor(db.name, "{COLL}", {pipeline})) {{ return "row"; }}'
+            ' return "empty"; }\n'
+            "catch (e) { return e.name; }"), "Error")
+    check_status("the connection still answers after the refusals",
+                 conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                            "_id": "unparseable-pipeline"}), "NOT_FOUND")
+
+
+def test_capabilities(conn: Conn):
+    section("Host interface — capabilities and environment")
+    check_result("crypto.randomUUID", conn.run("return crypto.randomUUID().length;"), 36)
+    check_result("crypto.getRandomValues",
+                 conn.run("const bytes = crypto.getRandomValues(new Uint8Array(8));\nreturn bytes.length;"), 8)
+    check_result("crypto.hash is Node-shaped and synchronous",
+                 conn.run("return crypto.hash('sha256', 'abc');"),
+                 "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    check_result("fetch is unavailable by default",
+                 conn.run("try { await fetch('https://example.com'); return 'fetched'; }\n"
+                          "catch (e) { return e.message; }"), "fetch is not available")
+    check_result("text import is disabled by default",
+                 conn.run("import script from 'script';\n"
+                          "try { script.importText('export default 1;'); return 'imported'; }\n"
+                          "catch (e) { return e instanceof Error; }"), True)
+    check_result("import.meta is available", conn.run("return import.meta.url;"), "simplejs:main")
+    check_result("the configured time zone is used",
+                 conn.run("return Temporal.Now.timeZoneId();"), "UTC")
+    check_result("dates are formatted in the configured zone",
+                 conn.run("return new Date(0).getHours();"), 0)
+    check_result("the configured locale is used",
+                 conn.run("return (1234.5).toLocaleString();"), "1,234.5")
+
+
+TEXT_IMPORT_CALLS = {
+    "a direct call": "script.importText(TEXT)",
+    ".call": "script.importText.call(script, TEXT)",
+    ".apply": "script.importText.apply(script, [TEXT])",
+    "Reflect.apply": "Reflect.apply(script.importText, script, [TEXT])",
+    "a bound function": "script.importText.bind(script)(TEXT)",
+    "Array.prototype.map": "[TEXT].map(script.importText)[0]",
+    "a plain function": "(function () { return script.importText(TEXT); })()",
+    "a .then handler": "(await Promise.resolve(TEXT).then(script.importText))",
+    "a timer callback": "(await new Promise(done => setTimeout(t => done(script.importText(t)), 0, TEXT)))",
+}
+
+
+def test_text_import_awaits_through_indirect_calls(conn: Conn):
+    section("Module imports — top-level await in imported text, however importText is called")
+    for label, call in TEXT_IMPORT_CALLS.items():
+        script = ("import script from 'script';\n"
+                  "const TEXT = 'export default await Promise.resolve(9);';\n"
+                  f"async function viaAsync() {{ return ({call}).default; }}\n"
+                  f"return [({call}).default, await viaAsync()];")
+        check_result(f"through {label}, at top level and inside an async function", conn.run(script), [9, 9])
+
+
+def test_procedure_imports(conn: Conn):
+    section("Module imports — procedures/<name>")
+
+    check_status("store a library exporting a named function",
+                 conn.save_procedure("lib_money", "export function cents(n) { return Math.round(n * 100); }\n"
+                                                  "export const RATE = 0.21;"), "OK")
+    check_result("a named export is importable",
+                 conn.run("import { cents } from 'procedures/lib_money';\nreturn cents(12.345);"), 1235)
+    check_result("several named exports at once",
+                 conn.run("import { cents, RATE } from 'procedures/lib_money';\nreturn [cents(1), RATE];"),
+                 [100, 0.21])
+    check_result("a renamed named export",
+                 conn.run("import { cents as toCents } from 'procedures/lib_money';\nreturn toCents(2);"), 200)
+
+    check_status("store a library with a default export",
+                 conn.save_procedure("lib_default", "export default (n) => n + 1;"), "OK")
+    check_result("a default import binds the default export, not the namespace",
+                 conn.run("import bump from 'procedures/lib_default';\nreturn bump(41);"), 42)
+    check_result("a namespace import exposes members and the default",
+                 conn.run("import * as ns from 'procedures/lib_money';\n"
+                          "return [typeof ns.cents, ns.RATE];"), ["function", 0.21])
+    check_result("a dynamic import resolves a procedure",
+                 conn.run("const ns = await import('procedures/lib_money');\nreturn ns.cents(3);"), 300)
+    check_status("store a library whose body has a side effect",
+                 conn.save_procedure("lib_marker", "import db from 'db';\n"
+                                                   "db.save(db.name, '" + COLL + "', { _id: 'import-marker', seen: 1 });"),
+                 "OK")
+    check_result("a side-effect-only import runs the module body",
+                 conn.run("import db from 'db';\n"
+                          "import 'procedures/lib_marker';\n"
+                          "return db.findById(db.name, '" + COLL + "', 'import-marker').seen;"), 1)
+
+    check_status("store a library that imports another library",
+                 conn.save_procedure("lib_chain", "import { cents } from 'procedures/lib_money';\n"
+                                                  "export function twiceCents(n) { return cents(n) * 2; }"), "OK")
+    check_result("a library may import another library",
+                 conn.run("import { twiceCents } from 'procedures/lib_chain';\nreturn twiceCents(1.5);"), 300)
+
+    check_result("an unknown procedure throws a catchable error",
+                 conn.run("try { await import('procedures/nope'); return 'resolved'; }\n"
+                          "catch (e) { return e.message; }"),
+                 "Cannot find module 'procedures/nope'")
+    check_result("a bare specifier is still unresolvable",
+                 conn.run("try { await import('lodash'); return 'resolved'; }\n"
+                          "catch (e) { return e.message; }"), "Cannot find module 'lodash'")
+    check_result("a nested name is refused (no traversal)",
+                 conn.run("try { await import('procedures/a/b'); return 'resolved'; }\n"
+                          "catch (e) { return e.message; }"), "Cannot find module 'procedures/a/b'")
+    check_result("a traversal attempt is refused",
+                 conn.run("try { await import('procedures/../lib_money'); return 'resolved'; }\n"
+                          "catch (e) { return e.message; }"), "Cannot find module 'procedures/../lib_money'")
+    check_failed_script("test_procedure_import_rejects_traversal_names: a static import of procedures/..",
+                        conn.run("import x from 'procedures/..';\nreturn x;"),
+                        "400-9", "Cannot find module 'procedures/..'")
+    check_failed_script("… a backslash name",
+                        conn.run("import x from 'procedures/a\\\\b';\nreturn x;"),
+                        "400-9", "Cannot find module 'procedures/a\\b'")
+    for name in (".", "ab", "x" * 65, "lib_money\\u0000"):
+        check_result(f"… and the name {name[:12]!r} is not resolved either",
+                     conn.run(f"try {{ await import('procedures/{name}'); return 'resolved'; }}\n"
+                              "catch (e) { return e.message.startsWith('Cannot find module') ? 'refused' : e.message; }"),
+                     "refused")
+    check_failed_script("a static import of an unknown procedure fails the run",
+                        conn.run("import { x } from 'procedures/nope';\nreturn x;"),
+                        "400-9", "Cannot find module 'procedures/nope'")
+
+    check_code("saving a procedure whose import does not exist is refused",
+               conn.save_procedure("lib_broken", "import { x } from 'procedures/absent';\nexport const y = x;"),
+               "ERROR", "400-18")
+    check_status("… and nothing was stored",
+                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "lib_broken"}), "OK")
+    check_status("the same save succeeds once the library exists",
+                 conn.save_procedure("lib_broken", "import { cents } from 'procedures/lib_money';\n"
+                                                   "export const y = cents;"), "OK")
+    check_status("the built-in specifiers are never checked",
+                 conn.save_procedure("lib_builtins", "import db from 'db';\nexport const n = typeof db;"), "OK")
+
+    check_code("a re-export from a missing procedure is refused at save time",
+               conn.save_procedure("lib_reexport", "export { cents } from 'procedures/absent';"), "ERROR", "400-18")
+    check_code("an export-all from a missing procedure is refused at save time",
+               conn.save_procedure("lib_starexport", "export * from 'procedures/absent';"), "ERROR", "400-18")
+    check_failed_script("a re-export from a missing procedure fails a run",
+                        conn.run("export { cents } from 'procedures/absent';"),
+                        "400-9", "Cannot find module 'procedures/absent'")
+    check_failed_script("an export-all from a missing procedure fails a run",
+                        conn.run("export * from 'procedures/absent';"),
+                        "400-9", "Cannot find module 'procedures/absent'")
+
+    check_result("a named re-export takes the library's binding",
+                 conn.run("export { RATE } from 'procedures/lib_money';"), {"RATE": 0.21})
+    check_result("… even when a local of the same name is in scope",
+                 conn.run("const RATE = 999;\nexport { RATE } from 'procedures/lib_money';"), {"RATE": 0.21})
+    check_result("a renamed re-export",
+                 conn.run("export { RATE as rate } from 'procedures/lib_money';"), {"rate": 0.21})
+    check_status("store a library with a default export to re-export",
+                 conn.save_procedure("lib_def", "export default 'the-default'; export const other = 1;"), "OK")
+    check_result("a default can be re-exported under a name",
+                 conn.run("export { default as picked } from 'procedures/lib_def';"), {"picked": "the-default"})
+    check_result("export * carries the named exports but not the default",
+                 conn.run("export * from 'procedures/lib_def';"), {"other": 1})
+    check_result("a sourceless export still reads the local scope",
+                 conn.run("const local = 5;\nexport { local };"), {"local": 5})
+
+    check_status("a computed specifier passes the save-time check",
+                 conn.save_procedure("lib_computed",
+                                     "const where = 'procedures/' + 'absent';\n"
+                                     "const mod = await import(where);\n"
+                                     "return mod.anything;"), "OK")
+    computed = conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_computed"})
+    check("… and still fails when it runs",
+          computed.get("errorCode") == "400-9"
+          and "Cannot find module 'procedures/absent'" in (computed.get("message") or ""),
+          f"got {computed.get('errorCode')} {computed.get('message')!r}")
+
+    check_status("store a base library", conn.save_procedure("lib_base", "export const base = 7;"), "OK")
+    check_status("store a library that imports it",
+                 conn.save_procedure("lib_mid", "import { base } from 'procedures/lib_base';\n"
+                                                "export function mid() { return base; }"), "OK")
+    check_result("the chain works while both exist",
+                 conn.run("import { mid } from 'procedures/lib_mid';\nreturn mid();"), 7)
+    check_status("delete the base library",
+                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "lib_base"}), "OK")
+    check_failed_script("a nested import that has since been deleted fails, naming the missing module",
+                        conn.run("import { mid } from 'procedures/lib_mid';\nreturn mid();"),
+                        "400-9", "Cannot find module 'procedures/lib_base'")
+
+    failed = conn.run("console.log('before the import');\n"
+                      "await import('procedures/absent');\n"
+                      "return 'unreachable';")
+    check_failed_script("an import failure is reported as a script failure", failed, "400-9",
+                        "Cannot find module 'procedures/absent'")
+    check("… and the console output up to that point is still returned",
+          failed.get("logs") == ["before the import"], f"got {failed.get('logs')!r}")
+
+    check_status("store a disabled library",
+                 conn.save_procedure("lib_off", "export const value = 1;", enabled=False), "OK")
+    check_code("importing a disabled procedure is refused at save time too",
+               conn.save_procedure("lib_wants_off", "import { value } from 'procedures/lib_off';\n"
+                                                    "export const v = value;"), "ERROR", "400-18")
+    check_failed_script("a disabled procedure is not importable",
+                        conn.run("import { value } from 'procedures/lib_off';\nreturn value;"),
+                        "400-9", "Cannot find module 'procedures/lib_off'")
+
+    check_status("store a library in the other database",
+                 conn.save_procedure("lib_elsewhere", "export const value = 1;", db=OTHER_DB), "OK")
+    check_failed_script("a procedure of another database is out of scope",
+                        conn.run("import { value } from 'procedures/lib_elsewhere';\nreturn value;"),
+                        "400-9", "Cannot find module 'procedures/lib_elsewhere'")
+
+    check_status("store a self-importing procedure",
+                 conn.save_procedure("lib_loop", "import { self } from 'procedures/lib_loop';\n"
+                                                 "export function self() { return 1; }"), "OK")
+    check_failed_script("a self-import is a cycle",
+                        conn.run("import { self } from 'procedures/lib_loop';\nreturn self();"),
+                        "400-9", "Circular import of module")
+    check_status("store the second half without its import first",
+                 conn.save_procedure("lib_b", "export function b() { return 1; }"), "OK")
+    check_status("store the first half of a mutual import",
+                 conn.save_procedure("lib_a", "import { b } from 'procedures/lib_b';\n"
+                                              "export function a() { return b(); }"), "OK")
+    check_status("close the cycle by updating the second half",
+                 conn.save_procedure("lib_b", "import { a } from 'procedures/lib_a';\n"
+                                              "export function b() { return a(); }"), "OK")
+    check_failed_script("a mutual import is a cycle",
+                        conn.run("import { a } from 'procedures/lib_a';\nreturn a();"),
+                        "400-9", "Circular import of module")
+
+    check_status("store a library that counts its own evaluations",
+                 conn.save_procedure("lib_counter", "import db from 'db';\n"
+                                                    "const prev = db.findById(db.name, '" + COLL + "', 'eval-count');\n"
+                                                    "const seen = (prev === null ? 0 : prev.seen) + 1;\n"
+                                                    "db.save(db.name, '" + COLL + "', { _id: 'eval-count', seen });\n"
+                                                    "export const marker = seen;"), "OK")
+    check_result("an imported module evaluates once per run",
+                 conn.run("import db from 'db';\n"
+                          "import 'procedures/lib_counter';\n"
+                          "await import('procedures/lib_counter');\n"
+                          "return db.findById(db.name, '" + COLL + "', 'eval-count').seen;"), 1)
+
+    check_status("store a library that never terminates",
+                 conn.save_procedure("lib_spin", "while (true) { }"), "OK")
+    check_failed_script("an imported module shares the importing run's budget",
+                        conn.run("import 'procedures/lib_spin';\nreturn 'never';"), "400-11")
+
+    check_status("store a procedure written in the CALL_PROCEDURE style",
+                 conn.save_procedure("lib_returning", "return 5;"), "OK")
+    check_result("a procedure written with a top-level return imports as undefined",
+                 conn.run("import lib from 'procedures/lib_returning';\nreturn typeof lib;"), "undefined")
+    check_result("… and it is still callable as a procedure",
+                 conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_returning"}), 5)
+
+    check_status("store a library that throws while evaluating",
+                 conn.save_procedure("lib_throwing", "throw new Error('library boom');"), "OK")
+    check_result("an error thrown by a library is catchable in the importer",
+                 conn.run("try { await import('procedures/lib_throwing'); return 'imported'; }\n"
+                          "catch (e) { return e.message; }"), "library boom")
+
+    check_status("store a library that reads through db",
+                 conn.save_procedure("lib_reader", "import db from 'db';\n"
+                                                   "export function count() {\n"
+                                                   "    return db.aggregate(db.name, '" + COLL + "', []).length;\n"
+                                                   "}"), "OK")
+    check_result("a library reaches the same db binding as its importer",
+                 conn.run("import db from 'db';\n"
+                          "import { count } from 'procedures/lib_reader';\n"
+                          "return count() === db.aggregate(db.name, '" + COLL + "', []).length;"), True)
+
+
+def test_language_surface(conn: Conn):
+    section("Language surface (ES2026)")
+    cases = [
+        ("generators and spread", "function* g() { yield 1; yield 2; yield 3; }\nreturn [...g()];", [1, 2, 3]),
+        ("async/await with Promise.all",
+         "const values = await Promise.all([1, Promise.resolve(2)]);\nreturn values;", [1, 2]),
+        ("Promise.allSettled",
+         ("const r = await Promise.allSettled([Promise.resolve(1), Promise.reject(new Error('x'))]);\n"
+         "return r.map(e => e.status);"), ["fulfilled", "rejected"]),
+        ("Promise.any and AggregateError",
+         ("try { await Promise.any([Promise.reject(new Error('a')), Promise.reject(new Error('b'))]); }\n"
+         "catch (e) { return { name: e.name, count: e.errors.length }; }"), {"name": "AggregateError", "count": 2}),
+        ("Promise.withResolvers",
+         "const { promise, resolve } = Promise.withResolvers();\nresolve('resolved');\nreturn await promise;",
+         "resolved"),
+        ("async generators and for await",
+         ("async function* g() { yield 1; yield 2; }\nlet total = 0;\nfor await (const v of g()) total += v;\n"
+         "return total;"), 3),
+        ("classes: private fields, getters, static blocks",
+         ("class Counter {\n  static created = 0;\n  static { Counter.created = 100; }\n  #count = 0;\n"
+         "  bump() { this.#count++; return this; }\n  get value() { return this.#count; }\n}\n"
+         "const c = new Counter().bump().bump();\n"
+         "return { value: c.value, created: Counter.created, isCounter: c instanceof Counter };"),
+         {"value": 2, "created": 100, "isCounter": True}),
+        ("inheritance and super",
+         ("class A { greet() { return 'a'; } }\nclass B extends A { greet() { return super.greet() + 'b'; } }\n"
+         "return new B().greet();"), "ab"),
+        ("destructuring, defaults, rest",
+         ("const { a, b = 2, ...rest } = { a: 1, c: 3, d: 4 };\nconst [x, , z = 9] = [10, 20];\n"
+         "return { a, b, rest, x, z };"), {"a": 1, "b": 2, "rest": {"c": 3, "d": 4}, "x": 10, "z": 9}),
+        ("optional chaining and nullish coalescing",
+         "const o = { a: { b: null } };\nreturn [o?.a?.b ?? 'fallback', o?.x?.y?.z, o.missing?.()];",
+         ["fallback", None, None]),
+        ("tagged templates and String.raw",
+         ("const tag = (s, ...v) => s.raw.join('|') + '#' + v.join(',');\n"
+         "return [tag`a${1}b`, String.raw`x\\ny`];"), ["a|b#1", "x\\ny"]),
+        ("labeled break and continue", ("let seen = 0;\nouter: for (let i = 0; i < 3; i++) "
+                                       "{ for (let j = 0; j < 3; j++) { seen++; if (j === 1) continue outer; "
+                                       "if (i === 2) break outer; } }\nreturn seen;"), 5),
+        ("closures capture per-iteration let",
+         "const fns = [];\nfor (let i = 0; i < 3; i++) fns.push(() => i);\nreturn fns.map(f => f());", [0, 1, 2]),
+        ("a closure in the for header captures the first iteration",
+         "let first;\nfor (let i = 0, f = () => i; i < 3; i++) first ??= f;\nreturn first();", 0),
+        ("a closure inside a template substitution captures per iteration",
+         "const out = [];\nfor (let i = 0; i < 3; i++) out.push(`${(() => i)()}`);\nreturn out;", ["0", "1", "2"]),
+        ("a loop with no closure still counts every iteration",
+         "const out = [];\nfor (let i = 0; i < 4; i++) { const twice = i * 2; out.push(twice); }\nreturn out;",
+         [0, 2, 4, 6]),
+        ("Map, Set and Set operations",
+         ("const m = new Map([['a', 1]]);\nconst s = new Set([1, 2]);\n"
+         "return { got: m.get('a'), union: [...s.union(new Set([3]))], "
+         "inter: [...s.intersection(new Set([2, 9]))] };"), {"got": 1, "union": [1, 2, 3], "inter": [2]}),
+        ("iterator helpers", "return [1, 2, 3, 4].values().map(x => x * 2).take(3).toArray();", [2, 4, 6]),
+        ("custom iterable via Symbol.iterator",
+         ("class R { constructor(n) { this.n = n; } *[Symbol.iterator]() { for (let i = 0; i < this.n; i++) yield i; } }\n"
+         "return [...new R(3)];"), [0, 1, 2]),
+        ("typed arrays and DataView",
+         ("const buf = new ArrayBuffer(8);\nnew DataView(buf).setFloat64(0, 1.5);\n"
+         "return { f: new DataView(buf).getFloat64(0), bytes: new Uint8Array(buf).length };"),
+         {"f": 1.5, "bytes": 8}),
+        ("resizable ArrayBuffer",
+         ("const buf = new ArrayBuffer(4, { maxByteLength: 16 });\nbuf.resize(8);\n"
+         "return { size: buf.byteLength, resizable: buf.resizable };"), {"size": 8, "resizable": True}),
+        ("Uint8Array hex helpers",
+         ("const bytes = new Uint8Array([1, 2, 255]);\n"
+         "return { hex: bytes.toHex(), back: [...Uint8Array.fromHex('0102ff')] };"),
+         {"hex": "0102ff", "back": [1, 2, 255]}),
+        ("BigInt arithmetic", "return (2n ** 64n).toString();", "18446744073709551616"),
+        ("Symbol and well-known symbols",
+         ("const s = Symbol('tag');\nconst o = { [s]: 1, [Symbol.toStringTag]: 'Custom' };\n"
+         "return { viaSymbol: o[s], tag: Object.prototype.toString.call(o), type: typeof s };"),
+         {"viaSymbol": 1, "tag": "[object Custom]", "type": "symbol"}),
+        ("Proxy and Reflect",
+         ("const p = new Proxy({ a: 1 }, { get: (t, k) => k in t ? t[k] : 'trapped' });\n"
+         "return { hit: p.a, miss: p.b, keys: Reflect.ownKeys({ x: 1, y: 2 }) };"),
+         {"hit": 1, "miss": "trapped", "keys": ["x", "y"]}),
+        ("property descriptors and freeze",
+         ("const o = Object.freeze({ a: 1 });\nlet threw = false;\n"
+         "try { o.a = 2; } catch (e) { threw = e instanceof TypeError; }\n"
+         "return { frozen: Object.isFrozen(o), threw, value: o.a };"),
+         {"frozen": True, "threw": True, "value": 1}),
+        ("regex: named groups and the d flag",
+         ("const m = /(?<year>\\d{4})-(?<month>\\d{2})/d.exec('2024-07');\n"
+         "return { year: m.groups.year, indices: m.indices.groups.month };"), {"year": "2024", "indices": [5, 7]}),
+        ("regex: lookbehind and unicode property escapes",
+         "return [/(?<=a)b/.test('ab'), /\\p{Script=Greek}/u.test('\\u03b1'), /[\\p{ASCII}--[a-z]]/v.test('A')];",
+         [True, True, True]),
+        ("regex: replace with a function and named group references",
+         "return 'a-b'.replace(/(?<first>\\w)-(?<second>\\w)/, '$<second>-$<first>');", "b-a"),
+        ("RegExp.escape",
+         "const re = new RegExp(RegExp.escape('a.b'));\nreturn [re.test('a.b'), re.test('axb')];", [True, False]),
+        ("explicit resource management",
+         ("const order = [];\n{\n  using first = { [Symbol.dispose]() { order.push('first'); } };\n"
+         "  using second = { [Symbol.dispose]() { order.push('second'); } };\n}\nreturn order;"),
+         ["second", "first"]),
+        ("DisposableStack",
+         ("const order = [];\n{\n  using stack = new DisposableStack();\n"
+         "  stack.defer(() => order.push('deferred'));\n}\nreturn order;"), ["deferred"]),
+        ("Temporal arithmetic",
+         ("const date = Temporal.PlainDate.from('2024-01-31');\n"
+         "return { plus: date.add({ months: 1 }).toString(), "
+         "days: Temporal.Duration.from({ hours: 48 }).total('days') };"),
+         {"plus": "2024-02-29", "days": 2}),
+        ("Temporal.Now", "return typeof Temporal.Now.plainDateISO().toString();", "string"),
+        ("structuredClone is a deep copy",
+         ("const src = { nested: { list: [1, 2] } };\nconst copy = structuredClone(src);\n"
+         "copy.nested.list.push(3);\nreturn { src: src.nested.list.length, copy: copy.nested.list.length };"),
+         {"src": 2, "copy": 3}),
+        ("Object.groupBy and Map.groupBy",
+         ("const grouped = Object.groupBy([1, 2, 3, 4], n => n % 2 ? 'odd' : 'even');\n"
+         "return { odd: grouped.odd, mapped: Map.groupBy([1, 2], n => n).get(1) };"),
+         {"odd": [1, 3], "mapped": [1]}),
+        ("Array.fromAsync", "return await Array.fromAsync([Promise.resolve('a'), 'b']);", ["a", "b"]),
+        ("array by-copy methods",
+         ("const base = [3, 1, 2];\nreturn { sorted: base.toSorted(), reversed: base.toReversed(), "
+         "replaced: base.with(0, 9), untouched: base };"),
+         {"sorted": [1, 2, 3], "reversed": [2, 1, 3], "replaced": [9, 1, 2], "untouched": [3, 1, 2]}),
+        ("JSON replacer and reviver",
+         ("const text = JSON.stringify({ a: 1, b: 2 }, ['a']);\n"
+         "const revived = JSON.parse('{\"n\":1}', (k, v) => typeof v === 'number' ? v * 10 : v);\n"
+         "return { text, revived: revived.n };"), {"text": '{"a":1}', "revived": 10}),
+        ("error cause and instanceof through the chain",
+         ("const e = new RangeError('outer', { cause: 'inner' });\n"
+         "return { cause: e.cause, isRange: e instanceof RangeError, isError: e instanceof Error, name: e.name };"),
+         {"cause": "inner", "isRange": True, "isError": True, "name": "RangeError"}),
+        ("try/catch/finally ordering",
+         ("const order = [];\ntry { order.push('try'); throw new Error('x'); }\n"
+         "catch { order.push('catch'); } finally { order.push('finally'); }\nreturn order;"),
+         ["try", "catch", "finally"]),
+        ("strict mode is always on",
+         "try { undeclaredGlobal = 1; return 'assigned'; } catch (e) { return e.constructor.name; }",
+         "ReferenceError"),
+        ("Math and number formatting",
+         ("return { trunc: Math.trunc(-4.7), imul: Math.imul(3, 4), precise: Math.sumPrecise([0.1, 0.2]), "
+         "big: 1e21.toString(), fixed: (1.005).toFixed(2) };"),
+         {"trunc": -4, "imul": 12, "precise": 0.30000000000000004, "big": "1e+21", "fixed": "1.00"}),
+        ("globalThis reflects top-level values",
+         "var topLevel = 'visible';\nreturn globalThis.topLevel;", "visible"),
+        ("getters, setters and the sequence operator",
+         ("const o = { _v: 1, get v() { return this._v; }, set v(n) { this._v = n * 2; } };\n"
+         "o.v = 5;\nreturn (0, o.v);"), 10),
+        ("timers run on the event loop",
+         "return await new Promise(resolve => setTimeout(() => resolve('timed'), 5));", "timed"),
+        ("microtasks run before timers",
+         ("const order = [];\nsetTimeout(() => order.push('timeout'), 0);\n"
+         "await Promise.resolve().then(() => order.push('micro'));\n"
+         "await new Promise(r => setTimeout(r, 5));\nreturn order;"), ["micro", "timeout"]),
+        ("clearing an id before it is issued does not cancel that timer",
+         "clearTimeout(1);\nreturn await new Promise(resolve => setTimeout(() => resolve('fired'), 0));", "fired"),
+        ("clearing ids that name no timer retains nothing and cancels nothing",
+         ("for (let i = 1; i <= 200000; i++) clearTimeout(-i);\n"
+         "return await new Promise(resolve => setTimeout(() => resolve('fired'), 0));"), "fired"),
+    ]
+    for label, script, expected in cases:
+        check_result(label, conn.run(script), expected)
+
+
+def test_result_cap(conn: Conn):
+    section("Result cap")
+    big = conn.run("console.log('ran before returning');\nreturn new Array(5000).fill('0123456789');")
+    check_code("an oversized result is refused", big, "ERROR", "400-15")
+    check("… and the console output still comes back", big.get("logs") == ["ran before returning"],
+          f"logs={big.get('logs')!r}")
+    check("… and the message names the error", "ScriptResultTooLargeError" in (big.get("message") or ""),
+          f"message={big.get('message')!r}")
+    check_result("the same script returning a small value succeeds",
+                 conn.run("return new Array(5).fill('0123456789').length;"), 5)
+    check_result("a whole-collection read cannot be returned, but its count can",
+                 conn.run('import db from "db";\n'
+                          f'let n = 0;\nfor (const doc of db.cursor(db.name, "{BIG_COLL}", '
+                          "[{ type: 'SORT', fieldName: '_id', ascending: true }], { batchSize: 20 })) n++;\n"
+                          "return n;"), BIG_DOCS)
+
+
+def test_cursor(conn: Conn):
+    section("db.cursor — paged reads")
+    sort = "[{ type: 'SORT', fieldName: '_id', ascending: true }]"
+    walk = ('import db from "db";\n'
+            "const seen = new Set();\n"
+            f'for (const doc of db.cursor(db.name, "{BIG_COLL}", {sort}, {{ batchSize: 20 }})) '
+            "seen.add(doc._id);\n"
+            "return seen.size;")
+    check_result("a walk visits every document exactly once", conn.run(walk), BIG_DOCS)
+    unordered_walk = ('import db from "db";\n'
+                      "const seen = [];\n"
+                      f'for (const doc of db.cursor(db.name, "{BIG_COLL}", [], {{ batchSize: 20 }})) '
+                      "seen.push(doc._id);\n"
+                      "const sorted = [...seen].sort();\n"
+                      "return { distinct: new Set(seen).size, total: seen.length,"
+                      " inIdOrder: seen.every((id, i) => id === sorted[i]) };")
+    check_result("a walk over a pipeline with no SORT still visits every document exactly once, in _id order",
+                 conn.run(unordered_walk), {"distinct": BIG_DOCS, "total": BIG_DOCS, "inIdOrder": True})
+    limited_walk = ('import db from "db";\n'
+                    "const seen = [];\n"
+                    f'for (const doc of db.cursor(db.name, "{BIG_COLL}", [{{ type: "LIMIT", limit: 7 }}],'
+                    " { batchSize: 2 })) seen.push(doc._id);\n"
+                    "return seen;")
+    check_result("a cursor over a bare LIMIT pages one defined subset: the first rows by _id",
+                 conn.run(limited_walk), [f"big{i:04d}" for i in range(7)])
+
+    counted = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": BIG_COLL,
+                         "aggregationSteps": [{"type": "COUNT"}]})
+    wire_count = (counted.get("results") or [{}])[0].get("count")
+    check("… and the total matches a plain AGGREGATE count", wire_count == BIG_DOCS,
+          f"AGGREGATE count={wire_count!r}")
+
+    check_code("db.aggregate of the whole collection exceeds the memory budget",
+               conn.run('import db from "db";\n'
+                        f'return db.aggregate(db.name, "{BIG_COLL}", []).length;'), "ERROR", "400-12")
+    check_result("… while the same walk through db.cursor succeeds", conn.run(walk), BIG_DOCS)
+
+    check_result("an absent options object walks with the configured batch size",
+                 conn.run('import db from "db";\n'
+                          f'let n = 0;\nfor (const doc of db.cursor(db.name, "{BIG_COLL}", {sort})) n++;\n'
+                          "return n;"), BIG_DOCS)
+    check_result("a batchSize above the maximum is clamped, not refused",
+                 conn.run('import db from "db";\n'
+                          f'let n = 0;\nfor (const doc of db.cursor(db.name, "{COLL}", {sort}, '
+                          "{ batchSize: 100000 })) n++;\nreturn n > 0;"), True)
+    check_failed_script("a non-positive batchSize is refused",
+                        conn.run('import db from "db";\n'
+                                 f'db.cursor(db.name, "{COLL}", {sort}, {{ batchSize: 0 }}).next();'),
+                        "400-9", "RangeError")
+    check_result("spread and the iterator helpers work on a cursor",
+                 conn.run('import db from "db";\n'
+                          f'const cursor = db.cursor(db.name, "{BIG_COLL}", {sort}, {{ batchSize: 20 }});\n'
+                          "return cursor.take(3).toArray().map(d => d._id);"),
+                 ["big0000", "big0001", "big0002"])
+    check_result("a cursor over a collection with no documents yields nothing",
+                 conn.run('import db from "db";\n'
+                          f'return [...db.cursor(db.name, "{EMPTY_COLL}", {sort})].length;'), 0)
+    check_result("a cursor over an unknown collection throws, as db.aggregate does",
+                 conn.run('import db from "db";\n'
+                          f'try {{ [...db.cursor(db.name, "neverCreated", {sort})]; return "walked"; }}\n'
+                          'catch (e) { return e.message; }'), "Collection not found")
+    check_result("abandoning a cursor mid-walk leaves nothing to release",
+                 conn.run('import db from "db";\n'
+                          f'for (const doc of db.cursor(db.name, "{BIG_COLL}", {sort}, {{ batchSize: 20 }})) '
+                          "break;\nreturn 'released';"), "released")
+
+
+DOOMED = "script_doomed"
+DOOMED_PASSWORD = "password1234"
+
+
+def await_document(conn: Conn, coll: str, doc_id: str, timeout=15.0) -> bool:
+    return bool(bu.wait_until(lambda: conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": coll,
+                                                 "_id": doc_id}).get("status") == "OK", timeout, 0.05))
+
+
+def test_a_script_transaction_releases_its_locks_when_its_user_is_deleted_mid_run(conn: Conn):
+    section("A script transaction whose user is deleted mid-run does not strand its write locks")
+    conn.send({"type": "DELETE_USER", "username": DOOMED})
+    check_status("create the doomed user", conn.send({
+        "type": "CREATE_USER", "username": DOOMED, "password": DOOMED_PASSWORD, "admin": False,
+        "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {},
+        "scriptPermissions": {DB: True}}), "OK")
+    script = (
+        'import db from "db";\n'
+        f'db.save(db.name, "{COLL2}", {{ _id: "doomed-started" }});\n'
+        "let firstSaved = false;\n"
+        "let message = null;\n"
+        "try {\n"
+        "  db.transaction(() => {\n"
+        f'    db.save(db.name, "{COLL}", {{ _id: "doomed-tx" }});\n'
+        "    firstSaved = true;\n"
+        "    const end = Date.now() + 4000;\n"
+        "    while (Date.now() < end) {\n"
+        f'      db.aggregate(db.name, "{BIG_COLL}", [{{ type: "FILTER", operator: '
+        '{ fieldOperatorType: "CONTAINS", field: "payload", value: "zzzz" } }]);\n'
+        "    }\n"
+        "  });\n"
+        "} catch (e) { message = e.message; }\n"
+        "return { firstSaved, message };"
+    )
+    outcome = {}
+
+    def run_as_doomed():
+        with Conn() as doomed:
+            doomed.authenticate(DOOMED, DOOMED_PASSWORD)
+            outcome["response"] = doomed.run(script)
+
+    runner = threading.Thread(target=run_as_doomed, daemon=True)
+    runner.start()
+    check("the script started", await_document(conn, COLL2, "doomed-started"))
+    time.sleep(1.0)
+    check_status("delete the user while the transaction is open", conn.send(
+        {"type": "DELETE_USER", "username": DOOMED}), "OK")
+    runner.join(30)
+    result = (outcome.get("response") or {}).get("result") or {}
+    check("the first save of the transaction had returned before the user went away",
+          result.get("firstSaved") is True, f"got {outcome.get('response')}")
+    check("the next host call failed because the user no longer exists",
+          "not found" in (result.get("message") or ""), f"got {result}")
+    started = time.time()
+    check_status("a write to the collection the transaction had locked is accepted",
+                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                            "object": {"_id": "after-doomed", "ok": True}}), "OK")
+    check("and it did not have to wait out a lock timeout", time.time() - started < 4.0,
+          f"took {time.time() - started:.1f}s")
+    check("the transaction's own write was rolled back",
+          conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                     "_id": "doomed-tx"}).get("status") != "OK")
+
+
+def test_permissions(conn: Conn):
+    section("Permissions")
+    granted = {"type": "CREATE_USER", "username": "script_granted", "password": "password1234", "admin": False,
+               "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE", OTHER_DB: "READ_WRITE"},
+               "collectionPermissions": {}, "scriptPermissions": {DB: True}}
+    denied = {"type": "CREATE_USER", "username": "script_denied", "password": "password1234", "admin": False,
+              "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE"},
+              "collectionPermissions": {}, "scriptPermissions": {}}
+    reader = {"type": "CREATE_USER", "username": "script_reader", "password": "password1234", "admin": False,
+              "globalPermissions": [], "databasePermissions": {DB: "READ"},
+              "collectionPermissions": {}, "scriptPermissions": {DB: True}}
+    owner = {"type": "CREATE_USER", "username": "script_owner", "password": "password1234", "admin": False,
+             "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {},
+             "scriptPermissions": {}}
+    for payload in (granted, denied, reader, owner):
+        conn.send({"type": "DELETE_USER", "username": payload["username"]})
+        check_status(f"create {payload['username']}", conn.send(payload), "OK")
+
+    with Conn() as anon:
+        check_code("an unauthenticated connection is refused", anon.run("return 1;"), "UNAUTHENTICATED", "401-1")
+
+    with Conn() as c:
+        c.authenticate("script_denied", "password1234")
+        check_code("a user with no script grant is forbidden", c.run("return 1;"), "FORBIDDEN", "403-1")
+
+    with Conn() as c:
+        c.authenticate("script_granted", "password1234")
+        check_result("a granted user may run a script on that database", c.run("return 'ran';"), "ran")
+        check_code("… but not on another database, even with READ_WRITE there",
+                   c.run("return 1;", db=OTHER_DB), "FORBIDDEN", "403-1")
+
+    with Conn() as c:
+        c.authenticate("script_reader", "password1234")
+        check_result("a read-only grantee can read", c.run(
+            f'import db from "db";\nreturn db.findById(db.name, "{COLL}", "d1")._id;'), "d1")
+        check_result("… but its writes are denied inside the script", c.run(
+            'import db from "db";\n'
+            f'try {{ db.save(db.name, "{COLL}", {{ _id: "denied" }}); return "wrote"; }}\n'
+            "catch (e) { return e instanceof Error; }"), True)
+
+    check_status("make script_owner an owner of the database",
+                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": ["script_owner"]}), "OK")
+    with Conn() as c:
+        c.authenticate("script_owner", "password1234")
+        check_result("a database owner needs no explicit grant", c.run("return 'owner ran';"), "owner ran")
+    check_status("drop the ownership again",
+                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": []}), "OK")
+
+    check_status("revoke the grant", conn.send(
+        {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
+         "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}), "OK")
+    with Conn() as c:
+        c.authenticate("script_granted", "password1234")
+        check_code("the revoked user is forbidden again", c.run("return 1;"), "FORBIDDEN", "403-1")
+
+    check_status("an explicit false grant is stored", conn.send(
+        {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
+         "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {},
+         "scriptPermissions": {DB: False}}), "OK")
+    with Conn() as c:
+        c.authenticate("script_granted", "password1234")
+        check_code("an explicit false is a denial", c.run("return 1;"), "FORBIDDEN", "403-1")
+
+    check_code("a grant naming the reserved admin database is rejected", conn.send(
+        {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
+         "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"admin": True}}),
+        "ERROR", "400-1")
+    check_code("a grant value that is neither a boolean nor a level name is rejected", conn.send(
+        {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
+         "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {DB: "READ"}}),
+        "ERROR", "400-1")
+
+    users = conn.send({"type": "LIST_USERS", "aggregationSteps": [
+        {"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "_id", "value": "script_reader"}}]})
+    listed = (users.get("users") or [{}])[0]
+    check("LIST_USERS reports the script grants", listed.get("scriptPermissions") == {DB: "RUN"},
+          f"scriptPermissions={listed.get('scriptPermissions')!r}")
+
+
+def test_procedures_per_database_are_capped(conn: Conn):
+    section("A database holds at most maxProceduresPerDatabase procedures")
+    conn.send({"type": "DROP_DATABASE", "databaseName": PROCEDURE_CAP_DB})
+    check_status("create a database to fill",
+                 conn.send({"type": "CREATE_DATABASE", "databaseName": PROCEDURE_CAP_DB}), "OK")
+    saved = [conn.save_procedure(f"proc{i}", f"return {i};", db=PROCEDURE_CAP_DB).get("status")
+             for i in range(MAX_PROCEDURES_PER_DATABASE)]
+    check("every procedure up to the cap is saved", saved == ["OK"] * MAX_PROCEDURES_PER_DATABASE,
+          f"statuses {saved}")
+    check_code("one more -> 400-34",
+               conn.save_procedure("oneTooMany", "return 0;", db=PROCEDURE_CAP_DB), "ERROR", "400-34")
+    check_status("replacing an existing procedure is never refused",
+                 conn.save_procedure("proc0", "return 'replaced';", db=PROCEDURE_CAP_DB), "OK")
+    check_status("deleting one frees a slot",
+                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": PROCEDURE_CAP_DB, "name": "proc1"}), "OK")
+    check_status("so a new one fits again",
+                 conn.save_procedure("oneTooMany", "return 0;", db=PROCEDURE_CAP_DB), "OK")
+    conn.send({"type": "DROP_DATABASE", "databaseName": PROCEDURE_CAP_DB})
+
+
+def test_admin_is_unrestricted(conn: Conn):
+    section("Admins")
+    check_result("an admin needs no grant", conn.run("return 'admin ran';"), "admin ran")
+    check_result("an admin script is still bound to the requested database",
+                 conn.run('import db from "db";\n'
+                          f'try {{ db.findById("{OTHER_DB}", "{COLL}", "d1"); return "reached"; }}\n'
+                          "catch (e) { return 'refused'; }"), "refused")
+    check_result("an admin may script the other database in its own run",
+                 conn.run("return 'other db';", db=OTHER_DB), "other db")
+
+
+def test_procedure_imports_disabled(conn: Conn):
+    section("Procedure imports disabled (scriptProcedureImportEnabled=false)")
+    check_failed_script("the procedures/ prefix is unresolvable",
+                        conn.run("import { cents } from 'procedures/lib_money';\nreturn cents(1);"),
+                        "400-9", "Cannot find module 'procedures/lib_money'")
+    check_result("… including dynamically",
+                 conn.run("try { await import('procedures/lib_money'); return 'resolved'; }\n"
+                          "catch (e) { return e.message; }"),
+                 "Cannot find module 'procedures/lib_money'")
+    check_result("the built-in specifiers still resolve",
+                 conn.run("import db from 'db';\nreturn typeof db.findById;"), "function")
+    check_status("a procedure with no imports still runs",
+                 conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_returning"}), "OK")
+
+
+def test_engine_disabled():
+    section("Engine disabled (scriptsEnabled=false)")
+    with Conn() as conn:
+        conn.authenticate()
+        check_code("an admin is refused", conn.run("return 1;"), "FORBIDDEN", "403-2")
+        check_code("… on any database", conn.run("return 1;", db=OTHER_DB), "FORBIDDEN", "403-2")
+    with Conn() as conn:
+        conn.authenticate("script_reader", "password1234")
+        check_code("a granted user is refused too", conn.run("return 1;"), "FORBIDDEN", "403-2")
+    with Conn() as conn:
+        conn.authenticate()
+        check_status("other operations keep working",
+                     conn.send({"type": "LIST_COLLECTIONS", "databaseName": DB}), "OK")
+
+
+def cleanup(conn: Conn):
+    section("Cleanup")
+    for username in ("script_granted", "script_denied", "script_reader", "script_owner"):
+        conn.send({"type": "DELETE_USER", "username": username})
+    for db in (DB, OTHER_DB):
+        check_status(f"drop {db}", conn.send({"type": "DROP_DATABASE", "databaseName": db}), "OK")
+
+
+def main():
+    bu.banner("RUN_SCRIPT (SimpleJS over the wire) test suite")
+
+    bu.require_jar()
+
+    work_dir = tempfile.mkdtemp(prefix="lwnrdb-runscript-")
+    log_path = os.path.join(work_dir, "server.log")
+    print(f"  Working dir: {work_dir}")
+
+    proc = None
+    try:
+        write_config(work_dir, scripts_enabled=True)
+        print(f"  Starting server (scripts enabled) on {HOST}:{PORT} ...")
+        proc = bu.start_server(work_dir, log_path)
+
+        with admin_conn() as conn:
+            setup_data(conn)
+            test_basics(conn)
+            test_stack_traces(conn)
+            test_pending_promise(conn)
+            test_compiled_script_cache(conn)
+            test_console_output(conn)
+            test_sandbox_limits(conn)
+            test_native_recursion_is_an_error_not_a_hang(conn)
+            test_native_loops_are_budgeted(conn)
+            test_unbudgeted_native_work_is_bounded(conn)
+            test_native_work_hardened_after_the_third_audit(conn)
+            test_run_metrics(conn)
+            test_regexp_test_answers_like_exec(conn)
+            test_history_kinds(conn)
+            test_a_script_cannot_mutate_the_run_history(conn)
+            test_fetch_unavailable(conn)
+            test_locale_arguments(conn)
+            test_request_validation(conn)
+            test_host_reads(conn)
+            test_procedure_cache_checks_the_source_text(conn)
+            test_host_writes(conn)
+            test_a_script_array_is_stored_as_the_script_sees_it(conn)
+            test_host_round_trip_keeps_custom_spelling(conn)
+            test_temporal_bridge_keeps_fractions(conn)
+            test_transactions(conn)
+            test_a_script_transaction_releases_its_locks_when_its_user_is_deleted_mid_run(conn)
+            test_scope_and_failures(conn)
+            test_schema_interaction(conn)
+            test_arguments(conn)
+            test_custom_types(conn)
+            test_value_guards(conn)
+            test_db_module_arity(conn)
+            test_db_save_rejects_a_non_string_id(conn)
+            test_db_insert(conn)
+            test_db_delete_refuses_a_non_string_id(conn)
+            test_db_aggregate_refuses_an_unparseable_pipeline(conn)
+            test_capabilities(conn)
+            test_procedure_imports(conn)
+            test_language_surface(conn)
+            test_result_cap(conn)
+            test_cursor(conn)
+            test_permissions(conn)
+            test_admin_is_unrestricted(conn)
+            test_allocations_are_charged_before_they_happen(conn)
+            test_procedures_per_database_are_capped(conn)
+
+        bu.stop_server(proc)
+        proc = None
+
+        bu.write_config(work_dir, PORT, scriptsEnabled=True, scriptTimeZone="UTC", scriptLocale="en-US")
+        print(f"\n  Restarting server (shipped script limits, -Xmx1g) on {HOST}:{PORT} ...")
+        proc = bu.start_server(work_dir, log_path, xmx="1g")
+        with admin_conn() as conn:
+            test_private_use_locale_tags_do_not_grow_the_heap(conn)
+            test_script_charging_gaps_at_shipped_limits(conn)
+
+        bu.stop_server(proc)
+        proc = None
+
+        write_config(work_dir, scripts_enabled=True, procedure_imports_enabled=False)
+        print(f"\n  Restarting server (procedure imports disabled) on {HOST}:{PORT} ...")
+        proc = bu.start_server(work_dir, log_path)
+        with admin_conn() as conn:
+            test_procedure_imports_disabled(conn)
+
+        bu.stop_server(proc)
+        proc = None
+
+        write_config(work_dir, scripts_enabled=True, text_import_enabled=True)
+        print(f"\n  Restarting server (text import enabled) on {HOST}:{PORT} ...")
+        proc = bu.start_server(work_dir, log_path)
+        with admin_conn() as conn:
+            test_text_import_awaits_through_indirect_calls(conn)
+
+        bu.stop_server(proc)
+        proc = None
+        fixture = FetchFixture()
+        try:
+            write_config(work_dir, scripts_enabled=True, history_kinds="RUN_SCRIPT", fetch_enabled=True,
+                         fetch_allowlist="127.0.0.1", fetch_timeout_ms=1000, fetch_max_response_bytes="1Kb",
+                         fetch_max_concurrent=2)
+            print(f"\n  Restarting server (fetch enabled) on {HOST}:{PORT} ...")
+            proc = bu.start_server(work_dir, log_path)
+            with admin_conn() as conn:
+                test_history_kinds_enabled(conn)
+                test_fetch(conn, fixture.base_url, fixture)
+                test_fetch_errors_do_not_leak_connect_details(conn)
+                test_fetch_response_cap_streaming(conn, fixture.base_url)
+                test_fetch_concurrency_cap(conn, fixture.base_url)
+
+            bu.stop_server(proc)
+            proc = None
+            write_config(work_dir, scripts_enabled=True, fetch_enabled=True, fetch_allowlist="*",
+                         fetch_timeout_ms=1000)
+            print(f"\n  Restarting server (fetch allowlist '*') on {HOST}:{PORT} ...")
+            proc = bu.start_server(work_dir, log_path)
+            with admin_conn() as conn:
+                test_fetch_blocks_private_ranges_under_wildcard(conn, fixture.base_url, fixture, PORT)
+        finally:
+            fixture.stop()
+
+        bu.stop_server(proc)
+        proc = None
+
+        write_config(work_dir, scripts_enabled=False)
+        print(f"\n  Restarting server (scripts disabled) on {HOST}:{PORT} ...")
+        proc = bu.start_server(work_dir, log_path)
+        test_engine_disabled()
+
+        with admin_conn() as conn:
+            cleanup(conn)
+    finally:
+        bu.stop_server(proc)
+
+    bu.summary(on_failure=lambda: bu.dump_log(log_path))
+
+
+if __name__ == "__main__":
+    main()

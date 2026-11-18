@@ -1,0 +1,501 @@
+import os
+import sys
+import tempfile
+
+import base_utils as bu
+from base_utils import check, check_code, check_status, section
+
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("AGG_SCRIPT_TEST_PORT", "8999"))
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = bu.PASSWORD
+
+DB = "agg_script_db"
+COLL = "orders"
+USER_PASSWORD = "password123"
+READER = "agg_reader"
+OWNER = "agg_owner"
+
+bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+BUDGET = 40_000
+TIMEOUT_MS = 1_000
+MAX_SOURCE_BYTES = 512
+
+
+class Conn(bu.Conn):
+    def aggregate(self, steps, db=DB, coll=COLL, **extra) -> dict:
+        payload = {"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+                   "aggregationSteps": steps}
+        payload.update(extra)
+        return self.send(payload)
+
+    def run_script(self, script, db=DB, **extra) -> dict:
+        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+        payload.update(extra)
+        return self.send(payload)
+
+def admin_conn() -> Conn:
+    return Conn.authenticated()
+
+
+def user_conn(username: str) -> Conn:
+    return Conn.authenticated(username, USER_PASSWORD)
+
+
+def script_filter(source: str) -> dict:
+    return {"type": "FILTER", "operator": {"script": source}}
+
+
+def script_map(field: str, source: str, condition=None) -> dict:
+    operator = {"fieldName": field, "operator": {"type": "SCRIPT", "script": source}}
+    if condition is not None:
+        operator["condition"] = condition
+    return {"type": "MAP", "operators": [operator]}
+
+
+def reduce_step(source: str, initial=None, result_field=None) -> dict:
+    step = {"type": "REDUCE", "script": source}
+    if initial is not None:
+        step["initialValue"] = initial
+    if result_field is not None:
+        step["resultField"] = result_field
+    return step
+
+
+def results(response: dict) -> list:
+    return response.get("results", [])
+
+
+def write_config(work_dir: str, scripts_enabled: bool):
+    bu.write_config(work_dir, PORT, scriptsEnabled=scripts_enabled, scriptInstructionBudget=2000000,
+                    scriptTimeoutMs=5000, scriptMaxDepth=64, scriptMaxSourceBytes=8192,
+                    scriptMaxLogLines=50, scriptMaxLogLineChars=500, scriptMaxMemoryBytes=4194304,
+                    scriptMaxResultBytes=65536, scriptTextImportEnabled=False, scriptTimeZone="UTC",
+                    scriptLocale="en-US", aggregationScriptInstructionBudget=BUDGET,
+                    aggregationScriptTimeoutMs=TIMEOUT_MS, aggregationScriptMaxSourceBytes=MAX_SOURCE_BYTES,
+                    maxEntrySize="16Kb", aggregateMaxResultBytes="1Mb",
+                    triggersEnabled=False, schedulesEnabled=False)
+
+
+DOCUMENT_COUNT = 10
+
+
+def setup_data(conn: Conn):
+    section("setup")
+    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    check_status("create collection",
+                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL}), "OK")
+    entries = [{"_id": f"o{i}", "price": i * 10, "qty": i, "sku": f"sku-{i % 3}"}
+               for i in range(1, DOCUMENT_COUNT + 1)]
+    check_status("bulk save orders",
+                 conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": entries}),
+                 "OK")
+    check_status("index price",
+                 conn.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL,
+                            "fieldName": "price"}), "OK")
+    check_status("create reader",
+                 conn.send({"type": "CREATE_USER", "username": READER, "password": USER_PASSWORD,
+                            "admin": False, "databasePermissions": {DB: "READ"}}), "OK")
+    check_status("create owner user",
+                 conn.send({"type": "CREATE_USER", "username": OWNER, "password": USER_PASSWORD,
+                            "admin": False, "databasePermissions": {DB: "READ"}}), "OK")
+
+
+def test_computed_field(conn: Conn):
+    section("MAP: a SCRIPT computed field")
+    response = conn.aggregate([script_map("total", "export default (doc) => doc.price * doc.qty;")])
+    check_status("computed field runs", response, "OK")
+    rows = {row["_id"]: row for row in results(response)}
+    check("total is computed per document",
+          rows.get("o3", {}).get("total") == 90, f"got {rows.get('o3')}")
+    check("every document carries the field", all("total" in row for row in results(response)))
+
+    conditioned = conn.aggregate([script_map(
+        "big", "export default (doc) => true;",
+        condition={"fieldOperatorType": "GREATER_THAN", "field": "price", "value": 50})])
+    check_status("conditioned computed field runs", conditioned, "OK")
+    tagged = [row for row in results(conditioned) if "big" in row]
+    check("condition gates the computed field", len(tagged) == 5, f"got {len(tagged)}")
+
+    undefined = conn.aggregate([script_map("nothing", "export default (doc) => undefined;")])
+    check("an undefined result omits the field",
+          all("nothing" not in row for row in results(undefined)))
+
+
+def test_script_map_values_are_budgeted(conn: Conn):
+    section("MAP: SCRIPT values count toward maxEntrySize and aggregateMaxResultBytes")
+    oversized = conn.aggregate([script_map("big", "export default (doc) => 'x'.repeat(20000);")])
+    check_code("a value over maxEntrySize is refused like CONCAT", oversized, "ERROR", "400-28")
+
+    sources = [script_map(f"f{n}", f"export default (doc) => '{n}'.repeat(15000);") for n in range(8)]
+    over_budget = conn.aggregate(sources)
+    check_code("distinct sources adding past aggregateMaxResultBytes are refused", over_budget, "ERROR", "400-36")
+
+    limited = conn.aggregate([{"type": "LIMIT", "limit": 2}] + sources)
+    check_status("two such rows still answer", limited, "OK")
+    check("each carries every computed field",
+          len(results(limited)) == 2 and all(len(row.get("f7", "")) == 15000 for row in results(limited)),
+          f"rows={len(results(limited))}")
+
+
+def test_map_script_sees_a_stable_document(conn: Conn):
+    section("MAP SCRIPT: a row the script keeps does not change when MAP writes to it afterwards")
+    remember = """
+        let previous;
+        export default (doc) => {
+            const seen = previous === undefined ? null : Object.keys(previous.info).join(",");
+            previous = doc;
+            return seen;
+        };"""
+    step = {"type": "MAP", "operators": [
+        {"fieldName": "info", "operator": {"type": "SCRIPT", "script": "export default (doc) => ({ seen: doc._id });"}},
+        {"fieldName": "info.prev", "operator": {"type": "SCRIPT", "script": remember}}]}
+    response = conn.aggregate([step])
+    check_status("the two-operator MAP runs", response, "OK")
+    kept = [row.get("info", {}).get("prev") for row in results(response)]
+    check("every row is mapped", len(kept) == DOCUMENT_COUNT, f"got {len(kept)} rows")
+    check("the first row had no previous row", kept.count(None) == 1, f"got {kept}")
+    check("each kept row shows only the fields it had when the script saw it",
+          all(value == "seen" for value in kept if value is not None), f"got {kept}")
+
+
+def test_script_predicate(conn: Conn):
+    section("FILTER: a SCRIPT predicate")
+    response = conn.aggregate([script_filter("export default (doc) => doc.price > 50 && doc.qty % 2 === 0;")])
+    check_status("script predicate runs", response, "OK")
+    ids = sorted(row["_id"] for row in results(response))
+    check("predicate selects the right documents", ids == ["o10", "o6", "o8"], f"got {ids}")
+
+    truthy = conn.aggregate([script_filter("export default (doc) => doc.qty > 8 ? 'yes' : 0;")])
+    check("JS truthiness, not a strict boolean", len(results(truthy)) == 2, f"got {results(truthy)}")
+
+    conjunction = conn.aggregate([{"type": "FILTER", "operator": {"conjunctionType": "AND", "operators": [
+        {"fieldOperatorType": "GREATER_THAN", "field": "price", "value": 50},
+        {"script": "export default (doc) => doc.qty < 9;"}]}}])
+    check_status("conjunction with a script runs", conjunction, "OK")
+    check("conjunction combines index and script",
+          sorted(row["_id"] for row in results(conjunction)) == ["o6", "o7", "o8"],
+          f"got {[row['_id'] for row in results(conjunction)]}")
+
+
+def test_reduce(conn: Conn):
+    section("REDUCE: folding the stream")
+    total = conn.aggregate([reduce_step("export default (acc, doc) => acc + doc.price * doc.qty;", 0, "total")])
+    check_status("reduce runs", total, "OK")
+    check("fold produces one document", len(results(total)) == 1, f"got {results(total)}")
+    check("fold value is correct",
+          results(total)[0].get("total") == sum(i * 10 * i for i in range(1, DOCUMENT_COUNT + 1)),
+          f"got {results(total)}")
+
+    folded = conn.aggregate([reduce_step("export default (acc, doc) => acc + '|' + doc._id;", "", "folded")])
+    expected_order = "".join(f"|{doc_id}" for doc_id in sorted(f"o{i}" for i in range(1, DOCUMENT_COUNT + 1)))
+    check("a non-commutative fold enumerates in a defined order",
+          results(folded)[0].get("folded") == expected_order,
+          f"got {results(folded)[0].get('folded')!r}, expected {expected_order!r}")
+
+    priced = [{"type": "FILTER", "operator": {"fieldOperatorType": "GREATER_THAN", "field": "price", "value": 0}},
+              reduce_step("export default (acc, doc) => acc + '|' + doc._id;", "", "folded")]
+    after_filter = conn.aggregate(priced)
+    check("a fold after an index-backed FILTER enumerates in _id order",
+          results(after_filter)[0].get("folded") == expected_order,
+          f"got {results(after_filter)[0].get('folded')!r}, expected {expected_order!r}")
+    scanned = conn.aggregate([{"type": "SKIP", "skip": 0}] + priced)
+    check("the same fold answered by a scan agrees with the index",
+          results(scanned)[0].get("folded") == expected_order, f"got {results(scanned)[0].get('folded')!r}")
+
+    fold_ids = [reduce_step("export default (acc, doc) => acc + '|' + doc._id;", "", "folded")]
+    check("the same fold run again answers in the same order",
+          results(conn.aggregate(fold_ids))[0].get("folded") == expected_order, "the remembered order drifted")
+    save = {"type": "SAVE", "databaseName": DB, "collectionName": COLL}
+    check_status("insert a document that sorts first",
+                 conn.send({**save, "object": {"_id": "o0", "price": 0, "qty": 0, "sku": "none"}}), "OK")
+    check("the fold sees the insert in its place",
+          results(conn.aggregate(fold_ids))[0].get("folded") == "|o0" + expected_order,
+          f"got {results(conn.aggregate(fold_ids))[0].get('folded')!r}")
+    check_status("update an existing document",
+                 conn.send({**save, "object": {"_id": "o1", "price": 10, "qty": 1, "sku": "sku-1"}}), "OK")
+    check("the fold still answers in (page, _id) order after an update",
+          results(conn.aggregate(fold_ids))[0].get("folded") == "|o0" + expected_order,
+          f"got {results(conn.aggregate(fold_ids))[0].get('folded')!r}")
+    check_status("delete the inserted document",
+                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "o0"}), "OK")
+    check("the fold drops the deleted document",
+          results(conn.aggregate(fold_ids))[0].get("folded") == expected_order,
+          f"got {results(conn.aggregate(fold_ids))[0].get('folded')!r}")
+    kept = conn.aggregate([reduce_step("export default (acc, doc) => { doc.price = -1; return acc + doc.price; };",
+                                       0, "patched")])
+    check("a fold that writes to its row leaves the stored documents alone",
+          results(kept)[0].get("patched") == -DOCUMENT_COUNT
+          and results(conn.aggregate(fold_ids))[0].get("folded") == expected_order, f"got {results(kept)}")
+
+    distinct = conn.aggregate([{"type": "DISTINCT", "fieldName": "sku"},
+                               reduce_step("export default (acc, row) => acc + '|' + row.sku;", "", "skus")])
+    check("a fold after DISTINCT enumerates its rows in a defined order",
+          results(distinct)[0].get("skus") == "|sku-0|sku-1|sku-2", f"got {results(distinct)}")
+
+    defaulted = conn.aggregate([reduce_step("export default (acc, doc) => (acc ?? 0) + 1;")])
+    check("default result field is 'value'", results(defaulted)[0].get("value") == DOCUMENT_COUNT,
+          f"got {results(defaulted)}")
+
+    grouped = conn.aggregate([reduce_step(
+        "export default (acc, doc) => ({ ...acc, [doc.sku]: (acc[doc.sku] ?? 0) + 1 });", {}, "bySku")])
+    check("object accumulators survive the boundary",
+          results(grouped)[0].get("bySku", {}).get("sku-0") == 3, f"got {results(grouped)}")
+
+    after = conn.aggregate([reduce_step("export default (acc, doc) => acc + 1;", 0, "n"),
+                            script_map("doubled", "export default (doc) => doc.n * 2;")])
+    check("a step after REDUCE sees the single document",
+          results(after)[0].get("doubled") == DOCUMENT_COUNT * 2, f"got {results(after)}")
+
+
+def test_getters_cross_the_boundary(conn: Conn):
+    section("MAP and REDUCE: a getter on a script result is read")
+    mapped = conn.aggregate([script_map(
+        "priced", "export default (doc) => ({ get total() { return doc.price * doc.qty; } });")])
+    check_status("a MAP script returning a getter runs", mapped, "OK")
+    rows = {row["_id"]: row for row in results(mapped)}
+    check("a MAP script getter becomes a field", rows.get("o3", {}).get("priced") == {"total": 90},
+          f"got {rows.get('o3')}")
+
+    folded = conn.aggregate([reduce_step(
+        "export default (acc, doc) => { const n = acc.n + 1; return { get n() { return n; } }; };",
+        {"n": 0}, "count")])
+    check_status("a REDUCE script returning a getter runs", folded, "OK")
+    check("a REDUCE accumulator getter is kept",
+          (results(folded) or [{}])[0].get("count") == {"n": DOCUMENT_COUNT}, f"got {results(folded)}")
+
+
+def test_permissions(admin: Conn):
+    section("permissions: the per-caller gate")
+    plain = [{"type": "FILTER", "operator": {"fieldOperatorType": "GREATER_THAN",
+                                             "field": "price", "value": 50}}]
+    scripted = [script_filter("export default (doc) => doc.price > 50;")]
+
+    with user_conn(READER) as reader:
+        check_status("a plain aggregate works for a READ-only user", reader.aggregate(plain), "OK")
+        check_code("a READ-only user cannot run a pipeline script",
+                   reader.aggregate(scripted), "FORBIDDEN", "403-1")
+        check_code("nor a REDUCE step",
+                   reader.aggregate([reduce_step("export default (acc, doc) => 1;")]),
+                   "FORBIDDEN", "403-1")
+        check_code("nor a SCRIPT map operator",
+                   reader.aggregate([script_map("x", "export default (doc) => 1;")]),
+                   "FORBIDDEN", "403-1")
+
+    check_status("grant scriptPermissions",
+                 admin.send({"type": "CHANGE_PERMISSIONS", "username": READER,
+                             "databasePermissions": {DB: "READ"}, "scriptPermissions": {DB: "RUN"}}), "OK")
+    with user_conn(READER) as reader:
+        check_status("the granted user can now run a pipeline script", reader.aggregate(scripted), "OK")
+
+    check_status("revoke scriptPermissions",
+                 admin.send({"type": "CHANGE_PERMISSIONS", "username": READER,
+                             "databasePermissions": {DB: "READ"}, "scriptPermissions": {DB: "NONE"}}), "OK")
+    with user_conn(READER) as reader:
+        check_code("revocation takes effect", reader.aggregate(scripted), "FORBIDDEN", "403-1")
+        check_status("and the plain aggregate still works", reader.aggregate(plain), "OK")
+
+    check_status("make a database owner",
+                 admin.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": [OWNER]}), "OK")
+    with user_conn(OWNER) as owner:
+        check_status("a database owner needs no grant", owner.aggregate(scripted), "OK")
+    check_status("an admin needs no grant", admin.aggregate(scripted), "OK")
+
+
+def test_sandbox(conn: Conn):
+    section("sandbox: the per-pipeline budget, the clock and the source cap")
+    spin = "export default (doc) => { let n = 0; for (let i = 0; i < 20000; i++) { n += i; } return true; };"
+    one_document = conn.aggregate([{"type": "LIMIT", "limit": 1}, script_filter(spin)])
+    check_status("the same script over one document fits the budget", one_document, "OK")
+    whole = conn.aggregate([script_filter(spin)])
+    check_code("the budget spans the whole pipeline, not each document", whole, "ERROR", "400-11")
+
+    sleeper = "export default (doc) => { setTimeout(() => {}, 5000); return true; };"
+    check_code("a script outliving the pipeline deadline is aborted",
+               conn.aggregate([{"type": "LIMIT", "limit": 1}, script_filter(sleeper)]), "ERROR", "408-1")
+
+    oversize = "export default (doc) => { /* " + "x" * MAX_SOURCE_BYTES + " */ return true; };"
+    check_code("an oversize source is refused", conn.aggregate([script_filter(oversize)]), "ERROR", "400-10")
+
+    thrown = conn.aggregate([script_filter("export default (doc) => { throw new Error('boom'); };")])
+    check_code("a throwing script is a script failure", thrown, "ERROR", "400-9")
+    check("the message is still the bare thrown message", (thrown.get("message") or "") == "boom",
+          f"message={thrown.get('message')!r}")
+    check_code("a script exporting nothing is a script failure",
+               conn.aggregate([script_filter("const x = 1;")]), "ERROR", "400-9")
+    check_code("a blank source is rejected", conn.aggregate([script_filter("   ")]), "ERROR", "400-1")
+
+
+def test_closed_doors(conn: Conn):
+    section("the closed doors: db, fetch, procedure imports, importText")
+    check_status("a procedure exists to import",
+                 conn.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": "lib",
+                            "script": "export const one = 1;"}), "OK")
+
+    doors = [
+        ("db", "import db from 'db'; export default (doc) => true;",
+         "import db from 'db'; return db.name;"),
+        ("procedures/lib", "import { one } from 'procedures/lib'; export default (doc) => one;",
+         "import { one } from 'procedures/lib'; return one;"),
+    ]
+    for label, pipeline_source, script_source in doors:
+        check_code(f"a pipeline script cannot import '{label}'",
+                   conn.aggregate([script_filter(pipeline_source)]), "ERROR", "400-9")
+        check_status(f"but RUN_SCRIPT can import '{label}'", conn.run_script(script_source), "OK")
+
+    fetched = conn.aggregate([script_map(
+        "reached",
+        "export default (doc) => { let out = 'no'; try { fetch('http://127.0.0.1:1/'); } catch (e)"
+        " { out = e.name; } return out; };")])
+    check("fetch is unreachable from a pipeline script",
+          all(row.get("reached") in ("no", "TypeError") for row in results(fetched)),
+          f"got {results(fetched)[:1]}")
+
+    imported = conn.aggregate([script_filter(
+        "import s from 'script';"
+        " export default (doc) => { s.importText('export default 1;'); return true; };")])
+    check_code("importText is refused inside a pipeline script", imported, "ERROR", "400-9")
+
+
+def test_analyze(conn: Conn):
+    section("analyze")
+    response = conn.aggregate([script_filter("export default (doc) => true;")], analyze=True)
+    check_status("analyze runs", response, "OK")
+    analyze = response.get("analyzeResult", {})
+    check("script invocations are counted",
+          analyze.get("scriptInvocations") == DOCUMENT_COUNT, f"got {analyze.get('scriptInvocations')}")
+    check("the no-index suggestion appears",
+          any("can never use an index" in s for s in analyze.get("suggestions", [])),
+          f"got {analyze.get('suggestions')}")
+
+    combined = conn.aggregate([
+        {"type": "FILTER", "operator": {"fieldOperatorType": "GREATER_THAN", "field": "price", "value": 50}},
+        script_filter("export default (doc) => doc.qty < 9;"),
+        reduce_step("export default (acc, doc) => acc + 1;", 0, "n")], analyze=True)
+    check_status("indexed FILTER then SCRIPT then REDUCE runs", combined, "OK")
+    check("the index was used", combined.get("analyzeResult", {}).get("indexUsed") is True,
+          f"got {combined.get('analyzeResult')}")
+    check("the scripts only saw the narrowed set",
+          combined.get("analyzeResult", {}).get("scriptInvocations") == 8,
+          f"got {combined.get('analyzeResult', {}).get('scriptInvocations')}")
+    check("the fold counted them", results(combined)[0].get("n") == 3, f"got {results(combined)}")
+
+
+def test_listen_refuses_scripts(conn: Conn):
+    section("LISTEN refuses a SCRIPT operator")
+    scripted = [script_filter("export default (doc) => true;")]
+    check_code("LISTEN with a script is refused",
+               conn.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL,
+                          "aggregationSteps": scripted}), "ERROR", "400-19")
+    check_status("the same pipeline is accepted by AGGREGATE", conn.aggregate(scripted), "OK")
+    plain = conn.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL, "aggregationSteps": []})
+    check_status("a script-free LISTEN still registers", plain, "OK")
+    if plain.get("listenId"):
+        conn.send({"type": "STOP_LISTEN", "listenId": plain["listenId"]})
+
+
+def test_host_boundary(conn: Conn):
+    section("the host boundary: custom types and BigInt")
+    geo = conn.aggregate([script_map("where", "export default (doc) => Geo.from({ lat: 1, lng: 2 });"),
+                          {"type": "LIMIT", "limit": 1}])
+    check_status("a script may return a Geo", geo, "OK")
+    check("the Geo arrives as the real custom type",
+          str(results(geo)[0].get("where", "")).startswith("#geo("), f"got {results(geo)[0].get('where')}")
+
+    when = conn.aggregate([script_map("when", "export default (doc) => DbDateTime.from('2026-01-02T03:04:05');"),
+                           {"type": "LIMIT", "limit": 1}])
+    check("a DbDateTime arrives as the real custom type",
+          "2026-01-02" in str(results(when)[0].get("when", "")), f"got {results(when)[0].get('when')}")
+
+    big = conn.aggregate([script_map("big", "export default (doc) => 9007199254740993n;"),
+                          {"type": "LIMIT", "limit": 1}])
+    check_code("a BigInt beyond 2^53-1 fails cleanly", big, "ERROR", "400-9")
+
+
+def test_nested_script(conn: Conn):
+    section("nesting: a RUN_SCRIPT whose aggregate carries a SCRIPT operator")
+    source = (
+        "import db from 'db';"
+        " const rows = db.aggregate(db.name, '" + COLL + "', ["
+        " { type: 'FILTER', operator: { script: 'export default (doc) => doc.qty > 8;' } } ]);"
+        " return rows.length;")
+    response = conn.run_script(source)
+    check_status("the inner pipeline runs", response, "OK")
+    check("the inner script filtered the rows", response.get("result") == 2, f"got {response.get('result')}")
+
+    outer_still_fine = conn.run_script(source)
+    check_status("the outer run's own budget is untouched", outer_still_fine, "OK")
+
+
+def test_switch_off(conn: Conn):
+    section("phase 2: scriptsEnabled=false")
+    shapes = {
+        "a SCRIPT filter": [script_filter("export default (doc) => true;")],
+        "a SCRIPT map operator": [script_map("x", "export default (doc) => 1;")],
+        "a REDUCE step": [reduce_step("export default (acc, doc) => 1;")],
+    }
+    for label, steps in shapes.items():
+        check_code(f"{label} is refused for an admin", conn.aggregate(steps), "FORBIDDEN", "403-2")
+    with user_conn(OWNER) as owner:
+        check_code("and for a database owner",
+                   owner.aggregate([script_filter("export default (doc) => true;")]), "FORBIDDEN", "403-2")
+
+    plain = conn.aggregate([{"type": "FILTER", "operator": {"fieldOperatorType": "GREATER_THAN",
+                                                           "field": "price", "value": 50}}])
+    check_status("plain aggregations are unaffected", plain, "OK")
+    check("and still index-backed", len(results(plain)) == 5, f"got {len(results(plain))}")
+    check_status("so is a whole-collection read", conn.aggregate([]), "OK")
+    check_code("RUN_SCRIPT is refused by the same switch", conn.run_script("return 1;"), "FORBIDDEN", "403-2")
+
+
+def main():
+    bu.banner("SimpleJS in the aggregation pipeline test suite")
+
+    bu.require_jar()
+    if bu.port_open():
+        print(f"port {PORT} is already in use", file=sys.stderr)
+        sys.exit(1)
+
+    work_dir = tempfile.mkdtemp(prefix="lwnrdb-agg-script-test-")
+    log_path = os.path.join(work_dir, "server.out")
+    proc = None
+    try:
+        print(f"work dir: {work_dir}")
+        write_config(work_dir, scripts_enabled=True)
+        proc = bu.start_server(work_dir, log_path)
+
+        with admin_conn() as conn:
+            setup_data(conn)
+            test_computed_field(conn)
+            test_script_map_values_are_budgeted(conn)
+            test_map_script_sees_a_stable_document(conn)
+            test_script_predicate(conn)
+            test_reduce(conn)
+            test_getters_cross_the_boundary(conn)
+            test_permissions(conn)
+            test_sandbox(conn)
+            test_closed_doors(conn)
+            test_analyze(conn)
+            test_listen_refuses_scripts(conn)
+            test_host_boundary(conn)
+            test_nested_script(conn)
+
+        bu.stop_server(proc)
+        proc = None
+        write_config(work_dir, scripts_enabled=False)
+        proc = bu.start_server(work_dir, log_path)
+        with admin_conn() as conn:
+            test_switch_off(conn)
+    except Exception as exc:  # noqa: BLE001 - the suite reports rather than propagates
+        print(f"\nunexpected failure: {exc}", file=sys.stderr)
+        bu.dump_log(log_path)
+        bu.record_failure()
+    finally:
+        bu.stop_server(proc)
+
+    bu.summary(on_failure=lambda: bu.dump_log(log_path))
+
+
+if __name__ == "__main__":
+    main()

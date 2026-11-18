@@ -1,0 +1,115 @@
+package org.techhouse.cluster;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
+import org.techhouse.config.Globals;
+import org.techhouse.conn.PreAuthSlots;
+import org.techhouse.conn.SocketReaderThreads;
+import org.techhouse.conn.tls.TlsContextFactory;
+import org.techhouse.log.Logger;
+
+public class ClusterServer {
+    private static final int BACKLOG = 50;
+    private final Logger logger = Logger.logFor(ClusterServer.class);
+    private final int port;
+    private final String bindAddress;
+    private final SSLServerSocketFactory sslServerSocketFactory;
+    private final ExecutorService pool = SocketReaderThreads.newPerTaskExecutor();
+    private final AtomicInteger inHandshake = new AtomicInteger();
+    private volatile ServerSocket serverSocket;
+    private volatile boolean running;
+    private volatile boolean refusingWrites;
+    private final PreAuthSlots preAuthSlots = new PreAuthSlots(() -> Globals.CLUSTER_MAX_UNAUTHENTICATED_PER_ADDRESS);
+
+    public ClusterServer(int port, String bindAddress, SSLServerSocketFactory sslServerSocketFactory) {
+        this.port = port;
+        this.bindAddress = bindAddress;
+        this.sslServerSocketFactory = sslServerSocketFactory;
+    }
+
+    public void start() throws IOException {
+        serverSocket = createServerSocket();
+        running = true;
+        final var thread = new Thread(this::serve, "cluster-server");
+        thread.setDaemon(true);
+        thread.start();
+        logger.info("Cluster server listening on " + bindAddress + ":" + port
+                + (sslServerSocketFactory != null ? " (TLS)" : ""));
+    }
+
+    private void serve() {
+        while (running && !Thread.currentThread().isInterrupted()) {
+            try {
+                final var socket = serverSocket.accept();
+                final var address = socket.getInetAddress().getHostAddress();
+                if (!preAuthSlots.acquire(address)) {
+                    socket.close();
+                    continue;
+                }
+                if (inHandshake.incrementAndGet() > Globals.CLUSTER_MAX_UNAUTHENTICATED_CONNECTIONS) {
+                    inHandshake.decrementAndGet();
+                    preAuthSlots.release(address);
+                    socket.close();
+                    continue;
+                }
+                pool.execute(new ClusterConnectionHandler(socket, this::isRefusingWrites, handshakeDone(address)));
+            } catch (IOException e) {
+                if (running) {
+                    logger.warning("Cluster server accept failed: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    private Runnable handshakeDone(String address) {
+        final var done = new AtomicBoolean();
+        return () -> {
+            if (done.compareAndSet(false, true)) {
+                inHandshake.decrementAndGet();
+                preAuthSlots.release(address);
+            }
+        };
+    }
+
+    public void stop() {
+        running = false;
+        try {
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            logger.warning("Error closing cluster server: " + e.getMessage());
+        }
+        pool.shutdownNow();
+    }
+
+    public void refuseWrites() {
+        refusingWrites = true;
+    }
+
+    public boolean isRefusingWrites() {
+        return refusingWrites;
+    }
+
+    public int getPort() {
+        return serverSocket != null ? serverSocket.getLocalPort() : port;
+    }
+
+    private ServerSocket createServerSocket() throws IOException {
+        final var address = InetAddress.getByName(bindAddress);
+        if (sslServerSocketFactory != null) {
+            final var sslServerSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(port, BACKLOG,
+                    address);
+            sslServerSocket.setEnabledProtocols(TlsContextFactory.enabledProtocols());
+            sslServerSocket.setNeedClientAuth(true);
+            return sslServerSocket;
+        }
+        return new ServerSocket(port, BACKLOG, address);
+    }
+}

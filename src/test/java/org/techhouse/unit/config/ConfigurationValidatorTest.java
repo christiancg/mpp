@@ -1,0 +1,493 @@
+package org.techhouse.unit.config;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.techhouse.config.ConfigurationValidator;
+import org.techhouse.fs.io.OwnerOnlyFiles;
+import org.techhouse.test.ConfigFixture;
+
+public class ConfigurationValidatorTest {
+    private static Map<String, String> baseValid(Path writablePath) {
+        return ConfigFixture.fullValid(writablePath);
+    }
+
+    @Test
+    public void test_valid_configuration_has_no_errors(@TempDir Path tempDir) {
+        assertTrue(ConfigurationValidator.validate(baseValid(tempDir)).isEmpty());
+    }
+
+    @Test
+    public void test_maxConnections_zero_is_valid(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxConnections", "0");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_maxMemory_zero_and_minus_one_valid(@TempDir Path tempDir) {
+        final var zero = baseValid(tempDir);
+        zero.put("maxMemory", "0");
+        assertTrue(ConfigurationValidator.validate(zero).isEmpty());
+        final var disabled = baseValid(tempDir);
+        disabled.put("maxMemory", "-1");
+        assertTrue(ConfigurationValidator.validate(disabled).isEmpty());
+    }
+
+    @Test
+    public void test_invalid_port_values(@TempDir Path tempDir) {
+        assertHasError(tempDir, "port", "not-a-number", "port");
+        assertHasError(tempDir, "port", "0", "port");
+        assertHasError(tempDir, "port", "70000", "port");
+        assertMissingKeyFails(tempDir);
+    }
+
+    @Test
+    public void rejectsMalformedBindAddress(@TempDir Path tempDir) {
+        assertHasError(tempDir, "bindAddress", "999.1.1.1", "bindAddress");
+        assertHasError(tempDir, "bindAddress", "not a host", "bindAddress");
+        assertHasError(tempDir, "bindAddress", "fe80::1::2", "bindAddress");
+        assertHasError(tempDir, "bindAddress", "-leading.example", "bindAddress");
+        for (final var valid : new String[]{"", "127.0.0.1", "0.0.0.0", "::1", "localhost", "db-1.example.com"}) {
+            final var config = baseValid(tempDir);
+            config.put("bindAddress", valid);
+            assertTrue(ConfigurationValidator.validate(config).isEmpty(), valid);
+        }
+    }
+
+    @Test
+    public void test_invalid_maxConnections(@TempDir Path tempDir) {
+        assertHasError(tempDir, "maxConnections", "-1", "maxConnections");
+        assertHasError(tempDir, "maxConnections", "abc", "maxConnections");
+    }
+
+    @Test
+    public void test_invalid_thread_and_log_counts(@TempDir Path tempDir) {
+        assertHasError(tempDir, "backgroundProcessingThreads", "0", "backgroundProcessingThreads");
+        assertHasError(tempDir, "maxLogFiles", "0", "maxLogFiles");
+    }
+
+    @Test
+    public void test_invalid_sizes(@TempDir Path tempDir) {
+        assertHasError(tempDir, "maxPageSize", "nonsense", "maxPageSize");
+        assertHasError(tempDir, "maxEntrySize", "0", "maxEntrySize");
+    }
+
+    @Test
+    public void test_page_size_must_be_greater_than_entry_size(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxPageSize", "1Mb");
+        config.put("maxEntrySize", "1Mb");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("must be greater than maxEntrySize")));
+    }
+
+    @Test
+    public void test_invalid_admin_credentials(@TempDir Path tempDir) {
+        assertHasError(tempDir, "defaultAdminUsername", "  ", "defaultAdminUsername");
+        assertHasError(tempDir, "defaultAdminUsername", "ab", "like any user name");
+        assertHasError(tempDir, "defaultAdminUsername", "ops.admin", "like any user name");
+        final var config = baseValid(tempDir);
+        config.put("defaultAdminUsername", "ops_admin-2");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_short_admin_password_is_still_rejected(@TempDir Path tempDir) {
+        assertHasError(tempDir, "defaultAdminPassword", "short", "defaultAdminPassword");
+    }
+
+    @Test
+    public void test_blank_admin_password_is_accepted_by_the_validator(@TempDir Path tempDir) {
+        for (final var blank : new String[]{"", "  "}) {
+            final var config = baseValid(tempDir);
+            config.put("defaultAdminPassword", blank);
+            assertTrue(ConfigurationValidator.validate(config).stream().noneMatch(e -> e.contains("defaultAdmin")));
+        }
+    }
+
+    @Test
+    public void test_validator_creates_missing_data_folder_owner_only(@TempDir Path tempDir) throws IOException {
+        assumeTrue(OwnerOnlyFiles.supported());
+        final var config = baseValid(tempDir);
+        final var dataFolder = tempDir.resolve("fresh").resolve("data");
+        config.put("filePath", dataFolder.toString());
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+        assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dataFolder)));
+        assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dataFolder.getParent())));
+    }
+
+    @Test
+    public void test_invalid_maxMemory(@TempDir Path tempDir) {
+        assertHasError(tempDir, "maxMemory", "nonsense", "maxMemory");
+    }
+
+    @Test
+    public void test_invalid_transaction_lock_timeout(@TempDir Path tempDir) {
+        assertHasError(tempDir, "transactionLockTimeoutMs", "0", "transactionLockTimeoutMs");
+        assertHasError(tempDir, "transactionLockTimeoutMs", "not-a-number", "transactionLockTimeoutMs");
+    }
+
+    @Test
+    public void test_blank_path_fails(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("filePath", "  ");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("filePath")));
+    }
+
+    @Test
+    public void test_path_pointing_inside_a_file_fails(@TempDir Path tempDir) throws IOException {
+        final var regularFile = Files.createFile(tempDir.resolve("a-file"));
+        final var config = baseValid(tempDir);
+        config.put("filePath", regularFile.resolve("sub_dir").toString());
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("filePath")));
+    }
+
+    @Test
+    public void test_non_writable_path_fails(@TempDir Path tempDir) {
+        assumeTrue(OwnerOnlyFiles.supported(), "only a POSIX file system has permission bits that deny its owner");
+        final var readOnly = tempDir.resolve("readonly").toFile();
+        assertTrue(readOnly.mkdirs());
+        try {
+            assertTrue(readOnly.setWritable(false));
+            if (!readOnly.canWrite()) {
+                final var config = baseValid(tempDir);
+                config.put("filePath", readOnly.toString());
+                final var errors = ConfigurationValidator.validate(config);
+                assertTrue(errors.stream().anyMatch(e -> e.contains("not writable")));
+            }
+        } finally {
+            assertTrue(readOnly.setWritable(true));
+        }
+    }
+
+    @Test
+    public void test_multiple_errors_are_aggregated(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("port", "bad");
+        config.put("maxConnections", "-1");
+        config.put("maxLogFiles", "0");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.size() >= 3);
+    }
+
+    @Test
+    public void test_tls_disabled_ignores_keystore_keys(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "false");
+        config.remove("tlsKeystorePath");
+        config.remove("tlsKeystorePassword");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_tls_enabled_valid_keystore(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "true");
+        config.put("tlsKeystorePath", tempDir.resolve("certs").resolve("lwnrdb.p12").toString());
+        config.put("tlsKeystorePassword", "change_it");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_tls_enabled_requires_non_blank_path(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "true");
+        config.put("tlsKeystorePath", "  ");
+        config.put("tlsKeystorePassword", "change_it");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("tlsKeystorePath")));
+    }
+
+    @Test
+    public void test_tls_enabled_requires_non_blank_password(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "true");
+        config.put("tlsKeystorePath", tempDir.resolve("lwnrdb.p12").toString());
+        config.put("tlsKeystorePassword", "  ");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("tlsKeystorePassword")));
+    }
+
+    @Test
+    public void test_tls_enabled_uncreatable_parent_dir_fails(@TempDir Path tempDir) throws IOException {
+        final var regularFile = Files.createFile(tempDir.resolve("not-a-dir"));
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "true");
+        config.put("tlsKeystorePath", regularFile.resolve("sub").resolve("lwnrdb.p12").toString());
+        config.put("tlsKeystorePassword", "change_it");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("tlsKeystorePath")));
+    }
+
+    @Test
+    public void test_tls_invalid_boolean_fails(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("tlsEnabled", "maybe");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("tlsEnabled")));
+    }
+
+    @Test
+    public void test_tls_missing_enabled_key_fails(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.remove("tlsEnabled");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("tlsEnabled")));
+    }
+
+    private void assertHasError(Path tempDir, String key, String value, String expectedFragment) {
+        final var config = baseValid(tempDir);
+        config.put(key, value);
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains(expectedFragment)), "Expected an error mentioning '"
+                + expectedFragment + "' for " + key + "=" + value + ", got: " + errors);
+    }
+
+    // An absent key resolves to the default ConfigKey carries, so it validates; what must never
+    // drift is default.cfg against the registry, and ConfigKeyTest asserts exactly that.
+    private void assertMissingKeyFails(Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.remove("port");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test
+    public void test_script_time_zone_accepts_a_fixed_offset_zone(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("scriptTimeZone", "+05:30");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_script_time_zone_rejects_an_unknown_zone(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptTimeZone", "Mars/Olympus", "scriptTimeZone");
+    }
+
+    @Test
+    public void test_script_time_zone_rejects_a_blank_value(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptTimeZone", "  ", "scriptTimeZone");
+    }
+
+    @Test
+    public void test_script_locale_rejects_a_malformed_tag(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptLocale", "not a locale", "scriptLocale");
+    }
+
+    @Test
+    public void test_script_locale_rejects_a_blank_value(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptLocale", "", "scriptLocale");
+    }
+
+    @Test
+    public void test_invalid_script_sandbox_values(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptsEnabled", "maybe", "scriptsEnabled");
+        assertHasError(tempDir, "scriptTextImportEnabled", "maybe", "scriptTextImportEnabled");
+        assertHasError(tempDir, "scriptProcedureImportEnabled", "maybe", "scriptProcedureImportEnabled");
+        assertHasError(tempDir, "scriptInstructionBudget", "0", "scriptInstructionBudget");
+        assertHasError(tempDir, "scriptInstructionBudget", "not-a-number", "scriptInstructionBudget");
+        assertHasError(tempDir, "scriptTimeoutMs", "0", "scriptTimeoutMs");
+        assertHasError(tempDir, "scriptMaxDepth", "0", "scriptMaxDepth");
+        assertHasError(tempDir, "scriptMaxSourceBytes", "nonsense", "scriptMaxSourceBytes");
+        assertHasError(tempDir, "scriptMaxSourceBytes", "0", "scriptMaxSourceBytes");
+        assertHasError(tempDir, "scriptMaxLogLines", "0", "scriptMaxLogLines");
+        assertHasError(tempDir, "scriptMaxLogLineChars", "0", "scriptMaxLogLineChars");
+        assertHasError(tempDir, "scriptMaxMemoryBytes", "nonsense", "scriptMaxMemoryBytes");
+        assertHasError(tempDir, "scriptMaxMemoryBytes", "0", "scriptMaxMemoryBytes");
+    }
+
+    @Test
+    public void test_invalid_script_result_and_cursor_bounds(@TempDir Path tempDir) {
+        assertHasError(tempDir, "scriptMaxResultBytes", "nonsense", "scriptMaxResultBytes");
+        assertHasError(tempDir, "scriptMaxResultBytes", "0", "scriptMaxResultBytes");
+        assertHasError(tempDir, "scriptCursorBatchSize", "0", "scriptCursorBatchSize");
+        assertHasError(tempDir, "scriptCursorMaxBatchSize", "0", "scriptCursorMaxBatchSize");
+    }
+
+    @Test
+    public void test_invalid_aggregation_script_bounds(@TempDir Path tempDir) {
+        assertHasError(tempDir, "aggregationScriptInstructionBudget", "0", "aggregationScriptInstructionBudget");
+        assertHasError(tempDir, "aggregationScriptInstructionBudget", "not-a-number",
+                "aggregationScriptInstructionBudget");
+        assertHasError(tempDir, "aggregationScriptTimeoutMs", "0", "aggregationScriptTimeoutMs");
+        assertHasError(tempDir, "aggregationScriptMaxSourceBytes", "nonsense", "aggregationScriptMaxSourceBytes");
+        assertHasError(tempDir, "aggregationScriptMaxSourceBytes", "0", "aggregationScriptMaxSourceBytes");
+    }
+
+    @Test
+    public void test_invalid_script_admission_bounds(@TempDir Path tempDir) {
+        assertHasError(tempDir, "maxConcurrentScripts", "-1", "maxConcurrentScripts");
+        assertHasError(tempDir, "maxConcurrentScripts", "not-a-number", "maxConcurrentScripts");
+        assertHasError(tempDir, "scriptQueueWaitMs", "-1", "scriptQueueWaitMs");
+        assertHasError(tempDir, "scriptQueueWaitMs", "not-a-number", "scriptQueueWaitMs");
+    }
+
+    @Test
+    public void test_script_locality_weight_bounds(@TempDir Path tempDir) {
+        final var zero = baseValid(tempDir);
+        zero.put("scriptLocalityWeight", "0");
+        assertTrue(ConfigurationValidator.validate(zero).isEmpty());
+        final var hundred = baseValid(tempDir);
+        hundred.put("scriptLocalityWeight", "100");
+        assertTrue(ConfigurationValidator.validate(hundred).isEmpty());
+        assertHasError(tempDir, "scriptLocalityWeight", "101", "scriptLocalityWeight must be between 0 and 100");
+        assertHasError(tempDir, "scriptLocalityWeight", "-1", "scriptLocalityWeight");
+        assertHasError(tempDir, "scriptLocalityWeight", "not-a-number", "scriptLocalityWeight");
+    }
+
+    @Test
+    public void test_seeded_cluster_requires_expectedSize_of_at_least_two(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("clusterExpectedSize", "1");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("clusterExpectedSize")),
+                "a seeded cluster with expectedSize 1 lets a partitioned node satisfy its own quorum: " + errors);
+    }
+
+    @Test
+    public void test_cluster_enabled_requires_an_expected_size_of_at_least_two(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("clusterExpectedSize", "1");
+        config.put("clusterSeeds", "");
+
+        final var errors = ConfigurationValidator.validate(config);
+
+        assertTrue(errors.stream().anyMatch(e -> e.contains("clusterExpectedSize")),
+                "the seedless first node is the one most likely to keep the default, and it is the one that"
+                        + " evicts its peers and regains quorum alone: " + errors);
+    }
+
+    @Test
+    public void test_an_expected_size_of_two_starts_without_seeds(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("clusterExpectedSize", "2");
+        config.put("clusterSeeds", "");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_deadEvictionMs_must_exceed_deadTimeoutMs(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("deadTimeoutMs", "15000");
+        config.put("deadEvictionMs", "15000");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("deadEvictionMs")), errors.toString());
+    }
+
+    @Test
+    public void test_a_dead_eviction_grace_above_the_dead_timeout_is_valid(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("deadTimeoutMs", "15000");
+        config.put("deadEvictionMs", "86400000");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_deadProbeIntervalMs_must_not_be_smaller_than_the_gossip_interval(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("gossipIntervalMs", "1000");
+        config.put("deadProbeIntervalMs", "999");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("deadProbeIntervalMs")), errors.toString());
+    }
+
+    @Test
+    public void test_a_dead_probe_interval_equal_to_the_gossip_interval_is_valid(@TempDir Path tempDir) {
+        final var config = ConfigFixture.clusterEnabled(tempDir);
+        config.put("gossipIntervalMs", "1000");
+        config.put("deadProbeIntervalMs", "1000");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_zero_script_admission_bounds_are_valid(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxConcurrentScripts", "0");
+        config.put("scriptQueueWaitMs", "0");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_cursor_batch_size_must_not_exceed_the_maximum(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("scriptCursorBatchSize", "5001");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("must not be greater than scriptCursorMaxBatchSize")));
+    }
+
+    @Test
+    public void test_scripts_enabled_true_is_valid(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("scriptsEnabled", "true");
+        config.put("scriptTextImportEnabled", "true");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_max_request_size_must_not_be_below_max_entry_size(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxEntrySize", "1Mb");
+        config.put("maxRequestSize", "512Kb");
+        assertTrue(ConfigurationValidator.validate(config).stream()
+                .anyMatch(e -> e.contains("maxRequestSize") && e.contains("maxEntrySize")));
+        config.put("maxRequestSize", "1Mb");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_max_request_size_above_the_ceiling_is_refused(@TempDir Path tempDir) {
+        assertHasError(tempDir, "maxRequestSize", "2Gb", "must not be greater than 1073741824");
+        assertHasError(tempDir, "maxRequestSize", String.valueOf(Integer.MAX_VALUE), "must not be greater than");
+        assertHasError(tempDir, "maxRequestSize", "0", "maxRequestSize");
+        final var config = baseValid(tempDir);
+        config.put("maxRequestSize", "1Gb");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_auth_failure_delay_max_below_base_is_rejected(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("authFailureDelayBaseMs", "1000");
+        config.put("authFailureDelayMaxMs", "999");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("authFailureDelayMaxMs")), errors.toString());
+    }
+
+    @Test
+    public void test_auth_throttle_keys_accept_zero(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxFailedAuthAttempts", "0");
+        config.put("authFailureDelayBaseMs", "0");
+        config.put("authFailureDelayMaxMs", "0");
+        config.put("maxConcurrentPasswordChecks", "0");
+        assertTrue(ConfigurationValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    public void test_timeouts_must_be_positive(@TempDir Path tempDir) {
+        assertHasError(tempDir, "authTimeoutMs", "0", "authTimeoutMs");
+        assertHasError(tempDir, "authTimeoutMs", "soon", "authTimeoutMs");
+        assertHasError(tempDir, "transactionIdleTimeoutMs", "0", "transactionIdleTimeoutMs");
+        assertHasError(tempDir, "transactionIdleTimeoutMs", "-5", "transactionIdleTimeoutMs");
+    }
+
+    @Test
+    public void test_auth_throttle_keys_reject_negatives(@TempDir Path tempDir) {
+        final var config = baseValid(tempDir);
+        config.put("maxFailedAuthAttempts", "-1");
+        config.put("maxConcurrentPasswordChecks", "-1");
+        final var errors = ConfigurationValidator.validate(config);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("maxFailedAuthAttempts")), errors.toString());
+        assertTrue(errors.stream().anyMatch(e -> e.contains("maxConcurrentPasswordChecks")), errors.toString());
+    }
+}

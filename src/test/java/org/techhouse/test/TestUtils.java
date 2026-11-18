@@ -1,0 +1,442 @@
+package org.techhouse.test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.mockito.Mockito;
+import org.techhouse.bckg_ops.BackgroundLanes;
+import org.techhouse.bckg_ops.BackgroundTaskManager;
+import org.techhouse.bckg_ops.PendingIndexWrites;
+import org.techhouse.bckg_ops.events.Event;
+import org.techhouse.cache.AdminCache;
+import org.techhouse.cache.BoundedLruCache;
+import org.techhouse.cache.Cache;
+import org.techhouse.cache.CacheResidents;
+import org.techhouse.cache.PartitionedMissCache;
+import org.techhouse.cache.UserCache;
+import org.techhouse.cluster.membership.MembershipService;
+import org.techhouse.concurrency.ResourceLocking;
+import org.techhouse.config.ConfigKey;
+import org.techhouse.config.Configuration;
+import org.techhouse.config.ValueType;
+import org.techhouse.conn.ClientTracker;
+import org.techhouse.conn.OutboundQueue;
+import org.techhouse.data.DbEntry;
+import org.techhouse.data.PkIndexEntry;
+import org.techhouse.data.admin.AdminCollEntry;
+import org.techhouse.data.admin.AdminDbEntry;
+import org.techhouse.data.admin.AdminUserEntry;
+import org.techhouse.fs.FileSystem;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.ops.AdminOperationHelper;
+import org.techhouse.ops.UserOperationHelper;
+import org.techhouse.ops.admin.DeferredWrites;
+import org.techhouse.ops.auth.AuthFailureThrottle;
+import org.techhouse.ops.index.IdleIndexFolds;
+import org.techhouse.ops.req.CreateUserRequest;
+import org.techhouse.ops.resp.OperationResponse;
+import org.techhouse.utils.ReflectionUtils;
+
+public class TestUtils {
+    public static void standardInitialSetup() throws NoSuchFieldException, IllegalAccessException, IOException {
+        final var config = Configuration.getInstance();
+        setPrivateField(config, "filePath", TestGlobals.PATH);
+        final var fs = IocContainer.get(FileSystem.class);
+        fs.createBaseDbPath();
+        fs.createAdminDatabase();
+        final var cache = IocContainer.get(Cache.class);
+        cache.loadAdminData();
+        DeferredWrites.install();
+    }
+
+    public static void standardTearDown() throws NoSuchFieldException, IllegalAccessException {
+        deleteDir(new File(TestGlobals.PATH));
+        clearCache();
+        IdleIndexFolds.forgetDatabase(TestGlobals.DB);
+        discardQueuedBackgroundEvents(IocContainer.get(BackgroundTaskManager.class));
+    }
+
+    private static void clearCache() throws NoSuchFieldException, IllegalAccessException {
+        AdminCache adminCache = IocContainer.get(AdminCache.class);
+        UserCache userCache = IocContainer.get(UserCache.class);
+        TestUtils.setPrivateField(adminCache, "collections", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "databases", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "users", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "databasesPkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "collectionsPkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "usersPkIndex", new ConcurrentHashMap<>());
+        CacheResidents.reset(userCache);
+        TestUtils.setPrivateField(
+                TestUtils.getPrivateField(IocContainer.get(Cache.class), "absentIndexTypes", Object.class),
+                "byCollection", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(
+                TestUtils.getPrivateField(IocContainer.get(Cache.class), "scanRefusals", Object.class), "refusals",
+                new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(pageCacheOf(adminCache), "pages", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(pageCacheOf(adminCache), "pagesPkIndexes", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "collectionUsagePkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "transactionsPkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "triggerRunsPkIndex", new ConcurrentSkipListMap<>());
+        clearBoundedCache(adminCache, "collectionSchemas");
+        clearBoundedCache(adminCache, "procedures");
+        clearBoundedCache(adminCache, "triggers");
+        clearBoundedCache(adminCache, "schedules");
+        TestUtils.getPrivateField(adminCache, "metadataMisses", PartitionedMissCache.class).clear();
+        PendingIndexWrites pendingIndexWrites = IocContainer.get(PendingIndexWrites.class);
+        TestUtils.setPrivateField(pendingIndexWrites, "pending", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(pendingIndexWrites, "pins", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(pendingIndexWrites, "epoch", new AtomicLong());
+        // Drop any tracked clients so leaked test connections can't fill the connection limit and make
+        // later socket-based tests receive MAX_CONNECTIONS_REACHED instead of processing their request.
+        ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+        TestUtils.setPrivateField(clientTracker, "clients", new ConcurrentHashMap<>());
+        resetSocketClients(clientTracker);
+        TestUtils.getPrivateField(IocContainer.get(AuthFailureThrottle.class), "states", Map.class).clear();
+    }
+
+    private static void clearBoundedCache(AdminCache adminCache, String fieldName)
+            throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.getPrivateField(adminCache, fieldName, BoundedLruCache.class).clear();
+    }
+
+    private static void deleteDir(File file) {
+        File[] contents = file.listFiles();
+        if (contents != null) {
+            for (File f : contents) {
+                deleteDir(f);
+            }
+        }
+        if (!file.delete()) {
+            file.deleteOnExit();
+        }
+    }
+
+    public static void createTestDatabaseAndCollection() throws IOException, InterruptedException {
+        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+        FileSystem fs = IocContainer.get(FileSystem.class);
+        fs.createDatabaseFolder(TestGlobals.DB);
+        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+    }
+
+    public static void createTestJoinCollection() throws IOException, InterruptedException {
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.JOIN_COLL));
+        FileSystem fs = IocContainer.get(FileSystem.class);
+        fs.createCollectionFile(TestGlobals.DB, TestGlobals.JOIN_COLL);
+    }
+
+    public static <U, T> T getPrivateField(U object, String fieldName, ReflectionUtils.TypeToken<T> fieldType)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var field = object.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        final var tClass = fieldType.getTypeParameter();
+        return tClass.cast(field.get(object));
+    }
+
+    public static <U, T> T getPrivateField(U object, String fieldName, Class<T> fieldType)
+            throws NoSuchFieldException, IllegalAccessException {
+        if (object instanceof Configuration configuration) {
+            final var key = configKey(fieldName);
+            if (key != null) {
+                return fieldType.cast(configValue(configuration, key, fieldType));
+            }
+        }
+        final var field = object.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return fieldType.cast(field.get(object));
+    }
+
+    public static <U, T> void setPrivateField(U object, String fieldName, T fieldValue)
+            throws NoSuchFieldException, IllegalAccessException {
+        if (object instanceof Configuration configuration) {
+            final var key = configKey(fieldName);
+            if (key != null) {
+                configuration.override(key, fieldValue == null ? null : String.valueOf(fieldValue));
+                return;
+            }
+        }
+        final var field = object.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(object, fieldValue);
+    }
+
+    private static ConfigKey configKey(String fieldName) {
+        final var name = switch (fieldName) {
+            case "maxMemoryBytes" -> "maxMemory";
+            case "scriptFetchAllowlistRaw" -> "scriptFetchAllowlist";
+            default -> fieldName;
+        };
+        return ConfigKey.all().stream().filter(candidate -> candidate.key().equals(name)).findFirst().orElse(null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<ConfigKey, String> configValues(Configuration configuration)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var field = Configuration.class.getDeclaredField("values");
+        field.setAccessible(true);
+        return (Map<ConfigKey, String>) field.get(configuration);
+    }
+
+    private static Object configValue(Configuration configuration, ConfigKey key, Class<?> fieldType)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var raw = configValues(configuration).get(key);
+        if (raw == null) {
+            return null;
+        }
+        if (fieldType == int.class || fieldType == Integer.class) {
+            return Integer.valueOf(raw.trim());
+        }
+        if (fieldType == long.class || fieldType == Long.class) {
+            return key.type() == ValueType.SIZE ? configuration.sizeValue(key) : Long.parseLong(raw.trim());
+        }
+        if (fieldType == boolean.class || fieldType == Boolean.class) {
+            return Boolean.valueOf(raw.trim());
+        }
+        return raw;
+    }
+
+    public static <T> T getPrivateStaticField(Class<?> clazz, String fieldName, Class<T> fieldType)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var field = clazz.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return fieldType.cast(field.get(null));
+    }
+
+    public static <T> void setPrivateStaticField(Class<?> clazz, String fieldName, T fieldValue)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var field = clazz.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(null, fieldValue);
+    }
+
+    public static void cacheEntry(Cache cache, String dbName, String collName, DbEntry entry) throws IOException {
+        cache.addEntryToCache(dbName, collName, entry);
+        underCollectionLock(dbName, collName, () -> {
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+            final var position = Collections.binarySearch(pkIndex, entry.get_id());
+            if (position < 0) {
+                pkIndex.add(-(position + 1), new PkIndexEntry(dbName, collName, entry.get_id(), 0, 1, entry.getPage()));
+            }
+        });
+    }
+
+    public static void uncacheEntry(Cache cache, String dbName, String collName, String id) throws IOException {
+        cache.evictEntry(dbName, collName, id);
+        underCollectionLock(dbName, collName, () -> {
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+            final var position = Collections.binarySearch(pkIndex, id);
+            if (position >= 0) {
+                pkIndex.remove(position);
+            }
+        });
+    }
+
+    private interface PkIndexMutation {
+        void run() throws IOException;
+    }
+
+    private static void underCollectionLock(String dbName, String collName, PkIndexMutation mutation)
+            throws IOException {
+        final var locks = IocContainer.get(ResourceLocking.class);
+        try {
+            locks.lock(dbName, collName);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+        try {
+            mutation.run();
+        } finally {
+            locks.release(dbName, collName);
+        }
+    }
+
+    public static void setDbPath(Object fileSystem, String path) throws NoSuchFieldException, IllegalAccessException {
+        final var paths = getPrivateField(fileSystem, "paths", Object.class);
+        try {
+            final var useDbPath = paths.getClass().getDeclaredMethod("useDbPath", String.class);
+            useDbPath.setAccessible(true);
+            useDbPath.invoke(paths, path);
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static String getDbPath(Object fileSystem) throws NoSuchFieldException, IllegalAccessException {
+        return getPrivateField(getPrivateField(fileSystem, "paths", Object.class), "dbPath", String.class);
+    }
+
+    public static Object pageCacheOf(Object adminCache) throws NoSuchFieldException, IllegalAccessException {
+        return getPrivateField(adminCache, "pageCache", Object.class);
+    }
+
+    public static Object usageTrackerOf(Object memoryManagement) throws NoSuchFieldException, IllegalAccessException {
+        return getPrivateField(memoryManagement, "usageTracker", Object.class);
+    }
+
+    public static void resetUsageCounters(Object usageTracker) throws NoSuchFieldException, IllegalAccessException {
+        setPrivateField(usageTracker, "counters", new java.util.concurrent.ConcurrentHashMap<>());
+        setPrivateField(usageTracker, "byAccess", new java.util.concurrent.ConcurrentHashMap<>());
+        setPrivateField(usageTracker, "unflushed", java.util.concurrent.ConcurrentHashMap.newKeySet());
+    }
+
+    public static void deleteFolder(File folder) {
+        File[] files = folder.listFiles();
+        if (files != null) { //some JVMs return null for empty dirs
+            for (File f : files) {
+                if (f.isDirectory()) {
+                    deleteFolder(f);
+                } else {
+                    assertTrue(f.delete());
+                }
+            }
+        }
+        assertTrue(folder.delete());
+    }
+
+    // Leaked clients from other tests in the same JVM would fill maxConnections and make addClient
+    // return null.
+    public static void resetClients() throws NoSuchFieldException, IllegalAccessException {
+        final var clientTracker = IocContainer.get(ClientTracker.class);
+        setPrivateField(clientTracker, "clients", new ConcurrentHashMap<>());
+        setPrivateField(clientTracker, "txSessions", new ConcurrentHashMap<>());
+        resetSocketClients(clientTracker);
+    }
+
+    private static void resetSocketClients(ClientTracker clientTracker)
+            throws NoSuchFieldException, IllegalAccessException {
+        setPrivateField(clientTracker, "disconnectSignals", new ConcurrentHashMap<>());
+        getPrivateField(clientTracker, "socketClients", AtomicInteger.class).set(0);
+    }
+
+    public static void resetMembership() throws NoSuchFieldException, IllegalAccessException {
+        final var membershipService = IocContainer.get(MembershipService.class);
+        setPrivateField(membershipService, "members", new ConcurrentHashMap<>());
+        setPrivateField(membershipService, "lastSeen", new ConcurrentHashMap<>());
+        setPrivateField(membershipService, "self", null);
+    }
+
+    public static void releaseAllLocks() throws NoSuchFieldException, IllegalAccessException {
+        final var locker = IocContainer.get(ResourceLocking.class);
+        final var locksType = new ReflectionUtils.TypeToken<Map<String, ReentrantReadWriteLock>>() {
+        };
+        final var locks = TestUtils.getPrivateField(locker, "locks", locksType);
+        for (var lock : locks.values()) {
+            while (lock.isWriteLockedByCurrentThread()) {
+                lock.writeLock().unlock();
+            }
+            while (lock.getReadHoldCount() > 0) {
+                lock.readLock().unlock();
+            }
+        }
+        locks.clear();
+        try {
+            TestUtils.getPrivateStaticField(Class.forName("org.techhouse.concurrency.CollectionFences"), "fenced",
+                    Set.class).clear();
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static List<String> dirtyIndexCollections() {
+        final var result = new ArrayList<String>();
+        final var databases = new File(TestGlobals.PATH).listFiles(File::isDirectory);
+        for (final var database : databases == null ? new File[0] : databases) {
+            final var collections = database.listFiles(File::isDirectory);
+            for (final var collection : collections == null ? new File[0] : collections) {
+                if (new File(collection, collection.getName() + "-indexes.dirty").exists()) {
+                    result.add(database.getName() + "|" + collection.getName());
+                }
+            }
+        }
+        return result;
+    }
+
+    public static void ensureAdminUser(String username) {
+        final var cache = IocContainer.get(Cache.class);
+        if (username == null || cache.getAdminUserEntry(username) != null) {
+            return;
+        }
+        try {
+            AdminOperationHelper.saveUserEntry(
+                    new AdminUserEntry(username, "unused", true, Set.of(), new HashMap<>(), new HashMap<>()));
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static OperationResponse createAdmin(String username) {
+        final var request = new CreateUserRequest();
+        request.setUsername(username);
+        request.setPassword("password123");
+        request.setAdmin(true);
+        request.setGlobalPermissions(new HashSet<>());
+        request.setDatabasePermissions(new HashMap<>());
+        request.setCollectionPermissions(new HashMap<>());
+        return UserOperationHelper.processCreateUser(request);
+    }
+
+    public static Socket clientSocket() {
+        final var socket = Mockito.mock(Socket.class);
+        final var address = Mockito.mock(InetAddress.class);
+        Mockito.when(socket.getInetAddress()).thenReturn(address);
+        Mockito.when(address.getHostAddress()).thenReturn("127.0.0.1");
+        return socket;
+    }
+
+    public static OutboundQueue inlineOutbound(OutputStream out) {
+        return new OutboundQueue(out, () -> {
+        }, Long.MAX_VALUE, Runnable::run, () -> {
+        });
+    }
+
+    public static Socket clientSocket(InputStream in, OutputStream out) throws IOException {
+        final var socket = clientSocket();
+        Mockito.when(socket.getInputStream()).thenReturn(in);
+        Mockito.when(socket.getOutputStream()).thenReturn(out);
+        return socket;
+    }
+
+    public static List<Event> queuedBackgroundEvents(BackgroundTaskManager manager)
+            throws NoSuchFieldException, IllegalAccessException {
+        return queuedEvents(getPrivateField(manager, "lanes", BackgroundLanes.class));
+    }
+
+    public static List<Event> queuedEvents(BackgroundLanes lanes) throws NoSuchFieldException, IllegalAccessException {
+        final var queues = getPrivateField(lanes, "queues", List.class);
+        final var events = new ArrayList<Event>();
+        for (final var queue : queues) {
+            for (final var event : (Collection<?>) queue) {
+                events.add((Event) event);
+            }
+        }
+        return events;
+    }
+
+    public static void discardQueuedBackgroundEvents(BackgroundTaskManager manager)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var discarded = getPrivateField(manager, "lanes", BackgroundLanes.class).discardAll();
+        getPrivateField(manager, "inFlight", AtomicInteger.class).addAndGet(-discarded);
+    }
+}

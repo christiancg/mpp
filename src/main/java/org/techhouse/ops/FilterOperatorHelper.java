@@ -1,0 +1,417 @@
+package org.techhouse.ops;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.techhouse.analyze.AnalyzeContext;
+import org.techhouse.cache.Cache;
+import org.techhouse.config.Globals;
+import org.techhouse.data.IndexKind;
+import org.techhouse.ejson.custom_types.CustomTypeFactory;
+import org.techhouse.ejson.elements.JsonArray;
+import org.techhouse.ejson.elements.JsonBaseElement;
+import org.techhouse.ejson.elements.JsonBoolean;
+import org.techhouse.ejson.elements.JsonCustom;
+import org.techhouse.ejson.elements.JsonNumber;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.ops.filter.FieldPredicateFactory;
+import org.techhouse.ops.index.PendingWriteReconciler;
+import org.techhouse.ops.index.PrimaryKeyIndexResolver;
+import org.techhouse.ops.req.agg.BaseOperator;
+import org.techhouse.ops.req.agg.ConjunctionOperatorType;
+import org.techhouse.ops.req.agg.FieldOperatorType;
+import org.techhouse.ops.req.agg.operators.ConjunctionOperator;
+import org.techhouse.ops.req.agg.operators.CustomOperator;
+import org.techhouse.ops.req.agg.operators.FieldOperator;
+import org.techhouse.ops.req.agg.operators.ScriptOperator;
+import org.techhouse.simplejs.ScriptCallable;
+import org.techhouse.simplejs.exceptions.ScriptCallableException;
+import org.techhouse.utils.FieldPath;
+import org.techhouse.utils.JsonUtils;
+
+public class FilterOperatorHelper {
+    private static final Cache cache = IocContainer.get(Cache.class);
+    private static final Comparator<ScoredDocument> WORST_FIRST = Comparator.comparingDouble(ScoredDocument::score)
+            .thenComparing(ScoredDocument::id, Comparator.reverseOrder());
+
+    public static Stream<JsonObject> processOperator(BaseOperator operator, Stream<JsonObject> resultStream,
+            String dbName, String collName) throws IOException {
+        return processOperator(operator, resultStream, dbName, collName, PipelineContext.withoutScripts());
+    }
+
+    public static Stream<JsonObject> processOperator(BaseOperator operator, Stream<JsonObject> resultStream,
+            String dbName, String collName, PipelineContext context) throws IOException {
+        return processOperator(operator, resultStream, dbName, collName, context, -1);
+    }
+
+    static Stream<JsonObject> processOperator(BaseOperator operator, Stream<JsonObject> resultStream, String dbName,
+            String collName, PipelineContext context, long sourceBound) throws IOException {
+        resultStream = switch (operator.getType()) {
+            case CONJUNCTION -> processConjunctionOperator((ConjunctionOperator) operator, resultStream, dbName,
+                    collName, context, sourceBound);
+            case FIELD ->
+                processFieldOperator((FieldOperator) operator, resultStream, dbName, collName, context, sourceBound);
+            case CUSTOM ->
+                processCustomOperator((CustomOperator) operator, resultStream, dbName, collName, context, sourceBound);
+            case SCRIPT -> processScriptOperator((ScriptOperator) operator, resultStream, dbName, collName, context);
+        };
+        return resultStream;
+    }
+
+    private static Stream<JsonObject> processConjunctionOperator(ConjunctionOperator operator,
+            Stream<JsonObject> resultStream, String dbName, String collName, PipelineContext context, long sourceBound)
+            throws IOException {
+        if (OperatorPredicate.holdsRanking(operator)) {
+            return RankedConjunction.filter(operator, resultStream, dbName, collName, context);
+        }
+        final var test = OperatorPredicate.of(operator, context);
+        if (resultStream != null) {
+            return resultStream.filter(test);
+        }
+        final var candidates = ConjunctionCandidates.of(operator, dbName, collName, context);
+        if (candidates != null && !ScanPreference.tooBroad(candidates.size(), dbName, collName)) {
+            return context.watch(fetched(dbName, collName, candidates, sourceBound, context)).filter(test);
+        }
+        return context.source(null, dbName, collName).filter(test);
+    }
+
+    private static Stream<JsonObject> processFieldOperator(FieldOperator operator, Stream<JsonObject> resultStream,
+            String dbName, String collName, PipelineContext context, long sourceBound) throws IOException {
+        final var tester = FieldPredicateFactory.getTester(operator, operator.getFieldOperatorType());
+        return internalBaseFiltering(tester, operator, resultStream, dbName, collName, context, sourceBound);
+    }
+
+    private static Stream<JsonObject> processScriptOperator(ScriptOperator operator, Stream<JsonObject> resultStream,
+            String dbName, String collName, PipelineContext context) throws IOException {
+        final var stream = context.source(resultStream, dbName, collName);
+        return stream.filter(data -> testScript(operator, data, Set.of(), context));
+    }
+
+    // JS truthiness, not a strict boolean: 0/""/null/undefined exclude a document.
+    static boolean testScript(ScriptOperator operator, JsonObject document, Set<String> mutableRoots,
+            PipelineContext context) {
+        return callPredicate(operator.getSource(), document, mutableRoots, context);
+    }
+
+    static JsonBaseElement callScript(String source, JsonObject document, Set<String> mutableRoots,
+            PipelineContext context) {
+        return invokeScript(source, context, callable -> callable.apply(document, mutableRoots));
+    }
+
+    private static boolean callPredicate(String source, JsonObject document, Set<String> mutableRoots,
+            PipelineContext context) {
+        return invokeScript(source, context, callable -> callable.test(document, mutableRoots));
+    }
+
+    private static <T> T invokeScript(String source, PipelineContext context, Function<ScriptCallable, T> invocation) {
+        if (context == null) {
+            throw new ScriptCallableException("InternalError", "No script context available for this pipeline");
+        }
+        final var analyze = context.analyze();
+        final var start = analyze == null ? 0 : System.nanoTime();
+        final var value = invocation.apply(context.callableFor(source));
+        if (analyze != null) {
+            analyze.recordScriptInvocation(System.nanoTime() - start);
+        }
+        return value;
+    }
+
+    private static Stream<JsonObject> processCustomOperator(CustomOperator operator, Stream<JsonObject> resultStream,
+            String dbName, String collName, PipelineContext context, long sourceBound) throws IOException {
+        if (CustomTypeFactory.isRankingOperator(operator.getCustomOperatorName())) {
+            return rankedRows(operator, resultStream, dbName, collName, context);
+        }
+        final var tester = getCustomTester(operator);
+        final var fieldName = operator.getField();
+        if (resultStream != null) {
+            return resultStream.filter(data -> tester.test(data, fieldName));
+        }
+        // Candidate ids from the geo pre-filter are unconfirmed; they are fetched and re-tested exactly below.
+        final var candidateIds = GeoSpatialIndexHelper.candidateIds(operator, dbName, collName, context);
+        if (candidateIds != null) {
+            return fetched(dbName, collName, candidateIds, sourceBound, context)
+                    .filter(data -> tester.test(data, fieldName));
+        }
+        return context.source(null, dbName, collName).filter(data -> tester.test(data, fieldName));
+    }
+
+    private static Stream<JsonObject> fetched(String dbName, String collName, Set<String> ids, long sourceBound,
+            PipelineContext context) throws IOException {
+        return LazyCandidates.fetched(dbName, collName, ids, sourceBound, context);
+    }
+
+    public static BiPredicate<JsonObject, String> getCustomTester(CustomOperator operator) {
+        final var operatorName = operator.getCustomOperatorName();
+        final var args = new HashMap<String, JsonBaseElement>();
+        for (var entry : operator.getArgs().entrySet()) {
+            args.put(entry.getKey(), entry.getValue());
+        }
+        final var compiled = operator.getField() == null ? null : FieldPath.of(operator.getField());
+        return (JsonObject toTest, String fieldName) -> {
+            final var path = compiled == null ? FieldPath.of(fieldName) : compiled.reusedFor(fieldName);
+            final var element = path.resolve(toTest);
+            if (element == null || !element.isJsonCustom()) {
+                return false;
+            }
+            final var custom = element.asJsonCustom();
+            if (!custom.customOperatorNames().contains(operatorName)) {
+                return false;
+            }
+            return custom.applyCustomOperator(operatorName, args);
+        };
+    }
+
+    static Stream<JsonObject> rankedRows(CustomOperator operator, Stream<JsonObject> resultStream, String dbName,
+            String collName, PipelineContext context) throws IOException {
+        final var k = operator.getArgs().get("k").asJsonNumber().getValue().intValue();
+        final var fieldName = operator.getField();
+        if (resultStream != null) {
+            return topK(resultStream, operator, fieldName, k);
+        }
+        final var candidateIds = VectorSimilarityIndexHelper.candidateIds(operator, dbName, collName, context);
+        final Stream<JsonObject> candidates;
+        if (candidateIds != null) {
+            candidates = fetched(dbName, collName, candidateIds, -1, context);
+        } else {
+            candidates = context.source(null, dbName, collName);
+        }
+        return topK(candidates, operator, fieldName, k);
+    }
+
+    private static Stream<JsonObject> topK(Stream<JsonObject> candidates, CustomOperator operator, String fieldName,
+            int k) {
+        if (k <= 0) {
+            candidates.close();
+            return Stream.empty();
+        }
+        final var operatorName = operator.getCustomOperatorName();
+        final var args = new HashMap<String, JsonBaseElement>();
+        for (var entry : operator.getArgs().entrySet()) {
+            args.put(entry.getKey(), entry.getValue());
+        }
+        final var heap = new PriorityQueue<>(WORST_FIRST);
+        final var path = FieldPath.of(fieldName);
+        try (var scored = candidates) {
+            scored.forEach(document -> {
+                final var score = scoreDocument(document, path, operatorName, args);
+                if (score == null) {
+                    return;
+                }
+                final var candidate = new ScoredDocument(document, score);
+                if (heap.size() < k) {
+                    heap.offer(candidate);
+                } else if (WORST_FIRST.compare(heap.peek(), candidate) < 0) {
+                    heap.poll();
+                    heap.offer(candidate);
+                }
+            });
+        }
+        return heap.stream().sorted(WORST_FIRST.reversed()).map(ScoredDocument::document);
+    }
+
+    private static Double scoreDocument(JsonObject document, FieldPath path, String operatorName,
+            Map<String, JsonBaseElement> args) {
+        final var element = path.resolve(document);
+        if (element == null || !element.isJsonCustom()) {
+            return null;
+        }
+        final var custom = element.asJsonCustom();
+        if (!custom.customRankingOperatorNames().contains(operatorName)) {
+            return null;
+        }
+        final var score = custom.applyCustomRankingOperator(operatorName, args);
+        // An undefined score (e.g. mismatched-dimension or zero vector) does not rank, like a missing field.
+        return Double.isNaN(score) ? null : score;
+    }
+
+    private record ScoredDocument(JsonObject document, double score) {
+        String id() {
+            return document.get(Globals.PK_FIELD) instanceof JsonString pk ? pk.getValue() : "";
+        }
+    }
+
+    public static BiPredicate<JsonObject, String> getTester(FieldOperator operator, FieldOperatorType operation) {
+        return FieldPredicateFactory.getTester(operator, operation);
+    }
+
+    private static Stream<JsonObject> internalBaseFiltering(BiPredicate<JsonObject, String> test,
+            FieldOperator operator, Stream<JsonObject> resultStream, String dbName, String collName,
+            PipelineContext context, long sourceBound) throws IOException {
+        final var fieldName = operator.getField();
+        if (resultStream != null) {
+            return resultStream.filter(data -> test.test(data, fieldName));
+        }
+        if (ScanPreference.prefersScan(operator, dbName, collName, context)) {
+            return context.source(null, dbName, collName).filter(data -> test.test(data, fieldName));
+        }
+        final var matchingValues = indexMatchingIds(operator, dbName, collName, context);
+        if (matchingValues != null && !ScanPreference.tooBroad(matchingValues.size(), dbName, collName)) {
+            // Index hits are candidates only: an object/array element-match index stores just a SHA-256
+            // fingerprint, and an entry can be stale, so re-test every fetched document against the operator.
+            return fetched(dbName, collName, matchingValues, sourceBound, context)
+                    .filter(data -> test.test(data, fieldName));
+        }
+        return context.source(null, dbName, collName).filter(data -> test.test(data, fieldName));
+    }
+
+    public static Set<String> resolveIdsViaIndex(BaseOperator operator, String dbName, String collName,
+            PipelineContext context) throws IOException {
+        return switch (operator.getType()) {
+            case FIELD -> {
+                final var fieldOperator = (FieldOperator) operator;
+                if (hitsAreUnconfirmedCandidates(fieldOperator)) {
+                    yield null;
+                }
+                yield indexMatchingIds(fieldOperator, dbName, collName, context);
+            }
+            case CONJUNCTION -> resolveConjunctionIds((ConjunctionOperator) operator, dbName, collName, context);
+            // A custom operator's hits are unconfirmed candidates too, so COUNT must fall back to documents.
+            case CUSTOM -> null;
+            case SCRIPT -> null;
+        };
+    }
+
+    static boolean hitsAreUnconfirmedCandidates(FieldOperator operator) {
+        return !JsonUtils.isPrimaryKeyPath(operator.getField())
+                && (usesHashIndex(operator) || usesCandidateKeyedIndex(operator));
+    }
+
+    private static boolean usesCandidateKeyedIndex(FieldOperator operator) {
+        final var value = operator.getValue();
+        if (value.isJsonArray()) {
+            final var arr = value.asJsonArray();
+            return !arr.isEmpty() && IndexKind.valueKeysCandidatesOnly(arr.get(0));
+        }
+        return IndexKind.valueKeysCandidatesOnly(value);
+    }
+
+    // Mirrors the dispatch in UserCache.doGetIdsFromIndex / getIdsFromInList: object operands and array
+    // operands (EQUALS/NOT_EQUALS, IN/NOT_IN over object/array elements) are hash-resolved, scalars are not.
+    private static boolean usesHashIndex(FieldOperator operator) {
+        final var value = operator.getValue();
+        final var opType = operator.getFieldOperatorType();
+        if (value.isJsonObject()) {
+            return opType == FieldOperatorType.EQUALS || opType == FieldOperatorType.NOT_EQUALS;
+        }
+        if (value.isJsonArray()) {
+            final var arr = value.asJsonArray();
+            return switch (opType) {
+                case EQUALS, NOT_EQUALS -> true;
+                case IN, NOT_IN -> !arr.isEmpty() && (arr.get(0).isJsonObject() || arr.get(0).isJsonArray());
+                default -> false;
+            };
+        }
+        return false;
+    }
+
+    // Documents committed but not yet indexed have untrustworthy index membership, so they are dropped and
+    // re-added by re-testing the operator against the current document, keeping the result exact.
+    static Set<String> indexMatchingIds(FieldOperator operator, String dbName, String collName, PipelineContext context)
+            throws IOException {
+        if (JsonUtils.isPrimaryKeyPath(operator.getField())) {
+            return PrimaryKeyIndexResolver.resolve(operator, dbName, collName, context);
+        }
+        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        final var raw = rawIndexMatchingIds(operator, dbName, collName);
+        if (raw == null) {
+            return null;
+        }
+        context.indexUsed(operator.getField(), AnalyzeContext.fieldLockId(dbName, collName, operator.getField()));
+        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName);
+        if (pendingIds.isEmpty()) {
+            return raw;
+        }
+        return PendingWriteReconciler.correctIds(raw, dbName, collName, pendingIds, operator.getField(),
+                FieldPredicateFactory.getTester(operator, operator.getFieldOperatorType()), context);
+    }
+
+    private static Set<String> rawIndexMatchingIds(FieldOperator operator, String dbName, String collName)
+            throws IOException {
+        final var fieldName = operator.getField();
+        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+            return null;
+        }
+        final var value = operator.getValue();
+        return switch (value) {
+            case JsonObject jsonObject -> cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonObject);
+            case JsonArray jsonArray -> cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonArray);
+            case JsonBoolean jsonBoolean ->
+                cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonBoolean.getValue());
+            case JsonNumber jsonNumber ->
+                cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonNumber.getValue());
+            case JsonCustom<?> jsonCustom -> cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonCustom);
+            case JsonString jsonString ->
+                cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonString.getValue());
+            default -> null;
+        };
+    }
+
+    private static Set<String> resolveConjunctionIds(ConjunctionOperator operator, String dbName, String collName,
+            PipelineContext context) throws IOException {
+        if (operator.getConjunctionType() == ConjunctionOperatorType.AND) {
+            return ConjunctionCandidates.exactAndIds(operator, dbName, collName, context);
+        }
+        final var childSets = new ArrayList<Set<String>>();
+        for (var child : operator.getOperators()) {
+            final var ids = resolveIdsViaIndex(child, dbName, collName, context);
+            if (ids == null) {
+                return null;
+            }
+            childSets.add(ids);
+        }
+        return switch (operator.getConjunctionType()) {
+            case AND -> occurringExactly(childSets, childSets.size(), context);
+            case XOR -> occurringExactly(childSets, 1, context);
+            case OR -> union(childSets, context);
+            case NOR -> complement(union(childSets, context), dbName, collName, context);
+            case NAND -> complement(occurringExactly(childSets, childSets.size(), context), dbName, collName, context);
+        };
+    }
+
+    private static Set<String> union(List<Set<String>> sets, PipelineContext context) {
+        final var result = new HashSet<String>();
+        for (var set : sets) {
+            context.tick(set.size());
+            result.addAll(set);
+        }
+        return result;
+    }
+
+    private static Set<String> occurringExactly(List<Set<String>> sets, int times, PipelineContext context) {
+        final var counts = new HashMap<String, Integer>();
+        for (var set : sets) {
+            context.tick(set.size());
+            for (var id : set) {
+                counts.merge(id, 1, Integer::sum);
+            }
+        }
+        return counts.entrySet().stream().filter(entry -> entry.getValue() == times).map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<String> complement(Set<String> matched, String dbName, String collName, PipelineContext context)
+            throws IOException {
+        final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        context.tick(pkIndex.size());
+        final var result = new HashSet<String>();
+        for (var entry : pkIndex) {
+            final var id = entry.getValue();
+            if (!matched.contains(id)) {
+                result.add(id);
+            }
+        }
+        return result;
+    }
+}

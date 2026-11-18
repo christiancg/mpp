@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2,MS_EXPOSE_REP"/>
+    </Match>
+
+    <Match>
+        <Class name="~org\.techhouse\.(ejson|ops|simplejs)\..*"/>
+        <Bug pattern="BC_UNCONFIRMED_CAST"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="PA_PUBLIC_PRIMITIVE_ATTRIBUTE"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+    </Match>
+
+    <Match>
+        <Or>
+            <Class name="org.techhouse.data.auth.PasswordHasher"/>
+            <Class name="org.techhouse.utils.VectorUtils"/>
+        </Or>
+        <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
+    </Match>
+
+    <Match>
+        <Or>
+            <Class name="org.techhouse.ejson.elements.JsonNumber"/>
+            <Class name="org.techhouse.ejson.custom_types.JsonGeo"/>
+            <Class name="org.techhouse.ejson.custom_types.JsonVector"/>
+            <Class name="org.techhouse.ejson.validate.CappedErrors"/>
+        </Or>
+        <Bug pattern="EQ_DOESNT_OVERRIDE_EQUALS"/>
+    </Match>
+
+    <Match>
+        <Class name="org.techhouse.unit.simplejs.RealmRetentionTest"/>
+        <Bug pattern="DM_GC"/>
+    </Match>
+
+    <Match>
+        <Class name="org.techhouse.ejson.type_adapters.impl.BooleanTypeAdapter"/>
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL"/>
+    </Match>
+
+    <Match>
+        <Or>
+            <Source name="~.*Test\.java"/>
+            <Class name="~org\.techhouse\.test\..*"/>
+        </Or>
+        <Bug pattern="RV_EXCEPTION_NOT_THROWN,RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT,RV_RETURN_VALUE_IGNORED_BAD_PRACTICE,SS_SHOULD_BE_STATIC,UWF_UNWRITTEN_FIELD,VA_FORMAT_STRING_USES_NEWLINE,CNT_ROUGH_CONSTANT_VALUE,REFLF_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_FIELD"/>
+    </Match>
+
+    <Match>
+        <Or>
+            <Source name="~.*Test\.java"/>
+            <Class name="~org\.techhouse\.test\..*"/>
+        </Or>
+        <Bug pattern="NP_NULL_PARAM_DEREF_ALL_TARGETS_DANGEROUS,NP_NULL_PARAM_DEREF_NONVIRTUAL,UL_UNRELEASED_LOCK"/>
+    </Match>
+
+</FindBugsFilter>

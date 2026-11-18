@@ -1,0 +1,217 @@
+package org.techhouse.ops;
+
+import static org.techhouse.simplejs.host.ProcedureModuleResolver.SPECIFIER_PREFIX;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import org.techhouse.cache.Cache;
+import org.techhouse.concurrency.ResourceLocking;
+import org.techhouse.config.ConfigKey;
+import org.techhouse.config.Configuration;
+import org.techhouse.config.Globals;
+import org.techhouse.data.ProcedureDefinition;
+import org.techhouse.fs.FileSystem;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.ops.admin.AdminRecordKey;
+import org.techhouse.ops.admin.AdminStamp;
+import org.techhouse.ops.admin.StoredDefinitions;
+import org.techhouse.ops.auth.AuthorizationChecker;
+import org.techhouse.ops.req.DeleteProcedureRequest;
+import org.techhouse.ops.req.ListProceduresRequest;
+import org.techhouse.ops.req.SaveProcedureRequest;
+import org.techhouse.ops.resp.ListProceduresResponse;
+import org.techhouse.ops.resp.OperationResponse;
+import org.techhouse.ops.resp.SaveProcedureResponse;
+import org.techhouse.simplejs.CompiledScript;
+import org.techhouse.simplejs.SimpleJs;
+import org.techhouse.simplejs.exceptions.SimpleJsRuntimeException;
+import org.techhouse.simplejs.exceptions.UnexpectedCharacterException;
+import org.techhouse.simplejs.exceptions.UnexpectedEndOfInputException;
+import org.techhouse.simplejs.exceptions.UnexpectedTokenException;
+import org.techhouse.simplejs.exceptions.UnterminatedCommentException;
+import org.techhouse.simplejs.exceptions.UnterminatedRegexException;
+import org.techhouse.simplejs.exceptions.UnterminatedStringException;
+import org.techhouse.simplejs.exceptions.UnterminatedTemplateException;
+
+public final class ProcedureOperationHelper {
+    private static final FileSystem fs = IocContainer.get(FileSystem.class);
+    private static final Cache cache = IocContainer.get(Cache.class);
+    private static final SimpleJs simpleJs = IocContainer.get(SimpleJs.class);
+    private static final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
+    private static final CompiledProcedureCache compiledProcedures = IocContainer.get(CompiledProcedureCache.class);
+    private static final Configuration configuration = Configuration.getInstance();
+
+    private ProcedureOperationHelper() {
+    }
+
+    public static OperationResponse executeSave(SaveProcedureRequest request, String actingUser)
+            throws IOException, InterruptedException {
+        if (!configuration.isScriptsEnabled()) {
+            return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.SCRIPTS_DISABLED);
+        }
+        final var dbName = request.getDatabaseName();
+        if (cache.getAdminDbEntry(dbName) == null) {
+            return databaseNotFound(dbName);
+        }
+        final var source = request.getScript();
+        if (source.getBytes(StandardCharsets.UTF_8).length > configuration.getScriptMaxSourceBytes()) {
+            return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.SCRIPT_TOO_LARGE);
+        }
+        final CompiledScript compiled;
+        try {
+            compiled = simpleJs.compile(source, false);
+        } catch (SimpleJsRuntimeException | UnexpectedTokenException | UnexpectedEndOfInputException
+                | UnexpectedCharacterException | UnterminatedStringException | UnterminatedTemplateException
+                | UnterminatedCommentException | UnterminatedRegexException parseFailure) {
+            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+                    ErrorCode.INVALID_PROCEDURE.getDefaultMessage() + ": " + parseFailure.getMessage(),
+                    ErrorCode.INVALID_PROCEDURE);
+        } catch (StackOverflowError tooDeep) {
+            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+                    ErrorCode.INVALID_PROCEDURE.getDefaultMessage() + ": " + CompiledScriptCache.NESTING_TOO_DEEP,
+                    ErrorCode.INVALID_PROCEDURE);
+        }
+        final var missingImport = firstUnresolvableImport(request, dbName, compiled);
+        if (missingImport != null) {
+            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+                    ErrorCode.PROCEDURE_IMPORT_NOT_FOUND.getDefaultMessage() + ": '" + missingImport + "'",
+                    ErrorCode.PROCEDURE_IMPORT_NOT_FOUND);
+        }
+        return OperationLocks.withDatabaseShared(dbName, OperationType.SAVE_PROCEDURE, ErrorCode.ERROR_SAVING_PROCEDURE,
+                () -> saveUnderDatabaseBarrier(request, actingUser));
+    }
+
+    private static OperationResponse saveUnderDatabaseBarrier(SaveProcedureRequest request, String actingUser)
+            throws IOException, InterruptedException {
+        final var dbName = request.getDatabaseName();
+        if (cache.getAdminDbEntry(dbName) == null) {
+            return databaseNotFound(dbName);
+        }
+        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        try {
+            final var refusal = ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, dbName, request.getName(),
+                    actingUser);
+            if (refusal != null) {
+                return refusal;
+            }
+            final var existing = cache.getProcedure(dbName, request.getName());
+            if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
+                return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.PROCEDURE_VERSION_CONFLICT);
+            }
+            final var procedureNames = fs.metadataFiles().listProcedureNames(dbName);
+            final var maxProcedures = configuration.intValue(ConfigKey.MAX_PROCEDURES_PER_DATABASE);
+            if (existing == null && procedureNames.size() >= maxProcedures) {
+                return new OperationResponse(OperationType.SAVE_PROCEDURE,
+                        ErrorCode.TOO_MANY_PROCEDURES.getDefaultMessage() + " (" + maxProcedures + ")",
+                        ErrorCode.TOO_MANY_PROCEDURES);
+            }
+            final var colliding = OnDiskNameRegistry.collidingDefinition(procedureNames, request.getName());
+            if (colliding != null) {
+                return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.NAME_COLLIDES_ON_DISK, colliding);
+            }
+            final var definition = newDefinition(request, existing, actingUser);
+            StoredDefinitions.writeProcedure(dbName, definition.getName(), definition.toJsonObject());
+            cache.putProcedure(dbName, definition);
+            compiledProcedures.invalidateProcedure(dbName, definition.getName());
+            return new SaveProcedureResponse("Procedure saved successfully", definition.getVersion());
+        } finally {
+            locks.release(dbName, Globals.PROCEDURES_FOLDER);
+        }
+    }
+
+    private static OperationResponse databaseNotFound(String dbName) {
+        return new OperationResponse(OperationType.SAVE_PROCEDURE, "Database '" + dbName + "' not found",
+                ErrorCode.DATABASE_NOT_FOUND);
+    }
+
+    private static String firstUnresolvableImport(SaveProcedureRequest request, String dbName,
+            CompiledScript compiled) {
+        for (final var specifier : simpleJs.moduleSpecifiers(compiled)) {
+            if (!specifier.startsWith(SPECIFIER_PREFIX)) {
+                continue;
+            }
+            final var name = specifier.substring(SPECIFIER_PREFIX.length());
+            if (name.equals(request.getName())) {
+                continue;
+            }
+            final var target = cache.getProcedure(dbName, name);
+            if (target == null || !target.isEnabled()) {
+                return specifier;
+            }
+        }
+        return null;
+    }
+
+    private static ProcedureDefinition newDefinition(SaveProcedureRequest request, ProcedureDefinition existing,
+            String actingUser) {
+        final var version = existing == null ? 1L : existing.getVersion() + 1;
+        final var updatedAt = System.currentTimeMillis();
+        final var createdAt = existing == null ? updatedAt : existing.getCreatedAt();
+        return new ProcedureDefinition(request.getName(), request.getScript(), version, request.getDescription(),
+                request.isEnabled(), createdAt, updatedAt, actingUser);
+    }
+
+    public static OperationResponse executeDelete(DeleteProcedureRequest request, String actingUser)
+            throws IOException, InterruptedException {
+        final var dbName = request.getDatabaseName();
+        if (cache.getAdminDbEntry(dbName) == null) {
+            return new OperationResponse(OperationType.DELETE_PROCEDURE, "Database '" + dbName + "' not found",
+                    ErrorCode.DATABASE_NOT_FOUND);
+        }
+        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        try {
+            final var refusal = ProcedureBindingGuard.refusal(OperationType.DELETE_PROCEDURE, dbName, request.getName(),
+                    actingUser);
+            if (refusal != null) {
+                return refusal;
+            }
+            final var referencing = TriggerOperationHelper.triggerReferencing(dbName, request.getName());
+            if (referencing != null) {
+                return new OperationResponse(OperationType.DELETE_PROCEDURE,
+                        "Procedure '" + request.getName() + "' is still referenced by trigger '" + referencing + "'",
+                        ErrorCode.INVALID_TRIGGER);
+            }
+            final var scheduled = ScheduleOperationHelper.scheduleReferencing(dbName, request.getName());
+            if (scheduled != null) {
+                return new OperationResponse(OperationType.DELETE_PROCEDURE,
+                        "Procedure '" + request.getName() + "' is still referenced by schedule '" + scheduled + "'",
+                        ErrorCode.INVALID_SCHEDULE);
+            }
+            if (fs.metadataFiles().deleteProcedure(dbName, request.getName())) {
+                AdminStamp.tombstone(AdminRecordKey.procedure(dbName, request.getName()));
+            }
+            cache.removeProcedure(dbName, request.getName());
+            compiledProcedures.invalidateProcedure(dbName, request.getName());
+            return OperationResponse.ok(OperationType.DELETE_PROCEDURE, "Procedure deleted successfully");
+        } finally {
+            locks.release(dbName, Globals.PROCEDURES_FOLDER);
+        }
+    }
+
+    public static OperationResponse executeList(ListProceduresRequest request, String actingUser) {
+        return OperationResponse.respondOrError(OperationType.LIST_PROCEDURES, ErrorCode.ERROR_RETRIEVING,
+                () -> listProcedures(request, actingUser));
+    }
+
+    private static OperationResponse listProcedures(ListProceduresRequest request, String actingUser)
+            throws IOException {
+        final var dbName = request.getDatabaseName();
+        if (cache.getAdminDbEntry(dbName) == null) {
+            return new OperationResponse(OperationType.LIST_PROCEDURES, "Database '" + dbName + "' not found",
+                    ErrorCode.DATABASE_NOT_FOUND);
+        }
+        final var showSourceHash = actingUser == null
+                || AuthorizationChecker.mayReadProcedureSource(cache.getAdminUserEntry(actingUser), dbName);
+        final var result = new ArrayList<org.techhouse.ejson.elements.JsonObject>();
+        for (final var name : fs.metadataFiles().listProcedureNames(dbName)) {
+            final var definition = cache.getProcedure(dbName, name);
+            if (definition != null) {
+                result.add(request.isIncludeSource()
+                        ? definition.toJsonObject()
+                        : definition.toSummaryJson(showSourceHash));
+            }
+        }
+        return new ListProceduresResponse("Ok", result);
+    }
+}

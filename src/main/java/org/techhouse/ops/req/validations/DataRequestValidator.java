@@ -1,0 +1,255 @@
+package org.techhouse.ops.req.validations;
+
+import java.util.List;
+import org.techhouse.config.Globals;
+import org.techhouse.ejson.custom_types.JsonGeo;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ops.req.AggregateRequest;
+import org.techhouse.ops.req.BulkSaveRequest;
+import org.techhouse.ops.req.CreateIndexRequest;
+import org.techhouse.ops.req.DeleteRequest;
+import org.techhouse.ops.req.DropIndexRequest;
+import org.techhouse.ops.req.FindByIdRequest;
+import org.techhouse.ops.req.ReindexRequest;
+import org.techhouse.ops.req.SaveRequest;
+import org.techhouse.ops.req.SaveSchemaRequest;
+import org.techhouse.ops.req.agg.AggregationStepType;
+import org.techhouse.ops.req.agg.BaseAggregationStep;
+import org.techhouse.ops.req.agg.step.FilterAggregationStep;
+import org.techhouse.utils.JsonUtils;
+
+public final class DataRequestValidator {
+    private static final String NON_FINITE_GEO_MESSAGE = "a #geo value must have finite latitude and longitude";
+    public static final String NESTING_MESSAGE = "a document must not nest deeper than "
+            + Globals.MAX_REQUEST_NESTING_DEPTH + " levels";
+    private static final String ID_PATTERN_MESSAGE = "_id must be 1-64 alphanumeric characters, underscores, or hyphens";
+
+    private DataRequestValidator() {
+    }
+
+    static ValidationResult validateSave(SaveRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getObject() == null) {
+            return ValidationResult.fail("SAVE request requires an object");
+        }
+        if (request.getCondition() != null) {
+            return validateConditionalSave(request);
+        }
+        if (request.get_id() != null && !NameValidations.isId(request.get_id())) {
+            return ValidationResult.fail(ID_PATTERN_MESSAGE);
+        }
+        return validateDocument(request.getObject());
+    }
+
+    private static ValidationResult validateConditionalSave(SaveRequest request) {
+        if (request.isFailOnUpdate()) {
+            return ValidationResult.fail("SAVE with a condition cannot take failOnUpdate");
+        }
+        if (request.get_id() != null || request.getObject().has(Globals.PK_FIELD)) {
+            return ValidationResult.fail("SAVE takes either an _id or a condition, not both");
+        }
+        if (request.getObject().isEmpty()) {
+            return ValidationResult.fail("SAVE with a condition requires at least one field to set");
+        }
+        final var document = validateDocument(request.getObject());
+        if (!document.isValid()) {
+            return document;
+        }
+        return AggregationStepValidator.validate(new FilterAggregationStep(request.getCondition()));
+    }
+
+    private static ValidationResult validateDocument(JsonObject object) {
+        if (JsonUtils.nestingExceeds(object, Globals.MAX_REQUEST_NESTING_DEPTH)) {
+            return ValidationResult.fail(NESTING_MESSAGE);
+        }
+        if (JsonGeo.containsNonFinitePoint(object)) {
+            return ValidationResult.fail(NON_FINITE_GEO_MESSAGE);
+        }
+        return validateEmbeddedId(object);
+    }
+
+    private static ValidationResult validateEmbeddedId(JsonObject object) {
+        if (!object.has(Globals.PK_FIELD)) {
+            return ValidationResult.ok();
+        }
+        final var element = object.get(Globals.PK_FIELD);
+        if (!(element instanceof JsonString jsonString)) {
+            return ValidationResult.fail("_id must be a string");
+        }
+        if (!NameValidations.isId(jsonString.getValue())) {
+            return ValidationResult.fail(ID_PATTERN_MESSAGE);
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateBulkSave(BulkSaveRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getObjects() == null || request.getObjects().isEmpty()) {
+            return ValidationResult.fail("BULK_SAVE request requires at least one object");
+        }
+        for (var obj : request.getObjects()) {
+            final var embedded = validateDocument(obj);
+            if (!embedded.isValid()) {
+                return embedded;
+            }
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateFindById(FindByIdRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, false);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.get_id() == null) {
+            return ValidationResult.fail("FIND_BY_ID request requires an _id");
+        }
+        if (!NameValidations.isId(request.get_id())) {
+            return ValidationResult.fail(ID_PATTERN_MESSAGE);
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateDelete(DeleteRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.get_id() != null && request.getCondition() != null) {
+            return ValidationResult.fail("DELETE takes either an _id or a condition, not both");
+        }
+        if (request.getCondition() != null) {
+            return AggregationStepValidator.validate(new FilterAggregationStep(request.getCondition()));
+        }
+        if (request.get_id() == null) {
+            return ValidationResult.fail("DELETE request requires an _id or a condition");
+        }
+        if (!NameValidations.isId(request.get_id())) {
+            return ValidationResult.fail(ID_PATTERN_MESSAGE);
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateAggregate(AggregateRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, false);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getAggregationSteps() == null) {
+            return ValidationResult.fail("AGGREGATE request requires an aggregationSteps array");
+        }
+        return validateAggregationSteps(request.getAggregationSteps());
+    }
+
+    static ValidationResult validateAggregationSteps(List<BaseAggregationStep> steps) {
+        for (var i = 0; i < steps.size(); i++) {
+            final var step = steps.get(i);
+            final var stepResult = AggregationStepValidator.validate(step);
+            if (!stepResult.isValid()) {
+                return stepResult;
+            }
+            if (step.getType() == AggregationStepType.COUNT && i < steps.size() - 1) {
+                return ValidationResult.fail("COUNT must be the last aggregation step");
+            }
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateCreateIndex(CreateIndexRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        final var fieldNames = request.getFieldNames();
+        if (fieldNames == null) {
+            if (request.getFieldName() == null || request.getFieldName().isBlank()) {
+                return ValidationResult.fail("CREATE_INDEX request requires a non-blank fieldName or fieldNames");
+            }
+            return validateCreateIndexField(request.getFieldName());
+        }
+        if (fieldNames.isEmpty()) {
+            return ValidationResult.fail("CREATE_INDEX fieldNames must not be empty");
+        }
+        if (request.getFieldName() != null) {
+            final var single = validateCreateIndexField(request.getFieldName());
+            if (!single.isValid()) {
+                return single;
+            }
+        }
+        for (final var fieldName : fieldNames) {
+            final var field = validateCreateIndexField(fieldName);
+            if (!field.isValid()) {
+                return field;
+            }
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateCreateIndexField(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return ValidationResult.fail("CREATE_INDEX field names must not be blank");
+        }
+        final var charset = NameValidations.validateIndexFieldName(fieldName);
+        if (!charset.isValid()) {
+            return charset;
+        }
+        return validateIndexFieldNotReserved("CREATE_INDEX", fieldName);
+    }
+
+    private static ValidationResult validateIndexFieldNotReserved(String operation, String fieldName) {
+        if (JsonUtils.isPrimaryKeyPath(fieldName) || Globals.TOMBSTONE_FILE_NAME.equals(fieldName)) {
+            return ValidationResult.fail(operation + " cannot target the reserved field name " + fieldName);
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateSaveSchema(SaveSchemaRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getSchema() == null || request.getSchema().isEmpty()) {
+            return ValidationResult.fail("SAVE_SCHEMA request requires a non-empty schema object");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateDropIndex(DropIndexRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getFieldName() == null || request.getFieldName().isBlank()) {
+            return ValidationResult.fail("DROP_INDEX request requires a non-blank fieldName");
+        }
+        final var charset = NameValidations.validateIndexFieldName(request.getFieldName());
+        if (!charset.isValid()) {
+            return charset;
+        }
+        return validateIndexFieldNotReserved("DROP_INDEX", request.getFieldName());
+    }
+
+    static ValidationResult validateReindex(ReindexRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, true);
+        if (!base.isValid()) {
+            return base;
+        }
+        for (var fieldName : request.getFieldNames()) {
+            if (fieldName == null || fieldName.isBlank()) {
+                return ValidationResult.fail("REINDEX fieldNames must not contain blank entries");
+            }
+            final var charset = NameValidations.validateIndexFieldName(fieldName);
+            if (!charset.isValid()) {
+                return charset;
+            }
+        }
+        return ValidationResult.ok();
+    }
+}

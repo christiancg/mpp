@@ -1,0 +1,199 @@
+package org.techhouse.unit.fs;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.techhouse.config.Globals;
+import org.techhouse.fs.FileSystem;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.test.TestGlobals;
+import org.techhouse.test.TestUtils;
+
+public class FileSystemProcedureTest {
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+
+    @BeforeAll
+    static void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+    }
+
+    @AfterAll
+    static void tearDown() throws Exception {
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    @BeforeEach
+    void clearProcedures() throws Exception {
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        }
+        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
+    }
+
+    private static File proceduresFolder() {
+        return metadataFolder(Globals.PROCEDURES_FOLDER);
+    }
+
+    private static File schedulesFolder() {
+        return metadataFolder(Globals.SCHEDULES_FOLDER);
+    }
+
+    private static File metadataFolder(String name) {
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + name);
+    }
+
+    private static void replaceWithAFile(File folder) throws Exception {
+        if (folder.exists()) {
+            TestUtils.deleteFolder(folder);
+        }
+        Files.writeString(folder.toPath(), "x", StandardCharsets.UTF_8);
+    }
+
+    @Test
+    public void test_read_absent_procedure_returns_null() throws Exception {
+        assertNull(fs.metadataFiles().readProcedure(TestGlobals.DB, "nothing"));
+    }
+
+    @Test
+    public void test_write_then_read_returns_source() throws Exception {
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "one", "{\"name\":\"one\"}");
+        assertEquals("{\"name\":\"one\"}", fs.metadataFiles().readProcedure(TestGlobals.DB, "one"));
+    }
+
+    @Test
+    public void test_write_creates_procedures_folder_on_first_use() throws Exception {
+        TestUtils.deleteFolder(proceduresFolder());
+        assertFalse(proceduresFolder().exists());
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "one", "{}");
+        assertTrue(proceduresFolder().isDirectory());
+    }
+
+    @Test
+    public void test_overwrite_replaces_the_previous_source() throws Exception {
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "one", "{\"version\":1}");
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "one", "{\"version\":2}");
+        assertEquals("{\"version\":2}", fs.metadataFiles().readProcedure(TestGlobals.DB, "one"));
+    }
+
+    @Test
+    public void test_a_case_variant_procedure_name_reads_as_absent() throws Exception {
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "foo", "{\"name\":\"foo\"}");
+
+        assertNull(fs.metadataFiles().readProcedure(TestGlobals.DB, "Foo"));
+        assertFalse(fs.metadataFiles().deleteProcedure(TestGlobals.DB, "Foo"));
+        assertEquals("{\"name\":\"foo\"}", fs.metadataFiles().readProcedure(TestGlobals.DB, "foo"));
+    }
+
+    @Test
+    public void test_a_case_variant_schedule_name_reads_as_absent() throws Exception {
+        fs.metadataFiles().writeSchedule(TestGlobals.DB, "daily", "{\"name\":\"daily\"}");
+        try {
+            assertNull(fs.metadataFiles().readSchedule(TestGlobals.DB, "Daily"));
+            assertFalse(fs.metadataFiles().deleteSchedule(TestGlobals.DB, "Daily"));
+            assertEquals("{\"name\":\"daily\"}", fs.metadataFiles().readSchedule(TestGlobals.DB, "daily"));
+        } finally {
+            fs.metadataFiles().deleteSchedule(TestGlobals.DB, "daily");
+        }
+    }
+
+    @Test
+    public void test_a_definition_in_a_missing_folder_reads_as_absent() throws Exception {
+        if (proceduresFolder().exists()) {
+            TestUtils.deleteFolder(proceduresFolder());
+        }
+
+        assertNull(fs.metadataFiles().readProcedure(TestGlobals.DB, "one"));
+        assertFalse(fs.metadataFiles().deleteProcedure(TestGlobals.DB, "one"));
+    }
+
+    @Test
+    public void test_delete_returns_false_when_absent() throws Exception {
+        assertFalse(fs.metadataFiles().deleteProcedure(TestGlobals.DB, "nothing"));
+    }
+
+    @Test
+    public void test_delete_removes_an_existing_procedure() throws Exception {
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "one", "{}");
+        assertTrue(fs.metadataFiles().deleteProcedure(TestGlobals.DB, "one"));
+        assertNull(fs.metadataFiles().readProcedure(TestGlobals.DB, "one"));
+    }
+
+    @Test
+    public void test_list_returns_empty_when_folder_absent() throws Exception {
+        TestUtils.deleteFolder(proceduresFolder());
+        assertTrue(fs.metadataFiles().listProcedureNames(TestGlobals.DB).isEmpty());
+    }
+
+    @Test
+    public void test_list_strips_extension_and_sorts() throws Exception {
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "second", "{}");
+        fs.metadataFiles().writeProcedure(TestGlobals.DB, "first", "{}");
+        assertEquals(java.util.List.of("first", "second"), fs.metadataFiles().listProcedureNames(TestGlobals.DB));
+    }
+
+    @Test
+    public void test_delete_database_removes_procedures_folder() throws Exception {
+        fs.createDatabaseFolder("procdropdb");
+        fs.createCollectionFile("procdropdb", "somecoll");
+        fs.metadataFiles().writeProcedure("procdropdb", "one", "{}");
+        assertTrue(fs.deleteDatabase("procdropdb"));
+        assertFalse(new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + "procdropdb").exists());
+    }
+
+    @Test
+    public void test_read_absent_triggers_returns_null() throws Exception {
+        assertNull(fs.metadataFiles().readTriggers(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_write_then_read_triggers() throws Exception {
+        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL, "[{\"name\":\"t\"}]");
+        assertEquals("[{\"name\":\"t\"}]", fs.metadataFiles().readTriggers(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_delete_triggers_reports_whether_a_file_was_removed() throws Exception {
+        assertFalse(fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL));
+        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL, "[]");
+        assertTrue(fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL));
+    }
+
+    @Test
+    public void test_delete_collection_files_removes_triggers_file() throws Exception {
+        fs.createCollectionFile(TestGlobals.DB, "trigdropcoll");
+        fs.metadataFiles().writeTriggers(TestGlobals.DB, "trigdropcoll", "[{\"name\":\"t\"}]");
+        assertTrue(fs.deleteCollectionFiles(TestGlobals.DB, "trigdropcoll"));
+        assertNull(fs.metadataFiles().readTriggers(TestGlobals.DB, "trigdropcoll"));
+    }
+
+    @Test
+    public void test_a_procedures_folder_that_cannot_be_listed_fails_instead_of_reading_absent() throws Exception {
+        replaceWithAFile(proceduresFolder());
+        try {
+            assertThrows(IOException.class, () -> fs.metadataFiles().readProcedure(TestGlobals.DB, "one"));
+            assertThrows(IOException.class, () -> fs.metadataFiles().deleteProcedure(TestGlobals.DB, "one"));
+        } finally {
+            Files.delete(proceduresFolder().toPath());
+        }
+    }
+
+    @Test
+    public void test_a_schedules_folder_that_cannot_be_listed_fails_instead_of_reading_absent() throws Exception {
+        replaceWithAFile(schedulesFolder());
+        try {
+            assertThrows(IOException.class, () -> fs.metadataFiles().readSchedule(TestGlobals.DB, "daily"));
+            assertThrows(IOException.class, () -> fs.metadataFiles().deleteSchedule(TestGlobals.DB, "daily"));
+        } finally {
+            Files.delete(schedulesFolder().toPath());
+        }
+    }
+}

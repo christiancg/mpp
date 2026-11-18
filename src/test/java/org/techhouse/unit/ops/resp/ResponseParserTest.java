@@ -1,0 +1,169 @@
+package org.techhouse.unit.ops.resp;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.techhouse.ejson.EJson;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.ops.ErrorCode;
+import org.techhouse.ops.OperationStatus;
+import org.techhouse.ops.OperationType;
+import org.techhouse.ops.resp.AggregateResponse;
+import org.techhouse.ops.resp.BulkSaveResponse;
+import org.techhouse.ops.resp.DeleteManyResponse;
+import org.techhouse.ops.resp.DeleteResponse;
+import org.techhouse.ops.resp.FindByIdResponse;
+import org.techhouse.ops.resp.ListCollectionsResponse;
+import org.techhouse.ops.resp.ListDatabasesResponse;
+import org.techhouse.ops.resp.OperationResponse;
+import org.techhouse.ops.resp.ResponseParser;
+import org.techhouse.ops.resp.SaveResponse;
+import org.techhouse.ops.resp.SaveWhereResponse;
+import org.techhouse.ops.resp.StartTransactionResponse;
+
+public class ResponseParserTest {
+    private final EJson eJson = IocContainer.get(EJson.class);
+
+    private OperationResponse roundTrip(OperationResponse response) {
+        return ResponseParser.parseResponse(eJson.toJson(response));
+    }
+
+    private static JsonObject document(String id) {
+        final var object = new JsonObject();
+        object.add("_id", new JsonString(id));
+        return object;
+    }
+
+    @Test
+    public void test_parses_find_by_id_response() {
+        final var parsed = roundTrip(new FindByIdResponse("ok", document("a")));
+        final var response = assertInstanceOf(FindByIdResponse.class, parsed);
+        assertEquals(OperationType.FIND_BY_ID, response.getType());
+        assertEquals(OperationStatus.OK, response.getStatus());
+        assertEquals("a", response.getObject().get("_id").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_parses_save_response() {
+        final var response = assertInstanceOf(SaveResponse.class, roundTrip(new SaveResponse("saved", "id-1")));
+        assertEquals("id-1", response.get_id());
+        assertEquals("saved", response.getMessage());
+    }
+
+    @Test
+    public void test_parses_bulk_save_response() {
+        final var parsed = roundTrip(new BulkSaveResponse("ok", List.of("a", "b"), List.of("c")));
+        final var response = assertInstanceOf(BulkSaveResponse.class, parsed);
+        assertEquals(List.of("a", "b"), response.getInserted());
+        assertEquals(List.of("c"), response.getUpdated());
+    }
+
+    @Test
+    public void test_parses_aggregate_response() {
+        final var parsed = roundTrip(new AggregateResponse("ok", List.of(document("a"), document("b"))));
+        final var response = assertInstanceOf(AggregateResponse.class, parsed);
+        assertEquals(2, response.getResults().size());
+        assertEquals("b", response.getResults().get(1).get("_id").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_parses_delete_response() {
+        final var response = assertInstanceOf(DeleteResponse.class, roundTrip(new DeleteResponse("deleted")));
+        assertEquals(OperationType.DELETE, response.getType());
+    }
+
+    @Test
+    public void test_parses_a_conditional_save_response_with_its_count() {
+        final var response = assertInstanceOf(SaveWhereResponse.class, roundTrip(new SaveWhereResponse(12L)));
+        assertEquals(12L, response.getUpdatedCount());
+        assertEquals("Updated 12 document(s)", response.getMessage());
+        assertEquals(OperationType.SAVE, response.getType());
+    }
+
+    @Test
+    public void test_parses_a_conditional_delete_response_with_its_count() {
+        final var response = assertInstanceOf(DeleteManyResponse.class, roundTrip(new DeleteManyResponse(42L)));
+        assertEquals(42L, response.getDeletedCount());
+        assertEquals("Deleted 42 document(s)", response.getMessage());
+    }
+
+    @Test
+    public void test_parses_list_collections_response() {
+        final var parsed = roundTrip(new ListCollectionsResponse("ok", List.of("one", "two")));
+        assertEquals(List.of("one", "two"), assertInstanceOf(ListCollectionsResponse.class, parsed).getCollections());
+    }
+
+    @Test
+    public void test_parses_list_databases_response() {
+        final var parsed = roundTrip(new ListDatabasesResponse("ok", List.of("db1")));
+        assertEquals(List.of("db1"), assertInstanceOf(ListDatabasesResponse.class, parsed).getDatabases());
+    }
+
+    // START_TRANSACTION round-trips as its own type because it carries a transactionId; the other two
+    // carry nothing beyond the base fields, so they parse back as a plain OperationResponse.
+    @Test
+    public void test_parses_transaction_control_responses() {
+        final var started = roundTrip(new StartTransactionResponse("ok", "tx-1"));
+        assertEquals("tx-1", assertInstanceOf(StartTransactionResponse.class, started).getTransactionId());
+        assertEquals(OperationType.COMMIT_TRANSACTION,
+                roundTrip(OperationResponse.ok(OperationType.COMMIT_TRANSACTION, "ok")).getType());
+        assertEquals(OperationType.ROLLBACK_TRANSACTION,
+                roundTrip(OperationResponse.ok(OperationType.ROLLBACK_TRANSACTION, "ok")).getType());
+    }
+
+    @Test
+    public void test_parses_error_response_preserving_error_code() {
+        final var source = new OperationResponse(OperationType.SAVE, "nope", ErrorCode.NOT_COLLECTION_OWNER);
+        final var parsed = roundTrip(source);
+        assertEquals(OperationStatus.ERROR, parsed.getStatus());
+        assertEquals("nope", parsed.getMessage());
+        assertEquals("421-1", parsed.getErrorCode());
+    }
+
+    @Test
+    public void test_unknown_error_code_falls_back_to_plain_response() {
+        final var json = "{\"type\":\"SAVE\",\"status\":\"ERROR\",\"message\":\"boom\",\"errorCode\":\"999-9\"}";
+        final var parsed = ResponseParser.parseResponse(json);
+        assertEquals(OperationType.SAVE, parsed.getType());
+        assertEquals(OperationStatus.ERROR, parsed.getStatus());
+        assertEquals("boom", parsed.getMessage());
+        assertNull(parsed.getErrorCode());
+    }
+
+    @Test
+    public void test_error_response_without_error_code() {
+        final var json = "{\"type\":\"DELETE\",\"status\":\"NOT_FOUND\",\"message\":\"gone\",\"errorCode\":null}";
+        final var parsed = ResponseParser.parseResponse(json);
+        assertEquals(OperationStatus.NOT_FOUND, parsed.getStatus());
+        assertNull(parsed.getErrorCode());
+    }
+
+    @Test
+    public void test_unmapped_operation_type_yields_base_response() {
+        final var json = "{\"type\":\"REINDEX\",\"status\":\"OK\",\"message\":\"done\",\"errorCode\":null}";
+        final var parsed = ResponseParser.parseResponse(json);
+        assertEquals(OperationResponse.class, parsed.getClass());
+        assertEquals(OperationType.REINDEX, parsed.getType());
+        assertEquals("done", parsed.getMessage());
+    }
+
+    @Test
+    public void test_missing_list_field_yields_empty_list() {
+        final var json = "{\"type\":\"LIST_DATABASES\",\"status\":\"OK\",\"message\":\"ok\"}";
+        final var parsed = assertInstanceOf(ListDatabasesResponse.class, ResponseParser.parseResponse(json));
+        assertTrue(parsed.getDatabases().isEmpty());
+    }
+
+    @Test
+    public void test_null_object_field_yields_null() {
+        final var json = "{\"type\":\"FIND_BY_ID\",\"status\":\"OK\",\"message\":\"ok\",\"object\":null}";
+        final var parsed = assertInstanceOf(FindByIdResponse.class, ResponseParser.parseResponse(json));
+        assertNull(parsed.getObject());
+    }
+}

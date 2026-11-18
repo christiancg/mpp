@@ -1,0 +1,703 @@
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+
+import base_utils as bu
+from base_utils import check, check_code, check_status, section
+
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("SCHEDULE_TEST_PORT", "8995"))
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = bu.PASSWORD
+
+DB = "sched_test_db"
+COLL = "counters"
+USER_PASSWORD = "password123"
+MANAGER = "sched_manager"
+READER = "sched_reader"
+
+bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+TICK_MS = 200
+SCHEDULE_TIMEOUT_MS = 10_000
+MAX_PER_DATABASE = 3
+MIN_INTERVAL_MS = 100
+MAX_TOTAL_PER_USER = 5
+OTHER_DB = "sched_other_db"
+REVOKED = "sched_revoked"
+
+
+class Conn(bu.Conn):
+    def save_procedure(self, name, script, db=DB, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+        payload.update(extra)
+        return self.send(payload)
+
+    def delete_procedure(self, name, db=DB) -> dict:
+        return self.send({"type": "DELETE_PROCEDURE", "databaseName": db, "name": name})
+
+    def save_schedule(self, name, procedure, db=DB, **extra) -> dict:
+        payload = {"type": "SAVE_SCHEDULE", "databaseName": db, "name": name, "procedureName": procedure}
+        payload.update(extra)
+        return self.send(payload)
+
+    def delete_schedule(self, name, db=DB) -> dict:
+        return self.send({"type": "DELETE_SCHEDULE", "databaseName": db, "name": name})
+
+    def list_schedules(self, db=DB, **extra) -> dict:
+        payload = {"type": "LIST_SCHEDULES", "databaseName": db}
+        payload.update(extra)
+        return self.send(payload)
+
+    def find(self, doc_id, coll=COLL, db=DB) -> dict:
+        return self.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id})
+
+def admin_conn() -> Conn:
+    return Conn.authenticated()
+
+
+def user_conn(username: str) -> Conn:
+    return Conn.authenticated(username, USER_PASSWORD)
+
+
+def counter_value(conn: Conn, doc_id: str) -> int:
+    response = conn.find(doc_id)
+    if response.get("status") != "OK":
+        return 0
+    return int(response.get("object", {}).get("n", 0))
+
+
+def await_counter(conn: Conn, doc_id: str, at_least: int, timeout=30.0) -> int:
+    latest = [0]
+
+    def reached() -> bool:
+        latest[0] = counter_value(conn, doc_id)
+        return latest[0] >= at_least
+
+    bu.wait_until(reached, timeout, 0.2)
+    return latest[0]
+
+
+def write_config(work_dir: str, scripts_enabled: bool, schedules_enabled: bool,
+                 min_interval_ms: int = MIN_INTERVAL_MS):
+    bu.write_config(work_dir, PORT, scriptsEnabled=scripts_enabled, scriptInstructionBudget=2000000,
+                    scriptTimeoutMs=5000, scriptMaxDepth=64, scriptMaxSourceBytes=8192,
+                    scriptMaxLogLines=50, scriptMaxLogLineChars=500, scriptMaxMemoryBytes=4194304,
+                    scriptMaxResultBytes=65536, scriptTextImportEnabled=False, scriptTimeZone="UTC",
+                    scriptLocale="en-US", procedureCacheSize=16, triggersEnabled=False,
+                    schedulesEnabled=schedules_enabled, scheduleThreads=2, scheduleQueueSize=100,
+                    scheduleTickMs=TICK_MS, scheduleRefreshMs=1000, scheduleTimeoutMs=SCHEDULE_TIMEOUT_MS,
+                    scheduleMaxPerDatabase=MAX_PER_DATABASE, scheduleCacheMaxBytes="8Mb",
+                    scheduleMinIntervalMs=min_interval_ms, scheduleMaxTotalPerUser=MAX_TOTAL_PER_USER,
+                    scriptRunHistoryEnabled=True, scriptRunHistoryKinds="CALL_PROCEDURE,TRIGGER,SCHEDULE",
+                    scriptRunHistoryRetentionMs=604800000, scriptRunHistoryIncludeLogs=False,
+                    scriptRunHistoryMaxErrorChars=2000)
+
+
+COUNTER_SOURCE = (
+    "import db from 'db'; import args from 'args';"
+    " const id = args.id;"
+    " const existing = db.findById(db.name, '" + COLL + "', id);"
+    " const n = existing ? existing.n + 1 : 1;"
+    " db.save(db.name, '" + COLL + "', { _id: id, n: n });"
+    " return n;"
+)
+
+
+def setup_data(conn: Conn):
+    section("Setup")
+    conn.send({"type": "DROP_DATABASE", "databaseName": DB})
+    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    check_status("create collection",
+                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL}), "OK")
+    check_status("store the counter procedure", conn.save_procedure("counter", COUNTER_SOURCE), "OK")
+
+    check_status("create the MANAGE-level user", conn.send({
+        "type": "CREATE_USER", "username": MANAGER, "password": USER_PASSWORD, "admin": False,
+        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+    check_status("create the read-only user", conn.send({
+        "type": "CREATE_USER", "username": READER, "password": USER_PASSWORD, "admin": False,
+        "databasePermissions": {DB: "READ"}}), "OK")
+
+
+def clear_schedules(conn: Conn):
+    for schedule in conn.list_schedules().get("schedules", []):
+        conn.delete_schedule(schedule["name"])
+
+
+def test_interval_schedule(conn: Conn):
+    section("Interval schedule")
+    check_status("save an interval schedule", conn.save_schedule(
+        "ticker", "counter", intervalMs=500, args={"id": "interval"}), "OK")
+
+    first = await_counter(conn, "interval", 1)
+    check("the schedule fired", first >= 1, f"counter never advanced (last value {first})")
+    second = await_counter(conn, "interval", first + 1)
+    check("the schedule keeps firing", second > first, f"counter stuck at {first}")
+
+    check_status("delete the schedule", conn.delete_schedule("ticker"), "OK")
+    settled = counter_value(conn, "interval")
+    time.sleep(2.0)
+    after = counter_value(conn, "interval")
+    check("deleting the schedule stops the firing", after <= settled + 1,
+          f"counter advanced from {settled} to {after} after the delete")
+
+
+def test_interval_schedule_holds_its_rate(conn: Conn):
+    section("An interval schedule does not drift")
+    check_status("save a 1s schedule against the 1s tick", conn.save_schedule(
+        "rate", "counter", intervalMs=1000, args={"id": "rate"}), "OK")
+
+    await_counter(conn, "rate", 1)
+    start_value = counter_value(conn, "rate")
+    start_time = time.time()
+    await_counter(conn, "rate", start_value + 5, timeout=20.0)
+    elapsed = time.time() - start_time
+    fired = counter_value(conn, "rate") - start_value
+
+    conn.delete_schedule("rate")
+    check("five 1s occurrences take about five seconds", fired >= 5 and elapsed < 9.0,
+          f"{fired} fires in {elapsed:.1f}s")
+
+
+SLEEPER_SOURCE = (
+    "import db from 'db'; import args from 'args';"
+    " db.save(db.name, '" + COLL + "', { _id: args.id, n: 1 });"
+    " return new Promise(function (resolve) { setTimeout(function () { resolve(1); }, 4000); });"
+)
+
+
+def test_a_queued_run_does_not_outlive_its_delete(conn: Conn):
+    section("A run still queued when its schedule is deleted does not fire")
+    clear_schedules(conn)
+    check_status("store a procedure that holds a worker for four seconds",
+                 conn.save_procedure("sleeper", SLEEPER_SOURCE), "OK")
+    check_status("occupy the first worker",
+                 conn.save_schedule("sleeper_a", "sleeper", intervalMs=500, args={"id": "sleep-a"}), "OK")
+    check_status("occupy the second worker",
+                 conn.save_schedule("sleeper_b", "sleeper", intervalMs=500, args={"id": "sleep-b"}), "OK")
+    both_busy = await_counter(conn, "sleep-a", 1) >= 1 and await_counter(conn, "sleep-b", 1) >= 1
+    check("both workers are busy", both_busy, "a sleeper never started")
+
+    check_status("schedule the victim behind them",
+                 conn.save_schedule("victim", "counter", intervalMs=300, args={"id": "victim"}), "OK")
+    time.sleep(1.0)
+    check_status("delete the victim while its run is queued", conn.delete_schedule("victim"), "OK")
+    conn.delete_schedule("sleeper_a")
+    conn.delete_schedule("sleeper_b")
+    time.sleep(5.0)
+
+    check("the queued run did not fire after the delete", counter_value(conn, "victim") == 0,
+          f"counter reached {counter_value(conn, 'victim')}")
+    check("and left no run history", not history_rows(conn, kind="SCHEDULE", name="victim"),
+          f"rows={history_rows(conn, kind='SCHEDULE', name='victim')!r}")
+    check_status("delete the sleeper procedure", conn.delete_procedure("sleeper"), "OK")
+
+
+def test_cron_schedule(conn: Conn):
+    section("Cron schedule")
+    target = (datetime.now(timezone.utc) + timedelta(minutes=1)).replace(second=0, microsecond=0)
+    cron = f"{target.minute} {target.hour} * * *"
+    check_status("save a cron schedule for the next minute",
+                 conn.save_schedule("onceAMinute", "counter", cron=cron, args={"id": "cron"}), "OK")
+
+    wait = max(5.0, (target - datetime.now(timezone.utc)).total_seconds() + 20.0)
+    value = await_counter(conn, "cron", 1, timeout=wait)
+    check("the cron schedule fired", value >= 1, f"counter never advanced (last value {value})")
+    time.sleep(3.0)
+    check("it fired exactly once in that minute", counter_value(conn, "cron") == value,
+          f"counter advanced past {value} within the same minute")
+    conn.delete_schedule("onceAMinute")
+
+
+def test_listing(conn: Conn):
+    section("LIST_SCHEDULES")
+    check_status("save a schedule to list", conn.save_schedule(
+        "listed", "counter", cron="0 3 * * *", args={"id": "listed"}, timeoutMs=60000,
+        description="daily rollup"), "OK")
+    response = conn.list_schedules()
+    check_status("list schedules", response, "OK")
+    listed = [s for s in response.get("schedules", []) if s["name"] == "listed"]
+    check("the schedule is listed", len(listed) == 1, f"got {response.get('schedules')}")
+    if listed:
+        entry = listed[0]
+        check("the definition round-trips", entry.get("procedureName") == "counter"
+              and entry.get("cron") == "0 3 * * *" and entry.get("timeoutMs") == 60000
+              and entry.get("description") == "daily rollup" and entry.get("definer") == ADMIN_USERNAME,
+              f"got {entry}")
+        check("the listing omits args", "args" not in entry, f"got {entry}")
+        check("nextRunAt is in the future", entry.get("nextRunAt", 0) > time.time() * 1000,
+              f"nextRunAt={entry.get('nextRunAt')}")
+    check_status("re-saving bumps the version",
+                 conn.save_schedule("listed", "counter", cron="0 4 * * *"), "OK")
+    check("the version is now 2", conn.save_schedule("listed", "counter", cron="0 5 * * *").get("version") == 3,
+          "a third save must report version 3")
+    conn.delete_schedule("listed")
+
+
+def test_schedule_name_case_variants(conn: Conn):
+    section("Schedule name case variants")
+    check_status("save Rollup", conn.save_schedule("Rollup", "counter", cron="0 3 * * *"), "OK")
+    conn.delete_schedule("rollup")
+    names = [s["name"] for s in conn.list_schedules().get("schedules", [])]
+    check("deleting rollup leaves Rollup in place", "Rollup" in names, f"got {names}")
+    check_status("Rollup still deletes by its own spelling", conn.delete_schedule("Rollup"), "OK")
+
+
+def test_validation(conn: Conn):
+    section("Validation")
+    check_code("a malformed cron is refused", conn.save_schedule("bad", "counter", cron="not a cron"),
+               "ERROR", "400-16")
+    check_code("both cron and intervalMs are refused",
+               conn.save_schedule("bad", "counter", cron="0 3 * * *", intervalMs=1000), "ERROR", "400-16")
+    check_code("neither cron nor intervalMs is refused", conn.save_schedule("bad", "counter"), "ERROR", "400-16")
+    check_code("a parsable but unsatisfiable cron is refused",
+               conn.save_schedule("bad", "counter", cron="0 0 31 4 *"), "ERROR", "400-16")
+    check_status("a distant but reachable cron is accepted",
+                 conn.save_schedule("leapday", "counter", cron="0 0 29 2 *"), "OK")
+    conn.delete_schedule("leapday")
+    check_code("a cron step past the 32-bit range is refused",
+               conn.save_schedule("bad", "counter", cron="*/2147483648 * * * *"), "ERROR", "400-16")
+    check_status("the largest 32-bit cron step is accepted rather than failing the save",
+                 conn.save_schedule("hugestep", "counter", cron="*/2147483647 * * * *"), "OK")
+    conn.delete_schedule("hugestep")
+    check_code("an unknown procedure is refused", conn.save_schedule("bad", "nosuchproc", intervalMs=1000),
+               "NOT_FOUND", "404-8")
+    check_code("an unknown database is refused",
+               conn.save_schedule("bad", "counter", db="no_such_db", intervalMs=1000), "NOT_FOUND", "404-4")
+    check_code("an invalid schedule name is refused", conn.save_schedule("x", "counter", intervalMs=1000),
+               "ERROR", "400-1")
+    check_status("deleting an absent schedule is idempotent", conn.delete_schedule("neverExisted"), "OK")
+
+    section("Per-database cap")
+    clear_schedules(conn)
+    for i in range(MAX_PER_DATABASE):
+        check_status(f"save schedule {i + 1} of the cap",
+                     conn.save_schedule(f"capped{i}", "counter", cron="0 3 * * *"), "OK")
+    check_code("one past the cap is refused", conn.save_schedule("capped99", "counter", cron="0 3 * * *"),
+               "ERROR", "400-17")
+    check_status("editing an existing schedule is still allowed",
+                 conn.save_schedule("capped0", "counter", cron="0 4 * * *"), "OK")
+    clear_schedules(conn)
+
+
+def test_failure_logs_a_stack(conn: Conn, log_path: str):
+    section("A failing scheduled run names where it failed")
+    check_status("install a procedure that throws two frames deep",
+                 conn.save_procedure("scheduled_explodes",
+                                     "function inner() {\n"
+                                     "  throw new Error('schedule blew up');\n"
+                                     "}\n"
+                                     "function outer() {\n"
+                                     "  inner();\n"
+                                     "}\n"
+                                     "outer();"), "OK")
+    before = schedule_failures(conn)
+    check_status("schedule it every 500ms",
+                 conn.save_schedule("exploder", "scheduled_explodes", intervalMs=500), "OK")
+    bu.wait_until(lambda: schedule_failures(conn) > before, 20.0, 0.2)
+    check("the failure is counted", schedule_failures(conn) > before, f"failures did not increase from {before}")
+
+    log = bu.read_log(log_path)
+    line = next((entry for entry in log.splitlines()
+                 if "SCHEDULE name=exploder" in entry and "schedule blew up" in entry), "")
+    check("the scheduled run's failure line carries a stack", "stack=[" in line, f"line={line!r}")
+    check("the stack names the throwing function", "inner (" in line, f"line={line!r}")
+
+    check_status("delete the schedule", conn.delete_schedule("exploder"), "OK")
+    check_status("delete the procedure", conn.delete_procedure("scheduled_explodes"), "OK")
+
+
+def history_rows(conn: Conn, **filters) -> list:
+    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+                          "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
+    rows = response.get("results") or []
+    for field, value in filters.items():
+        rows = [row for row in rows if row.get(field) == value]
+    return rows
+
+
+def await_history(conn: Conn, timeout: float = 20.0, **filters) -> list:
+    return bu.wait_until(lambda: history_rows(conn, **filters), timeout, 0.3) or []
+
+
+def test_run_history(conn: Conn):
+    section("Run history")
+    check_status("install a procedure worth recording",
+                 conn.save_procedure("historied_job",
+                                     "let total = 0;\n"
+                                     "for (let i = 0; i < 20; i++) total += i;\n"
+                                     "return total;"), "OK")
+    check_status("schedule it every 500ms",
+                 conn.save_schedule("historied", "historied_job", intervalMs=500), "OK")
+
+    rows = await_history(conn, kind="SCHEDULE", name="historied")
+    check("a fired schedule is recorded", bool(rows), f"rows={rows!r}")
+    if rows:
+        row = rows[0]
+        check("the row reports the outcome", row.get("outcome") == "ok", f"row={row!r}")
+        check("the row names the procedure behind the schedule",
+              row.get("procedure") == "historied_job", f"row={row!r}")
+        check("the row carries metrics",
+              (row.get("metrics") or {}).get("instructions", 0) > 0, f"row={row!r}")
+        check("the row names the definer", row.get("username") == ADMIN_USERNAME, f"row={row!r}")
+
+    check_status("delete the schedule", conn.delete_schedule("historied"), "OK")
+
+    check_status("schedule the procedure again",
+                 conn.save_schedule("orphaned", "historied_job", intervalMs=500), "OK")
+    check_status("then disable the procedure",
+                 conn.save_procedure("historied_job", "return 1;", enabled=False), "OK")
+
+    skipped = await_history(conn, kind="SCHEDULE", name="orphaned", outcome="skipped")
+    check("a schedule that never ran is recorded as skipped", bool(skipped), f"rows={skipped!r}")
+    if skipped:
+        check("with the reason", "missing or disabled" in (skipped[0].get("errorMessage") or ""),
+              f"row={skipped[0]!r}")
+
+    check_status("delete the orphaned schedule", conn.delete_schedule("orphaned"), "OK")
+    check_status("delete its procedure", conn.delete_procedure("historied_job"), "OK")
+
+
+def test_import_failure(conn: Conn):
+    section("A scheduled procedure whose import cannot be resolved")
+    check_status("install a library",
+                 conn.save_procedure("lib_step", "export function step(n) { return n + 1; }"), "OK")
+    check_status("install a procedure that imports it",
+                 conn.save_procedure("counter_via_lib",
+                                     "import db from 'db'; import args from 'args';"
+                                     " import { step } from 'procedures/lib_step';"
+                                     " const id = args.id;"
+                                     " const existing = db.findById(db.name, '" + COLL + "', id);"
+                                     " const n = existing ? step(existing.n) : 1;"
+                                     " db.save(db.name, '" + COLL + "', { _id: id, n: n });"
+                                     " return n;"), "OK")
+    check_status("schedule it every 500ms",
+                 conn.save_schedule("importer", "counter_via_lib", intervalMs=500,
+                                    args={"id": "import-fail"}), "OK")
+    fired = await_counter(conn, "import-fail", 1)
+    check("it fires while the library is present", fired >= 1, f"counter never advanced (last {fired})")
+
+    before_failed = schedule_failures(conn)
+    check_status("delete the library it imports", conn.delete_procedure("lib_step"), "OK")
+    settled = counter_value(conn, "import-fail")
+    time.sleep(2.5)
+    after = counter_value(conn, "import-fail")
+    check("the schedule stops producing results once the import is unresolvable",
+          after <= settled + 1, f"counter advanced from {settled} to {after} after the library was deleted")
+    check("the failures are counted in the stats", schedule_failures(conn) > before_failed,
+          f"failures did not increase from {before_failed}")
+
+    check_status("delete the schedule", conn.delete_schedule("importer"), "OK")
+    check_status("delete the broken procedure", conn.delete_procedure("counter_via_lib"), "OK")
+
+
+def schedule_failures(conn: Conn) -> int:
+    stats = conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("schedules", {})
+    return stats.get("failed", 0)
+
+
+def test_referential_integrity(conn: Conn):
+    section("Referential integrity")
+    check_status("save a schedule referencing the procedure",
+                 conn.save_schedule("holder", "counter", cron="0 3 * * *"), "OK")
+    check_code("deleting the referenced procedure is refused", conn.delete_procedure("counter"), "ERROR", "400-16")
+    check_status("delete the schedule", conn.delete_schedule("holder"), "OK")
+    check_status("now the procedure may be deleted", conn.delete_procedure("counter"), "OK")
+    check_status("restore the procedure", conn.save_procedure("counter", COUNTER_SOURCE), "OK")
+
+
+def test_a_client_cannot_forge_the_stamped_definer():
+    section("A client cannot forge the coordinator's stamp")
+    forged = {"stampedVersion": 7, "stampedDefiner": ADMIN_USERNAME, "stampedUpdatedBy": ADMIN_USERNAME,
+              "stampedUpdatedAt": 1, "stampedCreatedAt": 1}
+    with user_conn(MANAGER) as manager:
+        check_status("a MANAGE user installs a schedule carrying a forged stamp",
+                     manager.save_schedule("forgedStamp", "counter", cron="0 3 * * *", **forged), "OK")
+        with admin_conn() as admin:
+            stored = next((entry for entry in admin.list_schedules().get("schedules", [])
+                           if entry.get("name") == "forgedStamp"), {})
+            check("the definer is the caller, not the forged admin", stored.get("definer") == MANAGER,
+                  f"got {stored}")
+            check("so is updatedBy", stored.get("updatedBy") == MANAGER, f"got {stored}")
+            check("and the version was assigned by the server", stored.get("version") == 1, f"got {stored}")
+        check_status("clean up the schedule", manager.delete_schedule("forgedStamp"), "OK")
+
+
+def test_permissions():
+    section("Permissions")
+    with user_conn(MANAGER) as manager:
+        check_status("a MANAGE user may install a schedule",
+                     manager.save_schedule("byManager", "counter", cron="0 3 * * *"), "OK")
+        check_status("a MANAGE user may list", manager.list_schedules(), "OK")
+        check_status("a MANAGE user may delete", manager.delete_schedule("byManager"), "OK")
+    with user_conn(READER) as reader:
+        check_code("a read-only user may not install a schedule",
+                   reader.save_schedule("byReader", "counter", cron="0 3 * * *"), "FORBIDDEN", "403-1")
+        check_code("a read-only user may not delete a schedule",
+                   reader.delete_schedule("byReader"), "FORBIDDEN", "403-1")
+        check_status("a read-only user may list", reader.list_schedules(), "OK")
+    with Conn() as anonymous:
+        check_code("an unauthenticated client may not list", anonymous.list_schedules(),
+                   "UNAUTHENTICATED", "401-1")
+
+
+def test_include_args():
+    section("LIST_SCHEDULES includeArgs")
+    with admin_conn() as admin:
+        check_status("save a schedule with args", admin.save_schedule(
+            "withArgs", "counter", cron="0 3 * * *", args={"id": "withArgs", "limit": 7}), "OK")
+    with user_conn(MANAGER) as manager:
+        listed = [s for s in manager.list_schedules(includeArgs=True).get("schedules", []) if s["name"] == "withArgs"]
+        check("a MANAGE user gets the args with includeArgs",
+              len(listed) == 1 and listed[0].get("args") == {"id": "withArgs", "limit": 7}, f"got {listed}")
+        default = [s for s in manager.list_schedules().get("schedules", []) if s["name"] == "withArgs"]
+        check("the default listing still omits args", len(default) == 1 and "args" not in default[0],
+              f"got {default}")
+    with user_conn(READER) as reader:
+        check_code("a user without script MANAGE is refused includeArgs",
+                   reader.list_schedules(includeArgs=True), "FORBIDDEN", "403-6")
+    with admin_conn() as admin:
+        admin.delete_schedule("withArgs")
+
+
+def test_a_manager_cannot_change_a_schedule_defined_by_someone_else():
+    section("A MANAGE user cannot replace or delete a schedule another user defined")
+    with admin_conn() as admin:
+        check_status("the admin installs a schedule", admin.save_schedule("byAdmin", "counter", cron="0 3 * * *"),
+                     "OK")
+        with user_conn(MANAGER) as manager:
+            check_code("the manager may not replace it",
+                       manager.save_schedule("byAdmin", "counter", cron="0 4 * * *"), "FORBIDDEN", "403-5")
+            check_code("nor delete it", manager.delete_schedule("byAdmin"), "FORBIDDEN", "403-5")
+        stored = next((entry for entry in admin.list_schedules().get("schedules", [])
+                       if entry.get("name") == "byAdmin"), {})
+        check("the schedule is unchanged", stored.get("cron") == "0 3 * * *", f"got {stored}")
+        check_status("the admin may still delete it", admin.delete_schedule("byAdmin"), "OK")
+
+
+def test_a_schedule_timeout_past_the_ceiling_is_refused(conn: Conn):
+    section("A schedule timeout past scheduleMaxTimeoutMs is refused")
+    check_code("timeoutMs one past the ceiling -> 400-29",
+               conn.save_schedule("tooSlow", "counter", cron="0 3 * * *", timeoutMs=300001), "ERROR", "400-29")
+    check_status("timeoutMs at the ceiling is accepted",
+                 conn.save_schedule("atCeiling", "counter", cron="0 3 * * *", timeoutMs=300000), "OK")
+    conn.delete_schedule("atCeiling")
+
+
+def test_a_schedule_interval_below_the_minimum_is_refused(conn: Conn):
+    section("A schedule interval below scheduleMinIntervalMs is refused")
+    check_code("intervalMs one below the minimum -> 400-35",
+               conn.save_schedule("tooFast", "counter", intervalMs=MIN_INTERVAL_MS - 1), "ERROR", "400-35")
+    check_status("intervalMs at the minimum is accepted",
+                 conn.save_schedule("atMinimum", "counter", intervalMs=MIN_INTERVAL_MS, enabled=False), "OK")
+    conn.delete_schedule("atMinimum")
+
+
+def test_schedules_per_user_are_capped_across_databases(conn: Conn):
+    section("One user defines at most scheduleMaxTotalPerUser schedules across every database")
+    clear_schedules(conn)
+    conn.send({"type": "DROP_DATABASE", "databaseName": OTHER_DB})
+    check_status("create a second database", conn.send({"type": "CREATE_DATABASE", "databaseName": OTHER_DB}),
+                 "OK")
+    check_status("store the counter procedure there", conn.save_procedure("counter", COUNTER_SOURCE, db=OTHER_DB),
+                 "OK")
+    for i in range(MAX_PER_DATABASE):
+        check_status(f"schedule {i} in the first database",
+                     conn.save_schedule(f"cap{i}", "counter", cron="0 3 * * *"), "OK")
+    for i in range(MAX_TOTAL_PER_USER - MAX_PER_DATABASE):
+        check_status(f"schedule {i} in the second database",
+                     conn.save_schedule(f"other{i}", "counter", db=OTHER_DB, cron="0 3 * * *"), "OK")
+    check_code("one more anywhere -> 400-33",
+               conn.save_schedule("capOver", "counter", db=OTHER_DB, cron="0 3 * * *"), "ERROR", "400-33")
+    check_status("replacing one of the user's own schedules takes no new slot",
+                 conn.save_schedule("cap0", "counter", cron="0 4 * * *"), "OK")
+    check_status("dropping a database frees its schedules' slots",
+                 conn.send({"type": "DROP_DATABASE", "databaseName": OTHER_DB}), "OK")
+    clear_schedules(conn)
+    check_status("so a new schedule fits again", conn.save_schedule("capAfter", "counter", cron="0 3 * * *"), "OK")
+    conn.delete_schedule("capAfter")
+
+
+def schedule_entry(conn: Conn, name: str) -> dict:
+    return next((entry for entry in conn.list_schedules().get("schedules", []) if entry.get("name") == name), {})
+
+
+def set_script_level(admin: Conn, level: str) -> dict:
+    return admin.send({"type": "CHANGE_PERMISSIONS", "username": REVOKED, "databasePermissions": {DB: "READ_WRITE"},
+                       "scriptPermissions": {DB: level}})
+
+
+def test_a_schedule_whose_definer_lost_script_run_is_disabled():
+    section("A schedule whose definer loses script RUN is skipped and disabled")
+    with admin_conn() as admin:
+        check_status("create a definer with MANAGE", admin.send({
+            "type": "CREATE_USER", "username": REVOKED, "password": USER_PASSWORD, "admin": False,
+            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+        with user_conn(REVOKED) as definer:
+            check_status("the definer installs a fast schedule", definer.save_schedule(
+                "revocable", "counter", intervalMs=300, args={"id": "revocable"}), "OK")
+        check("it fires while the definer holds RUN", await_counter(admin, "revocable", 1) >= 1,
+              "counter never advanced")
+        check_status("revoke the definer's script grant", set_script_level(admin, "NONE"), "OK")
+        stored = schedule_entry(admin, "revocable")
+        check("the grant change itself disables the schedule", stored.get("enabled") is False, f"got {stored}")
+        check("with the reason recorded", "no longer holds script RUN" in str(stored.get("disabledReason")),
+              f"got {stored}")
+        frozen = counter_value(admin, "revocable")
+        check_status("give the grant back", set_script_level(admin, "MANAGE"), "OK")
+        time.sleep(1.5)
+        check("re-granting alone does not revive it", schedule_entry(admin, "revocable").get("enabled") is False
+              and counter_value(admin, "revocable") == frozen, f"got {schedule_entry(admin, 'revocable')}")
+        check_status("the admin re-saves it", admin.save_schedule(
+            "revocable", "counter", intervalMs=300, args={"id": "revocable"}), "OK")
+        check("re-saving re-enables it", await_counter(admin, "revocable", frozen + 1) > frozen,
+              "counter never advanced after the re-save")
+        check("and clears the reason", "disabledReason" not in schedule_entry(admin, "revocable"),
+              f"got {schedule_entry(admin, 'revocable')}")
+        admin.delete_schedule("revocable")
+        admin.send({"type": "DELETE_USER", "username": REVOKED})
+
+
+def test_storage_placement(conn: Conn, work_dir: str):
+    section("Storage placement")
+    check_status("save a schedule to place", conn.save_schedule("placed", "counter", cron="0 3 * * *"), "OK")
+    path = os.path.join(work_dir, "db", DB, ".schedules", "placed.json")
+    check("the schedule lives with its database", os.path.isfile(path), f"expected a file at {path}")
+    if os.path.isfile(path):
+        with open(path) as fp:
+            stored = json.loads(fp.read())
+        check("the stored record carries its definer", stored.get("definer") == ADMIN_USERNAME, f"got {stored}")
+    admin_dir = os.path.join(work_dir, "db", "admin")
+    check("nothing new appears under admin/", "schedules" not in os.listdir(admin_dir),
+          f"admin/ contains {os.listdir(admin_dir)}")
+    conn.delete_schedule("placed")
+
+
+def test_stats(conn: Conn):
+    section("Stats")
+    response = conn.send({"type": "GET_DATABASE_STATS"})
+    check_status("get stats", response, "OK")
+    schedules = response.get("stats", {}).get("schedules", {})
+    check("the stats report the schedule counters",
+          schedules.get("enabled") is True and "fired" in schedules and "failed" in schedules
+          and "skipped" in schedules and "dropped" in schedules and "queued" in schedules
+          and "registered" in schedules, f"got {schedules}")
+    check("something has fired by now", schedules.get("fired", 0) >= 1, f"got {schedules}")
+
+
+def test_cascade_delete(conn: Conn, work_dir: str):
+    section("Cascade delete")
+    check_status("save a schedule that keeps firing",
+                 conn.save_schedule("doomed", "counter", intervalMs=500, args={"id": "doomed"}), "OK")
+    check("the doomed schedule fired", await_counter(conn, "doomed", 1) >= 1, "counter never advanced")
+    check_status("drop the database", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+    check("the schedules folder is gone",
+          not os.path.isdir(os.path.join(work_dir, "db", DB, ".schedules")),
+          "the .schedules folder survived the drop")
+    time.sleep(2.0)
+    check_code("the dropped database no longer answers LIST_SCHEDULES", conn.list_schedules(),
+               "NOT_FOUND", "404-4")
+
+
+def test_switch_off(conn: Conn):
+    section("schedulesEnabled=false")
+    check_code("SAVE_SCHEDULE is refused", conn.save_schedule("off", "counter", cron="0 3 * * *"),
+               "FORBIDDEN", "403-2")
+    check_code("DELETE_SCHEDULE is refused", conn.delete_schedule("off"), "FORBIDDEN", "403-2")
+    check_code("LIST_SCHEDULES is refused", conn.list_schedules(), "FORBIDDEN", "403-2")
+    response = conn.send({"type": "GET_DATABASE_STATS"})
+    check("the stats report the feature as disabled",
+          response.get("stats", {}).get("schedules", {}).get("enabled") is False,
+          f"got {response.get('stats', {}).get('schedules')}")
+
+
+SLOW_MIN_INTERVAL_MS = 120_000
+
+
+def test_cron_faster_than_minimum_is_400_35(conn: Conn):
+    section(f"A cron firing faster than scheduleMinIntervalMs={SLOW_MIN_INTERVAL_MS} is refused")
+    conn.send({"type": "DROP_DATABASE", "databaseName": DB})
+    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    check_status("store the counter procedure", conn.save_procedure("counter", COUNTER_SOURCE), "OK")
+    check_code("every minute -> 400-35", conn.save_schedule("everyMinute", "counter", cron="* * * * *"),
+               "ERROR", "400-35")
+    check_code("two fires a minute apart -> 400-35",
+               conn.save_schedule("closePair", "counter", cron="0,1 9 * * *"), "ERROR", "400-35")
+    check_status("every five minutes is accepted",
+                 conn.save_schedule("everyFive", "counter", cron="*/5 * * * *", enabled=False), "OK")
+    check_status("a weekly cron is accepted",
+                 conn.save_schedule("weekly", "counter", cron="0 9 * * 1", enabled=False), "OK")
+    check_status("drop the database", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+
+
+def main():
+    bu.banner("Scheduled procedures test suite")
+
+    bu.require_jar()
+    if bu.port_open():
+        print(f"port {PORT} is already in use", file=sys.stderr)
+        sys.exit(1)
+
+    work_dir = tempfile.mkdtemp(prefix="lwnrdb-schedule-test-")
+    log_path = os.path.join(work_dir, "server.out")
+    proc = None
+    try:
+        print(f"work dir: {work_dir}")
+        write_config(work_dir, scripts_enabled=True, schedules_enabled=True)
+        proc = bu.start_server(work_dir, log_path)
+
+        with admin_conn() as conn:
+            setup_data(conn)
+            test_interval_schedule(conn)
+            test_interval_schedule_holds_its_rate(conn)
+            test_a_queued_run_does_not_outlive_its_delete(conn)
+            test_cron_schedule(conn)
+            test_listing(conn)
+            test_schedule_name_case_variants(conn)
+            test_validation(conn)
+            test_a_schedule_timeout_past_the_ceiling_is_refused(conn)
+            test_a_schedule_interval_below_the_minimum_is_refused(conn)
+            test_schedules_per_user_are_capped_across_databases(conn)
+            test_import_failure(conn)
+            test_failure_logs_a_stack(conn, log_path)
+            test_run_history(conn)
+            test_referential_integrity(conn)
+        test_permissions()
+        test_include_args()
+        test_a_client_cannot_forge_the_stamped_definer()
+        test_a_manager_cannot_change_a_schedule_defined_by_someone_else()
+        test_a_schedule_whose_definer_lost_script_run_is_disabled()
+        with admin_conn() as conn:
+            test_storage_placement(conn, work_dir)
+            test_stats(conn)
+            test_cascade_delete(conn, work_dir)
+
+        bu.stop_server(proc)
+        proc = None
+        write_config(work_dir, scripts_enabled=True, schedules_enabled=False)
+        proc = bu.start_server(work_dir, log_path)
+        with admin_conn() as conn:
+            test_switch_off(conn)
+
+        bu.stop_server(proc)
+        proc = None
+        write_config(work_dir, scripts_enabled=True, schedules_enabled=True, min_interval_ms=SLOW_MIN_INTERVAL_MS)
+        proc = bu.start_server(work_dir, log_path)
+        with admin_conn() as conn:
+            test_cron_faster_than_minimum_is_400_35(conn)
+    except Exception as exc:  # noqa: BLE001 - the suite reports rather than propagates
+        print(f"\nunexpected failure: {exc}", file=sys.stderr)
+        bu.dump_log(log_path)
+        bu.record_failure()
+    finally:
+        bu.stop_server(proc)
+
+    bu.summary(on_failure=lambda: bu.dump_log(log_path))
+
+
+if __name__ == "__main__":
+    main()

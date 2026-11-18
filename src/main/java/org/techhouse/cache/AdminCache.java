@@ -1,0 +1,491 @@
+package org.techhouse.cache;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import org.techhouse.config.Configuration;
+import org.techhouse.config.Globals;
+import org.techhouse.data.DbEntry;
+import org.techhouse.data.PkIndexEntry;
+import org.techhouse.data.ProcedureDefinition;
+import org.techhouse.data.ScheduleDefinition;
+import org.techhouse.data.TriggerDefinition;
+import org.techhouse.data.admin.AdminCollEntry;
+import org.techhouse.data.admin.AdminDbEntry;
+import org.techhouse.data.admin.AdminPageEntry;
+import org.techhouse.data.admin.AdminUserEntry;
+import org.techhouse.ejson.EJson;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ex.MetadataReadException;
+import org.techhouse.fs.FileSystem;
+import org.techhouse.fs.VacuumedPage;
+import org.techhouse.ioc.IocContainer;
+import org.techhouse.log.Logger;
+import org.techhouse.ops.SchemaPatternCaps;
+import org.techhouse.ops.admin.AdminStamp;
+
+public class AdminCache {
+    private static final Logger logger = Logger.logFor(AdminCache.class);
+    private static final String PROCEDURE_MISS_PREFIX = "p" + Globals.COLL_IDENTIFIER_SEPARATOR;
+    private static final String SCHEMA_MISS_PREFIX = "s" + Globals.COLL_IDENTIFIER_SEPARATOR;
+    private static final String SCHEDULE_MISS_PREFIX = "k" + Globals.COLL_IDENTIFIER_SEPARATOR;
+    private final Configuration configuration = Configuration.getInstance();
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final EJson eJson = IocContainer.get(EJson.class);
+    private final Map<String, AdminDbEntry> databases = new ConcurrentHashMap<>();
+    private final Map<String, AdminCollEntry> collections = new ConcurrentHashMap<>();
+    private final Map<String, AdminUserEntry> users = new ConcurrentHashMap<>();
+    private final AdminPageCache pageCache = new AdminPageCache();
+    private final Map<String, PkIndexEntry> databasesPkIndex = new ConcurrentHashMap<>();
+    private final Map<String, PkIndexEntry> collectionsPkIndex = new ConcurrentHashMap<>();
+    private final Map<String, PkIndexEntry> usersPkIndex = new ConcurrentHashMap<>();
+    private final Map<String, PkIndexEntry> collectionUsagePkIndex = new ConcurrentHashMap<>();
+    private final Map<String, PkIndexEntry> transactionsPkIndex = new ConcurrentHashMap<>();
+    private final NavigableMap<String, PkIndexEntry> triggerRunsPkIndex = new ConcurrentSkipListMap<>();
+    // Evictable because disk is authoritative, unlike every other map here. Misses are kept in a separate
+    // cache so a caller naming thousands of nonexistent procedures cannot evict the ones in use.
+    private final BoundedLruCache<JsonObject> collectionSchemas = new BoundedLruCache<>(Integer.MAX_VALUE,
+            configuration.getMetadataCacheMaxBytes() / 3, schema -> (long) eJson.toJson(schema).length() * 2L);
+    private final BoundedLruCache<ProcedureDefinition> procedures = new BoundedLruCache<>(Integer.MAX_VALUE,
+            configuration.getMetadataCacheMaxBytes() / 3,
+            definition -> (long) definition.getSource().length() * 2L + 512L);
+    private final GenerationGuard triggerGeneration = new GenerationGuard();
+    private final BoundedLruCache<List<TriggerDefinition>> triggers = new BoundedLruCache<>(
+            configuration.getMetadataCacheMaxEntries(), 0L, definitions -> definitions.size() * 512L + 128L);
+    private final BoundedLruCache<ScheduleDefinition> schedules = new BoundedLruCache<>(Integer.MAX_VALUE,
+            configuration.getMetadataCacheMaxBytes() / 3,
+            definition -> (long) eJson.toJson(definition.toJsonObject()).length() * 2L);
+    private final PartitionedMissCache metadataMisses = new PartitionedMissCache(
+            configuration.getMetadataCacheMaxEntries());
+    private final DefinitionCache<JsonObject> schemaCache = new DefinitionCache<>(() -> collectionSchemas,
+            () -> metadataMisses, SCHEMA_MISS_PREFIX, this::loadSchemaUncached);
+    private final DefinitionCache<ProcedureDefinition> procedureCache = new DefinitionCache<>(() -> procedures,
+            () -> metadataMisses, PROCEDURE_MISS_PREFIX, this::loadProcedureUncached);
+    private final DefinitionCache<ScheduleDefinition> scheduleCache = new DefinitionCache<>(() -> schedules,
+            () -> metadataMisses, SCHEDULE_MISS_PREFIX, this::loadScheduleUncached);
+
+    public void loadAdminData() throws IOException {
+        for (var collName : Globals.ADMIN_COLLECTION_NAMES) {
+            pageCache.loadAdminPagesForCollection(Globals.ADMIN_DB_NAME, collName);
+        }
+        loadPkIndexInto(Globals.ADMIN_COLLECTION_USAGE_NAME, collectionUsagePkIndex);
+        loadPkIndexInto(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, transactionsPkIndex);
+        loadPkIndexInto(Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, triggerRunsPkIndex);
+        loadPkIndexInto(Globals.ADMIN_DATABASES_COLLECTION_NAME, databasesPkIndex);
+        loadPkIndexInto(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, collectionsPkIndex);
+        loadPkIndexInto(Globals.ADMIN_USERS_COLLECTION_NAME, usersPkIndex);
+        loadAdminCollection(Globals.ADMIN_DATABASES_COLLECTION_NAME, databasesPkIndex, AdminDbEntry::fromJsonObject,
+                databases);
+        loadAdminCollection(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, collectionsPkIndex,
+                AdminCollEntry::fromJsonObject, collections);
+        loadAdminCollection(Globals.ADMIN_USERS_COLLECTION_NAME, usersPkIndex, AdminUserEntry::fromJsonObject, users);
+        for (var collEntry : collections.values()) {
+            final var parts = collEntry.get_id().split(Globals.COLL_IDENTIFIER_SEPARATOR_REGEX);
+            if (parts.length < 2)
+                continue;
+            pageCache.loadAdminPagesForCollection(parts[0], parts[1]);
+        }
+    }
+
+    private <V> void loadAdminEntries(Map<String, DbEntry> source, String adminCollName,
+            java.util.function.Function<JsonObject, V> mapper, Map<String, V> target) {
+        for (var entry : source.entrySet()) {
+            try {
+                target.put(entry.getKey(), mapper.apply(entry.getValue().getData()));
+            } catch (Exception e) {
+                logger.warning("Skipping malformed admin entry '" + entry.getKey() + "' in " + adminCollName + ": "
+                        + e.getMessage());
+            }
+        }
+    }
+
+    private void loadPkIndexInto(String collName, Map<String, PkIndexEntry> target) throws IOException {
+        target.putAll(fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, collName).stream()
+                .collect(Collectors.toConcurrentMap(PkIndexEntry::getValue, indexEntry -> indexEntry)));
+    }
+
+    private <T extends DbEntry> void loadAdminCollection(String collName, Map<String, PkIndexEntry> pkIndex,
+            Function<JsonObject, T> factory, Map<String, T> target) throws IOException {
+        if (pkIndex.isEmpty()) {
+            return;
+        }
+        loadAdminEntries(readWholeAdminCollection(collName), collName, factory, target);
+    }
+
+    private Map<String, DbEntry> readWholeAdminCollection(String collName) throws IOException {
+        final var result = new HashMap<String, DbEntry>();
+        try (var pagesStream = fs.streamPages(Globals.ADMIN_DB_NAME, collName)) {
+            pagesStream.forEach(result::putAll);
+        }
+        return result;
+    }
+
+    public List<AdminPageEntry> getAdminPageEntries(String dbName, String collName) {
+        return pageCache.getAdminPageEntries(dbName, collName);
+    }
+
+    public AdminPageEntry getAdminPageEntry(String dbName, String collName, long page) {
+        return pageCache.getAdminPageEntry(dbName, collName, page);
+    }
+
+    public void addAdminPageEntries(String dbName, String collName, AdminPageEntry adminPageEntry) {
+        pageCache.addAdminPageEntries(dbName, collName, adminPageEntry);
+    }
+
+    public void addAdminPageEntries(String dbName, String collName, List<AdminPageEntry> adminPageEntries) {
+        pageCache.addAdminPageEntries(dbName, collName, adminPageEntries);
+    }
+
+    public void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta) {
+        pageCache.updatePageSizeInMemory(dbName, collName, page, bytesDelta);
+    }
+
+    public void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta, int addedEntries) {
+        pageCache.updatePageSizeInMemory(dbName, collName, page, bytesDelta, addedEntries);
+    }
+
+    public void updatePageSizeForUpdateInMemory(String dbName, String collName, long page, long bytesDelta) {
+        pageCache.updatePageSizeForUpdateInMemory(dbName, collName, page, bytesDelta);
+    }
+
+    public List<PkIndexEntry> getAdminPagePkIndexes(String dbName, String collName) {
+        return pageCache.getAdminPagePkIndexes(dbName, collName);
+    }
+
+    public void repositionAfterVacuum(VacuumedPage vacuumed) {
+        vacuumed.reposition(Globals.ADMIN_DB_NAME.equals(vacuumed.dbName())
+                ? adminCollectionPkIndex(vacuumed.collName())
+                : pageCache.pkIndexesForPagesCollection(vacuumed.collName()));
+    }
+
+    private Collection<PkIndexEntry> adminCollectionPkIndex(String collName) {
+        return switch (collName) {
+            case Globals.ADMIN_DATABASES_COLLECTION_NAME -> databasesPkIndex.values();
+            case Globals.ADMIN_COLLECTIONS_COLLECTION_NAME -> collectionsPkIndex.values();
+            case Globals.ADMIN_USERS_COLLECTION_NAME -> usersPkIndex.values();
+            case Globals.ADMIN_COLLECTION_USAGE_NAME -> collectionUsagePkIndex.values();
+            case Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME -> transactionsPkIndex.values();
+            case Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME -> triggerRunsPkIndex.values();
+            case null, default -> pageCache.pkIndexesForPagesCollection(collName);
+        };
+    }
+
+    public void removeAdminPageEntries(String dbName, String collName) {
+        pageCache.removeAdminPageEntries(dbName, collName);
+    }
+
+    public long selectPageForInsert(String dbName, String collName, int entryByteSize) {
+        return pageCache.selectPageForInsert(dbName, collName, entryByteSize);
+    }
+
+    public long[] selectPagesForInsert(String dbName, String collName, int[] entryByteSizes) {
+        return pageCache.selectPagesForInsert(dbName, collName, entryByteSizes);
+    }
+
+    public PkIndexEntry getPkIndexAdminDbEntry(String dbName) {
+        return databasesPkIndex.get(dbName);
+    }
+
+    public void putPkIndexAdminDbEntry(PkIndexEntry adminPkIndexAdminDbEntry) {
+        databasesPkIndex.put(adminPkIndexAdminDbEntry.getValue(), adminPkIndexAdminDbEntry);
+    }
+
+    public AdminDbEntry getAdminDbEntry(String dbName) {
+        return databases.get(dbName);
+    }
+
+    public Collection<AdminDbEntry> getAllAdminDbEntries() {
+        return databases.values();
+    }
+
+    public List<String> getUserDatabaseNames() {
+        return databases.keySet().stream().filter(name -> !Globals.ADMIN_DB_NAME.equals(name)).sorted().toList();
+    }
+
+    public List<String> getCollectionNamesForDatabase(String dbName) {
+        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+        return collections.keySet().stream().filter(id -> id.startsWith(prefix))
+                .map(id -> id.substring(prefix.length())).sorted().toList();
+    }
+
+    public PkIndexEntry getPkIndexAdminCollEntry(String collIdentifier) {
+        return collectionsPkIndex.get(collIdentifier);
+    }
+
+    public void putPkIndexAdminCollEntry(PkIndexEntry adminPkIndexAdminCollEntry) {
+        collectionsPkIndex.put(adminPkIndexAdminCollEntry.getValue(), adminPkIndexAdminCollEntry);
+    }
+
+    public AdminCollEntry getAdminCollectionEntry(String dbName, String collName) {
+        return collections.get(Cache.getCollectionIdentifier(dbName, collName));
+    }
+
+    public void putAdminDbEntry(AdminDbEntry dbEntry, PkIndexEntry indexEntry) {
+        databases.put(dbEntry.get_id(), dbEntry);
+        databasesPkIndex.put(dbEntry.get_id(), indexEntry);
+    }
+
+    public void removeAdminDbEntry(String dbName) {
+        databases.remove(dbName);
+        databasesPkIndex.remove(dbName);
+    }
+
+    public void putAdminCollectionEntry(AdminCollEntry dbEntry, PkIndexEntry indexEntry) {
+        final var collIdentifier = dbEntry.get_id();
+        collections.put(collIdentifier, dbEntry);
+        collectionsPkIndex.put(collIdentifier, indexEntry);
+    }
+
+    public void removeAdminCollEntry(String collIdentifier) {
+        collections.remove(collIdentifier);
+        collectionsPkIndex.remove(collIdentifier);
+    }
+
+    public boolean hasIndex(String dbName, String collName, String fieldName) {
+        return getIndexesForCollection(dbName, collName).contains(fieldName);
+    }
+
+    public Set<String> getIndexesForCollection(String dbName, String collName) {
+        final var collection = collections.get(Cache.getCollectionIdentifier(dbName, collName));
+        // A collection dropped while a background index event was queued must read as "no indexes"
+        // rather than throw, so that event becomes a clean no-op.
+        if (collection == null) {
+            return Set.of();
+        }
+        return collection.getIndexes();
+    }
+
+    public JsonObject getCollectionSchema(String dbName, String collName) {
+        return schemaCache.get(dbName, collName);
+    }
+
+    public JsonObject loadSchemaUncached(String dbName, String collName) {
+        try {
+            final var raw = fs.metadataFiles().readCollectionSchema(dbName, collName);
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            final var schema = AdminStamp.unwrappedSchema(eJson.fromJson(raw, JsonObject.class));
+            SchemaPatternCaps.warnWhenOver(
+                    "Loaded the stored schema of " + Cache.getCollectionIdentifier(dbName, collName), schema);
+            return schema;
+        } catch (Exception e) {
+            logger.warning("Failed to load schema for " + Cache.getCollectionIdentifier(dbName, collName) + ": "
+                    + e.getMessage());
+            throw new MetadataReadException(
+                    "Failed to read the schema for " + Cache.getCollectionIdentifier(dbName, collName), e);
+        }
+    }
+
+    public void putCollectionSchema(String dbName, String collName, JsonObject schema) {
+        schemaCache.put(Cache.getCollectionIdentifier(dbName, collName), schema);
+    }
+
+    public void removeCollectionSchema(String dbName, String collName) {
+        schemaCache.remove(Cache.getCollectionIdentifier(dbName, collName));
+    }
+
+    public void removeCollectionSchemasForDatabase(String dbName) {
+        schemaCache.removeForDatabase(dbName);
+    }
+
+    public ProcedureDefinition getProcedure(String dbName, String name) {
+        return procedureCache.get(dbName, name);
+    }
+
+    public ProcedureDefinition loadProcedureUncached(String dbName, String name) {
+        try {
+            final var raw = fs.metadataFiles().readProcedure(dbName, name);
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return ProcedureDefinition.fromJsonObject(eJson.fromJson(raw, JsonObject.class));
+        } catch (Exception e) {
+            logger.warning(
+                    "Failed to load procedure " + Cache.getCollectionIdentifier(dbName, name) + ": " + e.getMessage());
+            throw new MetadataReadException(
+                    "Failed to read the procedure " + Cache.getCollectionIdentifier(dbName, name), e);
+        }
+    }
+
+    public void putProcedure(String dbName, ProcedureDefinition definition) {
+        procedureCache.put(Cache.getCollectionIdentifier(dbName, definition.getName()), definition);
+    }
+
+    public void removeProcedure(String dbName, String name) {
+        procedureCache.remove(Cache.getCollectionIdentifier(dbName, name));
+    }
+
+    public void removeProceduresForDatabase(String dbName) {
+        procedureCache.removeForDatabase(dbName);
+    }
+
+    public ScheduleDefinition getSchedule(String dbName, String name) {
+        return scheduleCache.get(dbName, name);
+    }
+
+    public ScheduleDefinition loadScheduleUncached(String dbName, String name) {
+        try {
+            final var raw = fs.metadataFiles().readSchedule(dbName, name);
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return ScheduleDefinition.fromJsonObject(eJson.fromJson(raw, JsonObject.class));
+        } catch (Exception e) {
+            logger.warning(
+                    "Failed to load schedule " + Cache.getCollectionIdentifier(dbName, name) + ": " + e.getMessage());
+            throw new MetadataReadException(
+                    "Failed to read the schedule " + Cache.getCollectionIdentifier(dbName, name), e);
+        }
+    }
+
+    public void putSchedule(String dbName, ScheduleDefinition definition) {
+        scheduleCache.put(Cache.getCollectionIdentifier(dbName, definition.getName()), definition);
+    }
+
+    public void removeSchedule(String dbName, String name) {
+        scheduleCache.remove(Cache.getCollectionIdentifier(dbName, name));
+    }
+
+    public void removeSchedulesForDatabase(String dbName) {
+        scheduleCache.removeForDatabase(dbName);
+    }
+
+    public void removeSchedulesMatching(Predicate<String> keyMatches) {
+        scheduleCache.removeIf(keyMatches);
+    }
+
+    // An empty list doubles as the negative-cache sentinel, so an untriggered collection is read from
+    // disk once rather than on every SAVE.
+    public List<TriggerDefinition> getTriggersFor(String dbName, String collName) {
+        final var id = Cache.getCollectionIdentifier(dbName, collName);
+        var cached = triggers.get(id);
+        if (cached == null) {
+            final var generationAtLoad = triggerGeneration.current();
+            cached = loadTriggersUncached(dbName, collName);
+            final var loaded = cached;
+            triggerGeneration.publishIfCurrent(generationAtLoad, () -> triggers.put(id, loaded));
+        }
+        return cached;
+    }
+
+    public List<TriggerDefinition> loadTriggersUncached(String dbName, String collName) {
+        try {
+            final var raw = fs.metadataFiles().readTriggers(dbName, collName);
+            if (raw == null || raw.isBlank()) {
+                return List.of();
+            }
+            return List.copyOf(TriggerDefinition.fromFileJson(eJson.fromJson(raw, JsonObject.class)));
+        } catch (Exception e) {
+            logger.warning("Failed to load triggers for " + Cache.getCollectionIdentifier(dbName, collName) + ": "
+                    + e.getMessage());
+            throw new MetadataReadException(
+                    "Failed to read the triggers for " + Cache.getCollectionIdentifier(dbName, collName), e);
+        }
+    }
+
+    public void putTriggers(String dbName, String collName, List<TriggerDefinition> definitions) {
+        triggerGeneration.invalidate(
+                () -> triggers.put(Cache.getCollectionIdentifier(dbName, collName), List.copyOf(definitions)));
+    }
+
+    public void removeTriggers(String dbName, String collName) {
+        triggerGeneration.invalidate(() -> triggers.remove(Cache.getCollectionIdentifier(dbName, collName)));
+    }
+
+    public void removeTriggersForDatabase(String dbName) {
+        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+        triggerGeneration.invalidate(() -> triggers.removeIf(id -> id.startsWith(prefix)));
+    }
+
+    // Must leave no entry behind: a cached empty list would make an already-queued trigger silently
+    // not fire when TriggerDispatcher looks the list up again.
+    public void removeTriggersMatching(Predicate<String> keyMatches) {
+        triggerGeneration.invalidate(() -> triggers.removeIf(keyMatches));
+    }
+
+    public MetadataCacheStats metadataCacheStats() {
+        return new MetadataCacheStats(procedures.bytes(), procedures.size(), triggers.bytes(), triggers.size(),
+                collectionSchemas.bytes(), collectionSchemas.size(), schedules.bytes(), schedules.size(),
+                metadataMisses.size());
+    }
+
+    public AdminUserEntry getAdminUserEntry(String username) {
+        return users.get(username);
+    }
+
+    public Collection<AdminUserEntry> getAllAdminUserEntries() {
+        return users.values();
+    }
+
+    public void putAdminUserEntry(AdminUserEntry userEntry, PkIndexEntry indexEntry) {
+        users.put(userEntry.get_id(), userEntry);
+        usersPkIndex.put(userEntry.get_id(), indexEntry);
+    }
+
+    public void removeAdminUserEntry(String username) {
+        users.remove(username);
+        usersPkIndex.remove(username);
+    }
+
+    public PkIndexEntry getPkIndexAdminUserEntry(String username) {
+        return usersPkIndex.get(username);
+    }
+
+    public PkIndexEntry getPkIndexCollectionUsage(String usageId) {
+        return collectionUsagePkIndex.get(usageId);
+    }
+
+    public void putPkIndexCollectionUsage(PkIndexEntry indexEntry) {
+        collectionUsagePkIndex.put(indexEntry.getValue(), indexEntry);
+    }
+
+    public void removePkIndexCollectionUsage(String usageId) {
+        collectionUsagePkIndex.remove(usageId);
+    }
+
+    public Map<String, PkIndexEntry> getCollectionUsagePkIndexes() {
+        return collectionUsagePkIndex;
+    }
+
+    public PkIndexEntry getPkIndexTransaction(String opId) {
+        return transactionsPkIndex.get(opId);
+    }
+
+    public void putPkIndexTransaction(PkIndexEntry indexEntry) {
+        transactionsPkIndex.put(indexEntry.getValue(), indexEntry);
+    }
+
+    public void removePkIndexTransaction(String opId) {
+        transactionsPkIndex.remove(opId);
+    }
+
+    public Map<String, PkIndexEntry> getTransactionPkIndexes() {
+        return transactionsPkIndex;
+    }
+
+    public PkIndexEntry getPkIndexTriggerRun(String recordId) {
+        return triggerRunsPkIndex.get(recordId);
+    }
+
+    public void putPkIndexTriggerRun(PkIndexEntry indexEntry) {
+        triggerRunsPkIndex.put(indexEntry.getValue(), indexEntry);
+    }
+
+    public void removePkIndexTriggerRun(String recordId) {
+        triggerRunsPkIndex.remove(recordId);
+    }
+
+    public NavigableMap<String, PkIndexEntry> getTriggerRunPkIndexes() {
+        return triggerRunsPkIndex;
+    }
+}

@@ -1,0 +1,199 @@
+package org.techhouse.unit.ejson.custom_types;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.techhouse.ejson.custom_types.JsonGeo;
+import org.techhouse.ejson.elements.JsonArray;
+import org.techhouse.ejson.elements.JsonBaseElement;
+import org.techhouse.ejson.elements.JsonNumber;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ejson.exceptions.WrongFormatCustomTypeException;
+import org.techhouse.utils.GeoPoint;
+
+public class JsonGeoTest {
+    @Test
+    public void test_parse_valid_geo() {
+        final var geo = new JsonGeo("#geo(40.71,-74.0)");
+
+        assertEquals(new GeoPoint(40.71, -74.0), geo.point());
+        assertEquals("40.71,-74.0", geo.stringDataValue());
+        assertEquals("geo", geo.getCustomTypeName());
+    }
+
+    @Test
+    public void test_construct_from_geo_point() {
+        final var geo = new JsonGeo(new GeoPoint(1.5, 2.5));
+
+        assertEquals("#geo(1.5,2.5)", geo.getValue());
+    }
+
+    @Test
+    public void test_parse_invalid_number_throws() {
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(abc,1.0)"));
+    }
+
+    @Test
+    public void test_parse_wrong_arity_throws() {
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(1.0)"));
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(1.0,2.0,3.0)"));
+    }
+
+    @Test
+    public void test_parse_out_of_range_throws() {
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(91.0,0.0)"));
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(0.0,181.0)"));
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(-91.0,0.0)"));
+        assertThrows(WrongFormatCustomTypeException.class, () -> new JsonGeo("#geo(0.0,-181.0)"));
+    }
+
+    @Test
+    public void test_default_constructor_is_empty() {
+        final var geo = new JsonGeo();
+
+        assertEquals("", geo.getValue());
+        assertNull(geo.getCustomValue());
+    }
+
+    @Test
+    public void test_compare_equality_and_ordering() {
+        final var a = new JsonGeo(new GeoPoint(40.0, -74.0));
+
+        assertEquals(0, a.compare(new GeoPoint(40.0, -74.0)));
+        assertNotEquals(0, a.compare(new GeoPoint(41.0, -74.0)));
+        assertNotEquals(0, a.compare(new GeoPoint(40.0, -73.0)));
+    }
+
+    @Test
+    public void test_geohash_prefix_clusters_nearby_points() {
+        final var a = new JsonGeo(new GeoPoint(40.0000, -74.0000)).geoHash();
+        final var b = new JsonGeo(new GeoPoint(40.0001, -74.0001)).geoHash();
+        final var far = new JsonGeo(new GeoPoint(-33.0, 151.0)).geoHash();
+
+        assertEquals(a.substring(0, 5), b.substring(0, 5));
+        assertNotEquals(a.substring(0, 1), far.substring(0, 1));
+    }
+
+    @Test
+    public void test_custom_operator_names() {
+        final var geo = new JsonGeo(new GeoPoint(0, 0));
+
+        assertEquals(java.util.Set.of("distance", "within"), geo.customOperatorNames());
+    }
+
+    @Test
+    public void test_distance_operator_comparators() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+        final var target = new JsonGeo(new GeoPoint(1.0, 0.0)); // ~111.2 km away
+
+        assertTrue(geo.applyCustomOperator("distance", distanceArgs(target, "SMALLER_THAN", 200_000)));
+        assertFalse(geo.applyCustomOperator("distance", distanceArgs(target, "SMALLER_THAN", 50_000)));
+        assertTrue(geo.applyCustomOperator("distance", distanceArgs(target, "GREATER_THAN", 50_000)));
+        assertFalse(geo.applyCustomOperator("distance", distanceArgs(target, "GREATER_THAN", 200_000)));
+        assertTrue(geo.applyCustomOperator("distance", distanceArgs(target, "SMALLER_THAN_EQUALS", 200_000)));
+        assertTrue(geo.applyCustomOperator("distance", distanceArgs(target, "GREATER_THAN_EQUALS", 50_000)));
+        assertFalse(geo.applyCustomOperator("distance", distanceArgs(target, "EQUALS", 1000)));
+    }
+
+    @Test
+    public void test_distance_target_as_string() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+        final var args = distanceArgs(new JsonString("#geo(1.0,0.0)"), "SMALLER_THAN", 200_000);
+
+        assertTrue(geo.applyCustomOperator("distance", args));
+    }
+
+    @Test
+    public void test_distance_invalid_comparator_throws() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+        final var args = distanceArgs(new JsonGeo(new GeoPoint(1.0, 0.0)), "CONTAINS", 10);
+
+        assertThrows(IllegalArgumentException.class, () -> geo.applyCustomOperator("distance", args));
+    }
+
+    @Test
+    public void test_distance_bad_target_throws() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+        final var args = distanceArgs(new JsonNumber(5), "SMALLER_THAN", 10);
+
+        assertThrows(WrongFormatCustomTypeException.class, () -> geo.applyCustomOperator("distance", args));
+    }
+
+    @Test
+    public void test_within_operator() {
+        final var inside = new JsonGeo(new GeoPoint(0.5, 0.5));
+        final var outside = new JsonGeo(new GeoPoint(5.0, 5.0));
+        final var args = Map.<String, JsonBaseElement>of("polygon", square());
+
+        assertTrue(inside.applyCustomOperator("within", args));
+        assertFalse(outside.applyCustomOperator("within", args));
+    }
+
+    @Test
+    public void test_unknown_custom_operator_throws() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+
+        assertThrows(UnsupportedOperationException.class, () -> geo.applyCustomOperator("nope", Map.of()));
+    }
+
+    @Test
+    public void test_no_ranking_operators() {
+        final var geo = new JsonGeo(new GeoPoint(0.0, 0.0));
+
+        assertTrue(geo.customRankingOperatorNames().isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> geo.applyCustomRankingOperator("nearest", Map.of()));
+    }
+
+    @Test
+    public void test_a_non_finite_point_still_parses_but_is_not_finite() {
+        final var geo = new JsonGeo("#geo(NaN,1)");
+
+        assertTrue(Double.isNaN(geo.point().lat()));
+        assertFalse(geo.isFinitePoint());
+        assertTrue(new JsonGeo("#geo(1,2)").isFinitePoint());
+    }
+
+    @Test
+    public void test_a_non_finite_point_is_found_inside_nested_containers() {
+        final var nested = new org.techhouse.ejson.elements.JsonObject();
+        final var array = new JsonArray();
+        array.add(new JsonGeo("#geo(1,NaN)"));
+        nested.add("places", array);
+        final var document = new org.techhouse.ejson.elements.JsonObject();
+        document.add("nested", nested);
+
+        assertTrue(JsonGeo.containsNonFinitePoint(document));
+        assertFalse(JsonGeo.containsNonFinitePoint(new JsonGeo("#geo(1,2)")));
+        assertFalse(JsonGeo.containsNonFinitePoint(new JsonString("#geo(NaN,1) as text")));
+    }
+
+    @Test
+    public void test_containers_holding_only_finite_points_and_scalars_have_no_non_finite_point() {
+        final var array = new JsonArray();
+        array.add(new JsonGeo("#geo(1,2)"));
+        array.add(new JsonNumber(3));
+        array.add(new JsonArray());
+        final var nested = new org.techhouse.ejson.elements.JsonObject();
+        nested.add("places", array);
+        nested.add("label", new JsonString("home"));
+        final var document = new org.techhouse.ejson.elements.JsonObject();
+        document.add("nested", nested);
+        document.add("empty", new org.techhouse.ejson.elements.JsonObject());
+
+        assertFalse(JsonGeo.containsNonFinitePoint(document));
+    }
+
+    private static Map<String, JsonBaseElement> distanceArgs(JsonBaseElement target, String comparator, double dist) {
+        return Map.of("value", target, "comparator", new JsonString(comparator), "distance", new JsonNumber(dist));
+    }
+
+    private static JsonArray square() {
+        final var polygon = new JsonArray();
+        polygon.add(new JsonGeo(new GeoPoint(0.0, 0.0)));
+        polygon.add(new JsonGeo(new GeoPoint(0.0, 1.0)));
+        polygon.add(new JsonGeo(new GeoPoint(1.0, 1.0)));
+        polygon.add(new JsonGeo(new GeoPoint(1.0, 0.0)));
+        return polygon;
+    }
+}

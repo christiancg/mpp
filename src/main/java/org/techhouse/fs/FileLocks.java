@@ -1,0 +1,425 @@
+package org.techhouse.fs;
+
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
+import org.techhouse.config.Globals;
+import org.techhouse.log.Logger;
+
+// The finer tier below ResourceLocking's collection locks, and what makes dirty reads safe: a
+// dirty read skips the collection lock but still serializes against each file's physical write.
+final class FileLocks {
+    static final long ABSENT = -1L;
+    private static final Logger logger = Logger.logFor(FileLocks.class);
+
+    private static final Map<String, ReentrantReadWriteLock> fileLocks = new ConcurrentHashMap<>();
+    private static final byte LINE_FEED = '\n';
+    private static final byte CARRIAGE_RETURN = '\r';
+    private static final byte[] NEWLINE_BYTES = Globals.NEWLINE.getBytes(StandardCharsets.UTF_8);
+    private static final int SCAN_CHUNK = 8192;
+
+    private FileLocks() {
+    }
+
+    record Parsed<E>(E entries, List<String> lines, boolean dropped, boolean unrecognised) {
+    }
+
+    interface Parser<E> {
+        Parsed<E> parse(File file) throws IOException;
+    }
+
+    static <E> Parsed<E> readHealing(File file, Parser<E> parser) throws IOException {
+        final var readLock = lockRead(file);
+        final Parsed<E> parsed;
+        try {
+            parsed = parser.parse(file);
+        } finally {
+            readLock.unlock();
+        }
+        if (parsed == null || parsed.unrecognised() || !parsed.dropped()) {
+            return parsed;
+        }
+        final var writeLock = lockWrite(file);
+        try {
+            final var reparsed = parser.parse(file);
+            if (reparsed != null && reparsed.dropped() && !reparsed.unrecognised()) {
+                rewriteFileAtomically(file.toPath(), reparsed.lines());
+            }
+            return reparsed;
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    static <T> void appendLines(File file, List<T> rows, Function<T, String> toLine, String rollbackFailure)
+            throws IOException {
+        appendLines(file, rows, toLine, rollbackFailure, true);
+    }
+
+    static <T> void appendLinesUnforced(File file, List<T> rows, Function<T, String> toLine, String rollbackFailure)
+            throws IOException {
+        appendLines(file, rows, toLine, rollbackFailure, false);
+    }
+
+    private static <T> void appendLines(File file, List<T> rows, Function<T, String> toLine, String rollbackFailure,
+            boolean forced) throws IOException {
+        final var lock = lockWrite(file);
+        try {
+            final var lengthBeforeAppend = file.length();
+            var appended = false;
+            try {
+                OwnerOnly.ensureOwnerOnlyFile(file.toPath());
+                final var midLine = endsMidLine(file);
+                try (var out = new FileOutputStream(file, true);
+                        var writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8),
+                                Globals.BUFFER_SIZE)) {
+                    if (midLine) {
+                        writer.write(Globals.NEWLINE);
+                    }
+                    for (final var row : rows) {
+                        writer.append(toLine.apply(row));
+                        writer.write(Globals.NEWLINE);
+                    }
+                    writer.flush();
+                    if (forced) {
+                        SyncedWrites.content(out.getChannel(), file.toPath());
+                    }
+                }
+                appended = true;
+            } finally {
+                if (!appended) {
+                    truncateTo(file, lengthBeforeAppend, rollbackFailure);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    static ReentrantReadWriteLock lockFor(File file) {
+        return fileLocks.computeIfAbsent(file.getAbsolutePath(), _ -> new ReentrantReadWriteLock());
+    }
+
+    static Lock lockRead(File file) {
+        return acquire(file, ReentrantReadWriteLock::readLock);
+    }
+
+    static Lock lockWrite(File file) {
+        return acquire(file, ReentrantReadWriteLock::writeLock);
+    }
+
+    private static Lock acquire(File file, Function<ReentrantReadWriteLock, Lock> side) {
+        final var path = file.getAbsolutePath();
+        while (true) {
+            final var registered = fileLocks.computeIfAbsent(path, _ -> new ReentrantReadWriteLock());
+            final var lock = side.apply(registered);
+            lock.lock();
+            if (fileLocks.get(path) == registered) {
+                return lock;
+            }
+            lock.unlock();
+        }
+    }
+
+    static void evictIfUnused(File file) {
+        evictIfUnused(file.getAbsolutePath());
+    }
+
+    static void evictAllUnder(File folder) {
+        final var prefix = folder.getAbsolutePath() + File.separator;
+        for (final var path : List.copyOf(fileLocks.keySet())) {
+            if (path.startsWith(prefix)) {
+                evictIfUnused(path);
+            }
+        }
+    }
+
+    private static void evictIfUnused(String path) {
+        final var retired = new ReentrantReadWriteLock[1];
+        fileLocks.computeIfPresent(path, (_, lock) -> {
+            if (lock.isWriteLocked() || lock.getReadLockCount() > 0 || lock.hasQueuedThreads()
+                    || !lock.writeLock().tryLock()) {
+                return lock;
+            }
+            retired[0] = lock;
+            return null;
+        });
+        if (retired[0] != null) {
+            retired[0].writeLock().unlock();
+        }
+    }
+
+    static List<String> readAllLinesIfExists(File file) throws IOException {
+        final var lock = lockRead(file);
+        var absent = false;
+        try {
+            return decodeLines(Files.readAllBytes(file.toPath()));
+        } catch (NoSuchFileException e) {
+            absent = true;
+            return null;
+        } finally {
+            lock.unlock();
+            if (absent) {
+                evictIfUnused(file);
+            }
+        }
+    }
+
+    static List<String> readAllLinesLocked(File file) throws IOException {
+        final var lock = lockRead(file);
+        try {
+            return decodeLines(Files.readAllBytes(file.toPath()));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    static List<byte[]> readChunksLocked(File file, int chunkBytes) throws IOException {
+        final var lock = lockRead(file);
+        try (var reader = new RandomAccessFile(file, Globals.R_PERMISSIONS)) {
+            return readChunks(reader, reader.length(), chunkBytes);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    static List<byte[]> readChunks(RandomAccessFile reader, long measuredLength, int chunkBytes) throws IOException {
+        final var chunks = new ArrayList<byte[]>();
+        for (var remaining = measuredLength; remaining > 0;) {
+            final var chunk = readUpTo(reader, (int) Math.min(chunkBytes, remaining));
+            if (chunk.length == 0) {
+                break;
+            }
+            chunks.add(chunk);
+            remaining -= chunk.length;
+        }
+        return chunks;
+    }
+
+    private static byte[] readUpTo(RandomAccessFile reader, int length) throws IOException {
+        final var chunk = new byte[length];
+        var filled = 0;
+        while (filled < length) {
+            final var read = reader.read(chunk, filled, length - filled);
+            if (read < 0) {
+                return Arrays.copyOf(chunk, filled);
+            }
+            filled += read;
+        }
+        return chunk;
+    }
+
+    static int lineEnd(byte[] bytes, int start) {
+        var index = start;
+        while (index < bytes.length && bytes[index] != LINE_FEED && bytes[index] != CARRIAGE_RETURN) {
+            index++;
+        }
+        return index;
+    }
+
+    static int nextLineStart(byte[] bytes, int lineEnd) {
+        if (lineEnd >= bytes.length) {
+            return bytes.length;
+        }
+        final var afterTerminator = lineEnd + 1;
+        return bytes[lineEnd] == CARRIAGE_RETURN && afterTerminator < bytes.length
+                && bytes[afterTerminator] == LINE_FEED ? afterTerminator + 1 : afterTerminator;
+    }
+
+    static List<String> decodeLines(byte[] bytes) {
+        final var lines = new ArrayList<String>();
+        var start = 0;
+        var i = 0;
+        while (i < bytes.length) {
+            final var current = bytes[i];
+            if (current == LINE_FEED || current == CARRIAGE_RETURN) {
+                lines.add(new String(bytes, start, i - start, StandardCharsets.UTF_8));
+                i++;
+                if (current == CARRIAGE_RETURN && i < bytes.length && bytes[i] == LINE_FEED) {
+                    i++;
+                }
+                start = i;
+            } else {
+                i++;
+            }
+        }
+        if (start < bytes.length) {
+            lines.add(new String(bytes, start, bytes.length - start, StandardCharsets.UTF_8));
+        }
+        return lines;
+    }
+
+    static void rewriteFileAtomically(Path path, List<String> lines) throws IOException {
+        rewriteFileAtomically(path, out -> {
+            for (final var line : lines) {
+                out.write(line.getBytes(StandardCharsets.UTF_8));
+                out.write(NEWLINE_BYTES);
+            }
+        });
+    }
+
+    static void rewriteFileAtomically(Path path, LineWriter content) throws IOException {
+        final var tmp = path.resolveSibling(path.getFileName() + ".repair");
+        OwnerOnly.ensureOwnerOnlyFile(tmp);
+        try (var file = new FileOutputStream(tmp.toFile());
+                var out = new BufferedOutputStream(file, Globals.BUFFER_SIZE)) {
+            content.writeTo(out);
+            out.flush();
+            SyncedWrites.content(file.getChannel(), tmp);
+        } catch (IOException | RuntimeException e) {
+            discardTemporary(tmp, e);
+            throw e;
+        }
+        moveIntoPlace(tmp, path);
+    }
+
+    static void rewriteFileAtomically(Path path, byte[] content) throws IOException {
+        final var tmp = path.resolveSibling(path.getFileName() + ".repair");
+        OwnerOnly.ensureOwnerOnlyFile(tmp);
+        try (var out = new FileOutputStream(tmp.toFile())) {
+            out.write(content);
+            SyncedWrites.content(out.getChannel(), tmp);
+        } catch (IOException | RuntimeException e) {
+            discardTemporary(tmp, e);
+            throw e;
+        }
+        moveIntoPlace(tmp, path);
+    }
+
+    private static void discardTemporary(Path tmp, Exception cause) {
+        try {
+            Files.deleteIfExists(tmp);
+        } catch (IOException e) {
+            cause.addSuppressed(e);
+        }
+    }
+
+    static void moveIntoPlace(Path tmp, Path path) throws IOException {
+        moveIntoPlaceUnsynced(tmp, path);
+        SyncedWrites.entriesOfLanded(path.toAbsolutePath().getParent(), "Moving " + path.getFileName() + " into place");
+    }
+
+    static void moveIntoPlaceUnsynced(Path tmp, Path path) throws IOException {
+        PageLengths.forget(path.toFile());
+        try {
+            Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // ATOMIC_MOVE is not supported across filesystems or on every platform.
+            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+        }
+        ForceFailures.cleared(tmp);
+        ForceFailures.cleared(path);
+    }
+
+    static String separatorBeforeAppend(File file) throws IOException {
+        return endsMidLine(file) ? Globals.NEWLINE : "";
+    }
+
+    static boolean endsMidLine(File file) throws IOException {
+        if (!file.exists() || file.length() == 0) {
+            return false;
+        }
+        try (var raf = new RandomAccessFile(file, "r")) {
+            raf.seek(raf.length() - 1);
+            return raf.readByte() != LINE_FEED;
+        }
+    }
+
+    static void cutUnterminatedTail(File file) throws IOException {
+        PageLengths.forget(file);
+        final var cut = file.exists() ? endOfLastCompleteLine(file) : -1L;
+        if (cut < 0) {
+            return;
+        }
+        try (var writer = new RandomAccessFile(file, Globals.RW_PERMISSIONS)) {
+            writer.setLength(cut);
+            SyncedWrites.content(writer.getChannel(), file.toPath());
+        }
+        logger.warning("Cut the unterminated last line of " + file.getName() + " before appending to it: it was torn"
+                + " by an interrupted append");
+    }
+
+    static long endOfLastCompleteLine(File page) throws IOException {
+        try (var reader = new RandomAccessFile(page, Globals.R_PERMISSIONS)) {
+            final var length = reader.length();
+            if (length == 0) {
+                return -1;
+            }
+            reader.seek(length - 1);
+            if (reader.readByte() == LINE_FEED) {
+                return -1;
+            }
+            final var buffer = new byte[SCAN_CHUNK];
+            var end = length;
+            while (end > 0) {
+                final var start = Math.max(0, end - SCAN_CHUNK);
+                final var read = (int) (end - start);
+                reader.seek(start);
+                reader.readFully(buffer, 0, read);
+                for (var i = read - 1; i >= 0; i--) {
+                    if (buffer[i] == LINE_FEED) {
+                        return start + i + 1;
+                    }
+                }
+                end = start;
+            }
+            return 0;
+        }
+    }
+
+    static boolean cutBackTo(File file, long length, String failureMessage) {
+        if (length == ABSENT) {
+            return removeCreated(file, failureMessage);
+        }
+        return !file.exists() || file.length() == length || truncateTo(file, length, failureMessage);
+    }
+
+    private static boolean removeCreated(File file, String failureMessage) {
+        PageLengths.forget(file);
+        try {
+            if (Files.deleteIfExists(file.toPath())) {
+                SyncedWrites.entriesOfLanded(file.getAbsoluteFile().getParentFile().toPath(),
+                        "Removing " + file.getName());
+            }
+            return true;
+        } catch (IOException e) {
+            logger.error(failureMessage, e);
+            return false;
+        }
+    }
+
+    static boolean truncateTo(File file, long length) {
+        return truncateTo(file, length, "Could not roll back the page append for " + file.getAbsolutePath()
+                + " after its index write failed; run REINDEX on this collection");
+    }
+
+    static boolean truncateTo(File file, long length, String failureMessage) {
+        PageLengths.forget(file);
+        try (var channel = new RandomAccessFile(file, Globals.RW_PERMISSIONS)) {
+            channel.setLength(length);
+            SyncedWrites.content(channel.getChannel(), file.toPath());
+            PageLengths.cut(file, length);
+            return true;
+        } catch (IOException e) {
+            logger.error(failureMessage, e);
+            return false;
+        }
+    }
+}

@@ -1,0 +1,311 @@
+package org.techhouse.unit.ejson.internal;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.techhouse.ejson.EJson;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.exceptions.MalformedJsonException;
+import org.techhouse.ejson.internal.JsonReader;
+
+public class JsonReaderTest {
+    private static final int LIMIT = 8;
+    private final EJson eJson = new EJson();
+
+    @SuppressWarnings("unused")
+    static class TestClass {
+        private String name;
+        private int value;
+
+        public String getName() {
+            return name;
+        }
+
+        public int getValue() {
+            return value;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    static class TestPerson {
+        private String name;
+        private int age;
+
+        public String getName() {
+            return name;
+        }
+
+        public int getAge() {
+            return age;
+        }
+    }
+
+    @Test
+    public void test_parse_valid_json_object_with_multiple_pairs() {
+        new EJson();
+        JsonReader reader = new JsonReader();
+        String json = "{\"name\":\"John\",\"age\":30}";
+
+        TestPerson result = reader.fromJson(json, TestPerson.class);
+
+        assertNotNull(result);
+        assertEquals("John", result.getName());
+        assertEquals(30, result.getAge());
+    }
+
+    @Test
+    public void test_a_second_root_value_is_refused() {
+        new EJson();
+        final var reader = new JsonReader();
+
+        assertThrows(MalformedJsonException.class,
+                () -> reader.fromJson("{\"a\":1}{\"b\":2}", org.techhouse.ejson.elements.JsonObject.class));
+        assertThrows(MalformedJsonException.class,
+                () -> reader.fromJson("{\"a\":1} 5", org.techhouse.ejson.elements.JsonObject.class));
+    }
+
+    @Test
+    public void test_trailing_whitespace_after_the_root_value_is_accepted() {
+        new EJson();
+        final var parsed = new JsonReader().fromJson("{\"a\":1}  \n", org.techhouse.ejson.elements.JsonObject.class);
+
+        assertEquals(1, parsed.get("a").asJsonNumber().getValue().intValue());
+    }
+
+    @Test
+    public void test_empty_input_string_throws_exception() {
+        JsonReader reader = new JsonReader();
+        String json = "";
+
+        MalformedJsonException exception = assertThrows(MalformedJsonException.class,
+                () -> reader.fromJson(json, TestPerson.class));
+
+        assertEquals("Empty JSON array", exception.getMessage());
+    }
+
+    @Test
+    public void parse_valid_json_string_to_target_class() {
+        JsonReader jsonReader = new JsonReader();
+
+        String jsonInput = "{\"name\":\"test\",\"value\":123}";
+
+        TestClass result = jsonReader.fromJson(jsonInput, TestClass.class);
+
+        assertNotNull(result);
+        assertEquals("test", result.getName());
+        assertEquals(123, result.getValue());
+    }
+
+    @Test
+    public void test_parse_json_with_nested_properties() {
+        new EJson();
+        @SuppressWarnings("unused")
+        class InnerClass {
+            private String key;
+
+            public String getKey() {
+                return key;
+            }
+        }
+        @SuppressWarnings("unused")
+        class OuterClass {
+            private InnerClass inner;
+
+            public InnerClass getInner() {
+                return inner;
+            }
+        }
+        @SuppressWarnings("unused")
+        class MyClass {
+            private OuterClass outer;
+
+            public OuterClass getOuter() {
+                return outer;
+            }
+        }
+        String jsonInput = "{\"outer\":{\"inner\":{\"key\":\"value\"}}}";
+        Class<MyClass> targetClass = MyClass.class;
+        JsonReader jsonReader = new JsonReader();
+
+        MyClass result = jsonReader.fromJson(jsonInput, targetClass);
+
+        assertNotNull(result);
+        assertNotNull(result.getOuter());
+        assertNotNull(result.getOuter().getInner());
+        assertEquals("value", result.getOuter().getInner().getKey());
+    }
+
+    @Test
+    public void test_parse_json_with_primitive_types() {
+        @SuppressWarnings("unused")
+        class PrimitiveClass {
+            private String stringKey;
+            private int numberKey;
+            private boolean booleanKey;
+
+            public String getStringKey() {
+                return stringKey;
+            }
+
+            public int getNumberKey() {
+                return numberKey;
+            }
+
+            public boolean isBooleanKey() {
+                return booleanKey;
+            }
+        }
+        String jsonInput = "{\"stringKey\":\"stringValue\",\"numberKey\":123,\"booleanKey\":true}";
+        Class<PrimitiveClass> targetClass = PrimitiveClass.class;
+        JsonReader jsonReader = new JsonReader();
+
+        PrimitiveClass result = jsonReader.fromJson(jsonInput, targetClass);
+
+        assertNotNull(result);
+        assertEquals("stringValue", result.getStringKey());
+        assertEquals(123, result.getNumberKey());
+        assertTrue(result.isBooleanKey());
+    }
+
+    @Test
+    public void test_parse_empty_json_object() {
+        class EmptyClass {
+        }
+        String jsonInput = "{}";
+        Class<EmptyClass> targetClass = EmptyClass.class;
+        JsonReader jsonReader = new JsonReader();
+
+        EmptyClass result = jsonReader.fromJson(jsonInput, targetClass);
+
+        assertNotNull(result);
+    }
+
+    @Test
+    public void test_parse_json_with_array() {
+        new EJson();
+        @SuppressWarnings("unused")
+        class ClassWithArray {
+            private List<String> stringArray;
+
+            public List<String> getStringArray() {
+                return stringArray;
+            }
+        }
+        String jsonInput = "{\"stringArray\": [\"value1\",\"value2\",\"value3\"]}";
+        Class<ClassWithArray> targetClass = ClassWithArray.class;
+        JsonReader jsonReader = new JsonReader();
+
+        ClassWithArray result = jsonReader.fromJson(jsonInput, targetClass);
+
+        assertNotNull(result);
+        assertEquals(List.of("value1", "value2", "value3"), result.getStringArray());
+    }
+
+    @Test
+    public void test_root_not_starting_with_brace_or_bracket_throws() {
+        EJson eJson = new EJson();
+        assertThrows(Exception.class, () -> eJson.fromJson("123", Object.class));
+    }
+
+    @Test
+    public void test_object_non_string_key_throws_malformed_json() {
+        EJson eJson = new EJson();
+        assertThrows(Exception.class, () -> eJson.fromJson("{123: \"value\"}", Object.class));
+    }
+
+    @Test
+    public void test_object_missing_colon_throws_malformed_json() {
+        EJson eJson = new EJson();
+        assertThrows(Exception.class, () -> eJson.fromJson("{\"key\" \"value\"}", Object.class));
+    }
+
+    @Test
+    public void test_object_missing_comma_throws_malformed_json() {
+        EJson eJson = new EJson();
+        assertThrows(Exception.class, () -> eJson.fromJson("{\"a\": 1 \"b\": 2}", Object.class));
+    }
+
+    @Test
+    public void test_array_missing_comma_throws_malformed_json() {
+        EJson eJson = new EJson();
+        assertThrows(Exception.class, () -> eJson.fromJson("[1 2 3]", Object.class));
+    }
+
+    private static org.techhouse.ejson.elements.JsonObject parseObject(String json) {
+        return new JsonReader().fromJson(json, org.techhouse.ejson.elements.JsonObject.class);
+    }
+
+    @Test
+    public void test_a_doubled_comma_in_an_array_is_rejected() {
+        assertThrows(MalformedJsonException.class, () -> parseObject("{\"a\":[1,,2]}"));
+    }
+
+    @Test
+    public void test_a_missing_object_value_is_rejected() {
+        assertThrows(MalformedJsonException.class, () -> parseObject("{\"a\":,\"b\":1}"));
+    }
+
+    @Test
+    public void test_a_leading_comma_in_an_array_is_rejected() {
+        assertThrows(MalformedJsonException.class, () -> parseObject("{\"a\":[,1]}"));
+    }
+
+    @Test
+    public void test_an_empty_array_and_object_still_parse() {
+        final var parsed = parseObject("{\"a\":[],\"b\":{},\"c\":[[]]}");
+
+        assertTrue(parsed.get("a").asJsonArray().isEmpty());
+        assertEquals(0, parsed.get("b").asJsonObject().size());
+        assertEquals(1, parsed.get("c").asJsonArray().size());
+    }
+
+    private static String nestedObjects(int depth) {
+        return "{\"a\":".repeat(depth - 1) + "{}" + "}".repeat(depth - 1);
+    }
+
+    private static String objectsAroundArrays(int depth) {
+        final var prefix = new StringBuilder("{\"a\":");
+        final var suffix = new StringBuilder("}");
+        for (var level = 2; level < depth; level++) {
+            prefix.append(level % 2 == 0 ? "[" : "{\"a\":");
+            suffix.insert(0, level % 2 == 0 ? "]" : "}");
+        }
+        return prefix + "[]" + suffix;
+    }
+
+    @Test
+    public void depth_at_the_limit_parses() {
+        assertDoesNotThrow(() -> eJson.fromJson(nestedObjects(LIMIT), JsonObject.class, LIMIT));
+        assertDoesNotThrow(() -> eJson.fromJson(objectsAroundArrays(LIMIT), JsonObject.class, LIMIT));
+    }
+
+    @Test
+    public void depth_past_the_limit_throws_malformed() {
+        assertThrows(MalformedJsonException.class,
+                () -> eJson.fromJson(nestedObjects(LIMIT + 1), JsonObject.class, LIMIT));
+        assertThrows(MalformedJsonException.class,
+                () -> eJson.fromJson(objectsAroundArrays(LIMIT + 1), JsonObject.class, LIMIT));
+    }
+
+    @Test
+    public void unlimited_overload_parses_beyond_the_limit() {
+        assertDoesNotThrow(() -> eJson.fromJson(nestedObjects(LIMIT * 4), JsonObject.class));
+    }
+
+    @Test
+    public void test_the_token_budget_refuses_a_flat_array_over_the_limit() {
+        final var input = "{\"a\":[" + "1,".repeat(99) + "1]}";
+
+        assertThrows(MalformedJsonException.class, () -> eJson.fromJson(input, JsonObject.class, LIMIT, 100));
+    }
+
+    @Test
+    public void test_a_document_under_the_budget_still_parses() {
+        final var input = "{\"a\":[1,2,3],\"b\":\"text\"}";
+
+        final var parsed = eJson.fromJson(input, JsonObject.class, LIMIT, 15);
+
+        assertEquals(3, parsed.get("a").asJsonArray().size());
+    }
+}

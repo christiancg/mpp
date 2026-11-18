@@ -1,0 +1,164 @@
+package org.techhouse.bckg_ops.events;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import org.techhouse.cache.CacheSizeEstimator;
+import org.techhouse.data.DbEntry;
+
+public class TriggerEvent extends CollectionScopedEvent {
+    private static final long QUEUED_EVENT_OVERHEAD_BYTES = 256L;
+    private static final long QUEUED_ID_OVERHEAD_BYTES = 64L;
+
+    private final String triggerName;
+    private final String procedureName;
+    private final boolean batchMode;
+    private final List<DbEntry> entries;
+    private final String actingUser;
+    private final int depth;
+    private final long firedAt;
+    private final String runId;
+    private final int attempt;
+    private final boolean staleEntries;
+
+    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+            boolean batchMode, List<DbEntry> entries, String actingUser, int depth) {
+        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, null);
+    }
+
+    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+            boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId) {
+        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, 1);
+    }
+
+    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+            boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt) {
+        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, attempt,
+                System.currentTimeMillis());
+    }
+
+    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+            boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt,
+            long firedAt) {
+        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, attempt,
+                firedAt, false);
+    }
+
+    private TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+            boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt,
+            long firedAt, boolean staleEntries) {
+        super(type, dbName, collName);
+        this.triggerName = triggerName;
+        this.procedureName = procedureName;
+        this.batchMode = batchMode;
+        this.entries = entries;
+        this.actingUser = actingUser;
+        this.depth = depth;
+        this.firedAt = firedAt;
+        this.runId = runId;
+        this.attempt = attempt;
+        this.staleEntries = staleEntries;
+    }
+
+    public TriggerEvent retry(int nextAttempt) {
+        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode, entries,
+                actingUser, depth, runId, nextAttempt, firedAt, getType() != EventType.DELETED);
+    }
+
+    public TriggerEvent withCurrentEntries(List<DbEntry> currentEntries) {
+        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode,
+                currentEntries, actingUser, depth, runId, attempt, firedAt, false);
+    }
+
+    public TriggerEvent withIdsOnly() {
+        if (getType() == EventType.DELETED) {
+            return this;
+        }
+        final var stubs = new ArrayList<DbEntry>(entries.size());
+        for (final var entry : entries) {
+            final var stub = new DbEntry();
+            stub.setDatabaseName(getDbName());
+            stub.setCollectionName(getCollName());
+            stub.set_id(entry.get_id());
+            stubs.add(stub);
+        }
+        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode, stubs,
+                actingUser, depth, runId, attempt, firedAt, true);
+    }
+
+    public long queuedBytes() {
+        var bytes = QUEUED_EVENT_OVERHEAD_BYTES;
+        for (final var entry : entries) {
+            bytes += entry.getData() == null
+                    ? QUEUED_ID_OVERHEAD_BYTES + 2L * String.valueOf(entry.get_id()).length()
+                    : CacheSizeEstimator.estimateEntry(entry);
+        }
+        return bytes;
+    }
+
+    public boolean hasStaleEntries() {
+        return staleEntries;
+    }
+
+    public int getAttempt() {
+        return attempt;
+    }
+
+    public String getTriggerName() {
+        return triggerName;
+    }
+
+    public String getProcedureName() {
+        return procedureName;
+    }
+
+    public boolean isBatchMode() {
+        return batchMode;
+    }
+
+    public List<DbEntry> getEntries() {
+        return entries;
+    }
+
+    public String getActingUser() {
+        return actingUser;
+    }
+
+    public int getDepth() {
+        return depth;
+    }
+
+    public long getFiredAt() {
+        return firedAt;
+    }
+
+    public String getRunId() {
+        return runId;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (!(o instanceof TriggerEvent that))
+            return false;
+        if (!super.equals(o))
+            return false;
+        return batchMode == that.batchMode && depth == that.depth && Objects.equals(triggerName, that.triggerName)
+                && Objects.equals(procedureName, that.procedureName) && Objects.equals(entries, that.entries)
+                && Objects.equals(actingUser, that.actingUser) && Objects.equals(runId, that.runId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), triggerName, procedureName, batchMode, entries, actingUser, depth, runId);
+    }
+
+    @Override
+    public String toString() {
+        return "TriggerEvent(super=" + super.toString() + ", dbName=" + getDbName() + ", collName=" + getCollName()
+                + ", triggerName=" + triggerName + ", procedureName=" + procedureName + ", batchMode=" + batchMode
+                + ", entries=" + entries.size() + ", actingUser=" + actingUser + ", depth=" + depth + ", runId=" + runId
+                + ")";
+    }
+}

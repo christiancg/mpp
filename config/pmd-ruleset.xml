@@ -1,0 +1,120 @@
+<?xml version="1.0"?>
+<ruleset name="lwnrdb"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Curated PMD ruleset for LWNRDB. Focuses on real bug patterns
+        (error-prone), performance, multithreading correctness, and a handful
+        of best practices. Formatting and naming are owned by Spotless and
+        Checkstyle, so PMD's code style category is not used; noisy/opinionated
+        rules are excluded individually.
+    </description>
+
+    <!-- Bug patterns most likely to indicate real defects -->
+    <rule ref="category/java/errorprone.xml">
+        <exclude name="AvoidLiteralsInIfCondition"/>
+        <exclude name="AvoidDuplicateLiterals"/>
+        <exclude name="AvoidFieldNameMatchingMethodName"/>
+        <exclude name="AvoidFieldNameMatchingTypeName"/>
+        <exclude name="NullAssignment"/>
+        <exclude name="AvoidAccessibilityAlteration"/>
+        <exclude name="MissingSerialVersionUID"/>
+        <exclude name="TestClassWithoutTestCases"/>
+        <exclude name="CompareObjectsWithEquals"/>
+        <exclude name="AssignmentInOperand"/>
+        <exclude name="ConstructorCallsOverridableMethod"/>
+        <!-- Catching Exception at request/connection boundaries is a deliberate
+             pattern in this server (log + return an ERROR response). -->
+        <exclude name="AvoidCatchingGenericException"/>
+        <!-- ConfigKey is an enum (implicitly Serializable) whose Rule field is a
+             validation strategy, never serialized. -->
+        <exclude name="NonSerializableClass"/>
+        <!-- High false-positive rate here: server socket and the long-lived
+             executor services are owned and closed on shutdown, not per-scope. -->
+        <exclude name="CloseResource"/>
+        <!-- null is used deliberately as an "absent / not-found / load-failed"
+             sentinel for index and config lookups (callers branch on null,
+             distinct from an existing-but-empty collection). -->
+        <exclude name="ReturnEmptyCollectionRatherThanNull"/>
+        <!-- Android-only rule (looks for a hardcoded "/sdcard" path), so it can
+             never fire here. It is the one rule that atomizes a string literal's
+             cooked value through Saxon, which throws on the unpaired surrogates
+             JsonStringsTest asserts the escaper handles - a PMD processing error
+             on every run. Nothing to lose by dropping it. -->
+        <exclude name="DoNotHardCodeSDCard"/>
+    </rule>
+
+    <!-- Performance rules that flag genuine waste -->
+    <rule ref="category/java/performance.xml">
+        <exclude name="AvoidInstantiatingObjectsInLoops"/>
+        <exclude name="ConsecutiveLiteralAppends"/>
+        <exclude name="ConsecutiveAppendsShouldReuse"/>
+        <exclude name="UseStringBufferForStringAppends"/>
+        <exclude name="RedundantFieldInitializer"/>
+        <!-- Micro-optimization opinion (Files.newInputStream over FileInputStream). -->
+        <exclude name="AvoidFileStream"/>
+    </rule>
+
+    <!-- Multithreading correctness -->
+    <rule ref="category/java/multithreading.xml">
+        <exclude name="UseConcurrentHashMap"/>
+        <exclude name="AvoidSynchronizedAtMethodLevel"/>
+        <exclude name="DoNotUseThreads"/>
+        <exclude name="AvoidUsingVolatile"/>
+    </rule>
+
+    <rule ref="category/java/security.xml"/>
+
+    <!-- A few high-value best practices -->
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+    <rule ref="category/java/bestpractices.xml/UnusedAssignment"/>
+    <rule ref="category/java/bestpractices.xml/UnusedLabel"/>
+    <rule ref="category/java/bestpractices.xml/PrimitiveWrapperInstantiation"/>
+    <rule ref="category/java/bestpractices.xml/CheckResultSet"/>
+    <rule ref="category/java/bestpractices.xml/DoubleBraceInitialization"/>
+    <rule ref="category/java/bestpractices.xml/MissingOverride"/>
+    <rule ref="category/java/bestpractices.xml/OneDeclarationPerLine"/>
+    <rule ref="category/java/bestpractices.xml/ConstantsInInterface"/>
+    <rule ref="category/java/bestpractices.xml/EnumComparison"/>
+    <rule ref="category/java/bestpractices.xml/ForLoopCanBeForeach"/>
+    <rule ref="category/java/bestpractices.xml/WhileLoopWithLiteralBoolean"/>
+    <rule ref="category/java/bestpractices.xml/AvoidReassigningCatchVariables"/>
+    <rule ref="category/java/bestpractices.xml/AvoidPrintStackTrace"/>
+    <rule ref="category/java/bestpractices.xml/SimplifiableTestAssertion"/>
+    <rule ref="category/java/bestpractices.xml/UnnecessaryWarningSuppression"/>
+
+    <rule ref="category/java/bestpractices.xml/UseStandardCharsets"/>
+    <rule ref="category/java/bestpractices.xml/RelianceOnDefaultCharset"/>
+    <rule ref="category/java/bestpractices.xml/AvoidMessageDigestField"/>
+    <rule ref="category/java/bestpractices.xml/AvoidStringBufferField"/>
+    <rule ref="category/java/bestpractices.xml/UseTryWithResources"/>
+    <rule ref="category/java/bestpractices.xml/UseCollectionIsEmpty"/>
+
+    <rule ref="category/java/design.xml/MutableStaticState"/>
+    <rule ref="category/java/design.xml/ImmutableField"/>
+    <rule ref="category/java/design.xml/SingularField"/>
+    <rule ref="category/java/design.xml/UselessOverridingMethod"/>
+    <rule ref="category/java/design.xml/SimplifiedTernary"/>
+    <rule ref="category/java/design.xml/SimplifyBooleanExpressions"/>
+    <rule ref="category/java/design.xml/SimplifyConditional"/>
+    <rule ref="category/java/design.xml/LogicInversion"/>
+    <rule ref="category/java/design.xml/AvoidRethrowingException"/>
+    <rule ref="category/java/design.xml/AvoidThrowingNewInstanceOfSameException"/>
+    <rule ref="category/java/design.xml/ClassWithOnlyPrivateConstructorsShouldBeFinal"/>
+    <rule ref="category/java/design.xml/DoNotExtendJavaLangError"/>
+
+    <rule ref="category/java/codestyle.xml/EmptyControlStatement"/>
+    <rule ref="category/java/codestyle.xml/UnnecessaryConstructor"/>
+    <rule ref="category/java/codestyle.xml/UnnecessaryReturn"/>
+    <rule ref="category/java/codestyle.xml/UnnecessaryAnnotationValueElement"/>
+    <rule ref="category/java/codestyle.xml/VariableCanBeInlined"/>
+    <rule ref="category/java/codestyle.xml/IdenticalCatchBranches"/>
+    <rule ref="category/java/codestyle.xml/LambdaCanBeMethodReference"/>
+    <rule ref="category/java/codestyle.xml/UselessQualifiedThis"/>
+    <rule ref="category/java/codestyle.xml/ExtendsObject"/>
+    <rule ref="category/java/codestyle.xml/ForLoopShouldBeWhileLoop"/>
+</ruleset>

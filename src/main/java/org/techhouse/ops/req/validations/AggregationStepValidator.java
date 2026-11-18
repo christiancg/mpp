@@ -1,0 +1,479 @@
+package org.techhouse.ops.req.validations;
+
+import java.nio.charset.StandardCharsets;
+import org.techhouse.config.ConfigKey;
+import org.techhouse.config.Configuration;
+import org.techhouse.config.Globals;
+import org.techhouse.ejson.custom_types.CustomTypeFactory;
+import org.techhouse.ejson.custom_types.GeoDistanceComparator;
+import org.techhouse.ejson.custom_types.JsonGeo;
+import org.techhouse.ejson.custom_types.JsonVector;
+import org.techhouse.ejson.elements.JsonArray;
+import org.techhouse.ejson.elements.JsonBaseElement;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ops.ErrorCode;
+import org.techhouse.ops.req.agg.AggregationStepType;
+import org.techhouse.ops.req.agg.BaseAggregationStep;
+import org.techhouse.ops.req.agg.BaseOperator;
+import org.techhouse.ops.req.agg.FieldOperatorType;
+import org.techhouse.ops.req.agg.OperatorType;
+import org.techhouse.ops.req.agg.mid_operators.ArrayParamMidOperator;
+import org.techhouse.ops.req.agg.mid_operators.BaseMidOperator;
+import org.techhouse.ops.req.agg.mid_operators.CastMidOperator;
+import org.techhouse.ops.req.agg.mid_operators.CastToType;
+import org.techhouse.ops.req.agg.mid_operators.MidOperationType;
+import org.techhouse.ops.req.agg.mid_operators.OneParamMidOperator;
+import org.techhouse.ops.req.agg.mid_operators.ScriptMidOperator;
+import org.techhouse.ops.req.agg.operators.ConjunctionOperator;
+import org.techhouse.ops.req.agg.operators.CustomOperator;
+import org.techhouse.ops.req.agg.operators.FieldOperator;
+import org.techhouse.ops.req.agg.operators.ScriptOperator;
+import org.techhouse.ops.req.agg.step.FilterAggregationStep;
+import org.techhouse.ops.req.agg.step.GroupByAggregationStep;
+import org.techhouse.ops.req.agg.step.JoinAggregationStep;
+import org.techhouse.ops.req.agg.step.LimitAggregationStep;
+import org.techhouse.ops.req.agg.step.MapAggregationStep;
+import org.techhouse.ops.req.agg.step.ReduceAggregationStep;
+import org.techhouse.ops.req.agg.step.SkipAggregationStep;
+import org.techhouse.ops.req.agg.step.SortAggregationStep;
+import org.techhouse.ops.req.agg.step.map.AddFieldMapOperator;
+import org.techhouse.ops.req.agg.step.map.MapOperationType;
+
+public class AggregationStepValidator {
+    private static final long MAX_NEAREST_K = Integer.MAX_VALUE / 10L;
+    private static final Configuration configuration = Configuration.getInstance();
+
+    public static ValidationResult validate(BaseAggregationStep step) {
+        return switch (step.getType()) {
+            case FILTER -> validateFilter((FilterAggregationStep) step);
+            case MAP -> validateMap((MapAggregationStep) step);
+            case GROUP_BY -> validateGroupBy((GroupByAggregationStep) step);
+            case JOIN -> validateJoin((JoinAggregationStep) step);
+            case COUNT, DISTINCT -> ValidationResult.ok();
+            case LIMIT -> validateLimit((LimitAggregationStep) step);
+            case SKIP -> validateSkip((SkipAggregationStep) step);
+            case SORT -> validateSort((SortAggregationStep) step);
+            case REDUCE -> validateReduce((ReduceAggregationStep) step);
+        };
+    }
+
+    private static ValidationResult validateReduce(ReduceAggregationStep step) {
+        if (step.getResultField() == null || step.getResultField().isBlank()) {
+            return ValidationResult.fail("REDUCE step requires a non-blank resultField");
+        }
+        return validateScriptSource(step.getScript(), "REDUCE step");
+    }
+
+    static ValidationResult validateScriptSource(String source, String what) {
+        if (!configuration.isScriptsEnabled()) {
+            return ValidationResult.fail(ErrorCode.SCRIPTS_DISABLED, ErrorCode.SCRIPTS_DISABLED.getDefaultMessage());
+        }
+        if (source == null || source.isBlank()) {
+            return ValidationResult.fail(what + " requires a non-blank script");
+        }
+        final var maxBytes = configuration.getAggregationScriptMaxSourceBytes();
+        if (source.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+            return ValidationResult.fail(ErrorCode.SCRIPT_TOO_LARGE, ErrorCode.SCRIPT_TOO_LARGE.getDefaultMessage());
+        }
+        return ValidationResult.ok();
+    }
+
+    public static boolean containsScript(java.util.List<BaseAggregationStep> steps) {
+        if (steps == null) {
+            return false;
+        }
+        for (final var step : steps) {
+            final var carries = switch (step.getType()) {
+                case REDUCE -> true;
+                case FILTER -> operatorContainsScript(((FilterAggregationStep) step).getOperator());
+                case MAP -> mapContainsScript((MapAggregationStep) step);
+                default -> false;
+            };
+            if (carries) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean canFailWhileRunning(java.util.List<BaseAggregationStep> steps) {
+        return containsScript(steps) || steps.stream().anyMatch(step -> step.getType() == AggregationStepType.JOIN
+                || step.getType() == AggregationStepType.MAP && mapGrowsText((MapAggregationStep) step));
+    }
+
+    private static boolean mapGrowsText(MapAggregationStep step) {
+        return step.getOperators() != null && step.getOperators().stream()
+                .anyMatch(operator -> operator.getType() == MapOperationType.ADD_FIELD
+                        && ((AddFieldMapOperator) operator).getOperator() != null
+                        && isTextGrowing(((AddFieldMapOperator) operator).getOperator().getType()));
+    }
+
+    private static boolean isTextGrowing(MidOperationType type) {
+        return type == MidOperationType.CONCAT || type == MidOperationType.CAST;
+    }
+
+    private static boolean mapContainsScript(MapAggregationStep step) {
+        if (step.getOperators() == null) {
+            return false;
+        }
+        for (final var operator : step.getOperators()) {
+            if (operatorContainsScript(operator.getCondition())) {
+                return true;
+            }
+            if (operator.getType() == MapOperationType.ADD_FIELD
+                    && ((AddFieldMapOperator) operator).getOperator() instanceof ScriptMidOperator) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean operatorContainsScript(BaseOperator operator) {
+        if (operator == null) {
+            return false;
+        }
+        if (operator.getType() == OperatorType.SCRIPT) {
+            return true;
+        }
+        if (operator.getType() != OperatorType.CONJUNCTION) {
+            return false;
+        }
+        final var nested = ((ConjunctionOperator) operator).getOperators();
+        if (nested == null) {
+            return false;
+        }
+        for (final var child : nested) {
+            if (operatorContainsScript(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static ValidationResult validateFilter(FilterAggregationStep step) {
+        if (step.getOperator() == null) {
+            return ValidationResult.fail("FILTER step requires an operator");
+        }
+        final var breadth = operandLimitRefusal(operatorNodeCount(step.getOperator()), "FILTER operator nodes");
+        return breadth.isValid() ? validateOperator(step.getOperator()) : breadth;
+    }
+
+    private static int operatorNodeCount(BaseOperator operator) {
+        if (!(operator instanceof ConjunctionOperator conjunction) || conjunction.getOperators() == null) {
+            return 1;
+        }
+        var total = 1;
+        for (final var nested : conjunction.getOperators()) {
+            total += nested == null ? 1 : operatorNodeCount(nested);
+        }
+        return total;
+    }
+
+    private static int mapNodeCount(MapAggregationStep step) {
+        var total = 0;
+        for (final var op : step.getOperators()) {
+            total += 1 + (op.getCondition() == null ? 0 : operatorNodeCount(op.getCondition()));
+            if (op instanceof AddFieldMapOperator addOp && addOp.getOperator() instanceof ArrayParamMidOperator arrayOp
+                    && arrayOp.getOperands() != null) {
+                total += arrayOp.getOperands().size();
+            }
+        }
+        return total;
+    }
+
+    private static ValidationResult validateMap(MapAggregationStep step) {
+        if (step.getOperators() == null || step.getOperators().isEmpty()) {
+            return ValidationResult.fail("MAP step requires at least one operator");
+        }
+        final var breadth = operandLimitRefusal(mapNodeCount(step), "MAP operator nodes");
+        if (!breadth.isValid()) {
+            return breadth;
+        }
+        for (var op : step.getOperators()) {
+            if (op.getFieldName() == null || op.getFieldName().isBlank()) {
+                return ValidationResult.fail("MAP operator requires a non-blank fieldName");
+            }
+            if (op.getFieldName().chars().filter(c -> c == '.').count() >= Globals.MAX_REQUEST_NESTING_DEPTH) {
+                return ValidationResult.fail(
+                        "MAP operator fieldName nests deeper than " + Globals.MAX_REQUEST_NESTING_DEPTH + " levels");
+            }
+            if (op.getCondition() != null) {
+                final var conditionResult = validateOperator(op.getCondition(), OperatorContext.MAP_CONDITION);
+                if (!conditionResult.isValid()) {
+                    return conditionResult;
+                }
+            }
+            if (op.getType() == MapOperationType.ADD_FIELD) {
+                final var addOp = (AddFieldMapOperator) op;
+                if (addOp.getOperator() == null) {
+                    return ValidationResult.fail("MAP ADD_FIELD operator requires a mid-operator");
+                }
+                final var midResult = validateMidOperator(addOp.getOperator());
+                if (!midResult.isValid()) {
+                    return midResult;
+                }
+            }
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateGroupBy(GroupByAggregationStep step) {
+        if (step.getFieldName() == null || step.getFieldName().isBlank()) {
+            return ValidationResult.fail("GROUP_BY step requires a non-blank fieldName");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateJoin(JoinAggregationStep step) {
+        if (step.getJoinCollection() == null || step.getJoinCollection().isBlank()) {
+            return ValidationResult.fail("JOIN step requires a non-blank joinCollection");
+        }
+        if (!step.getJoinCollection().matches(NameValidations.NAME_PATTERN)) {
+            return ValidationResult
+                    .fail("JOIN joinCollection name must be 3-64 alphanumeric characters, underscores, or hyphens");
+        }
+        if (step.getLocalField() == null || step.getLocalField().isBlank()) {
+            return ValidationResult.fail("JOIN step requires a non-blank localField");
+        }
+        if (step.getRemoteField() == null || step.getRemoteField().isBlank()) {
+            return ValidationResult.fail("JOIN step requires a non-blank remoteField");
+        }
+        if (step.getAsField() == null || step.getAsField().isBlank()) {
+            return ValidationResult.fail("JOIN step requires a non-blank asField");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateLimit(LimitAggregationStep step) {
+        if (step.getLimit() == null) {
+            return ValidationResult.fail("LIMIT step requires a limit value");
+        }
+        if (step.getLimit() <= 0) {
+            return ValidationResult.fail("LIMIT step requires a limit greater than 0");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateSkip(SkipAggregationStep step) {
+        if (step.getSkip() == null) {
+            return ValidationResult.fail("SKIP step requires a skip value");
+        }
+        if (step.getSkip() < 0) {
+            return ValidationResult.fail("SKIP step requires a skip value of 0 or greater");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateSort(SortAggregationStep step) {
+        if (step.getFieldName() == null || step.getFieldName().isBlank()) {
+            return ValidationResult.fail("SORT step requires a non-blank fieldName");
+        }
+        if (step.getAscending() == null) {
+            return ValidationResult.fail("SORT step requires an ascending value");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateMembershipOperand(FieldOperator fieldOp) {
+        final var type = fieldOp.getFieldOperatorType();
+        if (type != FieldOperatorType.IN && type != FieldOperatorType.NOT_IN) {
+            return ValidationResult.ok();
+        }
+        if (!(fieldOp.getValue() instanceof JsonArray operands)) {
+            return ValidationResult.fail(type + " requires an array value");
+        }
+        return operandLimitRefusal(operands.size(), type + " operands");
+    }
+
+    private static ValidationResult operandLimitRefusal(int count, String what) {
+        final var limit = configuration.intValue(ConfigKey.MAX_FILTER_OPERANDS);
+        if (limit != 0 && count > limit) {
+            return ValidationResult.fail(ErrorCode.FILTER_OPERAND_LIMIT,
+                    ErrorCode.FILTER_OPERAND_LIMIT.getDefaultMessage() + ": " + what + " exceed " + limit);
+        }
+        return ValidationResult.ok();
+    }
+
+    public static ValidationResult validateOperator(BaseOperator operator) {
+        return validateOperator(operator, OperatorContext.FILTER_STEP);
+    }
+
+    private static ValidationResult validateOperator(BaseOperator operator, OperatorContext context) {
+        if (operator.getType() == OperatorType.FIELD) {
+            final var fieldOp = (FieldOperator) operator;
+            if (fieldOp.getField() == null || fieldOp.getField().isBlank()) {
+                return ValidationResult.fail("Field operator requires a non-blank field name");
+            }
+            if (fieldOp.getField().endsWith(".")) {
+                return ValidationResult.fail("Field operator field name must not end with '.'");
+            }
+            if (fieldOp.getFieldOperatorType() == null) {
+                return ValidationResult.fail("Field operator requires a fieldOperatorType");
+            }
+            if (fieldOp.getValue() == null) {
+                return ValidationResult.fail("Field operator requires a value");
+            }
+            return validateMembershipOperand(fieldOp);
+        } else if (operator.getType() == OperatorType.CUSTOM) {
+            return validateCustomOperator((CustomOperator) operator, context);
+        } else if (operator.getType() == OperatorType.SCRIPT) {
+            return validateScriptSource(((ScriptOperator) operator).getSource(), "Script operator");
+        } else {
+            final var conjOp = (ConjunctionOperator) operator;
+            if (conjOp.getConjunctionType() == null) {
+                return ValidationResult.fail("Conjunction operator requires a conjunctionType");
+            }
+            if (conjOp.getOperators() == null || conjOp.getOperators().isEmpty()) {
+                return ValidationResult.fail("Conjunction operator requires at least one nested operator");
+            }
+            final var breadth = operandLimitRefusal(conjOp.getOperators().size(),
+                    conjOp.getConjunctionType() + " operands");
+            if (!breadth.isValid()) {
+                return breadth;
+            }
+            for (var nested : conjOp.getOperators()) {
+                final var result = validateOperator(nested, context);
+                if (!result.isValid()) {
+                    return result;
+                }
+            }
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateCustomOperator(CustomOperator operator, OperatorContext context) {
+        if (operator.getField() == null || operator.getField().isBlank()) {
+            return ValidationResult.fail("Custom operator requires a non-blank field name");
+        }
+        final var name = operator.getCustomOperatorName();
+        if (name == null || name.isBlank()) {
+            return ValidationResult.fail("Custom operator requires a customOperatorName");
+        }
+        if (!CustomTypeFactory.isKnownCustomOperator(name)) {
+            return ValidationResult.fail("Unknown custom operator: " + name);
+        }
+        if (context == OperatorContext.MAP_CONDITION && CustomTypeFactory.isRankingOperator(name)) {
+            return ValidationResult.fail(name + " ranks a whole stream and cannot be a MAP condition");
+        }
+        final var args = operator.getArgs();
+        return switch (name) {
+            case JsonGeo.OPERATOR_DISTANCE -> validateDistanceArgs(operator, args);
+            case JsonGeo.OPERATOR_WITHIN -> validateWithinArgs(args);
+            case JsonVector.OPERATOR_NEAREST -> validateNearestArgs(operator, args);
+            default -> ValidationResult.ok();
+        };
+    }
+
+    private static ValidationResult validateNearestArgs(CustomOperator operator, JsonObject args) {
+        if (isNotVector(operator.getValue())) {
+            return ValidationResult.fail("nearest operator requires a vector value");
+        }
+        final var k = args.get("k");
+        if (k == null || !k.isJsonNumber() || k.asJsonNumber().getValue().intValue() <= 0) {
+            return ValidationResult.fail("nearest operator requires a positive integer k");
+        }
+        if (k.asJsonNumber().getValue().longValue() > MAX_NEAREST_K) {
+            return ValidationResult.fail("nearest operator k exceeds the maximum supported value");
+        }
+        final var exact = args.get("exact");
+        if (exact != null && !exact.isJsonBoolean()) {
+            return ValidationResult.fail("nearest operator exact flag must be a boolean");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static boolean isNotVector(JsonBaseElement element) {
+        return element == null || !element.isJsonCustom()
+                || !JsonVector.CUSTOM_TYPE_NAME.equals(element.asJsonCustom().getCustomTypeName());
+    }
+
+    private static ValidationResult validateDistanceArgs(CustomOperator operator, JsonObject args) {
+        if (isNotFiniteGeo(operator.getValue())) {
+            return ValidationResult.fail("distance operator requires a finite geo value");
+        }
+        final var comparator = args.get("comparator");
+        if (comparator == null || !comparator.isJsonString() || parseComparator(comparator) == null) {
+            return ValidationResult.fail("distance operator requires a valid comparator");
+        }
+        final var distance = args.get("distance");
+        if (distance == null || !distance.isJsonNumber()) {
+            return ValidationResult.fail("distance operator requires a numeric distance");
+        }
+        return ValidationResult.ok();
+    }
+
+    private static ValidationResult validateWithinArgs(JsonObject args) {
+        final var polygon = args.get("polygon");
+        if (polygon == null || !polygon.isJsonArray() || polygon.asJsonArray().size() < 3) {
+            return ValidationResult.fail("within operator requires a polygon of at least 3 points");
+        }
+        for (var vertex : polygon.asJsonArray().asList()) {
+            if (isNotFiniteGeo(vertex)) {
+                return ValidationResult.fail("within operator requires a polygon of finite geo points");
+            }
+        }
+        return operandLimitRefusal(polygon.asJsonArray().size(), "within polygon vertices");
+    }
+
+    private static boolean isNotGeo(JsonBaseElement element) {
+        return element == null || !element.isJsonCustom()
+                || !JsonGeo.CUSTOM_TYPE_NAME.equals(element.asJsonCustom().getCustomTypeName());
+    }
+
+    private static boolean isNotFiniteGeo(JsonBaseElement element) {
+        return isNotGeo(element) || !(element instanceof JsonGeo geo && geo.isFinitePoint());
+    }
+
+    private static GeoDistanceComparator parseComparator(JsonBaseElement comparator) {
+        try {
+            return GeoDistanceComparator.valueOf(comparator.asJsonString().getValue());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private enum OperatorContext {
+        FILTER_STEP, MAP_CONDITION
+    }
+
+    public static ValidationResult validateMidOperator(BaseMidOperator midOperator) {
+        return switch (midOperator.getType()) {
+            case AVG, SUM, MAX, MIN, MULTIPLY, CONCAT -> {
+                final var op = (ArrayParamMidOperator) midOperator;
+                if (op.getOperands() == null || op.getOperands().asList().isEmpty()) {
+                    yield ValidationResult.fail(midOperator.getType() + " operator requires at least one operand");
+                }
+                yield ValidationResult.ok();
+            }
+            case SUBS, DIVIDE, POW, ROOT -> {
+                final var op = (ArrayParamMidOperator) midOperator;
+                if (op.getOperands() == null || op.getOperands().asList().size() < 2) {
+                    yield ValidationResult.fail(midOperator.getType() + " operator requires at least two operands");
+                }
+                yield ValidationResult.ok();
+            }
+            case ABS, SIZE -> {
+                final var op = (OneParamMidOperator) midOperator;
+                if (op.getOperand() == null || op.getOperand().isBlank()) {
+                    yield ValidationResult.fail(midOperator.getType() + " operator requires a non-blank operand");
+                }
+                yield ValidationResult.ok();
+            }
+            case SCRIPT -> validateScriptSource(((ScriptMidOperator) midOperator).getSource(), "SCRIPT operator");
+            case CAST -> {
+                final var op = (CastMidOperator) midOperator;
+                if (op.getFieldName() == null || op.getFieldName().isBlank()) {
+                    yield ValidationResult.fail("CAST operator requires a non-blank fieldName");
+                }
+                if (op.getToType() == null) {
+                    yield ValidationResult.fail("CAST operator requires a toType");
+                }
+                if (op.getToType() == CastToType.JSON_CUSTOM
+                        && (op.getCustomTypeName() == null || op.getCustomTypeName().isBlank())) {
+                    yield ValidationResult.fail("CAST to JSON_CUSTOM requires a non-blank customTypeName");
+                }
+                yield ValidationResult.ok();
+            }
+        };
+    }
+}

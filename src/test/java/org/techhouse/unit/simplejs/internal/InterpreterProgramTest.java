@@ -1,0 +1,373 @@
+package org.techhouse.unit.simplejs.internal;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import org.junit.jupiter.api.Test;
+import org.techhouse.simplejs.exceptions.ReferenceErrorException;
+import org.techhouse.simplejs.internal.Interpreter;
+import org.techhouse.simplejs.values.JsNumber;
+import org.techhouse.simplejs.values.JsString;
+
+public class InterpreterProgramTest {
+    private static double num(String source) {
+        return ((JsNumber) Interpreter.run(source)).getValue();
+    }
+
+    private static String str(String source) {
+        return ((JsString) Interpreter.run(source)).getValue();
+    }
+
+    @Test
+    public void test_fibonacci_by_array() {
+        final var source = """
+                let fib = [0, 1];
+                for (let i = 2; i < 10; i++) {
+                    fib[i] = fib[i - 1] + fib[i - 2];
+                }
+                fib[9]
+                """;
+        assertEquals(34, num(source));
+    }
+
+    @Test
+    public void test_factorial_by_while() {
+        final var source = """
+                let n = 5;
+                let f = 1;
+                while (n > 1) {
+                    f *= n;
+                    n--;
+                }
+                f
+                """;
+        assertEquals(120, num(source));
+    }
+
+    @Test
+    public void test_nested_labeled_break() {
+        final var source = """
+                let count = 0;
+                search: for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        count++;
+                        if (i + j === 3) break search;
+                    }
+                }
+                count
+                """;
+        assertEquals(6, num(source));
+    }
+
+    @Test
+    public void test_operator_precedence() {
+        assertEquals(5, num("let x = 1 + 2 * 3 - 4 / 2; x"));
+    }
+
+    @Test
+    public void test_object_accumulation() {
+        final var source = """
+                let acc = { total: 0 };
+                for (let i = 1; i <= 4; i++) {
+                    acc.total += i;
+                }
+                acc.total
+                """;
+        assertEquals(10, num(source));
+    }
+
+    @Test
+    public void test_try_catch_finally_recovery() {
+        final var source = """
+                let log = '';
+                function risky(n) {
+                    if (n < 0) throw new RangeError('negative');
+                    return n * 2;
+                }
+                let result = 0;
+                try {
+                    result = risky(-1);
+                } catch (e) {
+                    result = -1;
+                    log += e.name;
+                } finally {
+                    log += ':done';
+                }
+                log + '=' + result
+                """;
+        assertEquals("RangeError:done=-1", str(source));
+    }
+
+    @Test
+    public void test_switch_dispatcher() {
+        final var source = """
+                function classify(n) {
+                    let kind = '';
+                    switch (n % 2) {
+                        case 0:
+                            kind = 'even';
+                            break;
+                        default:
+                            kind = 'odd';
+                    }
+                    return kind;
+                }
+                classify(3) + ',' + classify(4)
+                """;
+        assertEquals("odd,even", str(source));
+    }
+
+    @Test
+    public void test_destructure_and_map() {
+        final var source = """
+                let args = {a: 3};
+                const {a, b = 2} = args;
+                [a, b].map(x => x * 2).join(',')
+                """;
+        assertEquals("6,4", str(source));
+    }
+
+    @Test
+    public void test_pipeline() {
+        final var source = """
+                let nums = [1, 2, 3, 4, 5, 6];
+                nums.filter(n => n % 2 === 0).map(n => n * n).reduce((a, b) => a + b, 0)
+                """;
+        assertEquals(56, num(source));
+    }
+
+    @Test
+    public void test_entries_rebuild() {
+        final var source = """
+                let prices = {apple: 1, pear: 2};
+                let doubled = {};
+                Object.entries(prices).forEach(([k, v]) => { doubled[k] = v * 2; });
+                doubled.apple + ',' + doubled.pear
+                """;
+        assertEquals("2,4", str(source));
+    }
+
+    @Test
+    public void test_json_transform() {
+        final var source = """
+                let doc = JSON.parse('{"items":[1,2,3]}');
+                doc.items.push(4);
+                JSON.parse(JSON.stringify(doc)).items.length
+                """;
+        assertEquals(4, num(source));
+    }
+
+    @Test
+    public void test_object_spread_merge() {
+        final var source = """
+                let base = {a: 1, b: 2};
+                let override = {b: 9, c: 3};
+                let merged = {...base, ...override};
+                merged.a + ',' + merged.b + ',' + merged.c
+                """;
+        assertEquals("1,9,3", str(source));
+    }
+
+    @Test
+    public void test_stack_class_with_private_field() {
+        final var source = """
+                class Stack {
+                    #items = [];
+                    push(x) { this.#items.push(x); return this; }
+                    pop() { return this.#items.pop(); }
+                    get size() { return this.#items.length; }
+                }
+                let s = new Stack();
+                s.push(1).push(2).push(3);
+                let top = s.pop();
+                top + ':' + s.size
+                """;
+        assertEquals("3:2", str(source));
+    }
+
+    @Test
+    public void test_shape_inheritance_with_super() {
+        final var source = """
+                class Shape {
+                    constructor(name) { this.name = name; }
+                    area() { return 0; }
+                    describe() { return this.name + '=' + this.area(); }
+                }
+                class Circle extends Shape {
+                    constructor(r) { super('circle'); this.r = r; }
+                    area() { return Math.floor(super.area() + this.r * this.r * 3); }
+                }
+                new Circle(2).describe()
+                """;
+        assertEquals("circle=12", str(source));
+    }
+
+    @Test
+    public void test_static_instance_counter() {
+        final var source = """
+                class Widget {
+                    static count = 0;
+                    constructor() { Widget.count++; }
+                    static total() { return Widget.count; }
+                }
+                new Widget();
+                new Widget();
+                new Widget();
+                Widget.total()
+                """;
+        assertEquals(3, num(source));
+    }
+
+    @Test
+    public void test_classic_for_let_per_iteration_binding() {
+        final var source = """
+                let fns = [];
+                for (let i = 0; i < 3; i++) fns.push(() => i);
+                fns[0]() + fns[1]() + fns[2]()
+                """;
+        assertEquals(3, num(source));
+    }
+
+    @Test
+    public void test_classic_for_var_shares_binding() {
+        final var source = """
+                let fns = [];
+                for (var i = 0; i < 3; i++) fns.push(() => i);
+                fns[0]() + fns[1]() + fns[2]()
+                """;
+        assertEquals(9, num(source));
+    }
+
+    @Test
+    public void test_classic_for_break_continue() {
+        final var source = """
+                let s = 0;
+                for (let i = 0; i < 10; i++) {
+                    if (i === 2) continue;
+                    if (i === 5) break;
+                    s += i;
+                }
+                s
+                """;
+        assertEquals(8, num(source));
+    }
+
+    @Test
+    public void test_classic_for_empty_and_lexical_headers() {
+        assertEquals(1, num("let n = 0; for (;;) { n = 1; break; } n"));
+        assertEquals(1, num("let n = 0; for (let i = 0;;) { n = 1; break; } n"));
+    }
+
+    @Test
+    public void test_parameter_self_reference_is_a_reference_error() {
+        assertThrows(ReferenceErrorException.class, () -> Interpreter.run("function f(a = a) {} f()"));
+        assertThrows(ReferenceErrorException.class, () -> Interpreter.run("function f(a = b, b = 1) {} f()"));
+        assertEquals(2, num("function f(a, b = a + 1) { return b; } f(1)"));
+    }
+
+    @Test
+    public void test_delete_symbol_keyed_property() {
+        assertEquals(1, num("const s = Symbol(); const o = {[s]: 2}; delete o[s]; o[s] === undefined ? 1 : 0"));
+        assertEquals(1, num("const s = Symbol(); const o = {}; delete o[s] ? 1 : 0"));
+    }
+
+    @Test
+    public void test_spec_whitespace_between_tokens() {
+        assertEquals(3, num("var\u00A0a\u00A0=\u00A01;\u2007a\u202F+\u00A02"));
+        assertEquals(1, num("\uFEFF1"));
+    }
+
+    @Test
+    public void test_typeof_throws_for_tdz_binding_but_not_for_undeclared_name() {
+        assertThrows(ReferenceErrorException.class, () -> Interpreter.run("(function() { typeof x; let x; })()"));
+        assertEquals("undefined", str("typeof neverDeclaredAnywhere"));
+    }
+
+    @Test
+    public void test_for_in_head_expression_sees_uninitialized_loop_binding() {
+        final var source = """
+                let x = 'outside';
+                let probeExpr;
+                for (let [x] in { i: probeExpr = function() { typeof x; } }) {}
+                let threw = false;
+                try { probeExpr(); } catch (e) { threw = e instanceof ReferenceError; }
+                threw ? 'true' : 'false'
+                """;
+        assertEquals("true", str(source));
+    }
+
+    @Test
+    public void test_assignment_target_resolved_before_right_hand_side_creates_it() {
+        assertThrows(ReferenceErrorException.class, () -> Interpreter.run("undeclared = (this.undeclared = 5);"));
+    }
+
+    @Test
+    public void test_await_using_nullish_still_implies_a_microtask_tick() {
+        final var source = """
+                let sameMicrotask = true;
+                let observedAfterBlock = null;
+                async function f() {
+                    { await using _ = null; }
+                    observedAfterBlock = sameMicrotask;
+                }
+                f();
+                sameMicrotask = false;
+                observedAfterBlock ? 'true' : 'false'
+                """;
+        assertEquals("false", str(source));
+    }
+
+    @Test
+    public void test_typeof_reaches_globalthis_only_accessor() {
+        final var source = """
+                var count = 0;
+                Object.defineProperty(this, 'y', { get() { count++; return 1; } });
+                typeof y + ':' + count
+                """;
+        assertEquals("number:1", str(source));
+    }
+
+    @Test
+    public void test_anonymous_class_name_visible_in_static_initializer_via_declarator() {
+        assertEquals("C", str("var C = class { static f = this.name; }; C.f"));
+    }
+
+    @Test
+    public void test_anonymous_class_name_visible_in_static_initializer_via_assignment() {
+        assertEquals("D", str("var D; D = class { static f = this.name; }; D.f"));
+    }
+
+    @Test
+    public void test_primitive_write_reaches_prototype_setter() {
+        final var source = """
+                var log = [];
+                Object.defineProperty(Number.prototype, 'tag', { set(v) { log.push(v); } });
+                (5).tag = 'x';
+                log.length + ':' + log[0]
+                """;
+        assertEquals("1:x", str(source));
+    }
+
+    @Test
+    public void test_primitive_write_reaches_proxy_in_prototype_chain() {
+        final var source = """
+                var count = 0;
+                var spy = new Proxy({}, { set: function() { count++; return true; } });
+                Object.setPrototypeOf(Boolean.prototype, spy);
+                true.flag = 1;
+                count
+                """;
+        assertEquals(1, num(source));
+    }
+
+    @Test
+    public void test_proxy_delete_forwards_array_element_delete() {
+        final var source = """
+                var arr = [1, 2, 3];
+                var proxy = new Proxy(arr, {});
+                delete proxy[0];
+                (0 in arr) + ',' + arr.length
+                """;
+        assertEquals("false,3", str(source));
+    }
+}

@@ -1,0 +1,439 @@
+package org.techhouse.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.techhouse.ejson.custom_types.JsonDateTime;
+import org.techhouse.ejson.custom_types.JsonTime;
+import org.techhouse.ejson.elements.JsonArray;
+import org.techhouse.ejson.elements.JsonBaseElement;
+import org.techhouse.ejson.elements.JsonNull;
+import org.techhouse.ejson.elements.JsonNumber;
+import org.techhouse.ejson.elements.JsonObject;
+import org.techhouse.ejson.elements.JsonString;
+import org.techhouse.ops.AggregateLimitException;
+import org.techhouse.ops.ErrorCode;
+import org.techhouse.ops.MapOperatorHelper;
+import org.techhouse.ops.PipelineContext;
+import org.techhouse.ops.req.agg.BaseOperator;
+import org.techhouse.ops.req.agg.ConjunctionOperatorType;
+import org.techhouse.ops.req.agg.FieldOperatorType;
+import org.techhouse.ops.req.agg.mid_operators.ArrayParamMidOperator;
+import org.techhouse.ops.req.agg.mid_operators.MidOperationType;
+import org.techhouse.ops.req.agg.mid_operators.ScriptMidOperator;
+import org.techhouse.ops.req.agg.operators.ConjunctionOperator;
+import org.techhouse.ops.req.agg.operators.FieldOperator;
+import org.techhouse.ops.req.agg.operators.ScriptOperator;
+import org.techhouse.ops.req.agg.step.map.AddFieldMapOperator;
+import org.techhouse.ops.req.agg.step.map.RemoveFieldMapOperator;
+import org.techhouse.test.TestUtils;
+
+public class MapOperatorHelperTest {
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.releaseAllLocks();
+    }
+
+    @Test
+    public void test_handle_null_missing_fields() {
+        JsonObject input = new JsonObject();
+        input.addProperty("field1", 10);
+        input.add("field2", JsonNull.INSTANCE);
+
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("field1"));
+        operands.add(new JsonString("field2"));
+        operands.add(new JsonString("non_existent_field"));
+
+        ArrayParamMidOperator sumOperator = new ArrayParamMidOperator(MidOperationType.SUM, operands);
+        AddFieldMapOperator addSumField = new AddFieldMapOperator("sum_result", null, sumOperator);
+
+        JsonObject result = MapOperatorHelper.processOperator(addSumField, input);
+
+        assertEquals(10.0, result.get("sum_result").asJsonNumber().getValue());
+
+        ArrayParamMidOperator avgOperator = new ArrayParamMidOperator(MidOperationType.AVG, operands);
+        AddFieldMapOperator addAvgField = new AddFieldMapOperator("avg_result", null, avgOperator);
+
+        result = MapOperatorHelper.processOperator(addAvgField, result);
+
+        assertEquals(10.0, result.get("avg_result").asJsonNumber().getValue());
+    }
+
+    @Test
+    public void test_remove_field_map_operator() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("fieldToRemove", "value");
+        jsonObject.addProperty("anotherField", "anotherValue");
+
+        RemoveFieldMapOperator removeFieldMapOperator = new RemoveFieldMapOperator("fieldToRemove", null);
+
+        JsonObject result = MapOperatorHelper.processOperator(removeFieldMapOperator, jsonObject);
+
+        assertFalse(result.has("fieldToRemove"));
+        assertTrue(result.has("anotherField"));
+    }
+
+    @Test
+    public void test_concatenate_strings_and_fields() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("field1", "Hello");
+        jsonObject.addProperty("field2", "World");
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("field1"));
+        operands.add(new JsonString("field2"));
+        ArrayParamMidOperator midOperator = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        AddFieldMapOperator operator = new AddFieldMapOperator("result", null, midOperator);
+
+        JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject);
+
+        assertEquals("HelloWorld", result.get("result").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_non_existent_nested_field_paths() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("existingField", 5);
+
+        FieldOperator condition = new FieldOperator(FieldOperatorType.EQUALS, "non.existent.path", new JsonNumber(5));
+        RemoveFieldMapOperator operator = new RemoveFieldMapOperator("existingField", condition);
+
+        JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject);
+
+        assertTrue(result.has("existingField"), "Field should not be removed as the condition path does not exist");
+    }
+
+    @Test
+    public void test_string_literals_in_concatenation() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("field1", "value1");
+        jsonObject.addProperty("field2", "value2");
+
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("-literal1"));
+        operands.add(new JsonString("field1"));
+        operands.add(new JsonString("-literal2"));
+
+        ArrayParamMidOperator concatOperator = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        AddFieldMapOperator addFieldOperator = new AddFieldMapOperator("concatenated", null, concatOperator);
+
+        JsonObject result = MapOperatorHelper.processOperator(addFieldOperator, jsonObject);
+
+        assertEquals("literal1value1literal2", result.get("concatenated").asJsonString().getValue(),
+                "Concatenation should handle string literals correctly.");
+    }
+
+    @Test
+    public void test_a_null_inside_an_array_operand_spells_null_like_a_top_level_one() {
+        final var nested = new JsonArray();
+        nested.add(new JsonString("x"));
+        nested.add(JsonNull.INSTANCE);
+        nested.add(new JsonString("y"));
+
+        assertEquals(concatOf(new JsonObject(), new JsonString("-x"), JsonNull.INSTANCE, new JsonString("-y")),
+                concatOf(new JsonObject(), nested),
+                "a null spelled inside an array operand must read the same as one spelled beside it");
+    }
+
+    @Test
+    public void test_an_array_operand_of_only_nulls_spells_them_all() {
+        final var nested = new JsonArray();
+        nested.add(JsonNull.INSTANCE);
+        nested.add(JsonNull.INSTANCE);
+
+        assertEquals("nullnull", concatOf(new JsonObject(), nested));
+    }
+
+    @Test
+    public void test_a_string_inside_an_array_stays_a_literal() {
+        final var document = new JsonObject();
+        document.addProperty("field1", "resolved");
+        final var nested = new JsonArray();
+        nested.add(new JsonString("field1"));
+
+        assertEquals("field1", concatOf(document, nested),
+                "only a top-level string operand is a field path; an array operand is a list of literals");
+    }
+
+    @Test
+    public void test_average_calculation_valid_steps() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("value1", 10);
+        jsonObject.addProperty("value2", 20);
+        jsonObject.addProperty("value3", "not a number");
+
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("value1"));
+        operands.add(new JsonString("value2"));
+        operands.add(new JsonString("value3"));
+
+        ArrayParamMidOperator midOperator = new ArrayParamMidOperator(MidOperationType.AVG, operands);
+        AddFieldMapOperator addFieldMapOperator = new AddFieldMapOperator("average", null, midOperator);
+
+        JsonObject result = MapOperatorHelper.processOperator(addFieldMapOperator, jsonObject);
+
+        assertEquals(15.0, result.get("average").asJsonNumber().getValue().doubleValue());
+    }
+
+    @Test
+    public void test_remove_existing_field() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("fieldToRemove", "value");
+        RemoveFieldMapOperator operator = new RemoveFieldMapOperator("fieldToRemove", null);
+        JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject);
+        assertFalse(result.has("fieldToRemove"));
+    }
+
+    @Test
+    public void test_min_operation() {
+        JsonObject input = new JsonObject();
+        input.addProperty("a", 5);
+        input.addProperty("b", 15);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("a"));
+        operands.add(new JsonString("b"));
+        operands.add(new JsonNumber(10));
+        ArrayParamMidOperator minOp = new ArrayParamMidOperator(MidOperationType.MIN, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("min", null, minOp), input);
+        assertEquals(5.0, result.get("min").asJsonNumber().getValue().doubleValue());
+    }
+
+    @Test
+    public void test_max_operation() {
+        JsonObject input = new JsonObject();
+        input.addProperty("a", 5);
+        input.addProperty("b", 15);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("a"));
+        operands.add(new JsonString("b"));
+        operands.add(new JsonNumber(10));
+        ArrayParamMidOperator maxOp = new ArrayParamMidOperator(MidOperationType.MAX, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("max", null, maxOp), input);
+        assertEquals(15.0, result.get("max").asJsonNumber().getValue().doubleValue());
+    }
+
+    @Test
+    public void test_subs_operation() {
+        JsonObject input = new JsonObject();
+        input.addProperty("base", 100);
+        input.addProperty("sub", 30);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("base"));
+        operands.add(new JsonString("sub"));
+        operands.add(new JsonNumber(10));
+        ArrayParamMidOperator subsOp = new ArrayParamMidOperator(MidOperationType.SUBS, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("subs", null, subsOp), input);
+        assertEquals(60.0, result.get("subs").asJsonNumber().getValue().doubleValue());
+    }
+
+    @Test
+    public void test_root_operation() {
+        JsonObject input = new JsonObject();
+        input.addProperty("base", 27);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("base"));
+        operands.add(new JsonNumber(3));
+        ArrayParamMidOperator rootOp = new ArrayParamMidOperator(MidOperationType.ROOT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("root", null, rootOp), input);
+        assertEquals(3.0, result.get("root").asJsonNumber().getValue().doubleValue(), 0.0001);
+    }
+
+    @Test
+    public void test_or_condition_all_false_skips_field() {
+        JsonObject input = new JsonObject();
+        input.addProperty("x", 1);
+
+        List<BaseOperator> ops = List.of(new FieldOperator(FieldOperatorType.EQUALS, "x", new JsonNumber(99)),
+                new FieldOperator(FieldOperatorType.EQUALS, "x", new JsonNumber(98)));
+        ConjunctionOperator orCond = new ConjunctionOperator(ConjunctionOperatorType.OR, ops);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("x"));
+        AddFieldMapOperator op = new AddFieldMapOperator("result", orCond,
+                new ArrayParamMidOperator(MidOperationType.SUM, operands));
+
+        JsonObject result = MapOperatorHelper.processOperator(op, input);
+        assertFalse(result.has("result"));
+    }
+
+    @Test
+    public void test_nor_condition_adds_the_field_when_no_child_matches() {
+        JsonObject input = new JsonObject();
+        input.addProperty("x", 5);
+
+        List<BaseOperator> ops = List.of(new FieldOperator(FieldOperatorType.EQUALS, "x", new JsonNumber(99)));
+        ConjunctionOperator norCond = new ConjunctionOperator(ConjunctionOperatorType.NOR, ops);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("x"));
+        AddFieldMapOperator op = new AddFieldMapOperator("result", norCond,
+                new ArrayParamMidOperator(MidOperationType.SUM, operands));
+
+        JsonObject result = MapOperatorHelper.processOperator(op, input);
+        assertTrue(result.has("result"));
+    }
+
+    @Test
+    public void test_concat_non_string_field_uses_to_json() {
+        JsonObject input = new JsonObject();
+        input.addProperty("score", 42);
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("score"));
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertTrue(result.has("out"));
+        assertTrue(result.get("out").asJsonString().getValue().contains("42"));
+    }
+
+    @Test
+    public void test_concat_json_number_operand_uses_to_json() {
+        JsonObject input = new JsonObject();
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonNumber(99));
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertTrue(result.has("out"));
+    }
+
+    @Test
+    public void test_concat_json_array_operand() {
+        JsonObject input = new JsonObject();
+        JsonArray arr = new JsonArray();
+        arr.add(new JsonString("x"));
+        arr.add(new JsonString("y"));
+        JsonArray operands = new JsonArray();
+        operands.add(arr);
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertTrue(result.get("out").asJsonString().getValue().contains("x"));
+    }
+
+    @Test
+    public void test_concat_json_null_operand() {
+        JsonObject input = new JsonObject();
+        JsonArray operands = new JsonArray();
+        operands.add(JsonNull.INSTANCE);
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertTrue(result.has("out"));
+    }
+
+    @Test
+    public void test_concat_datetime_field_uses_string_data_value() {
+        JsonObject input = new JsonObject();
+        input.add("ts", new JsonDateTime(LocalDateTime.of(2024, 1, 15, 10, 30, 0)));
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("ts"));
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertEquals("2024-01-15T10:30", result.get("out").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_concat_time_field_uses_string_data_value() {
+        JsonObject input = new JsonObject();
+        input.add("t", new JsonTime(LocalTime.of(10, 30, 0)));
+        JsonArray operands = new JsonArray();
+        operands.add(new JsonString("t"));
+        ArrayParamMidOperator op = new ArrayParamMidOperator(MidOperationType.CONCAT, operands);
+        JsonObject result = MapOperatorHelper.processOperator(new AddFieldMapOperator("out", null, op), input);
+        assertEquals("10:30", result.get("out").asJsonString().getValue());
+    }
+
+    private static String concatOf(JsonObject document, JsonBaseElement... operands) {
+        final var operandArray = new JsonArray();
+        for (final var operand : operands) {
+            operandArray.add(operand);
+        }
+        final var operator = new AddFieldMapOperator("joined", null,
+                new ArrayParamMidOperator(MidOperationType.CONCAT, operandArray));
+        return MapOperatorHelper.processOperator(operator, document).get("joined").asJsonString().getValue();
+    }
+
+    @Test
+    public void test_concat_spells_a_literal_null_the_same_as_a_null_field() {
+        final var input = new JsonObject();
+        input.add("nullField", JsonNull.INSTANCE);
+        final var fromLiteral = concatOf(input, new JsonString("-x"), JsonNull.INSTANCE, new JsonString("-y"));
+        final var fromField = concatOf(input, new JsonString("-x"), new JsonString("nullField"), new JsonString("-y"));
+        assertEquals(fromField, fromLiteral);
+        assertEquals("xnully", fromLiteral);
+    }
+
+    @Test
+    public void test_concat_output_is_stable_across_instances() {
+        final var joined = concatOf(new JsonObject(), new JsonString("-x"), JsonNull.INSTANCE);
+        assertFalse(joined.contains("@"), "a Java identity string changes on every JVM start: " + joined);
+        assertFalse(joined.contains("org.techhouse"), "a Java identity string leaks the package name: " + joined);
+    }
+
+    @Test
+    public void test_concat_of_no_operands_and_of_only_nulls() {
+        assertEquals("", concatOf(new JsonObject()));
+        assertEquals("nullnull", concatOf(new JsonObject(), JsonNull.INSTANCE, JsonNull.INSTANCE));
+    }
+
+    @Test
+    public void test_remove_non_existent_field() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("existingField", "value");
+        RemoveFieldMapOperator operator = new RemoveFieldMapOperator("nonExistentField", null);
+
+        JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject);
+
+        assertTrue(result.has("existingField"));
+        assertEquals("value", result.get("existingField").asJsonString().getValue());
+    }
+    @Test
+    public void test_a_map_condition_returning_infinity_applies_the_field_change() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("existingField", 5);
+
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            ScriptOperator condition = new ScriptOperator("export default (doc) => 1 / 0;");
+            RemoveFieldMapOperator operator = new RemoveFieldMapOperator("existingField", condition);
+
+            JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject, context);
+
+            assertFalse(result.has("existingField"),
+                    "Infinity is truthy in JavaScript, so the condition holds and the field is removed");
+        }
+    }
+
+    @Test
+    public void test_a_map_condition_returning_nan_leaves_the_document_alone() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("existingField", 5);
+
+        try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
+            ScriptOperator condition = new ScriptOperator("export default (doc) => 0 / 0;");
+            RemoveFieldMapOperator operator = new RemoveFieldMapOperator("existingField", condition);
+
+            JsonObject result = MapOperatorHelper.processOperator(operator, jsonObject, context);
+
+            assertTrue(result.has("existingField"), "NaN is falsy in JavaScript");
+        }
+    }
+
+    @Test
+    public void test_a_map_script_shared_string_result_is_refused_without_materializing() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("_id", "x");
+
+        try (var context = PipelineContext.of(0L, 1_000_000L, null)) {
+            final var midOperator = new ScriptMidOperator(
+                    "export default (doc) => Array(10000).fill('x'.repeat(1000000));");
+            final var operator = new AddFieldMapOperator("big", null, midOperator);
+
+            final var start = System.nanoTime();
+            final var failure = assertThrows(AggregateLimitException.class,
+                    () -> MapOperatorHelper.processOperator(operator, jsonObject, context));
+            final var elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+            assertEquals(ErrorCode.AGGREGATE_RESULT_TOO_LARGE, failure.getErrorCode());
+            assertTrue(elapsedMs < 5000, "the pre-gate must not materialize the value, took " + elapsedMs + "ms");
+        }
+    }
+}

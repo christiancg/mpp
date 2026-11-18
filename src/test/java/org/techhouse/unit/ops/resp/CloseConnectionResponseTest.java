@@ -1,0 +1,20 @@
+package org.techhouse.unit.ops.resp;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+import org.techhouse.config.Globals;
+import org.techhouse.ops.OperationStatus;
+import org.techhouse.ops.OperationType;
+import org.techhouse.ops.resp.CloseConnectionResponse;
+
+public class CloseConnectionResponseTest {
+    @Test
+    public void test_constructor_creates_instance_with_close_connection_type() {
+        CloseConnectionResponse response = new CloseConnectionResponse();
+
+        assertEquals(OperationType.CLOSE_CONNECTION, response.getType());
+        assertEquals(OperationStatus.OK, response.getStatus());
+        assertEquals(Globals.CLOSE_CONNECTION_MESSAGE, response.getMessage());
+    }
+}

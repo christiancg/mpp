@@ -1,0 +1,2018 @@
+import json
+import os
+import sys
+import threading
+import time
+
+import base_utils as bu
+from base_utils import Conn, check, check_code, check_field, check_status, filter_step, ids_of, section
+
+HOST = os.environ.get("API_TEST_HOST", "127.0.0.1")
+PORT = int(os.environ.get("API_TEST_PORT", "8989"))
+
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = bu.PASSWORD
+
+DB = "api_test_db"
+
+bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+
+def create_user(c, username, password, admin=False, global_perms=None, db_perms=None, coll_perms=None):
+    return c.send({
+        "type": "CREATE_USER", "username": username, "password": password, "admin": admin,
+        "globalPermissions": global_perms or [], "databasePermissions": db_perms or {},
+        "collectionPermissions": coll_perms or {},
+    })
+
+
+def delete_user(c, username: str) -> dict:
+    return c.send({"type": "DELETE_USER", "username": username})
+
+
+def create_db(c, name=DB) -> dict:
+    return c.send({"type": "CREATE_DATABASE", "databaseName": name})
+
+
+def drop_db(c, name=DB) -> dict:
+    return c.send({"type": "DROP_DATABASE", "databaseName": name})
+
+
+def list_databases(c) -> dict:
+    return c.send({"type": "LIST_DATABASES"})
+
+
+def list_collections(c, db=DB) -> dict:
+    return c.send({"type": "LIST_COLLECTIONS", "databaseName": db})
+
+
+def create_coll(c, coll, db=DB) -> dict:
+    return c.send({"type": "CREATE_COLLECTION", "databaseName": db, "collectionName": coll})
+
+
+def drop_coll(c, coll, db=DB) -> dict:
+    return c.send({"type": "DROP_COLLECTION", "databaseName": db, "collectionName": coll})
+
+
+def save(c, coll, obj, db=DB) -> dict:
+    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": obj})
+
+
+def bulk_save(c, coll, objs, db=DB) -> dict:
+    return c.send({"type": "BULK_SAVE", "databaseName": db, "collectionName": coll, "objects": objs})
+
+
+def find_by_id(c, coll, _id, db=DB, dirty=False) -> dict:
+    payload = {"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": _id}
+    if dirty:
+        payload["dirtyRead"] = True
+    return c.send(payload)
+
+
+def delete(c, coll, _id, db=DB) -> dict:
+    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "_id": _id})
+
+
+def aggregate(c, coll, steps, db=DB) -> dict:
+    return c.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+                       "aggregationSteps": steps})
+
+
+def analyze(c, coll, steps, db=DB) -> dict:
+    return c.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+                       "aggregationSteps": steps, "analyze": True})
+
+
+def create_index(c, coll, field, db=DB) -> dict:
+    return c.send({"type": "CREATE_INDEX", "databaseName": db, "collectionName": coll, "fieldName": field})
+
+
+def drop_index(c, coll, field, db=DB) -> dict:
+    return c.send({"type": "DROP_INDEX", "databaseName": db, "collectionName": coll, "fieldName": field})
+
+
+def reindex(c, coll, fields=None, db=DB) -> dict:
+    payload = {"type": "REINDEX", "databaseName": db, "collectionName": coll}
+    if fields is not None:
+        payload["fieldNames"] = fields
+    return c.send(payload)
+
+
+def wait_for_index(c, coll, field, db=DB, timeout_s=15.0):
+    def _registered():
+        r = c.send({"type": "GET_DATABASE_STATS"})
+        return any(d.get("name") == db and coll_stats.get("name") == coll
+                   and field in (coll_stats.get("indexes") or [])
+                   for d in r.get("stats", {}).get("databases", [])
+                   for coll_stats in d.get("collections", []))
+
+    if bu.wait_until(_registered, timeout_s, 0.3):
+        return True
+    time.sleep(2)
+    return False
+
+
+COLL_CRUD = "crud"
+COLL_AGG = "agg"
+COLL_CASTS = "casts"
+COLL_JOIN_LEFT = "agg_join_left"
+COLL_JOIN_RIGHT = "agg_join_right"
+COLL_TYPES = "types"
+COLL_FLOWS = "flows"
+COLL_PERM = "perm_coll"
+COLL_MATH = "map_math"
+COLL_SHARED_LEFT = "shared_left"
+COLL_SHARED_RIGHT = "shared_right"
+COLL_GROUPED = "grouped_removal"
+COLL_DISTINCT = "distinct_rows"
+COLL_BUDGET = "result_budget"
+COLL_DELETES = "many_deletes"
+COLL_SHAPES = "shapes"
+COLL_MIXED = "mixed_load"
+COLL_DELETE_WHERE = "delete_where"
+COLL_SAVE_WHERE = "save_where"
+COLL_INSERT = "insert_only"
+
+TEST_USERS = ("api_reader", "api_join_user")
+
+
+def teardown(c):
+    drop_db(c, DB)
+    for u in TEST_USERS:
+        delete_user(c, u)
+
+
+def setup(c):
+    teardown(c)
+    create_db(c, DB)
+    for coll in (COLL_CRUD, COLL_AGG, COLL_JOIN_LEFT, COLL_JOIN_RIGHT, COLL_TYPES, COLL_FLOWS, COLL_PERM):
+        create_coll(c, coll)
+
+    create_user(c, "api_reader", "api_reader1234", db_perms={DB: "READ"})
+    create_user(c, "api_join_user", "api_join_user1234",
+                coll_perms={f"{DB}|{COLL_JOIN_LEFT}": "READ"})
+
+    bulk_save(c, COLL_AGG, [
+        {"_id": "a1", "name": "alice", "age": 30, "rating": 4.5, "active": True,
+         "nick": None, "tags": ["x", "y"], "meta": {"k": 1}},
+        {"_id": "a2", "name": "bob", "age": 25, "rating": 3.5, "active": False,
+         "nick": None, "tags": ["y", "z"], "meta": {"k": 2}},
+        {"_id": "a3", "name": "carol", "age": 40, "rating": 4.5, "active": True,
+         "tags": ["x", "z"], "meta": {"k": 1}},
+        {"_id": "a4", "name": "dave", "age": 25, "rating": 2.0, "active": False,
+         "tags": ["w"], "meta": {"k": 3}},
+    ])
+
+    bulk_save(c, COLL_JOIN_LEFT, [
+        {"_id": "l1", "key": "k1"}, {"_id": "l2", "key": "k2"},
+    ])
+    bulk_save(c, COLL_JOIN_RIGHT, [
+        {"_id": "r1", "key": "k1", "label": "first"},
+        {"_id": "r2", "key": "k2", "label": "second"},
+    ])
+
+
+def test_reserved_script_runs_collection(c):
+    section("Reserved script_runs collection")
+
+    check_code("SAVE into script_runs -> 400-1",
+               save(c, "script_runs", {"_id": "x", "a": 1}), "ERROR", "400-1")
+    check_code("BULK_SAVE into script_runs -> 400-1",
+               bulk_save(c, "script_runs", [{"_id": "x"}]), "ERROR", "400-1")
+    check_code("DELETE in script_runs -> 400-1",
+               delete(c, "script_runs", "x"), "ERROR", "400-1")
+    check_code("CREATE_COLLECTION script_runs -> 400-1",
+               create_coll(c, "script_runs"), "ERROR", "400-1")
+    check_code("DROP_COLLECTION script_runs -> 400-1",
+               drop_coll(c, "script_runs"), "ERROR", "400-1")
+
+    read = aggregate(c, "script_runs", [{"type": "COUNT"}])
+    check("AGGREGATE over script_runs is not refused as reserved",
+               read.get("errorCode") != "400-1", detail=f"got {read}")
+    check_code("FIND_BY_ID in an unwritten script_runs -> 404-2",
+               find_by_id(c, "script_runs", "nope"), "NOT_FOUND", "404-2")
+    check_code("CREATE_INDEX on an unwritten script_runs is refused like any missing collection -> 404-11",
+               create_index(c, "script_runs", "outcome"), "NOT_FOUND", "404-11")
+
+
+def test_database_and_collection_ops(c):
+    section("Database & collection operations (DDL + metadata)")
+
+    check_status("LIST_DATABASES (authenticated, OK)", list_databases(c), "OK")
+    check("LIST_DATABASES contains api_test_db",
+               DB in (list_databases(c).get("databases") or []))
+
+    check_status("CREATE_DATABASE ddl_db", create_db(c, "ddl_db"), "OK")
+    check_code("CREATE_DATABASE duplicate -> 409-2", create_db(c, "ddl_db"), "ERROR", "409-2")
+    check_code("CREATE_DATABASE invalid name (too short) -> 400-1",
+               create_db(c, "ab"), "ERROR", "400-1")
+    check_code("CREATE_DATABASE reserved name 'admin' -> 400-1",
+               create_db(c, "admin"), "ERROR", "400-1")
+    check_code("CREATE_DATABASE reserved name 'cluster' (the node's cluster state folder) -> 400-1",
+               create_db(c, "cluster"), "ERROR", "400-1")
+    check_code("CREATE_DATABASE Cluster -> 400-1 reserved in any case",
+               create_db(c, "Cluster"), "ERROR", "400-1")
+    check_code("CREATE_COLLECTION in a database that was never created -> 404-4",
+               create_coll(c, "things", db="never_created_db"), "NOT_FOUND", "404-4")
+
+    check_status("CREATE_COLLECTION ddl_db/things", create_coll(c, "things", db="ddl_db"), "OK")
+    check_status("LIST_COLLECTIONS ddl_db", list_collections(c, "ddl_db"), "OK")
+    check("LIST_COLLECTIONS contains 'things'",
+               "things" in (list_collections(c, "ddl_db").get("collections") or []))
+    check_code("LIST_COLLECTIONS missing db -> 404-4",
+               list_collections(c, "no_such_db"), "NOT_FOUND", "404-4")
+
+    check_status("DROP_COLLECTION ddl_db/things", drop_coll(c, "things", db="ddl_db"), "OK")
+    check_status("DROP_DATABASE ddl_db", drop_db(c, "ddl_db"), "OK")
+
+    check_status("CREATE_DATABASE ghost_db", create_db(c, "ghost_db"), "OK")
+    check_status("CREATE_COLLECTION ghost_db/items", create_coll(c, "items", db="ghost_db"), "OK")
+    check_status("SAVE a document before the drop", save(c, "items", {"_id": "g1", "v": 1}, db="ghost_db"), "OK")
+    check_status("DROP_DATABASE ghost_db", drop_db(c, "ghost_db"), "OK")
+    check_status("re-CREATE_DATABASE ghost_db", create_db(c, "ghost_db"), "OK")
+    check_status("re-CREATE_COLLECTION ghost_db/items", create_coll(c, "items", db="ghost_db"), "OK")
+    check_code("the re-created collection holds no pre-drop document",
+               find_by_id(c, "items", "g1", db="ghost_db"), "NOT_FOUND", "404-2")
+    check_code("a scan of it finds nothing either",
+               aggregate(c, "items", [], db="ghost_db"), "NOT_FOUND", "404-3")
+    check_status("DROP_DATABASE ghost_db again", drop_db(c, "ghost_db"), "OK")
+
+    r = c.send({"type": "GET_DATABASE_STATS"})
+    check_status("GET_DATABASE_STATS (admin, OK)", r, "OK")
+    check("GET_DATABASE_STATS reports at least one database",
+               (bu.dig(r, "stats.totals.databaseCount") or 0) >= 1)
+
+
+def test_crud(c):
+    section("CRUD & document round-trip")
+
+    check_status("SAVE with explicit _id", save(c, COLL_CRUD, {"_id": "c1", "name": "Alice"}), "OK")
+    r = find_by_id(c, COLL_CRUD, "c1")
+    check_status("FIND_BY_ID c1 (OK)", r, "OK")
+    check_field("FIND_BY_ID returns the saved _id", r, "object._id", "c1")
+    check_field("FIND_BY_ID returns the saved name", r, "object.name", "Alice")
+
+    r = save(c, COLL_CRUD, {"name": "no-id"})
+    check_status("SAVE without _id (auto-assigned)", r, "OK")
+    gen_id = r.get("_id")
+    check("SAVE returns a generated _id", bool(gen_id), detail=f"_id={gen_id!r}")
+    check_status("FIND_BY_ID on the generated id", find_by_id(c, COLL_CRUD, gen_id), "OK")
+
+    check_status("FIND_BY_ID with dirtyRead", find_by_id(c, COLL_CRUD, "c1", dirty=True), "OK")
+    check_code("FIND_BY_ID missing id -> 404-2",
+               find_by_id(c, COLL_CRUD, "does_not_exist"), "NOT_FOUND", "404-2")
+
+    check_status("DELETE c1", delete(c, COLL_CRUD, "c1"), "OK")
+    check_code("FIND_BY_ID after delete -> 404-2",
+               find_by_id(c, COLL_CRUD, "c1"), "NOT_FOUND", "404-2")
+    check_code("DELETE missing id -> 404-2",
+               delete(c, COLL_CRUD, "c1"), "NOT_FOUND", "404-2")
+
+    r = bulk_save(c, COLL_CRUD, [{"_id": "b1", "v": 1}, {"_id": "b2", "v": 2}])
+    check_status("BULK_SAVE two docs", r, "OK")
+    check_status("FIND_BY_ID b1", find_by_id(c, COLL_CRUD, "b1"), "OK")
+    check_status("FIND_BY_ID b2", find_by_id(c, COLL_CRUD, "b2"), "OK")
+    check_code("BULK_SAVE duplicate _id in batch -> 400-3",
+               bulk_save(c, COLL_CRUD, [{"_id": "d", "v": 1}, {"_id": "d", "v": 2}]),
+               "ERROR", "400-3")
+
+    check_code("SAVE invalid _id (illegal chars) -> 400-1",
+               save(c, COLL_CRUD, {"_id": "bad id!", "v": 1}), "ERROR", "400-1")
+    check_code("SAVE invalid _id (too long) -> 400-1",
+               save(c, COLL_CRUD, {"_id": "x" * 65, "v": 1}), "ERROR", "400-1")
+    check_code("SAVE non-string _id -> 400-1",
+               save(c, COLL_CRUD, {"_id": 123, "v": 1}), "ERROR", "400-1")
+    check_code("BULK_SAVE non-string _id -> 400-1",
+               bulk_save(c, COLL_CRUD, [{"_id": 123, "v": 1}]), "ERROR", "400-1")
+    check_code("BULK_SAVE invalid _id (illegal chars) -> 400-1",
+               bulk_save(c, COLL_CRUD, [{"_id": "bad id!", "v": 1}]), "ERROR", "400-1")
+
+
+def delete_where(c, coll, condition, db=DB) -> dict:
+    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "condition": condition})
+
+
+def field_condition(field, operator, value) -> dict:
+    return {"fieldOperatorType": operator, "field": field, "value": value}
+
+
+def test_delete_by_condition(c):
+    section("DELETE with a condition")
+
+    check_status("create the collection", create_coll(c, COLL_DELETE_WHERE), "OK")
+    check_status("index the status field", create_index(c, COLL_DELETE_WHERE, "status"), "OK")
+    docs = [{"_id": f"w{i}", "status": "archived" if i % 3 == 0 else "active", "total": i * 10} for i in range(30)]
+    check_status("seed 30 documents", bulk_save(c, COLL_DELETE_WHERE, docs), "OK")
+
+    r = delete_where(c, COLL_DELETE_WHERE, field_condition("status", "EQUALS", "archived"))
+    check_status("DELETE where an indexed field matches", r, "OK")
+    check_field("it reports the 10 deleted documents", r, "deletedCount", 10)
+    remaining = ids_of(aggregate(c, COLL_DELETE_WHERE, []))
+    check("exactly the active documents remain",
+          remaining == sorted(d["_id"] for d in docs if d["status"] == "active"), f"remaining={remaining}")
+    check_code("an index read finds no archived document", aggregate(
+        c, COLL_DELETE_WHERE, [filter_step("status", "EQUALS", "archived")]), "NOT_FOUND", "404-3")
+
+    r = delete_where(c, COLL_DELETE_WHERE, {"conjunctionType": "AND", "operators": [
+        field_condition("status", "EQUALS", "active"), field_condition("total", "SMALLER_THAN", 50)]})
+    check_field("a conjunction on an indexed and an unindexed field deletes w1, w2 and w4", r, "deletedCount", 3)
+    check("w1, w2 and w4 are gone", all(find_by_id(c, COLL_DELETE_WHERE, i).get("status") == "NOT_FOUND"
+                                        for i in ("w1", "w2", "w4")))
+    check_status("w5 is still there", find_by_id(c, COLL_DELETE_WHERE, "w5"), "OK")
+
+    r = delete_where(c, COLL_DELETE_WHERE, field_condition("status", "EQUALS", "never"))
+    check_status("a condition matching nothing is OK", r, "OK")
+    check_field("and deletes 0 documents", r, "deletedCount", 0)
+
+    both = c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL_DELETE_WHERE, "_id": "w5",
+                   "condition": field_condition("status", "EQUALS", "active")})
+    check_code("_id and condition together -> 400-1", both, "ERROR", "400-1")
+    check_status("and w5 survives the refused request", find_by_id(c, COLL_DELETE_WHERE, "w5"), "OK")
+    check_code("neither _id nor condition -> 400-1",
+               c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL_DELETE_WHERE}), "ERROR", "400-1")
+    check_code("a condition without an operator shape -> 400-43",
+               delete_where(c, COLL_DELETE_WHERE, {"field": "status"}), "ERROR", "400-43")
+    check_code("an IN past maxFilterOperands -> 400-27",
+               delete_where(c, COLL_DELETE_WHERE, field_condition("total", "IN", list(range(10001)))),
+               "ERROR", "400-27")
+    check_code("a condition on a collection that does not exist -> 404-11",
+               delete_where(c, "never_created", field_condition("status", "EQUALS", "active")), "NOT_FOUND",
+               "404-11")
+
+    r = delete_where(c, COLL_DELETE_WHERE, {"script": "export default (d) => d.total >= 250;"})
+    check_field("a script condition deletes w25, w26, w28 and w29", r, "deletedCount", 4)
+    left = ids_of(aggregate(c, COLL_DELETE_WHERE, []))
+    check("the active documents below 250 that a previous delete kept remain",
+          left == sorted(f"w{i}" for i in range(5, 25) if i % 3 != 0), f"left={left}")
+
+    check_status("drop the collection", drop_coll(c, COLL_DELETE_WHERE), "OK")
+
+
+def save_where(c, coll, condition, patch, db=DB) -> dict:
+    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "condition": condition,
+                   "object": patch})
+
+
+def test_save_by_condition(c):
+    section("SAVE with a condition")
+
+    check_status("create the collection", create_coll(c, COLL_SAVE_WHERE), "OK")
+    check_status("index the status field", create_index(c, COLL_SAVE_WHERE, "status"), "OK")
+    docs = [{"_id": f"u{i}", "status": "pending" if i % 3 == 0 else "active", "total": i * 10,
+             "meta": {"owner": f"o{i}"}} for i in range(30)]
+    check_status("seed 30 documents", bulk_save(c, COLL_SAVE_WHERE, docs), "OK")
+
+    r = save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "pending"),
+                   {"status": "expired", "expiredBy": "sweeper"})
+    check_status("SAVE where an indexed field matches", r, "OK")
+    check_field("it reports the 10 updated documents", r, "updatedCount", 10)
+    u3 = find_by_id(c, COLL_SAVE_WHERE, "u3").get("object", {})
+    check("u3 carries the patch and keeps every other field",
+          u3.get("status") == "expired" and u3.get("expiredBy") == "sweeper" and u3.get("total") == 30
+          and u3.get("meta") == {"owner": "o3"}, f"u3={u3}")
+    u4 = find_by_id(c, COLL_SAVE_WHERE, "u4").get("object", {})
+    check("u4 did not match and is untouched", u4.get("status") == "active" and "expiredBy" not in u4, f"u4={u4}")
+    expired = ids_of(aggregate(c, COLL_SAVE_WHERE, [filter_step("status", "EQUALS", "expired")]))
+    scanned = ids_of(aggregate(c, COLL_SAVE_WHERE, [{"type": "SKIP", "skip": 0},
+                                                   filter_step("status", "EQUALS", "expired")]))
+    check("the index and a scan agree on the updated documents",
+          expired == scanned == sorted(d["_id"] for d in docs if d["status"] == "pending"), f"index={expired}")
+    check_code("an index read finds no pending document", aggregate(
+        c, COLL_SAVE_WHERE, [filter_step("status", "EQUALS", "pending")]), "NOT_FOUND", "404-3")
+
+    r = save_where(c, COLL_SAVE_WHERE, {"conjunctionType": "AND", "operators": [
+        field_condition("status", "EQUALS", "active"), field_condition("total", "SMALLER_THAN", 50)]},
+        {"meta": {"replaced": True}})
+    check_field("a conjunction updates u1, u2 and u4", r, "updatedCount", 3)
+    check("a nested object replaces the stored one whole",
+          find_by_id(c, COLL_SAVE_WHERE, "u1").get("object", {}).get("meta") == {"replaced": True})
+
+    r = save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "never"), {"status": "x"})
+    check_status("a condition matching nothing is OK", r, "OK")
+    check_field("and updates 0 documents", r, "updatedCount", 0)
+
+    both = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_SAVE_WHERE, "_id": "u5",
+                   "condition": field_condition("status", "EQUALS", "active"), "object": {"status": "x"}})
+    check_code("_id and condition together -> 400-1", both, "ERROR", "400-1")
+    check_code("_id inside the object beside a condition -> 400-1",
+               save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "active"),
+                          {"_id": "renamed", "status": "x"}), "ERROR", "400-1")
+    check_code("an empty object beside a condition -> 400-1",
+               save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "active"), {}), "ERROR", "400-1")
+    check("and u5 is untouched by the refused requests",
+          find_by_id(c, COLL_SAVE_WHERE, "u5").get("object", {}).get("status") == "active")
+    check_code("a condition without an operator shape -> 400-43",
+               save_where(c, COLL_SAVE_WHERE, {"field": "status"}, {"a": 1}), "ERROR", "400-43")
+    check_code("a condition on a collection that does not exist -> 404-11",
+               save_where(c, "never_created", field_condition("status", "EQUALS", "active"), {"a": 1}),
+               "NOT_FOUND", "404-11")
+
+    check_status("attach a schema requiring a string status",
+                 c.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL_SAVE_WHERE,
+                         "schema": {"type": "object", "properties": {"status": {"type": "string"}}}}), "OK")
+    check_code("a merge violating the schema -> 400-7",
+               save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "active"), {"status": 5}),
+               "ERROR", "400-7")
+    check("and no active document changed", ids_of(aggregate(
+        c, COLL_SAVE_WHERE, [filter_step("status", "EQUALS", "active")])) == sorted(
+        d["_id"] for d in docs if d["status"] == "active"))
+    check_status("require total and status in the schema",
+                 c.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL_SAVE_WHERE,
+                         "schema": {"type": "object", "required": ["total", "status"],
+                                    "properties": {"status": {"type": "string"}}}}), "OK")
+    r = save_where(c, COLL_SAVE_WHERE, field_condition("_id", "EQUALS", "u5"), {"reviewed": True})
+    check_field("a patch without the required fields passes once merged", r, "updatedCount", 1)
+    check("u5 carries the patch beside its required fields",
+          find_by_id(c, COLL_SAVE_WHERE, "u5").get("object", {}).get("reviewed") is True)
+
+    r = save_where(c, COLL_SAVE_WHERE, {"script": "export default (d) => d.total >= 250;"}, {"late": True})
+    check_field("a script condition updates u25 to u29", r, "updatedCount", 5)
+    check("u27 carries the scripted patch", find_by_id(c, COLL_SAVE_WHERE, "u27").get("object", {}).get("late") is True)
+
+    check_status("drop the collection", drop_coll(c, COLL_SAVE_WHERE), "OK")
+
+
+def insert(c, coll, obj, db=DB) -> dict:
+    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "failOnUpdate": True, "object": obj})
+
+
+def test_save_fail_on_update(c):
+    section("SAVE with failOnUpdate")
+
+    check_status("create the collection", create_coll(c, COLL_INSERT), "OK")
+    check_status("index the status field", create_index(c, COLL_INSERT, "status"), "OK")
+
+    r = insert(c, COLL_INSERT, {"_id": "n1", "status": "first"})
+    check_status("an insert of a new id", r, "OK")
+    check_field("it reports an insert", r, "inserted", True)
+
+    r = insert(c, COLL_INSERT, {"_id": "n1", "status": "second"})
+    check_code("an insert of an existing id -> 409-18", r, "ERROR", "409-18")
+    check("the reply names the reason", r.get("message") == "A document with this _id already exists", f"r={r}")
+    check_field("the stored document keeps its first body", find_by_id(c, COLL_INSERT, "n1"), "object.status", "first")
+
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": True,
+                "_id": "n1", "object": {"status": "beside"}})
+    check_code("the _id beside the object is checked too -> 409-18", r, "ERROR", "409-18")
+
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": False,
+                "object": {"_id": "n1", "status": "updated"}})
+    check_status("failOnUpdate false still updates", r, "OK")
+    check_field("and reports an update", r, "inserted", False)
+
+    r = insert(c, COLL_INSERT, {"status": "anonymous"})
+    check_status("an insert without an _id", r, "OK")
+    check("gets a generated _id", bool(r.get("_id")), f"r={r}")
+
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": True,
+                "condition": field_condition("status", "EQUALS", "updated"), "object": {"status": "x"}})
+    check_code("failOnUpdate beside a condition -> 400-1", r, "ERROR", "400-1")
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": "yes",
+                "object": {"_id": "n9", "status": "x"}})
+    check_code("a failOnUpdate that is not a boolean -> 400-43", r, "ERROR", "400-43")
+
+    for value in ("second", "beside", "x"):
+        indexed = ids_of(aggregate(c, COLL_INSERT, [filter_step("status", "EQUALS", value)]))
+        scanned = ids_of(aggregate(c, COLL_INSERT, [{"type": "SKIP", "skip": 0},
+                                                   filter_step("status", "EQUALS", value)]))
+        check(f"no refused value is indexed or stored ({value})", indexed == scanned == [],
+              f"index={indexed} scan={scanned}")
+
+    check_status("drop the collection", drop_coll(c, COLL_INSERT), "OK")
+
+
+def test_top_level_id(c):
+    section("SAVE with a top-level _id")
+
+    check_status("seed the target document", save(c, COLL_CRUD, {"_id": "tl1", "name": "alpha"}), "OK")
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+                "_id": "tl1", "object": {"name": "beta"}})
+    check_status("SAVE with only a top-level _id", r, "OK")
+    check("the response names the same document", r.get("_id") == "tl1", detail=f"got {r.get('_id')!r}")
+
+    found = find_by_id(c, COLL_CRUD, "tl1")
+    check_status("the target document still exists", found, "OK")
+    check_field("and carries the new value", found, "object.name", "beta")
+
+    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+                "_id": "tl2", "object": {"name": "gamma"}})
+    check_status("a top-level _id for a new document inserts under that id", r, "OK")
+    check_field("the document is readable under that id", find_by_id(c, COLL_CRUD, "tl2"), "object.name", "gamma")
+
+    check_status("a top-level _id alongside an object _id is accepted",
+                 c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+                         "_id": "outside", "object": {"_id": "inside", "name": "x"}}), "OK")
+    check_field("the object's _id wins", find_by_id(c, COLL_CRUD, "inside"), "object.name", "x")
+    check_code("no document is written under the discarded top-level _id",
+               find_by_id(c, COLL_CRUD, "outside"), "NOT_FOUND", "404-2")
+
+
+def test_value_types(c):
+    section("Data-type fidelity (round-trip every supported type)")
+
+    docs = {
+        "t_string": {"v": "hello"},
+        "t_bool_true": {"v": True},
+        "t_bool_false": {"v": False},
+        "t_null": {"v": None},
+        "t_int": {"v": 42},
+        "t_double": {"v": 3.14},
+        "t_obj": {"v": {"a": 1, "b": {"c": 2}}},
+        "t_arr_scalar": {"v": [1, 2, 3]},
+        "t_arr_obj": {"v": [{"x": 1}, {"x": 2}]},
+        "t_datetime": {"v": "#datetime(2025-06-26T14:30:45)"},
+        "t_time": {"v": "#time(14:30:45)"},
+    }
+    for _id, body in docs.items():
+        body = dict(body, _id=_id)
+        save(c, COLL_TYPES, body)
+
+    check_field("String round-trips", find_by_id(c, COLL_TYPES, "t_string"), "object.v", "hello")
+    check_field("Boolean true round-trips", find_by_id(c, COLL_TYPES, "t_bool_true"), "object.v", True)
+    check_field("Boolean false round-trips", find_by_id(c, COLL_TYPES, "t_bool_false"), "object.v", False)
+    check_field("null round-trips", find_by_id(c, COLL_TYPES, "t_null"), "object.v", None)
+    check_field("Integer round-trips as 42 (not 42.0)", find_by_id(c, COLL_TYPES, "t_int"), "object.v", 42)
+    check_field("Double round-trips", find_by_id(c, COLL_TYPES, "t_double"), "object.v", 3.14)
+    check_field("Nested object round-trips", find_by_id(c, COLL_TYPES, "t_obj"), "object.v.b.c", 2)
+    check_field("Scalar array round-trips", find_by_id(c, COLL_TYPES, "t_arr_scalar"), "object.v", [1, 2, 3])
+    check_field("Array-of-objects element round-trips",
+                find_by_id(c, COLL_TYPES, "t_arr_obj"), "object.v.1.x", 2)
+    check_field("DateTime round-trips",
+                find_by_id(c, COLL_TYPES, "t_datetime"), "object.v", "#datetime(2025-06-26T14:30:45)")
+    check_field("Time round-trips", find_by_id(c, COLL_TYPES, "t_time"), "object.v", "#time(14:30:45)")
+
+    c.s.sendall((json.dumps({"type": "FIND_BY_ID", "databaseName": DB,
+                             "collectionName": COLL_TYPES, "_id": "t_int"}) + "\n").encode())
+    raw = c.f.readline().decode()
+    check("Integer is serialized without a trailing .0 on the wire",
+               '"v":42' in raw and '"v":42.0' not in raw, detail=raw.strip())
+
+
+def test_rows_of_different_shapes_round_trip(c):
+    section("Rows whose shared field holds a different JSON type each come back exactly as saved")
+    create_coll(c, COLL_SHAPES)
+    docs = [
+        {"_id": "s_string", "v": "text with \"quotes\" and \\ and \n and \u00e9"},
+        {"_id": "s_int", "v": 7},
+        {"_id": "s_fraction", "v": 2.5},
+        {"_id": "s_bool", "v": True},
+        {"_id": "s_null", "v": None},
+        {"_id": "s_object", "v": {"a": [1, {"b": None}], "c": "d"}},
+        {"_id": "s_array", "v": [1, "two", None, False, {"k": "v"}, []]},
+        {"_id": "s_geo", "v": "#geo(10.5,20.5)"},
+        {"_id": "s_missing", "other": 1},
+    ]
+    for doc in docs:
+        check_status(f"{doc['_id']} saved", save(c, COLL_SHAPES, doc), "OK")
+
+    def exact(value) -> str:
+        return json.dumps(value, sort_keys=True)
+
+    expected = {doc["_id"]: exact(doc) for doc in docs}
+    filtered = aggregate(c, COLL_SHAPES, [filter_step("_id", "NOT_EQUALS", "no-such-id")])
+    unfiltered = aggregate(c, COLL_SHAPES, [])
+    for label, response in (("FILTER", filtered), ("no step", unfiltered)):
+        rows = {row["_id"]: exact(row) for row in response.get("results", [])}
+        check(f"AGGREGATE with {label} returns every document exactly as saved, types included",
+              rows == expected, detail=f"differs: {sorted(k for k in expected if rows.get(k) != expected[k])}")
+    for doc in docs:
+        found = find_by_id(c, COLL_SHAPES, doc["_id"]).get("object")
+        check(f"FIND_BY_ID returns {doc['_id']} exactly as saved", exact(found) == expected[doc["_id"]],
+              detail=exact(found))
+    drop_coll(c, COLL_SHAPES)
+
+
+ESCAPE_CLASSES_REQUEST_VALUE = r'q\"b\\c\u0001n\nd\u007fl\u2028p\u2029e\ud83d\ude00s\ud800'
+ESCAPE_CLASSES_WIRE_VALUE = (b'"v":"q\\"b\\\\c\\u0001n\\nd\x7fl\xe2\x80\xa8p\xe2\x80\xa9e\xf0\x9f\x98\x80s'
+                             b'\\ud800"')
+PLAIN_ASCII_REPEATS = 293
+
+
+def raw_reply(c, payload: dict) -> bytes:
+    c.s.sendall((json.dumps(payload) + "\n").encode())
+    return c.f.readline()
+
+
+def test_strings_with_every_escape_class_round_trip(c):
+    section("A string with every escape class comes back byte for byte")
+    create_coll(c, COLL_SHAPES)
+    check_status("the escaped document is saved", c.send_raw(
+        '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_SHAPES
+        + '","object":{"_id":"escapes","v":"' + ESCAPE_CLASSES_REQUEST_VALUE + '"}}'), "OK")
+    raw = raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "escapes"})
+    check("quotes, backslashes and control characters are escaped, DEL, U+2028/2029 and pairs stay raw, and a lone"
+          " surrogate is spelled \\uXXXX", ESCAPE_CLASSES_WIRE_VALUE in raw, detail=repr(raw[:300]))
+    again = raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "escapes"})
+    check("a second read of the same document writes the same bytes", again == raw, detail=repr(again[:300]))
+    filtered = raw_reply(c, {"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_SHAPES,
+                             "aggregationSteps": [filter_step("_id", "EQUALS", "escapes")]})
+    check("an AGGREGATE writes the same escaped value", ESCAPE_CLASSES_WIRE_VALUE in filtered,
+          detail=repr(filtered[:300]))
+    plain_value = "plain ascii ~ " * PLAIN_ASCII_REPEATS
+    check_status("a long plain ASCII document is saved", c.send(
+        {"type": "SAVE", "databaseName": DB, "collectionName": COLL_SHAPES,
+         "object": {"_id": "plain", "v": plain_value}}), "OK")
+    plain_wire = b'"v":"' + plain_value.encode() + b'"'
+    reads = [raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "plain"})
+             for _ in range(2)]
+    check("a long plain ASCII value comes back byte for byte on every read", all(plain_wire in r for r in reads),
+          detail=repr(reads[-1][:200]))
+    drop_coll(c, COLL_SHAPES)
+
+
+LONG_ASCII_PREFIX_LENGTHS = (1, 255, 256, 1021, 4097, 70001)
+
+
+def json_unicode_escape(code: int) -> str:
+    return f"\\u{code:04x}"
+
+
+LONG_ASCII_TAILS = (
+    ("quote", '\\"', b'\\"'),
+    ("backslash", "\\\\", b"\\\\"),
+    ("newline", "\\n", b"\\n"),
+    ("control", json_unicode_escape(0x01), b"\\" + b"u0001"),
+    ("two-byte", json_unicode_escape(0xE9), chr(0xE9).encode()),
+    ("three-byte", json_unicode_escape(0x4E2D), chr(0x4E2D).encode()),
+    ("pair", json_unicode_escape(0xD83D) + json_unicode_escape(0xDE00), chr(0x1F600).encode()),
+    ("lone surrogate", json_unicode_escape(0xD800), b"\\" + b"ud800"),
+)
+
+
+def test_long_ascii_strings_ending_in_escapes_and_non_ascii_round_trip(c):
+    section("Long ASCII strings ending in an escape or a non-ASCII character come back byte for byte and group apart")
+    create_coll(c, COLL_SHAPES)
+    expected = {}
+    for length in LONG_ASCII_PREFIX_LENGTHS:
+        prefix = ("abcdefghij" * (length // 10 + 1))[:length]
+        for name, request_tail, wire_tail in LONG_ASCII_TAILS:
+            doc_id = f"long_{length}_{name.replace(' ', '_').replace('-', '_')}"
+            for copy in ("a", "b"):
+                c.send_raw('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_SHAPES
+                           + '","object":{"_id":"' + doc_id + copy + '","v":"' + prefix + request_tail + '"}}')
+            expected[doc_id] = b'"v":"' + prefix.encode() + wire_tail + b'"'
+    mismatched = []
+    for doc_id, wire in expected.items():
+        c.s.sendall((json.dumps({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES,
+                                 "_id": doc_id + "a"}) + "\n").encode())
+        if wire not in c.f.readline():
+            mismatched.append(doc_id)
+    check("FIND_BY_ID writes every long prefix and its escaped or raw tail exactly", not mismatched,
+          detail=str(mismatched[:5]))
+    c.s.sendall((json.dumps({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_SHAPES,
+                             "aggregationSteps": []}) + "\n").encode())
+    scanned = c.f.readline()
+    missing = [doc_id for doc_id, wire in expected.items() if scanned.count(wire) != 2]
+    check("a scan writes both copies of every value exactly", not missing, detail=str(missing[:5]))
+    distinct = aggregate(c, COLL_SHAPES, [{"type": "DISTINCT", "fieldName": "v"}]).get("results") or []
+    check("DISTINCT keeps one row per value", len(distinct) == len(expected),
+          detail=f"{len(distinct)} rows for {len(expected)} values")
+    grouped = aggregate(c, COLL_SHAPES, [{"type": "GROUP_BY", "fieldName": "v"}]).get("results") or []
+    check("GROUP_BY puts both copies of each value in one group",
+          len(grouped) == len(expected) and all(len(group.get("group") or []) == 2 for group in grouped),
+          detail=f"{len(grouped)} groups for {len(expected)} values")
+    drop_coll(c, COLL_SHAPES)
+
+
+def test_documents_of_one_shape_do_not_share_writes(c):
+    section("Documents saved with the same keys never see each other's added or removed keys")
+    create_coll(c, COLL_SHAPES)
+    for doc_id in ("shape_one", "shape_two"):
+        check_status(f"{doc_id} saved", save(c, COLL_SHAPES, {"_id": doc_id, "shared": doc_id, "dropped": 1}), "OK")
+    check_status("shape_one is rewritten with one key added and one removed",
+                 save(c, COLL_SHAPES, {"_id": "shape_one", "shared": "shape_one", "added": True}), "OK")
+    check_field("shape_two still has the removed key", find_by_id(c, COLL_SHAPES, "shape_two"), "object.dropped", 1)
+    check("shape_two did not gain the added key",
+          "added" not in (find_by_id(c, COLL_SHAPES, "shape_two").get("object") or {}))
+    check("a FILTER on the added key finds only shape_one",
+          ids_of(aggregate(c, COLL_SHAPES, [filter_step("added", "EQUALS", True)])) == ["shape_one"])
+    mapped = aggregate(c, COLL_SHAPES, [filter_step("_id", "EQUALS", "shape_two"), {"type": "MAP", "operators": [
+        {"fieldName": "mapped", "operator": {"type": "CAST", "fieldName": "dropped", "toType": "STRING"}}]}])
+    check("a MAP adding a key to one row answers it", (mapped.get("results") or [{}])[0].get("mapped") == "1",
+          detail=str(mapped)[:300])
+    check("the stored documents never see the MAP's key",
+          all("mapped" not in (find_by_id(c, COLL_SHAPES, doc_id).get("object") or {})
+              for doc_id in ("shape_one", "shape_two")))
+    drop_coll(c, COLL_SHAPES)
+
+
+def check_client_refusal(label: str, response: dict, connection_kept: bool = False) -> bool:
+    refused = (response.get("status") == "ERROR" and not str(response.get("errorCode") or "").startswith("500")
+               and not (connection_kept and "closed connection" in str(response.get("message"))))
+    return check(label, refused,
+                 detail=f"status={response.get('status')} code={response.get('errorCode')} "
+                        f"msg={response.get('message')!r}")
+
+
+def test_a_malformed_document_is_refused_as_a_client_error(c):
+    section("A request with a missing JSON value is refused as invalid, not answered with a server error")
+    for label, document in (("a doubled comma in an array", '{"_id":"mal1","v":[1,,2]}'),
+                            ("a missing object value", '{"_id":"mal2","v":,"w":1}'),
+                            ("a leading comma in an array", '{"_id":"mal3","v":[,1]}')):
+        line = ('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES
+                + '","object":' + document + '}')
+        check_client_refusal(f"{label} is refused as an invalid command, not a server error", c.send_raw(line))
+    for doc_id in ("mal1", "mal2", "mal3"):
+        check(f"nothing was stored for {doc_id}", find_by_id(c, COLL_TYPES, doc_id).get("status") != "OK")
+    check_field("the connection still answers afterwards", find_by_id(c, COLL_TYPES, "t_int"), "object.v", 42)
+
+
+def test_a_line_with_a_second_value_or_a_nan_point_is_refused(c):
+    section("A request line with trailing JSON, or a geo point that is not finite, is refused as invalid")
+    save_prefix = '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":'
+    for label, line, doc_id in (
+            ("a second JSON value after the request", save_prefix + '{"_id":"trail1","v":1}}{"_id":"trail2"}',
+             "trail1"),
+            ("a NaN latitude", save_prefix + '{"_id":"nan_geo","p":"#geo(NaN,1)"}}', "nan_geo"),
+            ("a NaN nested inside an array", save_prefix + '{"_id":"nan_geo2","ps":["#geo(1,NaN)"]}}',
+             "nan_geo2")):
+        check_client_refusal(f"{label} is refused as an invalid command, not a server error", c.send_raw(line))
+        check(f"nothing was stored for {doc_id}", find_by_id(c, COLL_TYPES, doc_id).get("status") != "OK")
+    check_status("a finite geo point is still accepted",
+                 c.send_raw(save_prefix + '{"_id":"finite_geo","p":"#geo(1,2)"}}'), "OK")
+
+
+def test_non_ascii_and_malformed_utf8_requests_round_trip(c):
+    section("Requests are parsed from their UTF-8 bytes: non-ASCII text round-trips and malformed bytes decode leniently")
+    check_status("a document with non-ASCII keys and values is saved",
+                 save(c, COLL_TYPES, {"_id": "utf8_doc", "clé": "日本語😀", "ü": {"ñ": "ç"}}), "OK")
+    found = find_by_id(c, COLL_TYPES, "utf8_doc")
+    check_field("a non-ASCII value reads back unchanged", found, "object.clé", "日本語😀")
+    check_field("a nested non-ASCII key reads back unchanged", found, "object.ü.ñ", "ç")
+    matched = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_TYPES,
+                      "aggregationSteps": [{"type": "FILTER", "operator": {
+                          "fieldOperatorType": "EQUALS", "field": "clé", "value": "日本語😀"}}]})
+    check("a filter on a non-ASCII key and value finds the document",
+          [row.get("_id") for row in matched.get("results") or []] == ["utf8_doc"], str(matched))
+    prefix = ('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":').encode()
+    check_status("a string holding a malformed byte is accepted",
+                 c.send_bytes(prefix + b'{"_id":"utf8_bad","v":"a\xffb"}}'), "OK")
+    check_field("the malformed byte reads back as the replacement character",
+                find_by_id(c, COLL_TYPES, "utf8_bad"), "object.v", "a\ufffdb")
+    check_client_refusal("a malformed byte outside a string is refused as an invalid command",
+                         c.send_bytes(prefix + b'{"_id":"utf8_bad2","v":\xff}}'))
+    check("nothing was stored for utf8_bad2", find_by_id(c, COLL_TYPES, "utf8_bad2").get("status") != "OK")
+    check_status("numbers past fifteen digits, negative zero and exponents are accepted",
+                 c.send_raw('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES
+                            + '","object":{"_id":"utf8_nums","a":1234567890123456,"b":-0,"c":2.5e3,"d":7}}'), "OK")
+    numbers = find_by_id(c, COLL_TYPES, "utf8_nums")
+    check_field("a sixteen-digit integer reads back exactly", numbers, "object.a", 1234567890123456)
+    check_field("negative zero reads back as zero", numbers, "object.b", 0)
+    check_field("an exponent reads back as its integral value", numbers, "object.c", 2500)
+    check_field("a small integer reads back without a fraction", numbers, "object.d", 7)
+    check_field("the connection still answers afterwards", find_by_id(c, COLL_TYPES, "t_int"), "object.v", 42)
+
+
+def nested_value(depth: int) -> str:
+    return '{"a":' * (depth - 1) + '1' + '}' * (depth - 1)
+
+
+def test_deep_nesting_is_refused_not_dropped(c):
+    section("A request nested past the limit is answered with a refusal and the connection stays open")
+    save_prefix = '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":'
+    for depth in (200, 5000):
+        check_client_refusal(f"a document {depth} levels deep is refused as an invalid command",
+                             c.send_raw(save_prefix + '{"_id":"deep_' + str(depth) + '","n":'
+                                        + nested_value(depth) + '}}'),
+                             connection_kept=True)
+        check(f"the same connection still answers after the {depth}-level request",
+              find_by_id(c, COLL_TYPES, "deep_" + str(depth)).get("errorCode") == "404-2")
+    check_status("a document 120 levels deep is accepted",
+                 c.send_raw(save_prefix + '{"_id":"deep_ok","n":' + nested_value(120) + '}}'), "OK")
+    stored = find_by_id(c, COLL_TYPES, "deep_ok")
+    inner = (stored.get("object") or {}).get("n")
+    for _ in range(118):
+        inner = inner.get("a") if isinstance(inner, dict) else None
+    check("and reads back at full depth", inner == {"a": 1}, detail=str(inner)[:80])
+
+
+def test_filter_operators(c):
+    section("FILTER — every field operator across types (scan path)")
+
+    check_field("EQUALS String", aggregate(c, COLL_AGG, [filter_step("name", "EQUALS", "alice")]),
+                "results.0._id", "a1")
+    check("NOT_EQUALS String excludes the match",
+               "a1" not in ids_of(aggregate(c, COLL_AGG, [filter_step("name", "NOT_EQUALS", "alice")])))
+    check("EQUALS Integer", ids_of(aggregate(c, COLL_AGG, [filter_step("age", "EQUALS", 25)])) == ["a2", "a4"])
+    check("EQUALS Double", ids_of(aggregate(c, COLL_AGG, [filter_step("rating", "EQUALS", 4.5)])) == ["a1", "a3"])
+    check("EQUALS Boolean", ids_of(aggregate(c, COLL_AGG, [filter_step("active", "EQUALS", True)])) == ["a1", "a3"])
+    check("EQUALS null", ids_of(aggregate(c, COLL_AGG, [filter_step("nick", "EQUALS", None)])) == ["a1", "a2"])
+    check("EQUALS Object (element-match)",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("meta", "EQUALS", {"k": 1})])) == ["a1", "a3"])
+    check("EQUALS Array (element-match)",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("tags", "EQUALS", ["x", "y"])])) == ["a1"])
+
+    check("GREATER_THAN Integer",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("age", "GREATER_THAN", 30)])) == ["a3"])
+    check("GREATER_THAN_EQUALS Integer",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("age", "GREATER_THAN_EQUALS", 30)])) == ["a1", "a3"])
+    check("SMALLER_THAN Double",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("rating", "SMALLER_THAN", 3.5)])) == ["a4"])
+    check("SMALLER_THAN_EQUALS Double",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("rating", "SMALLER_THAN_EQUALS", 3.5)])) == ["a2", "a4"])
+
+    check("IN String list",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("name", "IN", ["alice", "bob"])])) == ["a1", "a2"])
+    check("NOT_IN String list excludes listed",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("name", "NOT_IN", ["alice", "bob"])])) == ["a3", "a4"])
+    check("IN over a list of Objects (element-match)",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("meta", "IN", [{"k": 1}, {"k": 3}])])) == ["a1", "a3", "a4"])
+    check("IN uses the same string equality as EQUALS, so a case-mismatched operand matches",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("name", "IN", ["ALICE", "Bob"])])) == ["a1", "a2"])
+    check("NOT_IN excludes a case-mismatched operand for the same reason",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("name", "NOT_IN", ["ALICE", "Bob"])])) == ["a3", "a4"])
+    check("_id IN stays exact, matching FIND_BY_ID",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("_id", "IN", ["A1", "a2"])])) == ["a2"])
+    check("_id NOT_IN stays exact too",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("_id", "NOT_IN", ["A1"])])) == ["a1", "a2", "a3", "a4"])
+
+    check("CONTAINS on an array field",
+               ids_of(aggregate(c, COLL_AGG, [filter_step("tags", "CONTAINS", "z")])) == ["a2", "a3"])
+    check("CONTAINS on a string field",
+               "a1" in ids_of(aggregate(c, COLL_AGG, [filter_step("name", "CONTAINS", "lic")])))
+
+    check_code("FILTER with no match -> 404-3",
+               aggregate(c, COLL_AGG, [filter_step("name", "EQUALS", "nobody")]), "NOT_FOUND", "404-3")
+
+
+def test_filter_with_indexes(c):
+    section("FILTER — index path agrees with the scan path")
+
+    cases = [
+        ("name EQUALS string", "name", [filter_step("name", "EQUALS", "carol")]),
+        ("age GREATER_THAN int", "age", [filter_step("age", "GREATER_THAN", 25)]),
+        ("meta EQUALS object", "meta", [filter_step("meta", "EQUALS", {"k": 1})]),
+        ("tags EQUALS array", "tags", [filter_step("tags", "EQUALS", ["x", "z"])]),
+    ]
+    scan = {name: ids_of(aggregate(c, COLL_AGG, steps)) for name, _field, steps in cases}
+    for _name, field, _steps in cases:
+        create_index(c, COLL_AGG, field)
+    for _name, field, _steps in cases:
+        wait_for_index(c, COLL_AGG, field)
+    for name, _field, steps in cases:
+        indexed = ids_of(aggregate(c, COLL_AGG, steps))
+        check(f"index path matches scan path: {name}", indexed == scan[name],
+                   detail=f"scan={scan[name]}  indexed={indexed}")
+
+
+def test_conjunctions(c):
+    section("Conjunction operators (AND / OR / NOR / XOR / NAND)")
+
+    def conj(op, *leaves):
+        return [{"type": "FILTER", "operator": {"conjunctionType": op, "operators": list(leaves)}}]
+
+    age25 = {"fieldOperatorType": "EQUALS", "field": "age", "value": 25}
+    active = {"fieldOperatorType": "EQUALS", "field": "active", "value": True}
+    rating45 = {"fieldOperatorType": "EQUALS", "field": "rating", "value": 4.5}
+
+    check("AND (active AND rating=4.5)",
+               ids_of(aggregate(c, COLL_AGG, conj("AND", active, rating45))) == ["a1", "a3"])
+    check("OR (age=25 OR active)",
+               ids_of(aggregate(c, COLL_AGG, conj("OR", age25, active))) == ["a1", "a2", "a3", "a4"])
+    check("XOR (active XOR rating=4.5) -> exactly one true",
+               ids_of(aggregate(c, COLL_AGG, conj("XOR", active, rating45))) == [])
+    check("NOR (NOT age=25 AND NOT active)",
+               ids_of(aggregate(c, COLL_AGG, conj("NOR", age25, active))) == [])
+    check("NAND (NOT(active AND rating=4.5))",
+               ids_of(aggregate(c, COLL_AGG, conj("NAND", active, rating45))) == ["a2", "a4"])
+
+    r = aggregate(c, COLL_AGG, conj("NAND", active, rating45) + [{"type": "COUNT"}])
+    check_field("COUNT after NAND conjunction", r, "results.0.count", 2)
+
+
+def test_map_conditions_and_number_casts(c):
+    section("MAP conditions agree with FILTER; CAST to STRING spells numbers like the document does")
+
+    active = {"fieldOperatorType": "EQUALS", "field": "active", "value": True}
+    rating45 = {"fieldOperatorType": "EQUALS", "field": "rating", "value": 4.5}
+    age25 = {"fieldOperatorType": "EQUALS", "field": "age", "value": 25}
+
+    for conj_type, leaves in (("AND", [active, rating45]), ("OR", [age25, active]),
+                              ("XOR", [active, rating45]), ("NOR", [age25]),
+                              ("NAND", [active, rating45])):
+        condition = {"conjunctionType": conj_type, "operators": leaves}
+        by_filter = ids_of(aggregate(c, COLL_AGG, [{"type": "FILTER", "operator": condition}]))
+        mapped = aggregate(c, COLL_AGG, [{"type": "MAP", "operators": [
+            {"fieldName": "meta", "condition": condition}]}])
+        by_map = sorted(d.get("_id") for d in (mapped.get("results") or []) if "meta" not in d)
+        check(f"a {conj_type} MAP condition selects exactly what the same FILTER selects",
+              by_map == by_filter, detail=f"FILTER={by_filter}, MAP={by_map}")
+
+    create_coll(c, COLL_CASTS)
+    save(c, COLL_CASTS, {"_id": "big", "n": 3000000000})
+    save(c, COLL_CASTS, {"_id": "small", "n": 123})
+    cast_step = [{"type": "MAP", "operators": [
+        {"fieldName": "asText", "operator": {"type": "CAST", "fieldName": "n", "toType": "STRING"}}]}]
+    by_id = {d.get("_id"): d for d in (aggregate(c, COLL_CASTS, cast_step).get("results") or [])}
+    check("CAST to STRING of a number past the int range is not clamped",
+          by_id.get("big", {}).get("asText") == "3000000000",
+          detail=f"got {by_id.get('big', {}).get('asText')!r}")
+    check("CAST to STRING of a small integral number is unchanged",
+          by_id.get("small", {}).get("asText") == "123",
+          detail=f"got {by_id.get('small', {}).get('asText')!r}")
+
+    nearest_condition = {"customOperatorName": "nearest", "field": "embedding",
+                         "value": "#vector(1.0,0.0)", "k": 3}
+    refused = aggregate(c, COLL_AGG, [{"type": "MAP", "operators": [
+        {"fieldName": "meta", "condition": nearest_condition}]}])
+    check_status("a ranking operator used as a MAP condition", refused, "ERROR")
+    check("the refusal names the operator and its role",
+          "nearest" in (refused.get("message") or "") and "MAP condition" in (refused.get("message") or ""),
+          detail=f"got {refused.get('message')!r}")
+
+    still_ranks = aggregate(c, COLL_AGG, [{"type": "FILTER", "operator": nearest_condition}])
+    check("the same ranking operator is still accepted by FILTER",
+          still_ranks.get("errorCode") != "400-1",
+          detail=f"got {still_ranks.get('status')!r} {still_ranks.get('message')!r}")
+
+    oversized_k_condition = {"customOperatorName": "nearest", "field": "embedding",
+                             "value": "#vector(1.0,0.0)", "k": 2147483647}
+    oversized_k_refused = aggregate(c, COLL_AGG, [{"type": "FILTER", "operator": oversized_k_condition}])
+    check_status("nearest with a k past the candidate-budget overflow ceiling is refused",
+                 oversized_k_refused, "ERROR")
+
+
+def map_math(c, operation, operands, field="r"):
+    steps = [{"type": "MAP", "operators": [
+        {"fieldName": field, "operator": {"type": operation, "operands": operands}}]}]
+    return (aggregate(c, COLL_MATH, steps).get("results") or [{}])[0].get(field)
+
+
+MAP_MATH_CASES = (
+    ("MULTIPLY [10,2] is 20", (("MULTIPLY", [10, 2], 20),)),
+    ("MULTIPLY [2,'a'] does not depend on operand order",
+     (("MULTIPLY", [2, "a"], 20), ("MULTIPLY", ["a", 2], 20))),
+    ("a field holding zero does not restart the fold",
+     (("MULTIPLY", ["a", "z", "b"], 0), ("MULTIPLY", ["z", "a", "b"], 0))),
+    ("SUBS and DIVIDE keep left-to-right order", (("SUBS", [10, 2, 1], 7), ("DIVIDE", [100, 5, 2], 10))),
+    ("POW seeds from the first operand", (("POW", [2, 10], 1024),)),
+    ("SUM is unchanged", (("SUM", [10, 2], 12),)),
+    ("MIN over a value past the int range does not leak Integer.MAX_VALUE", (("MIN", ["big"], 3000000000),)),
+    ("MAX over a value past the int range does not leak Integer.MIN_VALUE", (("MAX", ["big"], 3000000000),)),
+    *((f"{operation} over only {operand} answers null", ((operation, [operand], None),))
+      for operation in ("MIN", "MAX", "AVG", "MULTIPLY") for operand in ("missing", "nullField")),
+    ("a divide by zero answers null", (("DIVIDE", ["a", "z"], None),)),
+)
+
+
+def test_map_arithmetic(c):
+    section("MAP arithmetic: the first valid operand seeds the fold, and no sentinel leaks")
+
+    create_coll(c, COLL_MATH)
+    save(c, COLL_MATH, {"_id": "m1", "a": 10, "b": 2, "z": 0, "big": 3000000000, "nullField": None})
+
+    for operation in ("MULTIPLY", "SUBS", "DIVIDE", "POW", "ROOT"):
+        from_literals = map_math(c, operation, [10, 2])
+        from_fields = map_math(c, operation, ["a", "b"])
+        check(f"{operation} answers the same for literal and field operands",
+              from_literals == from_fields,
+              detail=f"literals={from_literals!r} fields={from_fields!r}")
+
+    for label, calls in MAP_MATH_CASES:
+        got = [map_math(c, operation, operands) for operation, operands, _ in calls]
+        check(label, got == [expected for _, _, expected in calls], detail=f"got {got!r}")
+
+    concat_literal_null = map_math(c, "CONCAT", ["-x", None, "-y"])
+    concat_null_field = map_math(c, "CONCAT", ["-x", "nullField", "-y"])
+    check("CONCAT spells a literal null like a null-valued field",
+          concat_literal_null == concat_null_field == "xnully",
+          detail=f"literal={concat_literal_null!r} field={concat_null_field!r}")
+    check("CONCAT never emits a Java identity string",
+          "@" not in (concat_literal_null or "") and "org.techhouse" not in (concat_literal_null or ""),
+          detail=f"got {concat_literal_null!r}")
+
+    concat_nested_null = map_math(c, "CONCAT", [["x", None, "y"]])
+    check("CONCAT spells a null inside an array operand like one beside it",
+          concat_nested_null == concat_literal_null == "xnully",
+          detail=f"nested={concat_nested_null!r} top_level={concat_literal_null!r}")
+    check("CONCAT keeps an array element a literal rather than a field path",
+          map_math(c, "CONCAT", [["a"]]) == "a",
+          detail=f"got {map_math(c, 'CONCAT', [['a']])!r}")
+
+    save(c, COLL_MATH, {"_id": "m2", "a": 10, "b": 2, "z": 0, "big": 3000000000, "nullField": None})
+    save(c, COLL_MATH, {"_id": "m3", "b": 2, "z": 0, "big": 3000000000, "nullField": None})
+    derive_avg = {"type": "MAP", "operators": [
+        {"fieldName": "derived", "operator": {"type": "AVG", "operands": ["a"]}}]}
+
+    derived = aggregate(c, COLL_MATH, [derive_avg]).get("results") or []
+    missing_row = next((row for row in derived if row.get("_id") == "m3"), None)
+    check("a fold with no valid operand answers a real null",
+          missing_row is not None and "derived" in missing_row and missing_row["derived"] is None,
+          detail=f"got {missing_row!r}")
+
+    sorted_after_map = aggregate(c, COLL_MATH, [derive_avg, {"type": "SORT", "fieldName": "derived",
+                                                             "ascending": True}])
+    check_status("SORT after a MAP that answered null", sorted_after_map, "OK")
+
+    filtered_after_map = aggregate(c, COLL_MATH, [derive_avg, {"type": "FILTER", "operator": {
+        "type": "FIELD", "field": "derived", "fieldOperatorType": "GREATER_THAN", "value": 0}}])
+    check_status("a numeric FILTER after a MAP that answered null", filtered_after_map, "OK")
+    check("the numeric FILTER keeps only the rows that have a value",
+          sorted({row["_id"] for row in filtered_after_map.get("results") or []}) == ["m1", "m2"],
+          detail=f"got {filtered_after_map.get('results')!r}")
+
+    is_null_after_map = aggregate(c, COLL_MATH, [derive_avg, {"type": "FILTER", "operator": {
+        "type": "FIELD", "field": "derived", "fieldOperatorType": "EQUALS", "value": None}}])
+    check("EQUALS null matches the row whose response showed null",
+          [row["_id"] for row in is_null_after_map.get("results") or []] == ["m3"],
+          detail=f"got {is_null_after_map.get('results')!r}")
+
+    second_map = aggregate(c, COLL_MATH, [derive_avg, {"type": "MAP", "operators": [
+        {"fieldName": "plusOne", "operator": {"type": "SUM", "operands": ["derived", 1]}}]}])
+    check_status("a second MAP reading a null result", second_map, "OK")
+
+
+def test_every_aggregate_response_is_strict_json(c):
+    section("Every AGGREGATE response parses under a strict RFC 8259 reader")
+
+    shapes = {
+        "a divide by zero": {"type": "DIVIDE", "operands": ["a", "z"]},
+        "an average of nothing": {"type": "AVG", "operands": ["missing"]},
+        "a min of nothing": {"type": "MIN", "operands": ["missing"]},
+        "an overflowing pow": {"type": "POW", "operands": [1.7976931348623157e308, 2]},
+    }
+    for label, operator in shapes.items():
+        try:
+            response = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_MATH,
+                               "aggregationSteps": [{"type": "MAP", "operators": [
+                                   {"fieldName": "r", "operator": operator}]}]}, strict=True)
+            ok, detail = not response.get(bu.UNPARSED), json.dumps(response)
+        except ValueError as failure:
+            ok, detail = False, str(failure)
+        check(f"the response for {label} is strict JSON", ok, detail=detail)
+
+
+def test_aggregation_steps(c):
+    section("Aggregation steps (MAP / GROUP_BY / JOIN / COUNT / DISTINCT / LIMIT / SKIP / SORT)")
+
+    r = aggregate(c, COLL_AGG, [{"type": "MAP", "operators": [{"fieldName": "meta"}]}])
+    check_status("MAP remove-field (OK)", r, "OK")
+    check("MAP keeps one row per input doc", len(r.get("results") or []) == 4)
+    check("MAP removed the 'meta' field but kept 'name'",
+               all(("meta" not in d and "name" in d) for d in (r.get("results") or [])),
+               detail=f"first row={ (r.get('results') or [{}])[0] }")
+
+    r = aggregate(c, COLL_AGG, [{"type": "GROUP_BY", "fieldName": "age"}])
+    check_status("GROUP_BY age (OK)", r, "OK")
+    groups = {d.get("age"): len(d.get("group") or []) for d in (r.get("results") or [])}
+    check("GROUP_BY age=25 has two members", groups.get(25) == 2, detail=f"groups={groups}")
+
+    r = aggregate(c, COLL_JOIN_LEFT, [{"type": "JOIN", "joinCollection": COLL_JOIN_RIGHT,
+                                          "localField": "key", "remoteField": "key", "asField": "joined"}])
+    check_status("JOIN left->right (OK)", r, "OK")
+    by_id = {d.get("_id"): d for d in (r.get("results") or [])}
+    check("JOIN populates asField for l1",
+               (by_id.get("l1", {}).get("joined") or [{}])[0].get("label") == "first",
+               detail=f"l1.joined={by_id.get('l1', {}).get('joined')}")
+
+    ordered_ids = ["doc-06", "doc-01", "doc-05", "doc-02", "doc-04", "doc-03"]
+    bulk_save(c, COLL_JOIN_RIGHT, [{"_id": i, "key": "kOrder", "label": i} for i in ordered_ids])
+    save(c, COLL_JOIN_LEFT, {"_id": "lOrder", "key": "kOrder"})
+    r = aggregate(c, COLL_JOIN_LEFT, [filter_step("_id", "EQUALS", "lOrder"),
+                                      {"type": "JOIN", "joinCollection": COLL_JOIN_RIGHT,
+                                       "localField": "key", "remoteField": "key", "asField": "joined"}])
+    joined_ids = [d.get("_id") for d in ((r.get("results") or [{}])[0].get("joined") or [])]
+    check("a joined array is in _id order", joined_ids == sorted(ordered_ids), detail=f"got {joined_ids}")
+
+    grouped = aggregate(c, COLL_JOIN_RIGHT, [{"type": "GROUP_BY", "fieldName": "key"}])
+    order_group = next((g for g in (grouped.get("results") or []) if g.get("key") == "kOrder"), {})
+    group_ids = [d.get("_id") for d in (order_group.get("group") or [])]
+    check("a GROUP_BY group is in _id order", group_ids == sorted(ordered_ids), detail=f"got {group_ids}")
+
+    r = aggregate(c, COLL_AGG, [{"type": "COUNT"}])
+    check_field("COUNT whole collection", r, "results.0.count", 4)
+    r = aggregate(c, COLL_AGG, [filter_step("active", "EQUALS", True), {"type": "COUNT"}])
+    check_field("COUNT with filter", r, "results.0.count", 2)
+
+    r = aggregate(c, COLL_AGG, [{"type": "DISTINCT", "fieldName": "rating"}])
+    check_status("DISTINCT on rating (OK)", r, "OK")
+    distinct_ratings = sorted({d.get("rating") for d in (r.get("results") or [])})
+    check("DISTINCT rating yields {2.0, 3.5, 4.5}", distinct_ratings == [2.0, 3.5, 4.5],
+               detail=f"got={distinct_ratings}")
+    check_status("DISTINCT whole documents (no fieldName)",
+          aggregate(c, COLL_AGG, [{"type": "DISTINCT"}]), "OK")
+
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "age", "ascending": True}])
+    check("SORT ascending by age",
+               [d.get("age") for d in (r.get("results") or [])] == [25, 25, 30, 40])
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "age", "ascending": False}])
+    check("SORT descending by age",
+               [d.get("age") for d in (r.get("results") or [])] == [40, 30, 25, 25])
+
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "active", "ascending": True}])
+    check("SORT ascending by a boolean puts false first",
+               [d.get("active") for d in (r.get("results") or [])] == [False, False, True, True])
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "active", "ascending": False}])
+    check("SORT descending by a boolean puts true first",
+               [d.get("active") for d in (r.get("results") or [])] == [True, True, False, False])
+
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "age", "ascending": True},
+                                   {"type": "LIMIT", "limit": 2}])
+    check("LIMIT 2 truncates", len(r.get("results") or []) == 2)
+    r = aggregate(c, COLL_AGG, [{"type": "SORT", "fieldName": "age", "ascending": True},
+                                   {"type": "SKIP", "skip": 2}])
+    check("SKIP 2 drops the first two", len(r.get("results") or []) == 2)
+
+    check_code("LIMIT 0 is invalid -> 400-1",
+               aggregate(c, COLL_AGG, [{"type": "LIMIT", "limit": 0}]), "ERROR", "400-1")
+    check_code("SKIP negative is invalid -> 400-1",
+               aggregate(c, COLL_AGG, [{"type": "SKIP", "skip": -1}]), "ERROR", "400-1")
+
+    check_status("Empty aggregationSteps returns all docs",
+          aggregate(c, COLL_AGG, []), "OK")
+
+    r = aggregate(c, COLL_AGG, [filter_step("active", "EQUALS", True),
+                                   {"type": "SORT", "fieldName": "age", "ascending": True},
+                                   {"type": "LIMIT", "limit": 1}])
+    check_field("FILTER->SORT->LIMIT yields the youngest active user", r, "results.0._id", "a1")
+
+
+def test_aggregation_steps_write_dotted_fields_nested(c):
+    section("A step writes a dotted field name the way every step reads one")
+    coll = "agg_nested_paths"
+    create_coll(c, coll)
+    bulk_save(c, coll, [{"_id": "n1", "a": {"b": "x", "n": -2}}, {"_id": "n2", "a": {"b": "y", "n": 5}},
+                        {"_id": "n3", "a": {"b": "x", "n": 7}}])
+
+    grouped = aggregate(c, coll, [{"type": "GROUP_BY", "fieldName": "a.b"}]).get("results") or []
+    check("GROUP_BY a.b emits the key nested", sorted((g.get("a") or {}).get("b") for g in grouped) == ["x", "y"]
+          and all("a.b" not in g for g in grouped), detail=f"got {grouped}")
+    r = aggregate(c, coll, [{"type": "GROUP_BY", "fieldName": "a.b"}, filter_step("a.b", "EQUALS", "x")])
+    rows = r.get("results") or []
+    check("a FILTER on the GROUP_BY key finds its group", len(rows) == 1 and len(rows[0].get("group") or []) == 2,
+          detail=f"got {rows}")
+
+    r = aggregate(c, coll, [{"type": "DISTINCT", "fieldName": "a.b"},
+                            {"type": "SORT", "fieldName": "a.b", "ascending": False}])
+    check("DISTINCT then SORT on a.b orders the nested keys",
+          [(d.get("a") or {}).get("b") for d in (r.get("results") or [])] == ["y", "x"], detail=f"got {r}")
+
+    r = aggregate(c, coll, [{"type": "MAP", "operators": [
+        {"fieldName": "a.abs", "operator": {"type": "ABS", "operand": "a.n"}},
+        {"fieldName": "a.b"}]}, filter_step("_id", "EQUALS", "n1")])
+    row = (r.get("results") or [{}])[0]
+    check("MAP ADD_FIELD a.abs writes beside a.n", (row.get("a") or {}).get("abs") == 2, detail=f"got {row}")
+    check("MAP REMOVE_FIELD a.b removes the nested key", "b" not in (row.get("a") or {}) and "a.abs" not in row,
+          detail=f"got {row}")
+
+    r = aggregate(c, coll, [filter_step("_id", "EQUALS", "n1"),
+                            {"type": "JOIN", "joinCollection": coll, "localField": "a.b", "remoteField": "a.b",
+                             "asField": "same.rows"}])
+    row = (r.get("results") or [{}])[0]
+    joined = [d.get("_id") for d in ((row.get("same") or {}).get("rows") or [])]
+    check("JOIN asField same.rows nests the joined array", joined == ["n1", "n3"], detail=f"got {row}")
+
+
+def test_nested_paths_and_contains_on_scan_and_index(c):
+    section("FILTER, CONTAINS, GROUP_BY, SORT and DISTINCT on nested paths, scan and index alike")
+    coll = "agg_field_paths"
+    create_coll(c, coll)
+    bulk_save(c, coll, [
+        {"_id": "p1", "a": {"b": {"c": 3}, "s": "xxababx"}, "t": "hello world"},
+        {"_id": "p2", "a": {"b": {"c": 1}, "s": "abaab"}, "t": "say hello"},
+        {"_id": "p3", "a": {"b": {"c": 2}, "s": "aababab"}, "t": "HELLO"},
+        {"_id": "p4", "a": {"b": {"c": 3}, "s": "abab"}, "t": "nothing"},
+        {"_id": "p5", "a": {"b": "scalar"}, "t": "aba"},
+        {"_id": "p6", "a": {"b": [{"c": 3}]}, "t": ""},
+        {"_id": "p7", "t": "hello"},
+    ])
+
+    def ids(pipeline):
+        return ids_of(aggregate(c, coll, pipeline))
+
+    def ordered(pipeline):
+        return [d.get("_id") for d in (aggregate(c, coll, pipeline).get("results") or [])]
+
+    def nested_keys(pipeline):
+        rows = aggregate(c, coll, pipeline).get("results") or []
+        return sorted(((r.get("a") or {}).get("b") or {}).get("c") for r in rows)
+
+    present = filter_step("a.b.c", "GREATER_THAN", 0)
+    queries = {
+        "EQUALS a.b.c": (ids, [filter_step("a.b.c", "EQUALS", 3)], ["p1", "p4"]),
+        "GREATER_THAN a.b.c": (ids, [filter_step("a.b.c", "GREATER_THAN", 1)], ["p1", "p3", "p4"]),
+        "NOT_EQUALS a.b.c skips paths through a scalar, an array or nothing":
+            (ids, [filter_step("a.b.c", "NOT_EQUALS", 3)], ["p2", "p3"]),
+        "IN a.b.c": (ids, [filter_step("a.b.c", "IN", [1, 2])], ["p2", "p3"]),
+        "NOT_IN a.b.c": (ids, [filter_step("a.b.c", "NOT_IN", [1])], ["p1", "p3", "p4"]),
+        "SORT a.b.c descending": (ordered, [present, {"type": "SORT", "fieldName": "a.b.c", "ascending": False}],
+                                  ["p1", "p4", "p3", "p2"]),
+        "SORT a.b.c ascending + LIMIT 2": (ordered, [present, {"type": "SORT", "fieldName": "a.b.c",
+                                                               "ascending": True}, {"type": "LIMIT", "limit": 2}],
+                                           ["p2", "p3"]),
+        "GROUP_BY a.b.c": (nested_keys, [{"type": "GROUP_BY", "fieldName": "a.b.c"}], [1, 2, 3]),
+        "DISTINCT a.b.c": (nested_keys, [{"type": "DISTINCT", "fieldName": "a.b.c"}], [1, 2, 3]),
+    }
+    for name, (run, steps, expected) in queries.items():
+        got = run(steps)
+        check(f"scan: {name}", got == expected, detail=f"expected {expected}, got {got}")
+
+    check("CONTAINS on a nested string field, one operand over many rows",
+          ids([filter_step("a.s", "CONTAINS", "abab")]) == ["p1", "p3", "p4"],
+          detail=f"got {ids([filter_step('a.s', 'CONTAINS', 'abab')])}")
+    check("CONTAINS stays case-sensitive",
+          ids([filter_step("t", "CONTAINS", "hello")]) == ["p1", "p2", "p7"],
+          detail=f"got {ids([filter_step('t', 'CONTAINS', 'hello')])}")
+    check("CONTAINS an empty operand matches every string",
+          ids([filter_step("t", "CONTAINS", "")]) == ["p1", "p2", "p3", "p4", "p5", "p6", "p7"])
+    check("CONTAINS an operand longer than the value matches nothing",
+          ids([filter_step("t", "CONTAINS", "abab")]) == [])
+
+    create_index(c, coll, "a.b.c")
+    wait_for_index(c, coll, "a.b.c")
+    for name, (run, steps, expected) in queries.items():
+        got = run(steps)
+        check(f"index: {name}", got == expected, detail=f"expected {expected}, got {got}")
+
+
+def test_analyze(c):
+    section("Explain / Analyze (AGGREGATE analyze=true)")
+
+    coll = "analyze_coll"
+    create_coll(c, coll)
+    bulk_save(c, coll, [
+        {"_id": "z1", "name": "alice", "age": 30},
+        {"_id": "z2", "name": "bob", "age": 25},
+        {"_id": "z3", "name": "carol", "age": 40},
+    ])
+
+    r = analyze(c, coll, [filter_step("name", "EQUALS", "alice")])
+    check_status("AGGREGATE analyze=true returns OK", r, "OK")
+    check("analyzeResult object is present", isinstance(r.get("analyzeResult"), dict))
+    check_field("Scan path reports no index used", r, "analyzeResult.indexUsed", False)
+    check("Scan path scanned at least one document",
+               (bu.dig(r, "analyzeResult.documentsScanned") or 0) >= 1,
+               detail=f"documentsScanned={bu.dig(r, 'analyzeResult.documentsScanned')}")
+    check("Scan path suggests indexing the filtered field",
+               any("name" in sug for sug in (bu.dig(r, "analyzeResult.suggestions") or [])),
+               detail=f"suggestions={bu.dig(r, 'analyzeResult.suggestions')}")
+    duration = bu.dig(r, "analyzeResult.durationMillis")
+    check("Timing durationMillis is present (non-negative)",
+               duration is not None and duration >= 0,
+               detail=f"durationMillis={duration}")
+    check("analyze still returns the matching results", ids_of(r) == ["z1"])
+
+    create_index(c, coll, "name")
+    wait_for_index(c, coll, "name")
+    r = analyze(c, coll, [filter_step("name", "EQUALS", "alice")])
+    check_field("Index path reports an index used", r, "analyzeResult.indexUsed", True)
+    check("indexesUsed names the 'name' field",
+               "name" in (bu.dig(r, "analyzeResult.indexesUsed") or []),
+               detail=f"indexesUsed={bu.dig(r, 'analyzeResult.indexesUsed')}")
+    check("locksAcquired includes the field-index lock for 'name'",
+               any(lock.endswith("|name") for lock in (bu.dig(r, "analyzeResult.locksAcquired") or [])),
+               detail=f"locksAcquired={bu.dig(r, 'analyzeResult.locksAcquired')}")
+
+    r = analyze(c, coll, [filter_step("name", "EQUALS", "nobody")])
+    check_status("analyze on a no-match query returns OK (not NO_RESULTS)", r, "OK")
+    check("analyzeResult present even with no results",
+               isinstance(r.get("analyzeResult"), dict))
+    check("no-match analyze returns an empty results list",
+               (r.get("results") or []) == [], detail=f"results={r.get('results')}")
+
+    r = analyze(c, coll, [{"type": "SORT", "fieldName": "age", "ascending": True},
+                             filter_step("name", "EQUALS", "alice")])
+    check("suggests moving a non-leading FILTER to the top of the pipeline",
+               any("move it to the top" in sug for sug in (bu.dig(r, "analyzeResult.suggestions") or [])),
+               detail=f"suggestions={bu.dig(r, 'analyzeResult.suggestions')}")
+
+    r = aggregate(c, coll, [filter_step("name", "EQUALS", "alice")])
+    check("plain AGGREGATE carries no analyzeResult", r.get("analyzeResult") is None)
+
+    drop_coll(c, coll)
+
+
+def test_empty_collection_aggregate(c):
+    section("Aggregate on an empty collection")
+    create_coll(c, "empty_coll")
+    check_code("AGGREGATE on empty collection -> 404-3",
+               aggregate(c, "empty_coll", []), "NOT_FOUND", "404-3")
+    drop_coll(c, "empty_coll")
+
+
+def test_index_ops(c):
+    section("Index lifecycle (CREATE_INDEX / DROP_INDEX / REINDEX)")
+
+    create_coll(c, "idx_coll")
+    bulk_save(c, "idx_coll", [{"_id": "i1", "email": "a@x.io"}, {"_id": "i2", "email": "b@x.io"}])
+
+    check_status("CREATE_INDEX email", create_index(c, "idx_coll", "email"), "OK")
+    wait_for_index(c, "idx_coll", "email")
+    check("Query is correct after CREATE_INDEX",
+               ids_of(aggregate(c, "idx_coll", [filter_step("email", "EQUALS", "a@x.io")])) == ["i1"])
+
+    check_status("REINDEX a specific field", reindex(c, "idx_coll", ["email"]), "OK")
+    check_status("REINDEX all fields (omit fieldNames)", reindex(c, "idx_coll"), "OK")
+    check("Query is correct after REINDEX",
+               ids_of(aggregate(c, "idx_coll", [filter_step("email", "EQUALS", "b@x.io")])) == ["i2"])
+
+    bulk_save(c, "idx_coll", [{"_id": f"m{i}", "email": f"m{i}@x.io", "rank": i % 3, "flag": i % 2 == 0}
+                              for i in range(30)])
+    for field in ("rank", "flag"):
+        check_status(f"CREATE_INDEX {field}", create_index(c, "idx_coll", field), "OK")
+        wait_for_index(c, "idx_coll", field)
+    check_status("REINDEX three fields in one request", reindex(c, "idx_coll", ["email", "rank", "flag"]), "OK")
+    check("each of the three rebuilt fields answers its query",
+          ids_of(aggregate(c, "idx_coll", [filter_step("email", "EQUALS", "m4@x.io")])) == ["m4"]
+          and sorted(ids_of(aggregate(c, "idx_coll", [filter_step("rank", "EQUALS", 2)])))
+          == sorted(f"m{i}" for i in range(30) if i % 3 == 2)
+          and len(ids_of(aggregate(c, "idx_coll", [filter_step("flag", "EQUALS", True)]))) == 15)
+
+    check_status("DROP_INDEX email", drop_index(c, "idx_coll", "email"), "OK")
+    check_code("CREATE_INDEX on a never-created collection -> 404-11",
+               create_index(c, "idx_never_created", "email"), "NOT_FOUND", "404-11")
+    check_status("creating that collection afterwards", create_coll(c, "idx_never_created"), "OK")
+    bulk_save(c, "idx_never_created", [{"_id": "n1", "email": "a@x.io"}])
+    check_code("it carries no index the refused CREATE_INDEX promised -> REINDEX email 404-6",
+               reindex(c, "idx_never_created", ["email"]), "NOT_FOUND", "404-6")
+    drop_coll(c, "idx_never_created")
+    check_status("DROP_INDEX on a field with no index is idempotent (OK)",
+          drop_index(c, "idx_coll", "no_such_field"), "OK")
+
+    drop_coll(c, "idx_coll")
+
+
+def create_indexes(c, coll, fields, db=DB) -> dict:
+    return c.send({"type": "CREATE_INDEX", "databaseName": db, "collectionName": coll, "fieldNames": fields})
+
+
+def registered_indexes(c, coll, db=DB) -> list:
+    stats = c.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("databases", [])
+    return sorted(index for d in stats if d.get("name") == db for coll_stats in d.get("collections", [])
+                  if coll_stats.get("name") == coll for index in coll_stats.get("indexes") or [])
+
+
+def test_create_index_field_names(c):
+    section("CREATE_INDEX with fieldNames builds several indexes in one request")
+    create_coll(c, "multi_idx")
+    bulk_save(c, "multi_idx", [{"_id": f"p{i}", "sku": f"s{i}", "color": ("red", "blue", "green")[i % 3],
+                                "price": i} for i in range(40)])
+    check_status("CREATE_INDEX fieldName color still works", create_index(c, "multi_idx", "color"), "OK")
+    reply = create_indexes(c, "multi_idx", ["color", "sku", "price"])
+    check_status("CREATE_INDEX fieldNames [color, sku, price]", reply, "OK")
+    check("the already registered color is skipped, not rebuilt",
+          "already existed for field: color" in (reply.get("message") or ""), reply.get("message"))
+    check("all three fields are registered", registered_indexes(c, "multi_idx") == ["color", "price", "sku"],
+          str(registered_indexes(c, "multi_idx")))
+    for field, operator, value in (("sku", "EQUALS", "s7"), ("price", "GREATER_THAN", 30), ("color", "EQUALS", "blue")):
+        indexed = sorted(ids_of(aggregate(c, "multi_idx", [filter_step(field, operator, value)])))
+        scanned = sorted(ids_of(aggregate(c, "multi_idx", [{"type": "SKIP", "skip": 0},
+                                                           filter_step(field, operator, value)])))
+        check(f"{field} {operator} answers like the scan", indexed == scanned and len(indexed) > 0, str(indexed))
+    analyzed = analyze(c, "multi_idx", [filter_step("sku", "EQUALS", "s3")])
+    check("a field built by the multi-field request is used by the planner",
+          "sku" in (analyzed.get("analyzeResult") or {}).get("indexesUsed", []), str(analyzed.get("analyzeResult")))
+    check_code("an empty fieldNames -> 400-1", create_indexes(c, "multi_idx", []), "ERROR", "400-1")
+    check_code("one invalid name refuses the whole request -> 400-1",
+               create_indexes(c, "multi_idx", ["tier", "a b"]), "ERROR", "400-1")
+    check_code("a case-colliding pair refuses the whole request -> 409-11",
+               create_indexes(c, "multi_idx", ["tier", "TIER"]), "ERROR", "409-11")
+    check("neither refused request built tier", "tier" not in registered_indexes(c, "multi_idx"))
+    check_status("CREATE_INDEX fieldNames of registered fields stays idempotent",
+                 create_indexes(c, "multi_idx", ["sku", "price"]), "OK")
+    started = time.monotonic()
+    huge = create_indexes(c, "multi_idx", [f"f{i}" for i in range(100_000)])
+    elapsed = time.monotonic() - started
+    check_code("100k fieldNames are refused -> 400-42", huge, "ERROR", "400-42")
+    check("the 100k fieldNames refusal answers quickly", elapsed < 5.0, f"{elapsed:.2f}s")
+    check("the collection keeps answering after the huge request",
+          len(ids_of(aggregate(c, "multi_idx", [filter_step("sku", "EQUALS", "s7")]))) == 1)
+    drop_coll(c, "multi_idx")
+
+
+def test_flows(c):
+    section("Multi-operation flows (save -> update -> verify)")
+
+    save(c, COLL_FLOWS, {"_id": "f1", "status": "new"})
+    check_field("Initial value is 'new'", find_by_id(c, COLL_FLOWS, "f1"), "object.status", "new")
+    save(c, COLL_FLOWS, {"_id": "f1", "status": "done"})
+    check_field("Value updated to 'done'", find_by_id(c, COLL_FLOWS, "f1"), "object.status", "done")
+    check_field("Upsert did not insert a duplicate (count==1)",
+                aggregate(c, COLL_FLOWS, [filter_step("status", "EQUALS", "done"), {"type": "COUNT"}]),
+                "results.0.count", 1)
+
+    save(c, COLL_FLOWS, {"_id": "grow", "payload": "x"})
+    big = "y" * 4096
+    save(c, COLL_FLOWS, {"_id": "grow", "payload": big})
+    check_field("Grow-update reads back the larger value",
+                find_by_id(c, COLL_FLOWS, "grow"), "object.payload", big)
+
+    create_index(c, COLL_FLOWS, "status")
+    wait_for_index(c, COLL_FLOWS, "status")
+    save(c, COLL_FLOWS, {"_id": "ic", "status": "fresh"})
+    check("Just-written value is found immediately (no false negative)",
+               "ic" in ids_of(aggregate(c, COLL_FLOWS, [filter_step("status", "EQUALS", "fresh")])))
+    save(c, COLL_FLOWS, {"_id": "ic", "status": "changed"})
+    check("Old value no longer matches immediately after update",
+               "ic" not in ids_of(aggregate(c, COLL_FLOWS, [filter_step("status", "EQUALS", "fresh")])))
+    check("New value matches immediately after update",
+               "ic" in ids_of(aggregate(c, COLL_FLOWS, [filter_step("status", "EQUALS", "changed")])))
+
+    save(c, COLL_FLOWS, {"_id": "dr", "v": 1})
+    delete(c, COLL_FLOWS, "dr")
+    check_code("Deleted doc is gone -> 404-2", find_by_id(c, COLL_FLOWS, "dr"), "NOT_FOUND", "404-2")
+    save(c, COLL_FLOWS, {"_id": "dr", "v": 2})
+    check_field("Re-created doc reads back", find_by_id(c, COLL_FLOWS, "dr"), "object.v", 2)
+
+    bulk_save(c, COLL_FLOWS, [{"_id": f"bu_{i}", "v": "short"} for i in range(4)])
+    bulk_save(c, COLL_FLOWS, [{"_id": f"bu_{i}", "v": f"updated-longer-value-{i}"} for i in range(4)])
+    bad = sum(1 for i in range(4)
+              if bu.dig(find_by_id(c, COLL_FLOWS, f"bu_{i}"), "object.v") != f"updated-longer-value-{i}")
+    check("Bulk update reads back intact for every doc", bad == 0, detail=f"{bad}/4 stale")
+
+
+def test_operation_permissions(_c):
+    section("Operation-level permission edges (non-overlapping with test_auth)")
+
+    with Conn() as uc:
+        check_code("AGGREGATE before auth -> 401-1",
+                   aggregate(uc, COLL_AGG, []), "UNAUTHENTICATED", "401-1")
+
+    with Conn() as rc:
+        rc.authenticate("api_reader", "api_reader1234")
+        check_code("read-only user SAVE -> 403-1",
+                   save(rc, COLL_CRUD, {"_id": "z", "v": 1}), "FORBIDDEN", "403-1")
+        check_code("read-only user BULK_SAVE -> 403-1",
+                   bulk_save(rc, COLL_CRUD, [{"_id": "z", "v": 1}]), "FORBIDDEN", "403-1")
+        check_code("read-only user CREATE_INDEX -> 403-1",
+                   create_index(rc, COLL_AGG, "name"), "FORBIDDEN", "403-1")
+        check_code("read-only user REINDEX -> 403-1",
+                   reindex(rc, COLL_AGG), "FORBIDDEN", "403-1")
+        check_status("read-only user can still AGGREGATE", aggregate(rc, COLL_AGG, []), "OK")
+
+    with Conn() as jc:
+        jc.authenticate("api_join_user", "api_join_user1234")
+        check_status("join user can read the left collection", aggregate(jc, COLL_JOIN_LEFT, []), "OK")
+        check_code("JOIN without READ on the remote collection -> 403-1",
+                   aggregate(jc, COLL_JOIN_LEFT,
+                             [{"type": "JOIN", "joinCollection": COLL_JOIN_RIGHT,
+                               "localField": "key", "remoteField": "key", "asField": "j"}]),
+                   "FORBIDDEN", "403-1")
+
+
+def test_fault_operations_are_disabled_by_default(c):
+    section("Fault injection operations on a server with the default configuration")
+
+    check_code("ARM_FAULT -> 403-3",
+               c.send({"type": "ARM_FAULT", "point": "PEER_REPLY", "action": "DROP", "match": "COMMIT_TX"}),
+               "FORBIDDEN", "403-3")
+    check_code("AWAIT_FAULT -> 403-3",
+               c.send({"type": "AWAIT_FAULT", "point": "PEER_REPLY", "timeoutMs": 100}), "FORBIDDEN", "403-3")
+    check_code("RELEASE_FAULT -> 403-3", c.send({"type": "RELEASE_FAULT"}), "FORBIDDEN", "403-3")
+    check_code("ARM_FAULT on an unknown point -> 400-1",
+               c.send({"type": "ARM_FAULT", "point": "NOPE", "action": "PAUSE"}), "ERROR", "400-1")
+    check_code("DROP on a point that carries no message -> 400-1",
+               c.send({"type": "ARM_FAULT", "point": "WRITE_OWNERSHIP_RECHECKED", "action": "DROP"}),
+               "ERROR", "400-1")
+    with Conn() as rc:
+        rc.authenticate("api_reader", "api_reader1234")
+        check_code("a non-admin ARM_FAULT -> 403-1",
+                   rc.send({"type": "ARM_FAULT", "point": "PEER_REPLY", "action": "DROP"}), "FORBIDDEN", "403-1")
+
+
+def test_server_info(c):
+    section("SERVER_INFO as an admin")
+
+    first = c.send({"type": "SERVER_INFO"})
+    check_status("SERVER_INFO (admin, OK)", first, "OK")
+    server = first.get("server", {})
+    check_field("state is READY", server, "state", "READY")
+    check_field("protocolVersion is 1", server, "protocolVersion", 1)
+    check("version is a non-empty string", isinstance(server.get("version"), str) and server.get("version") != "",
+          str(server))
+    check("startedAtMs is a past epoch", 0 < server.get("startedAtMs", 0) <= time.time() * 1000, str(server))
+    node = server.get("node", {})
+    check_field("a standalone node reports clusterEnabled false", node, "clusterEnabled", False)
+    check("a standalone node names no nodeId", "nodeId" not in node, str(node))
+    check("syncWrites and tlsEnabled are booleans",
+          isinstance(node.get("syncWrites"), bool) and isinstance(node.get("tlsEnabled"), bool), str(node))
+    time.sleep(0.05)
+    second = c.send({"type": "SERVER_INFO", "databaseName": "ignored"})
+    check_status("SERVER_INFO ignores fields it does not take", second, "OK")
+    check("uptimeMs grows between two calls",
+          second.get("server", {}).get("uptimeMs", 0) > server.get("uptimeMs", 0), str(second))
+
+
+def test_arm_fault_fail_on_a_non_failable_point_answers_400_1(c):
+    section("FAIL is valid only on a failable point")
+
+    check_code("FAIL on WAL_APPENDED, which cannot fail -> 400-1",
+               c.send({"type": "ARM_FAULT", "point": "WAL_APPENDED", "action": "FAIL"}), "ERROR", "400-1")
+    check_code("FAIL on PEER_REPLY, which can only drop -> 400-1",
+               c.send({"type": "ARM_FAULT", "point": "PEER_REPLY", "action": "FAIL", "match": "COMMIT_TX"}),
+               "ERROR", "400-1")
+    check_code("FAIL on FILE_FORCED passes validation and meets the disabled seam -> 403-3",
+               c.send({"type": "ARM_FAULT", "point": "FILE_FORCED", "action": "FAIL", "match": "orders.wal"}),
+               "FORBIDDEN", "403-3")
+
+
+def test_name_case_collisions(c):
+    section("A name that differs only by case is refused, on every filesystem")
+    check_status("CREATE_DATABASE CaseDb", create_db(c, "CaseDb"), "OK")
+    check_code("CREATE_DATABASE casedb -> 409-11", create_db(c, "casedb"), "ERROR", "409-11")
+    check_code("CREATE_DATABASE CaseDb again is still the duplicate code",
+               create_db(c, "CaseDb"), "ERROR", "409-2")
+
+    check_status("CREATE_COLLECTION MyColl", create_coll(c, "MyColl", db="CaseDb"), "OK")
+    check_code("CREATE_COLLECTION mycoll -> 409-11",
+               create_coll(c, "mycoll", db="CaseDb"), "ERROR", "409-11")
+    check_status("CREATE_COLLECTION MyColl again stays idempotent",
+                 create_coll(c, "MyColl", db="CaseDb"), "OK")
+
+    check_status("CREATE_INDEX Foo", create_index(c, "MyColl", "Foo", db="CaseDb"), "OK")
+    check_code("CREATE_INDEX foo -> 409-11",
+               create_index(c, "MyColl", "foo", db="CaseDb"), "ERROR", "409-11")
+
+    check_code("CREATE_DATABASE Admin -> 400-1 reserved", create_db(c, "Admin"), "ERROR", "400-1")
+    check_code("CREATE_DATABASE ADMIN -> 400-1 reserved", create_db(c, "ADMIN"), "ERROR", "400-1")
+    check_code("CREATE_COLLECTION inside Admin is refused with it",
+               create_coll(c, "users", db="Admin"), "ERROR", "400-1")
+
+    check_code("CREATE_INDEX with a space in the field name -> 400-1",
+               create_index(c, "MyColl", "a b", db="CaseDb"), "ERROR", "400-1")
+    check_status("CREATE_INDEX on a nested path is accepted",
+                 create_index(c, "MyColl", "address.city", db="CaseDb"), "OK")
+    check_status("CREATE_INDEX on a hyphenated field is accepted",
+                 create_index(c, "MyColl", "first-name", db="CaseDb"), "OK")
+
+    check_status("SAVE into MyColl before the case-variant drops",
+                 save(c, "MyColl", {"_id": "keepme", "v": 1}, db="CaseDb"), "OK")
+    check_status("DROP_COLLECTION mycoll is refused", drop_coll(c, "mycoll", db="CaseDb"), "ERROR")
+    check_status("DROP_DATABASE casedb is refused", drop_db(c, "casedb"), "ERROR")
+    check_status("MyColl still answers after both refusals",
+                 find_by_id(c, "MyColl", "keepme", db="CaseDb"), "OK")
+    check_status("DROP_COLLECTION of an unregistered name is refused",
+                 drop_coll(c, "neverCreated", db="CaseDb"), "ERROR")
+    check_status("DROP_COLLECTION MyColl still works", drop_coll(c, "MyColl", db="CaseDb"), "OK")
+    check_status("DROP_COLLECTION MyColl twice is refused",
+                 drop_coll(c, "MyColl", db="CaseDb"), "ERROR")
+
+    check_status("DROP_DATABASE CaseDb still works", drop_db(c, "CaseDb"), "OK")
+    check_status("DROP_DATABASE CaseDb twice is refused", drop_db(c, "CaseDb"), "ERROR")
+
+
+def get_schema(c, coll, db=DB) -> dict:
+    return c.send({"type": "GET_SCHEMA", "databaseName": db, "collectionName": coll})
+
+
+def list_triggers(c, coll, db=DB) -> dict:
+    return c.send({"type": "LIST_TRIGGERS", "databaseName": db, "collectionName": coll})
+
+
+GHOST_ROUNDS = 200
+GHOST_DB = "api_ghost_db_never_created"
+
+
+def check_ghost_answers(c, label, coll):
+    check_code(f"{label}: GET_SCHEMA -> 404-11", get_schema(c, coll), "NOT_FOUND", "404-11")
+    trig = list_triggers(c, coll)
+    check(f"{label}: LIST_TRIGGERS -> OK with no triggers",
+          trig.get("status") == "OK" and trig.get("triggers") == [], f"got {trig}")
+    check_code(f"{label}: SAVE -> 404-11", save(c, coll, {"_id": "a", "v": 1}), "NOT_FOUND", "404-11")
+    check_code(f"{label}: GET_SCHEMA in a missing database -> 404-11",
+               get_schema(c, coll, db=GHOST_DB), "NOT_FOUND", "404-11")
+    check_code(f"{label}: LIST_TRIGGERS in a missing database -> 404-4",
+               list_triggers(c, coll, db=GHOST_DB), "NOT_FOUND", "404-4")
+    check_code(f"{label}: SAVE in a missing database -> 404-11",
+               save(c, coll, {"_id": "a", "v": 1}, db=GHOST_DB), "NOT_FOUND", "404-11")
+
+
+def test_names_that_do_not_exist_answer_as_before(c):
+    section("GET_SCHEMA, LIST_TRIGGERS and SAVE on names that do not exist keep their answers")
+    check_ghost_answers(c, "first ghost", "ghost_0")
+    check_ghost_answers(c, "the same ghost again", "ghost_0")
+
+    wrong = []
+    for i in range(GHOST_ROUNDS):
+        coll = f"ghost_{i}"
+        answers = (get_schema(c, coll).get("errorCode"), list_triggers(c, coll).get("status"),
+                   save(c, coll, {"_id": "a"}).get("errorCode"), get_schema(c, coll, db=GHOST_DB).get("errorCode"),
+                   list_triggers(c, coll, db=GHOST_DB).get("errorCode"),
+                   save(c, coll, {"_id": "a"}, db=GHOST_DB).get("errorCode"))
+        if answers != ("404-11", "OK", "404-11", "404-11", "404-4", "404-11"):
+            wrong.append((coll, answers))
+    check(f"{GHOST_ROUNDS} ghost names each answer exactly as the first", not wrong, f"first wrong: {wrong[:3]}")
+
+    with Conn() as rc:
+        rc.authenticate("api_reader", "api_reader1234")
+        check_code("read-only user: GET_SCHEMA of a ghost -> 404-11", get_schema(rc, "ghost_1"), "NOT_FOUND", "404-11")
+        trig = list_triggers(rc, "ghost_1")
+        check("read-only user: LIST_TRIGGERS of a ghost -> OK, empty",
+              trig.get("status") == "OK" and trig.get("triggers") == [], f"got {trig}")
+        check_code("read-only user: SAVE to a ghost is still refused -> 403-1",
+                   save(rc, "ghost_1", {"_id": "a"}), "FORBIDDEN", "403-1")
+
+    with Conn() as jc:
+        jc.authenticate("api_join_user", "api_join_user1234")
+        check_code("user without database permission: GET_SCHEMA of a ghost -> 403-1",
+                   get_schema(jc, "ghost_1"), "FORBIDDEN", "403-1")
+        check_code("user without database permission: LIST_TRIGGERS of a ghost -> 403-1",
+                   list_triggers(jc, "ghost_1"), "FORBIDDEN", "403-1")
+        check_code("user without database permission: SAVE to a ghost -> 403-1",
+                   save(jc, "ghost_1", {"_id": "a"}), "FORBIDDEN", "403-1")
+
+    reborn = "ghost_2"
+    check_status("CREATE_COLLECTION of a name asked about while it did not exist", create_coll(c, reborn), "OK")
+    check_code("its GET_SCHEMA now answers no schema -> 404-12", get_schema(c, reborn), "NOT_FOUND", "404-12")
+    check_status("SAVE into it", save(c, reborn, {"_id": "a", "v": 1}), "OK")
+    check_field("FIND_BY_ID reads the saved document", find_by_id(c, reborn, "a"), "object.v", 1)
+    schema = {"type": "object", "required": ["_id"]}
+    check_status("SAVE_SCHEMA on it", c.send({"type": "SAVE_SCHEMA", "databaseName": DB,
+                                              "collectionName": reborn, "schema": schema}), "OK")
+    check_field("GET_SCHEMA returns the saved schema", get_schema(c, reborn), "schema", schema)
+    trig = list_triggers(c, reborn)
+    check("LIST_TRIGGERS of it -> OK, empty", trig.get("status") == "OK" and trig.get("triggers") == [], f"got {trig}")
+    check_code("a neighbouring ghost still answers 404-11", get_schema(c, "ghost_3"), "NOT_FOUND", "404-11")
+    check_status("DROP_COLLECTION it", drop_coll(c, reborn), "OK")
+    check_ghost_answers(c, "after the drop", reborn)
+
+
+def test_admin_database_reads_follow_admin_writes(c):
+    section("Reads of the admin database follow the admin writes that came after them")
+    first, second = "AdminReadFirst", "AdminReadSecond"
+    check_status(f"CREATE_DATABASE {first}", create_db(c, first), "OK")
+    check_status("FIND_BY_ID admin/databases for it", find_by_id(c, "databases", first, db="admin"), "OK")
+    check_status("AGGREGATE over admin/databases before the next write",
+                 aggregate(c, "databases", [], db="admin"), "OK")
+
+    check_status(f"CREATE_DATABASE {second}", create_db(c, second), "OK")
+    check_status("FIND_BY_ID admin/databases finds the database created after the first read",
+                 find_by_id(c, "databases", second, db="admin"), "OK")
+    listed = set(ids_of(aggregate(c, "databases", [], db="admin")))
+    check("a scan of admin/databases sees both", {first, second} <= listed, f"listed={sorted(listed)}")
+
+    check_status(f"DROP_DATABASE {first}", drop_db(c, first), "OK")
+    check("FIND_BY_ID admin/databases no longer serves the dropped database",
+          find_by_id(c, "databases", first, db="admin").get("status") != "OK")
+    listed = set(ids_of(aggregate(c, "databases", [], db="admin")))
+    check("a scan of admin/databases no longer lists it", first not in listed and second in listed,
+          f"listed={sorted(listed)}")
+    check_status(f"DROP_DATABASE {second}", drop_db(c, second), "OK")
+
+
+def usage_rows_of(c, db, coll=None):
+    steps = [filter_step("dbName", "EQUALS", db)]
+    if coll is not None:
+        steps.append(filter_step("collName", "EQUALS", coll))
+    response = aggregate(c, "collection_usage", steps, db="admin")
+    if response.get("errorCode") == "404-3":
+        return []
+    if response.get("status") != "OK":
+        raise RuntimeError(f"collection_usage read failed: {response}")
+    return response.get("results") or []
+
+
+def test_a_dropped_collections_usage_rows_go_with_it(c):
+    section("A drop deletes the dropped collection's or database's admin/collection_usage rows")
+    db, kept, dropped = "UsageDropDb", "usage_kept", "usage_dropped"
+    check_status(f"CREATE_DATABASE {db}", create_db(c, db), "OK")
+    for coll in (kept, dropped):
+        check_status(f"CREATE_COLLECTION {coll}", create_coll(c, coll, db=db), "OK")
+        check_status(f"SAVE into {coll}", save(c, coll, {"_id": "u1", "v": 1}, db=db), "OK")
+        check_status(f"FIND_BY_ID in {coll}", find_by_id(c, coll, "u1", db=db), "OK")
+    flushed = bu.wait_until(lambda: usage_rows_of(c, db, kept) and usage_rows_of(c, db, dropped), 20)
+    check("the usage flush wrote a row for each collection", bool(flushed))
+
+    check_status(f"DROP_COLLECTION {dropped}", drop_coll(c, dropped, db=db), "OK")
+    check("no usage row of the dropped collection is left", usage_rows_of(c, db, dropped) == [],
+          f"rows={usage_rows_of(c, db, dropped)}")
+    check("the other collection keeps its usage rows", usage_rows_of(c, db, kept) != [])
+
+    check_status(f"DROP_DATABASE {db}", drop_db(c, db), "OK")
+    check("no usage row of the dropped database is left", usage_rows_of(c, db) == [],
+          f"rows={usage_rows_of(c, db)}")
+    check("a later usage flush does not bring them back",
+          bu.holds_throughout(lambda: usage_rows_of(c, db) == [], 6))
+
+
+def test_join_then_map_on_a_shared_group_stays_small(c):
+    section("JOIN then MAP over one shared group copies only what the MAP writes")
+    create_coll(c, COLL_SHARED_LEFT)
+    create_coll(c, COLL_SHARED_RIGHT)
+    payload = "p" * 2_000
+    for start in range(0, 50, 10):
+        bulk_save(c, COLL_SHARED_RIGHT, [{"_id": f"r{i:03d}", "key": "shared", "payload": payload}
+                                         for i in range(start, start + 10)])
+    for start in range(0, 2000, 500):
+        bulk_save(c, COLL_SHARED_LEFT, [{"_id": f"l{i:04d}", "key": "shared"} for i in range(start, start + 500)])
+    join = {"type": "JOIN", "joinCollection": COLL_SHARED_RIGHT, "localField": "key", "remoteField": "key",
+            "asField": "j"}
+    add_x = {"type": "MAP", "operators": [{"fieldName": "x", "operator": {"type": "CONCAT", "operands": ["-x"]}}]}
+
+    r = aggregate(c, COLL_SHARED_LEFT, [join, add_x, {"type": "COUNT"}])
+    check_field("2000 rows sharing a 100KB group, then MAP, then COUNT", r, "results.0.count", 2000)
+
+    r = aggregate(c, COLL_SHARED_LEFT, [join, add_x, {"type": "LIMIT", "limit": 1}])
+    row = (r.get("results") or [{}])[0]
+    check("the mapped row keeps the whole joined group and the new field",
+          len(row.get("j") or []) == 50 and row.get("x") == "x", detail=f"keys={sorted(row)}")
+
+    check_status("the server stays healthy afterwards", list_databases(c), "OK")
+    drop_coll(c, COLL_SHARED_LEFT)
+    drop_coll(c, COLL_SHARED_RIGHT)
+
+
+def test_map_remove_of_a_large_group_stays_small(c):
+    section("GROUP_BY then a MAP that removes the group copies no group and leaves the source intact")
+    create_coll(c, COLL_GROUPED)
+    payload = "g" * 1_000
+    for start in range(0, 3000, 500):
+        bulk_save(c, COLL_GROUPED, [{"_id": f"g{i:04d}", "kind": f"k{i % 3}", "payload": payload,
+                                     "nested": {"keep": i, "drop": "x"}} for i in range(start, start + 500)])
+    group = {"type": "GROUP_BY", "fieldName": "kind"}
+    size_then_remove = {"type": "MAP", "operators": [
+        {"fieldName": "size", "operator": {"type": "SIZE", "operand": "group"}}, {"fieldName": "group"}]}
+
+    r = aggregate(c, COLL_GROUPED, [group, size_then_remove, {"type": "SORT", "fieldName": "kind",
+                                                               "ascending": True}])
+    rows = r.get("results") or []
+    check("each group row carries its size and no group",
+          [(row.get("kind"), row.get("size"), "group" in row) for row in rows]
+          == [("k0", 1000, False), ("k1", 1000, False), ("k2", 1000, False)], detail=f"rows={rows}")
+
+    removed = aggregate(c, COLL_GROUPED, [{"type": "MAP", "operators": [{"fieldName": "nested.drop"}]},
+                                          {"type": "LIMIT", "limit": 5}])
+    check("a nested REMOVE drops only that leaf",
+          all(row.get("nested") == {"keep": row["nested"]["keep"]} for row in removed.get("results") or []),
+          detail=f"{(removed.get('results') or [])[:1]}")
+    again = aggregate(c, COLL_GROUPED, [group, {"type": "SORT", "fieldName": "kind", "ascending": True}])
+    check("the grouped documents are untouched afterwards",
+          [len(row.get("group") or []) for row in again.get("results") or []] == [1000, 1000, 1000]
+          and all(member.get("nested", {}).get("drop") == "x" and member.get("payload") == payload
+                  for row in again.get("results") or [] for member in row.get("group") or []))
+    drop_coll(c, COLL_GROUPED)
+
+
+def test_aggregate_output_over_budget_is_400_36(c):
+    section("An AGGREGATE that builds more than aggregateMaxResultBytes is refused with 400-36")
+    create_coll(c, COLL_BUDGET)
+    for start in range(0, 5000, 1000):
+        bulk_save(c, COLL_BUDGET, [{"_id": f"b{i:04d}"} for i in range(start, start + 1000)])
+    big_concat = {"type": "MAP", "operators": [{"fieldName": "big", "operator": {
+        "type": "CONCAT", "operands": ["-" + "a" * 800_000, "-b"]}}]}
+
+    started = time.time()
+    r = aggregate(c, COLL_BUDGET, [big_concat])
+    check_code("5000 rows of an 800KB CONCAT stop at the 256Mb budget", r, "ERROR", "400-36")
+    check("the refusal comes fast", time.time() - started < 30, detail=f"{time.time() - started:.1f}s")
+
+    r = aggregate(c, COLL_BUDGET, [big_concat, {"type": "COUNT"}])
+    check_code("a COUNT after the same MAP is refused too", r, "ERROR", "400-36")
+
+    r = aggregate(c, COLL_BUDGET, [{"type": "LIMIT", "limit": 10}, big_concat])
+    check("ten such rows still answer", r.get("status") == "OK" and len(r.get("results") or []) == 10,
+          detail=f"status={r.get('status')} code={r.get('errorCode')}")
+
+    check_status("the server stays healthy afterwards", list_databases(c), "OK")
+    drop_coll(c, COLL_BUDGET)
+
+
+def test_deletes_keep_a_large_collection_consistent(c):
+    section("Single DELETEs across a large collection drop exactly their ids")
+    create_coll(c, COLL_DELETES)
+    total = 20_000
+    for start in range(0, total, 2000):
+        bulk_save(c, COLL_DELETES, [{"_id": f"m{i:05d}", "n": i} for i in range(start, start + 2000)])
+    victims = list(range(0, total, 3))
+
+    failures = [i for i in victims if delete(c, COLL_DELETES, f"m{i:05d}").get("status") != "OK"]
+    check("every DELETE answered OK", failures == [], detail=f"failed {failures[:5]}")
+
+    survivors = total - len(victims)
+    check_field("COUNT matches the survivors", aggregate(c, COLL_DELETES, [{"type": "COUNT"}]),
+                "results.0.count", survivors)
+    check_field("a FILTER + COUNT that reads every document agrees",
+                aggregate(c, COLL_DELETES, [filter_step("n", "GREATER_THAN_EQUALS", 0), {"type": "COUNT"}]),
+                "results.0.count", survivors)
+    gone = [i for i in victims[::97] if find_by_id(c, COLL_DELETES, f"m{i:05d}").get("errorCode") != "404-2"]
+    check("a deleted id answers 404-2", gone == [], detail=f"still found {gone[:5]}")
+    kept = [i for i in range(1, total, 499) if i % 3 and find_by_id(c, COLL_DELETES, f"m{i:05d}").get("status") != "OK"]
+    check("its neighbours still answer", kept == [], detail=f"lost {kept[:5]}")
+    check_code("deleting it again answers 404-2", delete(c, COLL_DELETES, "m00000"), "NOT_FOUND", "404-2")
+    in_range = aggregate(c, COLL_DELETES, [filter_step("_id", "IN", ["m00000", "m00001", "m00002", "m00003"])])
+    check("an _id IN served by the pk index sees only the survivors",
+          ids_of(in_range) == ["m00001", "m00002"], detail=f"got {ids_of(in_range)}")
+    drop_coll(c, COLL_DELETES)
+
+
+def test_a_request_pipelined_after_a_large_one_is_not_lost(c):
+    section("A request pipelined behind a multi-megabyte line survives the reader dropping its grown buffer")
+    check_status("a document to look up is saved", save(c, COLL_CRUD, {"_id": "pipelined", "v": 7}), "OK")
+    large = json.dumps({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_CRUD,
+                        "aggregationSteps": [filter_step("name", "EQUALS", "x" * (3 << 20))]}).encode()
+    lookup = json.dumps({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_CRUD,
+                         "_id": "pipelined"}).encode()
+    half = len(lookup) // 2
+    c.s.sendall(large + b"\n" + lookup[:half])
+    first = c.recv(timeout=30) or {}
+    time.sleep(0.5)
+    c.s.sendall(lookup[half:] + b"\n")
+    second = c.recv(timeout=30) or {}
+    check_code("the large aggregate is answered with no results", first, "NOT_FOUND", "404-3")
+    check_field("the pipelined lookup is answered whole", second, "object.v", 7)
+    check_field("the connection still answers afterwards", find_by_id(c, COLL_CRUD, "pipelined"), "object.v", 7)
+
+
+def test_a_large_document_round_trips(c):
+    section("A 300 KB document is saved, updated and read back byte for byte")
+    rows = [{"i": i, "name": f"row-{i}", "tags": ["a", "é", "日本"], "score": i * 0.5} for i in range(3000)]
+    document = {"_id": "large_doc", "rows": rows, "blob": "z" * 60_000}
+    check("the document is about 300 KB", 250_000 < len(json.dumps(document)) < 400_000,
+          str(len(json.dumps(document))))
+    check_status("the large document is saved", save(c, COLL_CRUD, document), "OK")
+    check("the large document reads back unchanged",
+          find_by_id(c, COLL_CRUD, "large_doc").get("object") == document)
+    document["blob"] = "y" * 60_000
+    check_status("the large document is updated in place", save(c, COLL_CRUD, document), "OK")
+    check("the updated large document reads back unchanged",
+          find_by_id(c, COLL_CRUD, "large_doc").get("object") == document)
+    check_status("the large document is deleted", delete(c, COLL_CRUD, "large_doc"), "OK")
+
+
+MIXED_DOCS = 12_000
+MIXED_CATS = 40
+MIXED_HOT = 200
+
+
+def mixed_writer(slot: int, rounds: int, last: dict, errors: list) -> None:
+    with Conn() as w:
+        w.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
+        for version in range(1, rounds + 1):
+            for i in range(slot, MIXED_HOT, 2):
+                doc = {"_id": f"k{i:05d}", "cat": f"c{i % MIXED_CATS}", "n": i, "v": version}
+                if save(w, COLL_MIXED, doc).get("status") != "OK":
+                    errors.append(f"save k{i:05d} v{version}")
+                last[f"k{i:05d}"] = version
+
+
+def mixed_scanner(stop: threading.Event, answers: list) -> None:
+    with Conn() as s:
+        s.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
+        while not stop.is_set():
+            r = aggregate(s, COLL_MIXED, [{"type": "GROUP_BY", "fieldName": "cat"}, {"type": "COUNT"}])
+            answers.append(bu.dig(r, "results.0.count"))
+
+
+def mixed_point_reads(c) -> list:
+    wrong = []
+    cold = 5000 + (int(time.time() * 1000) % 5000)
+    found = find_by_id(c, COLL_MIXED, f"k{cold:05d}")
+    if bu.dig(found, "object.n") != cold:
+        wrong.append(f"FIND_BY_ID k{cold:05d}: {found}")
+    limited = aggregate(c, COLL_MIXED, [filter_step("cat", "EQUALS", "c7"), {"type": "LIMIT", "limit": 5}])
+    rows = limited.get("results") or []
+    if len(rows) != 5 or len({row["_id"] for row in rows}) != 5 or any(row["cat"] != "c7" for row in rows):
+        wrong.append(f"FILTER+LIMIT: {rows}")
+    counted = aggregate(c, COLL_MIXED, [filter_step("cat", "EQUALS", "c11"), {"type": "COUNT"}])
+    if bu.dig(counted, "results.0.count") != MIXED_DOCS // MIXED_CATS:
+        wrong.append(f"indexed COUNT: {counted}")
+    total = aggregate(c, COLL_MIXED, [{"type": "COUNT"}])
+    if bu.dig(total, "results.0.count") != MIXED_DOCS:
+        wrong.append(f"COUNT: {total}")
+    by_ids = aggregate(c, COLL_MIXED, [filter_step("_id", "IN", ["k00003", "k09999", "missing"])])
+    if sorted(ids_of(by_ids)) != ["k00003", "k09999"]:
+        wrong.append(f"_id IN: {by_ids}")
+    return wrong
+
+
+def test_point_reads_answer_beside_a_long_scan_and_writers(c):
+    section("FIND_BY_ID and index-served reads answer correctly while a GROUP_BY and writers share the collection")
+    create_coll(c, COLL_MIXED)
+    for start in range(0, MIXED_DOCS, 2000):
+        bulk_save(c, COLL_MIXED, [{"_id": f"k{i:05d}", "cat": f"c{i % MIXED_CATS}", "n": i, "v": 0}
+                                  for i in range(start, start + 2000)])
+    check_status("the cat index is created", create_index(c, COLL_MIXED, "cat"), "OK")
+    stop = threading.Event()
+    groups, last, errors = [], {}, []
+    scanner = threading.Thread(target=mixed_scanner, args=(stop, groups))
+    writers = [threading.Thread(target=mixed_writer, args=(slot, 6, last, errors)) for slot in (0, 1)]
+    scanner.start()
+    for writer in writers:
+        writer.start()
+    wrong, rounds = [], 0
+    while any(writer.is_alive() for writer in writers) or rounds < 20:
+        wrong += mixed_point_reads(c)
+        rounds += 1
+    for writer in writers:
+        writer.join()
+    stop.set()
+    scanner.join()
+    check("every point and index-served read answered exactly", wrong == [], detail=f"{len(wrong)} wrong: {wrong[:3]}")
+    check("every write was acknowledged", errors == [], detail=f"{errors[:3]}")
+    check("every GROUP_BY saw each group once", groups != [] and all(count == MIXED_CATS for count in groups),
+          detail=f"{[count for count in groups if count != MIXED_CATS][:5]} of {len(groups)}")
+    stale = [doc_id for doc_id, version in last.items()
+             if bu.dig(find_by_id(c, COLL_MIXED, doc_id), "object.v") != version]
+    check("the last write of each hot document is what FIND_BY_ID reads", stale == [], detail=f"{stale[:5]}")
+    drop_coll(c, COLL_MIXED)
+
+
+def canonical(row):
+    return json.dumps(row, sort_keys=True)
+
+
+def test_distinct_without_field_unchanged(c):
+    section("DISTINCT without a field drops _id and keeps the first row of each body")
+    create_coll(c, COLL_DISTINCT)
+    bodies = [{"kind": f"k{i % 4}", "nested": {"v": i % 4}} for i in range(40)]
+    bulk_save(c, COLL_DISTINCT, [{"_id": f"d{i:02d}", "n": i, **body} for i, body in enumerate(bodies)])
+    bulk_save(c, COLL_DISTINCT, [{"_id": f"e{i:02d}", **body} for i, body in enumerate(bodies)])
+
+    r = aggregate(c, COLL_DISTINCT, [filter_step("n", "GREATER_THAN_EQUALS", 0),
+                                     {"type": "MAP", "operators": [{"fieldName": "n"}]}, {"type": "DISTINCT"}])
+    check_status("DISTINCT after MAP (OK)", r, "OK")
+    rows = r.get("results") or []
+    check("four distinct bodies, none carrying _id",
+          len(rows) == 4 and all("_id" not in row for row in rows), detail=f"rows={rows}")
+    expected = sorted(canonical(body) for body in bodies[:4])
+    check("the distinct bodies are the expected ones", sorted(canonical(row) for row in rows) == expected,
+          detail=f"rows={rows}")
+
+    r = aggregate(c, COLL_DISTINCT, [{"type": "SORT", "fieldName": "_id", "ascending": True},
+                                     {"type": "DISTINCT"}])
+    rows = r.get("results") or []
+    check("whole-document DISTINCT keeps every row whose body differs", len(rows) == 44, detail=f"got {len(rows)}")
+    check("DISTINCT keeps the first occurrence order",
+          [row.get("n") for row in rows[:40]] == list(range(40))
+          and [row.get("kind") for row in rows[40:]] == ["k0", "k1", "k2", "k3"], detail=f"rows={rows[38:]}")
+
+    found = find_by_id(c, COLL_DISTINCT, "d00")
+    check_field("the source document still carries its _id", found, "object._id", "d00")
+    drop_coll(c, COLL_DISTINCT)
+
+
+def main():
+    bu.banner("API commands & aggregations integration suite", HOST, PORT)
+
+    with Conn() as c:
+        r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
+        if r.get("status") != "OK":
+            print(f"\n[ERROR] Cannot authenticate as admin: {r.get('message')}")
+            print("        Make sure the server is running and lwnrdb.cfg has the correct")
+            print(f"        defaultAdminUsername={ADMIN_USERNAME} / defaultAdminPassword={ADMIN_PASSWORD} (base_utils.PASSWORD).\n")
+            sys.exit(1)
+        print("\n  Setting up fixtures...")
+        setup(c)
+
+    groups = [
+        test_database_and_collection_ops,
+        test_name_case_collisions,
+        test_admin_database_reads_follow_admin_writes,
+        test_a_dropped_collections_usage_rows_go_with_it,
+        test_names_that_do_not_exist_answer_as_before,
+        test_reserved_script_runs_collection,
+        test_crud,
+        test_delete_by_condition,
+        test_save_by_condition,
+        test_save_fail_on_update,
+        test_top_level_id,
+        test_value_types,
+        test_rows_of_different_shapes_round_trip,
+        test_strings_with_every_escape_class_round_trip,
+        test_long_ascii_strings_ending_in_escapes_and_non_ascii_round_trip,
+        test_documents_of_one_shape_do_not_share_writes,
+        test_a_malformed_document_is_refused_as_a_client_error,
+        test_a_line_with_a_second_value_or_a_nan_point_is_refused,
+        test_deep_nesting_is_refused_not_dropped,
+        test_non_ascii_and_malformed_utf8_requests_round_trip,
+        test_filter_operators,
+        test_filter_with_indexes,
+        test_conjunctions,
+        test_aggregation_steps,
+        test_aggregation_steps_write_dotted_fields_nested,
+        test_nested_paths_and_contains_on_scan_and_index,
+        test_join_then_map_on_a_shared_group_stays_small,
+        test_map_remove_of_a_large_group_stays_small,
+        test_aggregate_output_over_budget_is_400_36,
+        test_deletes_keep_a_large_collection_consistent,
+        test_a_request_pipelined_after_a_large_one_is_not_lost,
+        test_a_large_document_round_trips,
+        test_point_reads_answer_beside_a_long_scan_and_writers,
+        test_distinct_without_field_unchanged,
+        test_map_conditions_and_number_casts,
+        test_map_arithmetic,
+        test_every_aggregate_response_is_strict_json,
+        test_analyze,
+        test_empty_collection_aggregate,
+        test_index_ops,
+        test_create_index_field_names,
+        test_flows,
+        test_operation_permissions,
+        test_fault_operations_are_disabled_by_default,
+        test_server_info,
+        test_arm_fault_fail_on_a_non_failable_point_answers_400_1,
+    ]
+    for group in groups:
+        with Conn() as c:
+            c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
+            group(c)
+
+    with Conn() as c:
+        c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
+        teardown(c)
+
+    bu.summary()
+
+
+if __name__ == "__main__":
+    main()

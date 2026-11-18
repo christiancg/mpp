@@ -1,0 +1,581 @@
+name: Sanity Check
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Package the jar
+        run: mvn -B --no-transfer-progress -DskipTests package
+      - name: Upload jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: lwnrdb-jar
+          path: target/lwnrdb.jar
+          retention-days: 1
+
+  unit-tests:
+    name: Unit tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Plan the shards
+        run: python3 test_utils/tools/test_shards.py --shards 4 --out target/shards-plan
+      - name: Run shard ${{ matrix.shard }}
+        run: >-
+          mvn -B --no-transfer-progress -Pci-shard
+          -DtestShardFile=target/shards-plan/shard-${{ matrix.shard }}.txt -DskipSerialTests=true test
+      - name: Name the coverage data
+        if: always()
+        run: if [ -f target/jacoco.exec ]; then mv target/jacoco.exec target/jacoco-shard-${{ matrix.shard }}.exec; fi
+      - name: Upload coverage data and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-shard-${{ matrix.shard }}
+          path: |
+            target/jacoco-shard-${{ matrix.shard }}.exec
+            target/surefire-reports/TEST-*.xml
+          retention-days: 1
+
+  unit-tests-serial:
+    name: Unit tests (serial)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Run the single-fork executions
+        run: mvn -B --no-transfer-progress -Pci-shard -DskipShardedTests=true test
+      - name: Name the coverage data
+        if: always()
+        run: if [ -f target/jacoco.exec ]; then mv target/jacoco.exec target/jacoco-serial.exec; fi
+      - name: Upload coverage data and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-serial
+          path: |
+            target/jacoco-serial.exec
+            target/surefire-reports/TEST-*.xml
+          retention-days: 1
+
+  coverage:
+    name: Coverage
+    needs: [unit-tests, unit-tests-serial]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Download every shard's data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: unit-*
+          path: target/shards
+      - name: Check every test class ran exactly once
+        run: python3 test_utils/tools/test_shards.py --check-complete target/shards
+      - name: Merge the coverage and apply the gate
+        run: >-
+          mvn -B --no-transfer-progress -Pci-coverage compile
+          jacoco:merge@merge-shards jacoco:report@report jacoco:check@jacoco-check
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: target/site/jacoco
+          retention-days: 7
+
+  static-spotbugs:
+    name: Static gates (SpotBugs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Run SpotBugs
+        run: >-
+          mvn -B --no-transfer-progress -DskipTests -Dspotless.check.skip -Dcheckstyle.skip -Dpmd.skip -Dcpd.skip
+          verify
+
+  static-style:
+    name: Static gates (style)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Run Spotless, Checkstyle, CPD and PMD
+        run: mvn -B --no-transfer-progress -DskipTests -Dspotbugs.skip verify
+
+  java-client:
+    name: Java client (JDK ${{ matrix.jdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        jdk: ['17', '27']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Verify the client (unit tests, coverage, style, PMD, SpotBugs, API docs)
+        run: mvn -B --no-transfer-progress -f clients/java/pom.xml verify
+      - name: Test the client against Spring Boot's Jackson
+        run: >-
+          mvn -B --no-transfer-progress -f clients/java/pom.xml -Djackson.version=3.1.7 -Djacoco.skip=true
+          -pl lwnrdb-client,lwnrdb-spring-data,lwnrdb-spring-boot-starter -am test
+      - name: Build the Javadoc and sources jars
+        run: mvn -B --no-transfer-progress -f clients/java/pom.xml -P javadoc -DskipTests -Djacoco.skip=true package
+      - name: Install the snapshot for the consumers
+        run: mvn -B --no-transfer-progress -f clients/java/pom.xml -DskipTests -Djacoco.skip=true install
+      - name: Compile the Maven consumer
+        run: mvn -B --no-transfer-progress -f clients/java/consumers/maven/pom.xml compile
+      - name: Compile the Spring Boot consumer
+        run: mvn -B --no-transfer-progress -f clients/java/consumers/spring-boot/pom.xml compile
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '9.8.2'
+      - name: Build the Gradle consumer
+        run: gradle -p clients/java/consumers/gradle build --no-daemon
+
+  typescript-client:
+    name: TypeScript client (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24', '26']
+    defaults:
+      run:
+        working-directory: clients/typescript
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: clients/typescript/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Verify the client (format, ESLint, types, unit tests, coverage, API docs, build)
+        run: npm run verify
+      - name: Check the ESM, CommonJS and TypeScript consumers against the packed tarball
+        run: npm run consumers
+      - name: Check type resolution of the packed tarball
+        run: npx --yes @arethetypeswrong/cli@0.18.5 --pack --profile esm-only
+
+  python-client:
+    name: Python client (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13', '3.15']
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: clients/python/pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --group dev -e .
+      - name: Verify the client (format, lint, mypy --strict, unit tests, coverage, API docs, build, consumers)
+        run: python build_tools/verify.py
+
+  dotnet-client:
+    name: .NET client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/dotnet
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+      - name: Check formatting
+        run: dotnet format Lwnrdb.slnx --verify-no-changes
+      - name: Build (analyzers and warnings as errors, API docs through DocGen)
+        run: dotnet build Lwnrdb.slnx -c Release
+      - name: Unit tests with 95% line and 90% branch coverage (net10.0)
+        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net10.0 --no-build /p:CollectCoverage=true /p:Threshold=\"95,90\" /p:ThresholdType=\"line,branch\" /p:ThresholdStat=total
+      - name: Unit tests (net11.0)
+        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net11.0 --no-build
+      - name: Pack and run the consumer against the package
+        run: |
+          dotnet pack src/Lwnrdb.Client -c Release -o artifacts --no-build
+          dotnet run --project consumers/Console
+
+  integration:
+    name: ${{ matrix.name }}
+    needs: package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth-api-memory
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              python3 test_utils/test_auth.py
+              python3 test_utils/test_api_commands.py
+              python3 test_utils/test_memory_limits.py
+
+          - name: streaming
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              STREAM_TEST_DOCS=2000 \
+              STREAM_TEST_PAYLOAD_BYTES=512 \
+              python3 test_utils/test_streaming_reads.py
+
+          - name: memory-extensive
+            start_server: true
+            max_memory: 4mb
+            xmx: 1g
+            run: |
+              MEM_TEST_COLLECTIONS=4 \
+              MEM_TEST_DOCS=2000 \
+              MEM_TEST_PAYLOAD_BYTES=512 \
+              python3 test_utils/test_memory_extensive.py
+
+          - name: index-aggregations
+            start_server: true
+            max_memory: "-1"
+            xmx: 512m
+            run: |
+              INDEX_TEST_DOCS=2000 \
+              INDEX_TEST_PAYLOAD_BYTES=512 \
+              python3 test_utils/test_index_aggregations.py
+
+          - name: listen
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              python3 test_utils/test_listen.py
+
+          - name: schema-validation
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              python3 test_utils/test_schema_validation.py
+
+          - name: transactions
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              python3 test_utils/test_transactions.py
+
+          - name: tls
+            start_server: false
+            run: |
+              python3 test_utils/test_tls.py
+
+          - name: connection-limits
+            start_server: false
+            run: |
+              python3 test_utils/test_connection_limits.py
+
+          - name: client
+            start_server: false
+            run: |
+              python3 test_utils/test_client.py
+
+          - name: client-java
+            start_server: false
+            run: |
+              mvn -B --no-transfer-progress -f clients/java/pom.xml verify -Pintegration -Dtest=NONE \
+                -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true \
+                -Dlwnrdb.jar="$GITHUB_WORKSPACE/target/lwnrdb.jar"
+
+          - name: client-typescript
+            start_server: false
+            node: true
+            run: |
+              npm ci --prefix clients/typescript
+              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" npm run test:it --prefix clients/typescript
+
+          - name: client-dotnet
+            start_server: false
+            dotnet: true
+            run: |
+              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" dotnet test clients/dotnet/tests/Lwnrdb.Client.IntegrationTests -c Release
+
+          - name: client-python
+            start_server: false
+            python: true
+            run: |
+              cd clients/python
+              python -m pip install --upgrade pip
+              python -m pip install --group dev -e .
+              LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" python -m pytest tests/it -m it
+
+          - name: metadata-limits
+            start_server: false
+            run: |
+              python3 test_utils/test_metadata_limits.py
+
+          - name: clustering-replication
+            start_server: false
+            run: |
+              python3 test_utils/test_clustering.py --group replication
+
+          - name: clustering-scripts
+            start_server: false
+            run: |
+              python3 test_utils/test_clustering.py --group scripts
+
+          - name: clustering-failover
+            start_server: false
+            run: |
+              python3 test_utils/test_clustering.py --group failover
+
+          - name: clustering-faults
+            start_server: false
+            run: |
+              python3 test_utils/test_clustering.py --group faults
+
+          - name: clustering-recreate
+            start_server: false
+            run: |
+              python3 test_utils/test_clustering.py --group recreate
+
+          - name: run-script
+            start_server: false
+            run: |
+              python3 test_utils/test_run_script.py
+
+          - name: procedures-triggers
+            start_server: false
+            run: |
+              python3 test_utils/test_procedures_triggers.py
+
+          - name: schedules
+            start_server: false
+            run: |
+              python3 test_utils/test_schedules.py
+
+          - name: script-admission
+            start_server: false
+            run: |
+              python3 test_utils/test_script_admission.py
+
+          - name: script-control
+            start_server: false
+            run: |
+              python3 test_utils/test_script_control.py
+
+          - name: aggregation-scripts
+            start_server: false
+            run: |
+              python3 test_utils/test_aggregation_scripts.py
+
+          - name: storage-consistency
+            start_server: false
+            run: |
+              python3 test_utils/test_storage_consistency.py
+
+          - name: power-loss
+            start_server: false
+            run: |
+              python3 test_utils/test_power_loss.py --seeds regression --mode all --budget 720
+
+          - name: disk-full
+            start_server: false
+            run: |
+              docker build -q -t lwnrdb-disk-full -f test_utils/disk_full/Dockerfile .
+              python3 test_utils/test_disk_full.py
+
+          - name: fuzz
+            start_server: false
+            run: |
+              python3 test_utils/test_fuzz.py --self-test
+              python3 test_utils/test_fuzz.py --seeds regression --budget 240 --shrink 120
+
+          - name: bench-tooling
+            start_server: false
+            run: |
+              python3 -m unittest discover -s test_utils/bench -p "test_*.py"
+              python3 -m unittest discover -s test_utils/tools -p "test_*.py"
+
+          - name: cache-warmup-bench
+            start_server: true
+            max_memory: 512mb
+            xmx: 1g
+            run: |
+              BENCH_DOCS=5000 \
+              BENCH_WARM_RUNS=10 \
+              python3 test_utils/test_cache_warmup_bench.py
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+      - uses: actions/setup-node@v7
+        if: ${{ matrix.node }}
+        with:
+          node-version: '24'
+      - uses: actions/setup-dotnet@v6
+        if: ${{ matrix.dotnet }}
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+      - uses: actions/setup-python@v6
+        if: ${{ matrix.python }}
+        with:
+          python-version: '3.13'
+      - name: Download jar
+        uses: actions/download-artifact@v8
+        with:
+          name: lwnrdb-jar
+          path: target
+      - name: Set admin credentials for integration tests
+        run: echo "defaultAdminPassword=Tst-Admin-9xQ2mV" >> lwnrdb.cfg
+      - name: Start server
+        if: ${{ matrix.start_server }}
+        run: |
+          echo "maxMemory=${{ matrix.max_memory }}" >> lwnrdb.cfg
+          java -Xmx${{ matrix.xmx }} -jar target/lwnrdb.jar > server.log 2>&1 &
+          echo $! > server.pid
+          for _ in $(seq 1 150); do
+            nc -z 127.0.0.1 8989 && break
+            sleep 0.2
+          done
+          if ! nc -z 127.0.0.1 8989; then
+            echo "::error::server failed to start"; cat server.log; exit 1
+          fi
+      - name: Run ${{ matrix.name }} tests
+        run: ${{ matrix.run }}
+      - name: Stop server
+        if: ${{ always() && matrix.start_server }}
+        run: pkill -f lwnrdb.jar || true
+
+  test262:
+    name: test262 Conformance (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '27'
+          distribution: 'temurin'
+          architecture: x64
+          cache: maven
+      - name: Compile (main + test classes)
+        run: mvn -B --no-transfer-progress -DskipTests test-compile
+      - name: Cache test262 corpus
+        uses: actions/cache@v6
+        with:
+          path: test262
+          key: test262-${{ hashFiles('config/test262.properties') }}
+      - name: Fetch corpus
+        run: python3 test_utils/test262/test262.py --fetch
+      - name: Driver self-test
+        run: python3 test_utils/test262/test262.py --self-test
+      - name: Run conformance
+        run: |
+          python3 test_utils/test262/test262.py --gate baseline --require-corpus --timeout 20 \
+            --shard "${{ matrix.shard }}/4"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test262-report-${{ matrix.shard }}
+          path: test_log/test262-report.md
+          retention-days: 7
+
+  verify:
+    name: Verify
+    needs: [package, unit-tests, unit-tests-serial, coverage, static-spotbugs, static-style, java-client,
+      typescript-client, python-client, dotnet-client, integration, test262]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | python3 -c '
+          import json, sys
+          results = {job: outcome["result"] for job, outcome in json.load(sys.stdin).items()}
+          for job, result in sorted(results.items()):
+              print(f"{job}={result}")
+          failed = [job for job, result in results.items() if result != "success"]
+          if failed:
+              print("::error::jobs did not succeed: " + ", ".join(sorted(failed)))
+              sys.exit(1)
+          print("All jobs succeeded.")
+          '
