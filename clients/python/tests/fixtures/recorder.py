@@ -4,9 +4,9 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 
-from lwnrdb import Admin, AsyncAdmin, AsyncDatabase, Database
-from lwnrdb._internal.portal import SyncRuntime
-from lwnrdb._internal.values_codec import JsonObject
+from mpp import Admin, AsyncAdmin, AsyncDatabase, Database
+from mpp._internal.portal import SyncRuntime
+from mpp._internal.values_codec import JsonObject
 from tests.support.recording_channel import RecordingChannel, recording_context
 
 

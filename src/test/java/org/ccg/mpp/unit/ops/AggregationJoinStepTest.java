@@ -1,0 +1,399 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import org.ccg.mpp.analyze.AnalyzeContext;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.data.DbEntry;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonNull;
+import org.ccg.mpp.ejson.elements.JsonNumber;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.AggregationOperationHelper;
+import org.ccg.mpp.ops.IndexHelper;
+import org.ccg.mpp.ops.PipelineContext;
+import org.ccg.mpp.ops.TransactionOperationHelper;
+import org.ccg.mpp.ops.req.AggregateRequest;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.ops.req.agg.step.JoinAggregationStep;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class AggregationJoinStepTest {
+    @BeforeEach
+    public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestJoinCollection();
+    }
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.standardTearDown();
+    }
+
+    @Test
+    public void test_handle_empty_collections_in_join() throws IOException {
+        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        JoinAggregationStep joinStep = new JoinAggregationStep("joinCollection", "localField", "remoteField",
+                "asField");
+        request.setAggregationSteps(List.of(joinStep));
+
+        List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void test_join_adds_matching_documents() throws IOException {
+        final var cache = IocContainer.get(Cache.class);
+
+        JsonObject mainDoc = new JsonObject();
+        mainDoc.add(Globals.PK_FIELD, new JsonString("main1"));
+        mainDoc.addProperty("ref", 42);
+        DbEntry mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, mainDoc);
+        mainEntry.set_id("main1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+
+        JsonObject joinDoc = new JsonObject();
+        joinDoc.add(Globals.PK_FIELD, new JsonString("join1"));
+        joinDoc.addProperty("refKey", 42);
+        joinDoc.addProperty("label", "matched");
+        DbEntry joinEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.JOIN_COLL, joinDoc);
+        joinEntry.set_id("join1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.JOIN_COLL, joinEntry);
+
+        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
+
+        List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
+
+        assertFalse(result.isEmpty());
+        assertTrue(result.stream().anyMatch(r -> r.has("joined") && !r.get("joined").asJsonArray().isEmpty()));
+    }
+
+    @Test
+    public void test_join_skips_objects_without_local_field() throws IOException {
+        final var cache = IocContainer.get(Cache.class);
+
+        JsonObject noField = new JsonObject();
+        noField.add(Globals.PK_FIELD, new JsonString("nf1"));
+        noField.addProperty("other", "value");
+        DbEntry nfEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, noField);
+        nfEntry.set_id("nf1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, nfEntry);
+        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+
+        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(
+                List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "missingField", "refKey", "joined")));
+
+        List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
+        assertNotNull(result);
+        assertTrue(result.stream().allMatch(r -> !r.has("joined") || r.get("joined").asJsonArray().isEmpty()));
+    }
+
+    private void addJoinDoc(Cache cache, String id, int refKey, String label) throws IOException {
+        final var obj = new JsonObject();
+        obj.add(Globals.PK_FIELD, new JsonString(id));
+        obj.addProperty("refKey", refKey);
+        obj.addProperty("label", label);
+        final var e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.JOIN_COLL, obj);
+        e.set_id(id);
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.JOIN_COLL, e);
+    }
+
+    private static List<String> joinedIdsOf(List<JsonObject> rows) {
+        assertEquals(1, rows.size());
+        final var ids = new java.util.ArrayList<String>();
+        for (final var document : rows.getFirst().get("joined").asJsonArray()) {
+            ids.add(document.asJsonObject().get(Globals.PK_FIELD).asJsonString().getValue());
+        }
+        return ids;
+    }
+
+    @Test
+    public void test_a_joined_array_is_in_id_order_on_both_paths() throws IOException, InterruptedException {
+        final var cache = IocContainer.get(Cache.class);
+        final var main = new JsonObject();
+        main.add(Globals.PK_FIELD, new JsonString("m1"));
+        main.addProperty("ref", 42);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        mainEntry.set_id("m1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        for (final var id : List.of("doc-06", "doc-01", "doc-05", "doc-02", "doc-04", "doc-03")) {
+            addJoinDoc(cache, id, 42, "label-" + id);
+        }
+        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
+
+        final var scanned = joinedIdsOf(AggregationOperationHelper.processAggregation(req));
+        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+        final var indexed = joinedIdsOf(AggregationOperationHelper.processAggregation(req));
+
+        assertEquals(List.of("doc-01", "doc-02", "doc-03", "doc-04", "doc-05", "doc-06"), scanned,
+                "an attached array needs a defined order for the same reason a GROUP_BY group does");
+        assertEquals(scanned, indexed, "the index path attaches the matches in a different order otherwise");
+    }
+
+    @Test
+    public void test_join_uses_remote_index_returns_only_matching() throws IOException, InterruptedException {
+        final var cache = IocContainer.get(Cache.class);
+        final var main = new JsonObject();
+        main.add(Globals.PK_FIELD, new JsonString("m1"));
+        main.addProperty("ref", 42);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        mainEntry.set_id("m1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+
+        addJoinDoc(cache, "j1", 42, "matched");
+        addJoinDoc(cache, "j2", 7, "nope");
+        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+
+        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
+        final var result = AggregationOperationHelper.processAggregation(req);
+
+        assertEquals(1, result.size());
+        final var joined = result.getFirst().get("joined").asJsonArray();
+        assertEquals(1, joined.size());
+        assertEquals("matched", joined.get(0).asJsonObject().get("label").asJsonString().getValue());
+    }
+
+    @Test
+    public void test_join_via_index_no_remote_match_returns_empty_joined_array()
+            throws IOException, InterruptedException {
+        final var cache = IocContainer.get(Cache.class);
+        final var main = new JsonObject();
+        main.add(Globals.PK_FIELD, new JsonString("m1"));
+        main.addProperty("ref", 99);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        mainEntry.set_id("m1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+
+        addJoinDoc(cache, "j1", 1, "no-match");
+        addJoinDoc(cache, "j2", 2, "also-no");
+        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+
+        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
+        final var result = AggregationOperationHelper.processAggregation(req);
+
+        assertEquals(1, result.size());
+        assertTrue(result.getFirst().has("joined"));
+        // No remote doc matched: joined field is set to null (serialized as JsonNull)
+        assertTrue(result.getFirst().get("joined").isJsonNull());
+    }
+
+    @Test
+    public void test_join_without_remote_index_falls_back_to_full_scan() throws IOException {
+        final var cache = IocContainer.get(Cache.class);
+        final var main = new JsonObject();
+        main.add(Globals.PK_FIELD, new JsonString("m1"));
+        main.addProperty("ref", 5);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        mainEntry.set_id("m1");
+        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+
+        addJoinDoc(cache, "j1", 5, "match");
+        addJoinDoc(cache, "j2", 9, "no-match");
+
+        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
+        final var result = AggregationOperationHelper.processAggregation(req);
+
+        assertEquals(1, result.size());
+        final var joined = result.getFirst().get("joined").asJsonArray();
+        assertEquals(1, joined.size());
+        assertEquals("match", joined.get(0).asJsonObject().get("label").asJsonString().getValue());
+    }
+
+    private void putKeyed(String coll, String id, org.ccg.mpp.ejson.elements.JsonBaseElement value) throws IOException {
+        final var cache = IocContainer.get(Cache.class);
+        final var obj = new JsonObject();
+        obj.add(Globals.PK_FIELD, new JsonString(id));
+        obj.add("key", value);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, coll, obj);
+        entry.set_id(id);
+        TestUtils.cacheEntry(cache, TestGlobals.DB, coll, entry);
+    }
+
+    private List<JsonObject> join() throws IOException {
+        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "key", "key", "cfg")));
+        return AggregationOperationHelper.processAggregation(request);
+    }
+
+    private void indexJoinKey() throws InterruptedException {
+        final var cache = IocContainer.get(Cache.class);
+        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "key");
+        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("key"));
+    }
+
+    private static JsonObject regionKey() {
+        final var key = new JsonObject();
+        key.add("region", new JsonString("eu"));
+        return key;
+    }
+
+    @Test
+    public void test_join_on_an_object_key_matches_the_scan() throws IOException, InterruptedException {
+        putKeyed(TestGlobals.JOIN_COLL, "c1", regionKey());
+        putKeyed(TestGlobals.COLL, "o1", regionKey());
+        final var scanned = join();
+        indexJoinKey();
+
+        final var indexed = join();
+
+        assertEquals(1, indexed.size());
+        assertTrue(indexed.getFirst().get("cfg").isJsonArray(),
+                "an object join key has no scalar index entry, so answering from the index attaches nothing");
+        assertEquals(scanned.toString(), indexed.toString());
+    }
+
+    @Test
+    public void test_join_on_a_null_key_matches_the_scan() throws IOException, InterruptedException {
+        putKeyed(TestGlobals.JOIN_COLL, "c1", org.ccg.mpp.ejson.elements.JsonNull.INSTANCE);
+        putKeyed(TestGlobals.COLL, "o1", org.ccg.mpp.ejson.elements.JsonNull.INSTANCE);
+        final var scanned = join();
+        indexJoinKey();
+
+        assertEquals(scanned.toString(), join().toString());
+    }
+
+    private static void putWith(String coll, String id, String field, JsonBaseElement value) throws IOException {
+        final var obj = new JsonObject();
+        obj.add(Globals.PK_FIELD, new JsonString(id));
+        obj.add(field, value);
+        obj.add("mirror", new JsonString(id));
+        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, coll, obj);
+        entry.set_id(id);
+        TestUtils.cacheEntry(IocContainer.get(Cache.class), TestGlobals.DB, coll, entry);
+    }
+
+    private static List<JsonObject> joinOn(String remoteField) throws IOException {
+        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", remoteField, "j")));
+        return AggregationOperationHelper.processAggregation(request);
+    }
+
+    private static Map<String, String> joinedById(List<JsonObject> rows) {
+        final var joined = new TreeMap<String, String>();
+        for (final var row : rows) {
+            final var attached = row.get("j");
+            final var labels = new java.util.ArrayList<String>();
+            if (attached.isJsonArray()) {
+                attached.asJsonArray().forEach(
+                        document -> labels.add(document.asJsonObject().get(Globals.PK_FIELD).asJsonString().getValue()
+                                + "/" + document.asJsonObject().get("label")));
+            }
+            joined.put(row.get(Globals.PK_FIELD).asJsonString().getValue(),
+                    attached.isJsonNull() ? "null" : labels.toString());
+        }
+        return joined;
+    }
+
+    @Test
+    public void test_join_on_id_matches_exactly_and_answers_as_the_scan_does() throws IOException {
+        putWith(TestGlobals.JOIN_COLL, "j1", "label", new JsonString("one"));
+        putWith(TestGlobals.JOIN_COLL, "j2", "label", new JsonString("two"));
+        putWith(TestGlobals.COLL, "exact", "ref", new JsonString("j1"));
+        putWith(TestGlobals.COLL, "upper", "ref", new JsonString("J1"));
+        putWith(TestGlobals.COLL, "dup", "ref", new JsonString("j1"));
+        putWith(TestGlobals.COLL, "missing", "ref", new JsonString("nope"));
+        putWith(TestGlobals.COLL, "number", "ref", new JsonNumber(2));
+        putWith(TestGlobals.COLL, "nul", "ref", JsonNull.INSTANCE);
+
+        final var byPk = joinedById(joinOn(Globals.PK_FIELD));
+
+        assertEquals(joinedById(joinOn("mirror")), byPk,
+                "the pk lookup answers exactly as grouping the whole remote collection does");
+        assertTrue(byPk.get("exact").startsWith("[j1/"), byPk.get("exact"));
+        assertEquals(byPk.get("exact"), byPk.get("dup"));
+        assertEquals("null", byPk.get("upper"), "the primary key is compared exactly, never case-folded");
+        assertEquals("null", byPk.get("missing"));
+        assertEquals("null", byPk.get("number"), "a non-string local value never names an id");
+        assertEquals("null", byPk.get("nul"));
+        assertEquals(byPk, joinedById(joinOn("_id.")));
+    }
+
+    private static AnalyzeContext analyzedJoinOn(String remoteField) throws IOException {
+        final var analyze = new AnalyzeContext();
+        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", remoteField, "j")));
+        AggregationOperationHelper.processAggregation(request, null, null, PipelineContext.fromConfiguration(analyze));
+        return analyze;
+    }
+
+    @Test
+    public void test_join_on_id_reads_only_the_matched_documents_through_the_pk_index() throws IOException {
+        for (var i = 0; i < 20; i++) {
+            putWith(TestGlobals.JOIN_COLL, "r" + i, "label", new JsonString("l" + i));
+        }
+        putWith(TestGlobals.COLL, "left", "ref", new JsonString("r7"));
+
+        final var byPk = analyzedJoinOn(Globals.PK_FIELD);
+        final var byScan = analyzedJoinOn("mirror");
+
+        assertEquals(Set.of(Globals.PK_FIELD), byPk.getIndexesUsed());
+        assertEquals(2, byPk.getDocumentsScanned(), "the left row plus its one match");
+        assertEquals(21, byScan.getDocumentsScanned(), "the left row plus the whole remote collection");
+    }
+
+    @Test
+    public void test_join_on_id_inside_a_transaction_sees_its_buffered_write() throws IOException {
+        putWith(TestGlobals.COLL, "left", "ref", new JsonString("buffered"));
+        final var clientTracker = IocContainer.get(ClientTracker.class);
+        final var clientId = clientTracker.registerForwardedClient("alice");
+        TransactionOperationHelper.start(clientId);
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        try {
+            final var save = new SaveRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+            final var object = new JsonObject();
+            object.add(Globals.PK_FIELD, new JsonString("buffered"));
+            save.setObject(object);
+            save.set_id("buffered");
+            TransactionOperationHelper.bufferSave(save, transaction);
+            final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+            request.setAggregationSteps(
+                    List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", Globals.PK_FIELD, "j")));
+
+            final var rows = AggregationOperationHelper.processAggregation(request, null, transaction);
+
+            assertEquals(1, rows.getFirst().get("j").asJsonArray().size(),
+                    "an uncommitted write is only in the overlay, so the overlay path must still answer");
+        } finally {
+            TransactionOperationHelper.rollback(clientId);
+        }
+    }
+
+    @Test
+    public void test_join_on_a_scalar_key_still_uses_the_index() throws IOException, InterruptedException {
+        putKeyed(TestGlobals.JOIN_COLL, "c1", new JsonString("flat"));
+        putKeyed(TestGlobals.COLL, "o1", new JsonString("flat"));
+        final var scanned = join();
+        indexJoinKey();
+
+        final var indexed = join();
+
+        assertEquals(1, indexed.size());
+        assertTrue(indexed.getFirst().get("cfg").isJsonArray());
+        assertEquals(scanned.toString(), indexed.toString());
+    }
+}

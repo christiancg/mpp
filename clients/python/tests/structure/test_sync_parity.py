@@ -5,26 +5,26 @@ import re
 
 import pytest
 
-import lwnrdb
+import mpp
 
 PAIRS: list[tuple[type, type]] = [
-    (lwnrdb.AsyncLwnrdbClient, lwnrdb.LwnrdbClient),
-    (lwnrdb.AsyncDatabase, lwnrdb.Database),
-    (lwnrdb.AsyncCollection, lwnrdb.Collection),
-    (lwnrdb.AsyncQuery, lwnrdb.Query),
-    (lwnrdb.AsyncTransaction, lwnrdb.Transaction),
-    (lwnrdb.AsyncTransactionCollection, lwnrdb.TransactionCollection),
-    (lwnrdb.AsyncIndexes, lwnrdb.Indexes),
-    (lwnrdb.AsyncSchema, lwnrdb.Schema),
-    (lwnrdb.AsyncTriggers, lwnrdb.Triggers),
-    (lwnrdb.AsyncProcedures, lwnrdb.Procedures),
-    (lwnrdb.AsyncSchedules, lwnrdb.Schedules),
-    (lwnrdb.AsyncAdmin, lwnrdb.Admin),
-    (lwnrdb.AsyncUsers, lwnrdb.Users),
-    (lwnrdb.AsyncScripts, lwnrdb.Scripts),
-    (lwnrdb.AsyncTriggerRuns, lwnrdb.TriggerRuns),
-    (lwnrdb.AsyncDistributedTransactions, lwnrdb.DistributedTransactions),
-    (lwnrdb.AsyncSubscription, lwnrdb.Subscription),
+    (mpp.AsyncMppClient, mpp.MppClient),
+    (mpp.AsyncDatabase, mpp.Database),
+    (mpp.AsyncCollection, mpp.Collection),
+    (mpp.AsyncQuery, mpp.Query),
+    (mpp.AsyncTransaction, mpp.Transaction),
+    (mpp.AsyncTransactionCollection, mpp.TransactionCollection),
+    (mpp.AsyncIndexes, mpp.Indexes),
+    (mpp.AsyncSchema, mpp.Schema),
+    (mpp.AsyncTriggers, mpp.Triggers),
+    (mpp.AsyncProcedures, mpp.Procedures),
+    (mpp.AsyncSchedules, mpp.Schedules),
+    (mpp.AsyncAdmin, mpp.Admin),
+    (mpp.AsyncUsers, mpp.Users),
+    (mpp.AsyncScripts, mpp.Scripts),
+    (mpp.AsyncTriggerRuns, mpp.TriggerRuns),
+    (mpp.AsyncDistributedTransactions, mpp.DistributedTransactions),
+    (mpp.AsyncSubscription, mpp.Subscription),
 ]
 
 CONTEXT_MANAGERS = {"__aenter__": "__enter__", "__aexit__": "__exit__"}
@@ -79,5 +79,5 @@ def test_the_sync_class_mirrors_the_async_class(async_class: type, sync_class: t
 
 
 def test_every_async_class_has_a_sync_twin() -> None:
-    exported = {name for name in lwnrdb.__all__ if name.startswith("Async")}
+    exported = {name for name in mpp.__all__ if name.startswith("Async")}
     assert exported == {pair[0].__name__ for pair in PAIRS}

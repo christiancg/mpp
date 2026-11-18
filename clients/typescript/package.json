@@ -1,7 +1,7 @@
 {
-    "name": "lwnrdb-client",
+    "name": "mpp-client",
     "version": "0.0.0-dev",
-    "description": "The official Node.js client for LWNRDB: a connection pool, a fluent query builder, transactions and live queries",
+    "description": "The official Node.js client for MPP: a connection pool, a fluent query builder, transactions and live queries",
     "license": "MIT",
     "type": "module",
     "exports": {
@@ -23,11 +23,11 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/christiancg/lwnrdb.git",
+        "url": "git+https://github.com/christiancg/mpp.git",
         "directory": "clients/typescript"
     },
     "keywords": [
-        "lwnrdb",
+        "mpp",
         "database",
         "nosql",
         "client"

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "vitest";
-import { type Collection, type Document, field, LwnrdbClient, type Stored } from "../../src/index.js";
+import { type Collection, type Document, field, MppClient, type Stored } from "../../src/index.js";
 import { serverIt } from "./server-it.js";
 
 const it = serverIt({ transactionIdleTimeoutMs: "4000" });
@@ -89,7 +89,7 @@ describe("transactions", () => {
     });
 
     test("transactions on different collections run concurrently", async () => {
-        const other = await LwnrdbClient.connect(it.settings());
+        const other = await MppClient.connect(it.settings());
         try {
             await Promise.all([
                 it.client.transaction((transaction) => transaction.collection("tx_it", "accounts").save({ _id: "c1" })),

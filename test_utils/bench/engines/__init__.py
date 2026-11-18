@@ -3,7 +3,7 @@ import importlib
 from engines.base import Engine
 
 ENGINES = {
-    "lwnrdb": ("engines.lwnrdb_engine", "LwnrdbEngine"),
+    "mpp": ("engines.mpp_engine", "MppEngine"),
     "mysql": ("engines.sql_engines", "MysqlEngine"),
     "postgres": ("engines.sql_engines", "PostgresEngine"),
     "mongo": ("engines.mongo_engine", "MongoEngine"),

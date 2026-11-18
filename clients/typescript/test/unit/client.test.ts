@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { connectWith, LwnrdbClient } from "../../src/client.js";
-import { AuthenticationError, ConnectionLostError, field, LwnrdbError, UnknownOutcomeError } from "../../src/index.js";
+import { connectWith, MppClient } from "../../src/client.js";
+import { AuthenticationError, ConnectionLostError, field, MppError, UnknownOutcomeError } from "../../src/index.js";
 import type { JsonObject } from "../../src/internal/values-codec.js";
 import { FakeServer, type Responder } from "../support/fake-server.js";
 import { error, ok } from "../support/recording-channel.js";
 
 let server: FakeServer | undefined;
-let client: LwnrdbClient | undefined;
+let client: MppClient | undefined;
 
 async function start(
     replies: Record<string, (request: JsonObject) => JsonObject> = {},
     credentials = true,
-): Promise<LwnrdbClient> {
+): Promise<MppClient> {
     const responder: Responder = (request, session) => {
         const reply = replies[request.type as string];
         session.send(reply === undefined ? ok(request) : reply(request));
@@ -35,7 +35,7 @@ afterEach(async () => {
     server = undefined;
 });
 
-describe("LwnrdbClient", () => {
+describe("MppClient", () => {
     test("connect opens and authenticates one connection", async () => {
         const started = await start();
         expect(server?.requestsOfType("AUTHENTICATE")).toEqual([
@@ -49,7 +49,7 @@ describe("LwnrdbClient", () => {
             session.send(error(request, "UNAUTHENTICATED", "401-1"));
         });
         await expect(
-            LwnrdbClient.connect({ hosts: server.hosts, credentials: { username: "a", password: "b" } }),
+            MppClient.connect({ hosts: server.hosts, credentials: { username: "a", password: "b" } }),
         ).rejects.toBeInstanceOf(AuthenticationError);
     });
 
@@ -136,7 +136,7 @@ describe("LwnrdbClient", () => {
         await transaction.close();
         expect(server?.requestsOfType("ROLLBACK_TRANSACTION")).toHaveLength(0);
         expect(() => transaction.collection("shop", "orders")).toThrow(/already committed or rolled back/);
-        await expect(transaction.commit()).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(transaction.commit()).rejects.toBeInstanceOf(MppError);
     });
 
     test("await using rolls back an open transaction", async () => {

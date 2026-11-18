@@ -5,7 +5,7 @@ import {
     ListenEndedError,
     LocalDateTime,
     LocalTime,
-    LwnrdbError,
+    MppError,
     UnavailableError,
     UnknownOutcomeError,
     Vector,
@@ -25,8 +25,8 @@ function expectError(frame: JsonObject, code: string): void {
     } catch (error) {
         caught = error;
     }
-    expect(caught).toBeInstanceOf(LwnrdbError);
-    const error = caught as LwnrdbError;
+    expect(caught).toBeInstanceOf(MppError);
+    const error = caught as MppError;
     expect(error.rawCode).toBe(code);
     expect(error.message).toContain(code);
     if (RETRYABLE_CODES.has(code)) {

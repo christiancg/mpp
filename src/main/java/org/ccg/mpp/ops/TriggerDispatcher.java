@@ -1,0 +1,439 @@
+package org.ccg.mpp.ops;
+
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.CANCELLED;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.UUID;
+import org.ccg.mpp.bckg_ops.TriggerExecutor;
+import org.ccg.mpp.bckg_ops.events.TriggerEvent;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.DbEntry;
+import org.ccg.mpp.data.ProcedureDefinition;
+import org.ccg.mpp.data.TriggerDefinition;
+import org.ccg.mpp.data.admin.TriggerRunStatus;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonNumber;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ex.MetadataReadException;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.log.LogRateLimiter;
+import org.ccg.mpp.log.Logger;
+import org.ccg.mpp.simplejs.SimpleJs;
+import org.ccg.mpp.simplejs.host.DatabaseHostBindings;
+import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.ResourceLimits;
+import org.ccg.mpp.simplejs.host.ScriptResult;
+
+public final class TriggerDispatcher {
+    private static final Cache cache = IocContainer.get(Cache.class);
+    private static final SimpleJs simpleJs = IocContainer.get(SimpleJs.class);
+    private static final CompiledProcedureCache compiledProcedures = IocContainer.get(CompiledProcedureCache.class);
+    private static final TriggerExecutor triggerExecutor = IocContainer.get(TriggerExecutor.class);
+    private static final ScriptRunRegistry runRegistry = IocContainer.get(ScriptRunRegistry.class);
+    private static final ScriptAdmission admission = IocContainer.get(ScriptAdmission.class);
+    private static final Configuration configuration = Configuration.getInstance();
+    private static final Logger logger = Logger.logFor(TriggerDispatcher.class);
+    private static final LogRateLimiter DEFERRAL_LOG = new LogRateLimiter(Globals.LOG_RATE_LIMIT_PER_SECOND);
+
+    private TriggerDispatcher() {
+    }
+
+    public static void dispatch(TriggerEvent event) {
+        if (event.getDepth() < 0 || event.getDepth() >= configuration.getTriggerMaxDepth()) {
+            consumeQuietly(event.getRunId(), event.getTriggerName());
+            triggerExecutor.countFailure();
+            final var reason = "cascade depth " + event.getDepth() + " reached triggerMaxDepth";
+            logger.warning("Trigger '" + event.getTriggerName() + "' not run: " + reason);
+            recordSkip(event, reason);
+            return;
+        }
+        final TriggerDefinition trigger;
+        try {
+            trigger = findTrigger(event);
+        } catch (MetadataReadException e) {
+            retryUnreadableDefinition(event, "the triggers", e.getMessage());
+            return;
+        }
+        if (trigger == null || !trigger.isEnabled() || trigger.isBefore()) {
+            consumeQuietly(event.getRunId(), event.getTriggerName());
+            return;
+        }
+        final ProcedureDefinition procedure;
+        try {
+            procedure = cache.getProcedure(event.getDbName(), trigger.getProcedureName());
+        } catch (MetadataReadException e) {
+            retryUnreadableDefinition(event, "the procedure '" + trigger.getProcedureName() + "'", e.getMessage());
+            return;
+        }
+        if (procedure == null || !procedure.isEnabled()) {
+            consumeQuietly(event.getRunId(), event.getTriggerName());
+            return;
+        }
+        runAsDefiner(event, trigger, procedure);
+    }
+
+    private static void runAsDefiner(TriggerEvent event, TriggerDefinition trigger, ProcedureDefinition procedure) {
+        final var definer = trigger.getDefiner();
+        final var refusal = DefinerAuthority.refusal(definer, event.getDbName(), event.getCollName());
+        if (refusal != null && !DefinerAuthority.decidesDefinitions()) {
+            deferUntilRetryWindowCloses(event,
+                    "its definer is refused here and the disable is decided by the admin coordinator",
+                    "DefinerRefused: " + refusal);
+            return;
+        }
+        if (refusal != null) {
+            consumeQuietly(event.getRunId(), event.getTriggerName());
+            triggerExecutor.countFailure();
+            logger.warning("Trigger '" + event.getTriggerName() + "' not run: " + refusal);
+            recordSkip(event, refusal);
+            DefinerAuthority.disableTrigger(event.getDbName(), event.getCollName(), trigger, refusal);
+            return;
+        }
+        switch (admission.acquireSlicesWithin(definer, event.getDbName(), admission.queueWaitMs())) {
+            case ScriptAdmission.Refusal limited -> deferForAdmission(event, limited.scope());
+            case ScriptAdmission.Permit permit -> {
+                try (permit) {
+                    runOnCurrentEntries(event, trigger, procedure, definer);
+                }
+            }
+        }
+    }
+
+    private static void deferForAdmission(TriggerEvent event, String scope) {
+        deferUntilRetryWindowCloses(event, "reached the " + scope + " script concurrency limit",
+                "ScriptConcurrencyLimit: the " + scope + " script concurrency limit was reached until the"
+                        + " retry window closed");
+    }
+
+    private static void deferUntilRetryWindowCloses(TriggerEvent event, String why, String error) {
+        if (withinClusterRetryWindow(event)) {
+            final var delay = Math.max(1L, backoffFor(event.getAttempt()));
+            triggerExecutor.submitAfter(event.retry(event.getAttempt()), delay);
+            final var entry = DEFERRAL_LOG.admit("Trigger '" + event.getTriggerName() + "' " + why + "; retrying in "
+                    + delay + "ms without consuming an attempt");
+            if (entry != null) {
+                logger.info(entry);
+            }
+            return;
+        }
+        triggerExecutor.countFailure();
+        if (event.getRunId() != null) {
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.DEAD, event.getAttempt(), error, 0L);
+            triggerExecutor.countDeadLetter();
+        }
+        logger.warning(
+                "Trigger '" + event.getTriggerName() + "' was dead-lettered: " + error + "; runId=" + event.getRunId());
+        recordSkip(event, error);
+    }
+
+    private static void runOnCurrentEntries(TriggerEvent event, TriggerDefinition trigger,
+            ProcedureDefinition procedure, String definer) {
+        final TriggerEvent current;
+        try {
+            current = withCurrentEntries(event);
+        } catch (IOException e) {
+            retryUnreadableDocuments(event, e.getMessage());
+            return;
+        }
+        if (current == null) {
+            consumeQuietly(event.getRunId(), event.getTriggerName());
+            logger.info("Trigger '" + event.getTriggerName() + "' skipped: its document(s) no longer exist; runId="
+                    + event.getRunId());
+            recordSkip(event, "its document(s) no longer exist");
+            return;
+        }
+        run(current, trigger, procedure.getVersion(), procedure.getSource(), definer);
+    }
+
+    private static void run(TriggerEvent event, TriggerDefinition trigger, long version, String source,
+            String definer) {
+        final var compiled = compiledProcedures.get(event.getDbName(), trigger.getProcedureName(), version, source);
+        final var database = new EnforcingDatabaseAccess(definer, null, event.getDbName(), event.getDepth() + 1);
+        final var scriptRun = runRegistry.register(ScriptRunKind.TRIGGER, event.getDbName(), trigger.getName(), definer,
+                null);
+        final var start = System.currentTimeMillis();
+        final var runId = event.getRunId();
+        final var committed = new java.util.concurrent.atomic.AtomicBoolean(runId == null);
+        final ScriptResult result;
+        try {
+            final var host = DatabaseHostBindings.of(argsFor(event, definer), database, logger::info, limits(),
+                    scriptRun::isCancelled);
+            result = runId == null
+                    ? simpleJs.run(compiled, host)
+                    : simpleJs.run(compiled, host,
+                            body -> runInTransaction(database, runId, trigger.getName(), body, committed));
+        } finally {
+            runRegistry.unregister(scriptRun.runId());
+        }
+        final var line = "TRIGGER name=" + trigger.getName() + " database=" + event.getDbName() + " collection="
+                + event.getCollName() + " event=" + event.getType() + " definer=" + definer + " actingUser="
+                + event.getActingUser() + " runId=" + scriptRun.runId() + " durationMs="
+                + (System.currentTimeMillis() - start);
+        final var effectsAreDurable = committed.get();
+        if (!effectsAreDurable && database.lastCommitWasFenced()) {
+            triggerExecutor.countFailure();
+            logger.warning(line + " outcome=commit-fenced");
+            deadLetterFencedCommit(event, trigger, definer, scriptRun.runId(), start, result);
+            return;
+        }
+        if (result.isError()) {
+            triggerExecutor.countFailure();
+            logger.warning(line + " outcome=" + result.getErrorName() + ": " + result.getErrorMessage()
+                    + ScriptOperationHelper.renderStack(result.getErrorStack())
+                    + (result.getLogs().isEmpty() ? "" : " logs=" + result.getLogs()));
+            final var retryable = !CANCELLED.equals(result.getErrorName()) && !effectsAreDurable;
+            handleFailure(event, trigger, definer, scriptRun.runId(), start, result.getErrorName(),
+                    result.getErrorMessage(), result.getErrorStack(), result, retryable,
+                    database.sawClusterUnavailable());
+            return;
+        }
+        if (!effectsAreDurable) {
+            triggerExecutor.countFailure();
+            logger.warning(line + " outcome=commit-failed");
+            handleFailure(event, trigger, definer, scriptRun.runId(), start, "CommitFailed",
+                    "the trigger's effects could not be committed", null, result, true,
+                    database.sawClusterUnavailable());
+            return;
+        }
+        logger.info(line + " outcome=ok");
+        recordRun(event, trigger, definer, scriptRun.runId(), start, ScriptRunRecord.OUTCOME_OK, null, null, null,
+                result);
+    }
+
+    private static void deadLetterFencedCommit(TriggerEvent event, TriggerDefinition trigger, String definer,
+            String runId, long start, ScriptResult result) {
+        final var error = "CommitFenced: the trigger's effects were half applied and the collections are fenced";
+        if (event.getRunId() != null) {
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.DEAD, event.getAttempt(), error, 0L);
+        }
+        triggerExecutor.countDeadLetter();
+        logger.error("Trigger '" + trigger.getName() + "' was dead-lettered after a half-applied commit; runId="
+                + event.getRunId() + " - recovery finishes the slice, so do not re-run it", null);
+        recordRun(event, trigger, definer, runId, start, ScriptRunRecord.OUTCOME_DEAD_LETTER, "CommitFenced", error,
+                null, result);
+    }
+
+    private static void handleFailure(TriggerEvent event, TriggerDefinition trigger, String definer, String runId,
+            long start, String errorName, String errorMessage, List<String> stack, ScriptResult result,
+            boolean retryable, boolean clusterUnavailable) {
+        final var attempt = event.getAttempt();
+        final var maxAttempts = Math.max(1, configuration.getTriggerMaxAttempts());
+        final var error = errorName + ": " + errorMessage;
+        if (retryable && event.getRunId() != null && clusterUnavailable && withinClusterRetryWindow(event)) {
+            final var delay = backoffFor(attempt);
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.PENDING, attempt, error,
+                    System.currentTimeMillis() + delay);
+            triggerExecutor.submitAfter(event.retry(attempt), delay);
+            logger.info("Trigger '" + trigger.getName() + "' is waiting for the cluster; retrying in " + delay
+                    + "ms without consuming an attempt");
+            return;
+        }
+        if (retryable && event.getRunId() != null && attempt < maxAttempts) {
+            final var delay = backoffFor(attempt);
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.PENDING, attempt, error,
+                    System.currentTimeMillis() + delay);
+            triggerExecutor.submitAfter(event.retry(attempt + 1), delay);
+            logger.info("Trigger '" + trigger.getName() + "' attempt " + attempt + " of " + maxAttempts
+                    + " failed; retrying in " + delay + "ms");
+            recordRun(event, trigger, definer, runId, start, ScriptRunRecord.OUTCOME_ERROR, errorName, errorMessage,
+                    stack, result);
+            return;
+        }
+        if (retryable && event.getRunId() != null) {
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.DEAD, attempt, error, 0L);
+            triggerExecutor.countDeadLetter();
+            logger.warning("Trigger '" + trigger.getName() + "' failed " + attempt
+                    + " attempt(s) and was dead-lettered; runId=" + event.getRunId()
+                    + " - resolve it with RESOLVE_TRIGGER_RUN");
+            recordRun(event, trigger, definer, runId, start, ScriptRunRecord.OUTCOME_DEAD_LETTER, errorName,
+                    errorMessage, stack, result);
+            return;
+        }
+        consumeQuietly(event.getRunId(), trigger.getName());
+        recordRun(event, trigger, definer, runId, start, ScriptRunRecord.OUTCOME_ERROR, errorName, errorMessage, stack,
+                result);
+    }
+
+    public static long backoffFor(int attempt) {
+        final var base = Math.max(0L, configuration.getTriggerRetryBackoffMs());
+        final var ceiling = Math.max(0L, configuration.getTriggerRetryMaxBackoffMs());
+        if (base == 0L) {
+            return 0L;
+        }
+        final var exponent = Math.min(attempt - 1, 32);
+        final var delay = base << exponent;
+        return delay < 0 || delay > ceiling ? ceiling : delay;
+    }
+
+    private static boolean withinClusterRetryWindow(TriggerEvent event) {
+        return System.currentTimeMillis() - event.getFiredAt() < Math.max(0L, configuration.getTriggerRunRetentionMs());
+    }
+
+    private static TriggerEvent withCurrentEntries(TriggerEvent event) throws IOException {
+        if (!event.hasStaleEntries()) {
+            return event;
+        }
+        final var ids = new LinkedHashSet<String>();
+        for (final var entry : event.getEntries()) {
+            ids.add(entry.get_id());
+        }
+        final List<DbEntry> current = cache.getEntriesByIds(event.getDbName(), event.getCollName(), ids);
+        return current.isEmpty() ? null : event.withCurrentEntries(current);
+    }
+
+    private static void recordRun(TriggerEvent event, TriggerDefinition trigger, String definer, String runId,
+            long start, String outcome, String errorName, String errorMessage, List<String> stack,
+            ScriptResult result) {
+        ScriptRunHistory.record(new ScriptRunRecord(runId, ScriptRunKind.TRIGGER, event.getDbName(), trigger.getName(),
+                trigger.getProcedureName(), event.getCollName(), event.getType().name(), definer, event.getActingUser(),
+                start, System.currentTimeMillis() - start, event.getAttempt(), outcome, errorName, errorMessage, stack,
+                result.getMetrics(), result.getLogs(), result.isLogsTruncated()));
+    }
+
+    private static void recordSkip(TriggerEvent event, String reason) {
+        ScriptRunHistory.record(new ScriptRunRecord(UUID.randomUUID().toString(), ScriptRunKind.TRIGGER,
+                event.getDbName(), event.getTriggerName(), event.getProcedureName(), event.getCollName(),
+                event.getType().name(), null, event.getActingUser(), System.currentTimeMillis(), 0L, event.getAttempt(),
+                ScriptRunRecord.OUTCOME_SKIPPED, null, reason, null, null, null, false));
+    }
+
+    private static void runInTransaction(EnforcingDatabaseAccess database, String runId, String triggerName,
+            Runnable body, java.util.concurrent.atomic.AtomicBoolean committed) {
+        database.beginTransaction();
+        try {
+            body.run();
+        } catch (Throwable e) {
+            rollbackQuietly(database, triggerName);
+            throw e;
+        }
+        try {
+            if (database.transactionBufferedNoWrites()) {
+                database.rollbackTransaction();
+                consumeOrThrow(runId);
+            } else {
+                database.bufferTriggerRunConsume(runId);
+                database.commitTransaction();
+            }
+            committed.set(true);
+        } catch (Throwable e) {
+            logger.error("Failed to commit the effects of trigger '" + triggerName + "': " + e.getMessage(), e);
+            rollbackQuietly(database, triggerName);
+        }
+    }
+
+    private static void rollbackQuietly(EnforcingDatabaseAccess database, String triggerName) {
+        try {
+            if (database.hasActiveTransaction()) {
+                database.rollbackTransaction();
+            }
+        } catch (RuntimeException e) {
+            logger.warning("Failed to roll back trigger '" + triggerName + "': " + e.getMessage());
+        }
+    }
+
+    private static void consumeOrThrow(String runId) {
+        final var recordIds = TriggerRunLog.recordIdsFor(runId);
+        if (recordIds.isEmpty()) {
+            return;
+        }
+        try {
+            AdminOperationHelper.deleteTriggerRuns(recordIds);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while consuming the pending trigger run " + runId, e);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public static void consumeQuietly(String runId, String triggerName) {
+        if (runId == null) {
+            return;
+        }
+        try {
+            AdminOperationHelper.deleteTriggerRuns(TriggerRunLog.recordIdsFor(runId));
+        } catch (Exception e) {
+            logger.warning("Failed to consume the pending run of trigger '" + triggerName + "': " + e.getMessage());
+        }
+    }
+
+    private static ResourceLimits limits() {
+        final var base = DatabaseHostBindings.limitsFromConfiguration();
+        return new ResourceLimits(base.instructionBudget(), configuration.getTriggerTimeoutMs(), base.maxDepth(),
+                base.reportUnhandledRejections(), base.fetchEnabled(), base.fetchHostAllowlist(),
+                base.maxResponseBytes(), base.fetchTimeoutMillis(), base.strictScriptGoal(), base.textImportEnabled(),
+                base.maxModuleDepth(), base.maxLogLines(), base.maxLogLineChars(), base.memoryBudget(), -1,
+                base.cursorBatchSize(), base.cursorMaxBatchSize(), base.fetchMaxConcurrent(), base.maxArrayLength());
+    }
+
+    private static JsonObject argsFor(TriggerEvent event, String definer) {
+        final var args = new JsonObject();
+        args.add("event", new JsonString(event.getType().name()));
+        args.add("database", new JsonString(event.getDbName()));
+        args.add("collection", new JsonString(event.getCollName()));
+        args.add("trigger", new JsonString(event.getTriggerName()));
+        args.add("actingUser", new JsonString(event.getActingUser()));
+        args.add("definer", new JsonString(definer));
+        args.add("firedAt", new JsonNumber(event.getFiredAt()));
+        args.add("depth", new JsonNumber(event.getDepth()));
+        if (event.isBatchMode()) {
+            final var documents = new JsonArray();
+            event.getEntries().forEach(entry -> documents.add(entry.getData()));
+            args.add("documents", documents);
+        } else if (!event.getEntries().isEmpty()) {
+            final var entry = event.getEntries().getFirst();
+            args.add("id", new JsonString(entry.get_id()));
+            args.add("document", entry.getData());
+        }
+        return args;
+    }
+
+    private static void retryUnreadableDefinition(TriggerEvent event, String what, String cause) {
+        retryUnreadable(event, what, "MetadataReadException: " + cause, cause);
+    }
+
+    private static void retryUnreadableDocuments(TriggerEvent event, String cause) {
+        retryUnreadable(event, "the current document(s)", "IOException: " + cause, cause);
+    }
+
+    private static void retryUnreadable(TriggerEvent event, String what, String error, String cause) {
+        final var attempt = event.getAttempt();
+        final var maxAttempts = Math.max(1, configuration.getTriggerMaxAttempts());
+        triggerExecutor.countFailure();
+        if (event.getRunId() == null) {
+            logger.warning("Could not read " + what + " for " + event.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR
+                    + event.getCollName() + "; the run is not logged and cannot be replayed: " + cause);
+            return;
+        }
+        if (attempt < maxAttempts) {
+            final var delay = backoffFor(attempt);
+            TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.PENDING, attempt, error,
+                    System.currentTimeMillis() + delay);
+            triggerExecutor.submitAfter(event.retry(attempt + 1), delay);
+            logger.warning("Could not read " + what + " for " + event.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR
+                    + event.getCollName() + "; the run stays pending and is retried in " + delay + "ms: " + cause);
+            return;
+        }
+        TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.DEAD, attempt, error, 0L);
+        triggerExecutor.countDeadLetter();
+        logger.error("Could not read " + what + " for " + event.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR
+                + event.getCollName() + " after " + attempt + " attempt(s); the run was dead-lettered, runId="
+                + event.getRunId() + " - resolve it with RESOLVE_TRIGGER_RUN", null);
+    }
+
+    private static TriggerDefinition findTrigger(TriggerEvent event) {
+        final List<TriggerDefinition> triggers = cache.getTriggersFor(event.getDbName(), event.getCollName());
+        for (final var trigger : triggers) {
+            if (trigger.getName().equals(event.getTriggerName())) {
+                return trigger;
+            }
+        }
+        return null;
+    }
+}

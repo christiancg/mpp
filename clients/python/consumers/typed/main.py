@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from lwnrdb import (
+from mpp import (
     AsyncCollection,
-    AsyncLwnrdbClient,
+    AsyncMppClient,
     Collection,
     Document,
     GeoPoint,
     ListenUpdate,
-    LwnrdbClient,
+    MppClient,
     Query,
     SaveResult,
     Subscription,
@@ -26,7 +26,7 @@ class Shop:
     id: str | None = None
 
 
-def typed_sync(client: LwnrdbClient) -> list[Shop]:
+def typed_sync(client: MppClient) -> list[Shop]:
     shops: Collection[Shop, Shop] = client.database("geo").collection("shops", Shop)
     saved: SaveResult = shops.save(Shop("a", GeoPoint(1, 2), datetime(2024, 1, 1)))
     del saved
@@ -42,7 +42,7 @@ def typed_sync(client: LwnrdbClient) -> list[Shop]:
     return query.to_list()
 
 
-async def typed_async(client: AsyncLwnrdbClient) -> list[Document]:
+async def typed_async(client: AsyncMppClient) -> list[Document]:
     raw: AsyncCollection[Document, Document] = client.database("geo").collection("shops")
     async with client.transaction() as transaction:
         await transaction.collection("geo", "shops").delete("s-1")

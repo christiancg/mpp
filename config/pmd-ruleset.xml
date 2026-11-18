@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
-<ruleset name="lwnrdb"
+<ruleset name="mpp"
          xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
 
     <description>
-        Curated PMD ruleset for LWNRDB. Focuses on real bug patterns
+        Curated PMD ruleset for MPP. Focuses on real bug patterns
         (error-prone), performance, multithreading correctness, and a handful
         of best practices. Formatting and naming are owned by Spotless and
         Checkstyle, so PMD's code style category is not used; noisy/opinionated

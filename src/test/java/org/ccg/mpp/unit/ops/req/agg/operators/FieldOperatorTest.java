@@ -1,0 +1,65 @@
+package org.ccg.mpp.unit.ops.req.agg.operators;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.OperatorType;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.junit.jupiter.api.Test;
+
+public class FieldOperatorTest {
+    @Test
+    public void test_constructor_initializes_with_valid_parameters() {
+        FieldOperatorType operatorType = FieldOperatorType.EQUALS;
+        String fieldName = "testField";
+        JsonBaseElement value = new JsonString("testValue");
+
+        FieldOperator operator = new FieldOperator(operatorType, fieldName, value);
+
+        assertEquals(OperatorType.FIELD, operator.getType());
+        assertEquals(operatorType, operator.getFieldOperatorType());
+        assertEquals(fieldName, operator.getField());
+        assertEquals(value, operator.getValue());
+    }
+
+    @Test
+    public void test_constructor_accepts_null_field_name() {
+        FieldOperatorType operatorType = FieldOperatorType.EQUALS;
+        JsonBaseElement value = new JsonString("testValue");
+
+        FieldOperator operator = new FieldOperator(operatorType, null, value);
+
+        assertEquals(OperatorType.FIELD, operator.getType());
+        assertEquals(operatorType, operator.getFieldOperatorType());
+        assertNull(operator.getField());
+        assertEquals(value, operator.getValue());
+    }
+
+    @Test
+    public void test_getters_and_setters() {
+        FieldOperatorType operatorType = FieldOperatorType.CONTAINS;
+        String fieldName = "sampleField";
+        JsonBaseElement value = new JsonString("sampleValue");
+
+        FieldOperator operator = new FieldOperator(operatorType, fieldName, value);
+
+        assertEquals(operatorType, operator.getFieldOperatorType());
+        assertEquals(fieldName, operator.getField());
+        assertEquals(value, operator.getValue());
+
+        FieldOperatorType newOperatorType = FieldOperatorType.NOT_EQUALS;
+        String newFieldName = "newField";
+        JsonBaseElement newValue = new JsonString("newValue");
+
+        operator.setFieldOperatorType(newOperatorType);
+        operator.setField(newFieldName);
+        operator.setValue(newValue);
+
+        assertEquals(newOperatorType, operator.getFieldOperatorType());
+        assertEquals(newFieldName, operator.getField());
+        assertEquals(newValue, operator.getValue());
+    }
+}

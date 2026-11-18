@@ -1,0 +1,111 @@
+package org.ccg.mpp.unit.simplejs.internal;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.simplejs.exceptions.ReferenceErrorException;
+import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
+import org.ccg.mpp.simplejs.internal.Environment;
+import org.ccg.mpp.simplejs.values.JsNumber;
+import org.junit.jupiter.api.Test;
+
+public class EnvironmentTest {
+    @Test
+    public void test_var_declare_assign_get() {
+        final var env = Environment.global();
+        env.declareVar("x");
+        env.assign("x", new JsNumber(7));
+        assertEquals(7, ((JsNumber) env.get("x")).getValue());
+    }
+
+    @Test
+    public void test_lexical_initialize_get() {
+        final var env = Environment.global();
+        env.declareLexical("y", "let");
+        env.initialize("y", new JsNumber(3));
+        assertEquals(3, ((JsNumber) env.get("y")).getValue());
+    }
+
+    @Test
+    public void test_temporal_dead_zone() {
+        final var env = Environment.global();
+        env.declareLexical("z", "const");
+        assertThrows(ReferenceErrorException.class, () -> env.get("z"));
+    }
+
+    @Test
+    public void test_const_reassignment_throws() {
+        final var env = Environment.global();
+        env.declareLexical("c", "const");
+        env.initialize("c", new JsNumber(1));
+        assertThrows(TypeErrorException.class, () -> env.assign("c", new JsNumber(2)));
+    }
+
+    @Test
+    public void test_undeclared_get_throws() {
+        final var env = Environment.global();
+        assertThrows(ReferenceErrorException.class, () -> env.get("nope"));
+    }
+
+    @Test
+    public void test_undeclared_assign_throws() {
+        final var env = Environment.global();
+        assertThrows(ReferenceErrorException.class, () -> env.assign("nope", new JsNumber(1)));
+    }
+
+    @Test
+    public void test_child_scope_shadowing() {
+        final var env = Environment.global();
+        env.declareLexical("x", "let");
+        env.initialize("x", new JsNumber(1));
+        final var child = env.child();
+        child.declareLexical("x", "let");
+        child.initialize("x", new JsNumber(2));
+        assertEquals(2, ((JsNumber) child.get("x")).getValue());
+        assertEquals(1, ((JsNumber) env.get("x")).getValue());
+    }
+
+    @Test
+    public void test_var_hoists_to_function_scope() {
+        final var env = Environment.global();
+        final var child = env.child();
+        child.declareVar("h");
+        child.assign("h", new JsNumber(5));
+        assertEquals(5, ((JsNumber) env.get("h")).getValue());
+    }
+
+    @Test
+    public void test_home_class_resolves_up_chain() {
+        final var env = Environment.global();
+        final var home = new JsNumber(1);
+        env.defineHomeClass(home);
+        assertSame(home, env.child().child().resolveHomeClass());
+    }
+
+    @Test
+    public void test_home_class_absent_returns_null() {
+        assertNull(Environment.global().resolveHomeClass());
+    }
+
+    // GlobalDeclarationInstantiation: a top-level lexical declaration must not replace - or be visible
+    // through - a same-named binding's Global Object Record entry, though a bare lookup sees the shadow.
+    @Test
+    public void test_global_lexical_declaration_does_not_replace_the_global_property() {
+        final var env = Environment.global();
+        final var builtin = new JsNumber(1);
+        env.declareBuiltin("Array", builtin);
+        env.declareLexical("Array", "let");
+        env.initialize("Array", org.ccg.mpp.simplejs.values.JsUndefined.getInstance());
+
+        assertSame(org.ccg.mpp.simplejs.values.JsUndefined.getInstance(), env.tryGet("Array"));
+        assertSame(builtin, env.tryGetGlobalProperty("Array"));
+        assertTrue(env.hasGlobalProperty("Array"));
+    }
+
+    @Test
+    public void test_non_global_lexical_declaration_is_unaffected() {
+        final var child = Environment.global().child();
+        child.declareLexical("y", "let");
+        child.initialize("y", new JsNumber(5));
+        assertEquals(5, ((JsNumber) child.get("y")).getValue());
+    }
+}

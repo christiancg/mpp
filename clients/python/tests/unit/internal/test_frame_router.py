@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lwnrdb._internal.frame_router import Route, is_listen_end, route
+from mpp._internal.frame_router import Route, is_listen_end, route
 
 
 def test_a_listen_update_is_a_push() -> None:

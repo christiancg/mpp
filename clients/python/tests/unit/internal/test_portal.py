@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import ListenEndedError, ListenUpdate, LwnrdbError
-from lwnrdb._internal.handler_adapter import async_callbacks, threaded_callbacks
-from lwnrdb._internal.portal import Portal, SyncRuntime
+from mpp import ListenEndedError, ListenUpdate, MppError
+from mpp._internal.handler_adapter import async_callbacks, threaded_callbacks
+from mpp._internal.portal import Portal, SyncRuntime
 
 
 def test_run_returns_values_and_raises_errors() -> None:
@@ -38,7 +38,7 @@ def test_run_after_stop_is_refused() -> None:
     async def work() -> None:
         return None
 
-    with pytest.raises(LwnrdbError, match="closed"):
+    with pytest.raises(MppError, match="closed"):
         portal.run(work())
 
 
@@ -51,7 +51,7 @@ def test_run_from_the_loop_thread_is_refused() -> None:
 
         try:
             portal.run(inner())
-        except LwnrdbError as error:
+        except MppError as error:
             return str(error)
         return "ran"
 
@@ -143,5 +143,5 @@ async def test_threaded_callbacks_run_off_the_loop_thread_in_order() -> None:
 
 
 def test_a_non_handler_is_refused() -> None:
-    with ThreadPoolExecutor(max_workers=1) as executor, pytest.raises(LwnrdbError, match="needs a handler"):
+    with ThreadPoolExecutor(max_workers=1) as executor, pytest.raises(MppError, match="needs a handler"):
         threaded_callbacks(object(), executor)

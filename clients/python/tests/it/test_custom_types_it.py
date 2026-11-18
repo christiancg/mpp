@@ -7,15 +7,15 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     AsyncCollection,
-    AsyncLwnrdbClient,
+    AsyncMppClient,
     GeoDistanceComparator,
     GeoPoint,
     LocalDateTime,
     LocalTime,
-    LwnrdbError,
     MappingError,
+    MppError,
     Order,
     Vector,
     distance,
@@ -35,7 +35,7 @@ LONDON = GeoPoint(51.5074, -0.1278)
 
 
 @pytest.fixture
-async def places(client: AsyncLwnrdbClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
+async def places(client: AsyncMppClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
     shop = client.database("types_it")
     await shop.create()
     collection = shop.collection("places")
@@ -125,7 +125,7 @@ async def test_an_aware_datetime_needs_a_temporal_zone(
     aware = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     with pytest.raises(MappingError, match="temporal_zone"):
         await places.save({"_id": "z", "at": aware})
-    async with await AsyncLwnrdbClient.connect(settings_for(server, temporal_zone="America/New_York")) as zoned:
+    async with await AsyncMppClient.connect(settings_for(server, temporal_zone="America/New_York")) as zoned:
         stored = zoned.database("types_it").collection("places")
         await stored.save({"_id": "z", "at": aware})
         found = await stored.find_by_id("z")
@@ -136,6 +136,6 @@ async def test_an_aware_datetime_needs_a_temporal_zone(
 async def test_a_vector_over_the_limit_is_refused_and_the_connection_survives(
     places: AsyncCollection[Any, Any],
 ) -> None:
-    with pytest.raises(LwnrdbError):
+    with pytest.raises(MppError):
         await places.save({"_id": "big", "embedding": Vector.of(*range(1, 20))})
     assert await places.find_by_id("ny") is not None

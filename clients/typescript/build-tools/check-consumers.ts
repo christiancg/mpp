@@ -20,7 +20,7 @@ function run(command: readonly string[], cwd: string): void {
     execFileSync(program, args, { cwd, stdio: "inherit" });
 }
 
-const packDirectory = mkdtempSync(join(tmpdir(), "lwnrdb-client-pack-"));
+const packDirectory = mkdtempSync(join(tmpdir(), "mpp-client-pack-"));
 try {
     run([...NPM, "pack", "--silent", "--pack-destination", packDirectory], ROOT);
     const tarball = readdirSync(packDirectory).find((file) => file.endsWith(".tgz"));

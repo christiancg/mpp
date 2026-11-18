@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lwnrdb import (
+from mpp import (
     DataPermission,
     GlobalPermission,
     Permissions,

@@ -1,0 +1,253 @@
+package org.ccg.mpp.unit.ejson;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Set;
+import org.ccg.mpp.ejson.EJson;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.exceptions.MalformedJsonException;
+import org.ccg.mpp.ejson.internal.JsonReader;
+import org.ccg.mpp.ejson.internal.JsonWriter;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.Test;
+
+public class EJsonTest {
+    @Test
+    public void test_primitive_types_serialization_deserialization() {
+        EJson eJson = new EJson();
+
+        TestPrimitives obj = new TestPrimitives();
+        obj.boolVal = true;
+        obj.numVal = 42;
+        obj.strVal = "test";
+
+        String json = eJson.toJson(obj);
+        TestPrimitives result = eJson.fromJson(json, TestPrimitives.class);
+
+        assertEquals(obj.boolVal, result.boolVal);
+        assertEquals(obj.numVal, result.numVal);
+        assertEquals(obj.strVal, result.strVal);
+    }
+
+    private static final class TestPrimitives {
+        public boolean boolVal;
+        public int numVal;
+        public String strVal;
+    }
+
+    @Test
+    public void test_null_values_handling() {
+        EJson eJson = new EJson();
+
+        TestNullable obj = new TestNullable();
+        obj.nullableString = null;
+        obj.nullableNumber = null;
+
+        String json = eJson.toJson(obj);
+        TestNullable result = eJson.fromJson(json, TestNullable.class);
+
+        assertNull(result.nullableString);
+        assertNull(result.nullableNumber);
+    }
+
+    private static final class TestNullable {
+        public String nullableString;
+        public Integer nullableNumber;
+    }
+
+    @Test
+    public void test_null_collection_field_deserializes_as_null() {
+        EJson eJson = new EJson();
+
+        TestWithList obj = new TestWithList();
+        obj.name = "n";
+        obj.items = null;
+
+        String json = eJson.toJson(obj);
+        TestWithList result = eJson.fromJson(json, TestWithList.class);
+
+        assertNotNull(result);
+        assertEquals("n", result.name);
+        assertNull(result.items);
+    }
+
+    @Test
+    public void test_populated_collection_field_round_trips() {
+        EJson eJson = new EJson();
+
+        TestWithList obj = new TestWithList();
+        obj.name = "n";
+        obj.items = java.util.List.of("a", "b");
+
+        TestWithList result = eJson.fromJson(eJson.toJson(obj), TestWithList.class);
+
+        assertEquals(java.util.List.of("a", "b"), result.items);
+    }
+
+    private static final class TestWithList {
+        public String name;
+        public java.util.List<String> items;
+    }
+
+    @Test
+    public void test_serialize_basic_java_objects() {
+        EJson eJson = new EJson();
+
+        String stringResult = eJson.toJson("test");
+        assertEquals("\"test\"", stringResult);
+
+        Integer intResult = 42;
+        assertEquals("42", eJson.toJson(intResult));
+
+        Boolean boolResult = true;
+        assertEquals("true", eJson.toJson(boolResult));
+
+        Double doubleResult = 3.14;
+        assertEquals("3.14", eJson.toJson(doubleResult));
+    }
+
+    @Test
+    public void test_constructor_initializes_reader_writer() {
+        EJson eJson = new EJson();
+        assertNotNull(eJson);
+        String jsonString = "{\"test\": 123}";
+        JsonObject result = eJson.fromJson(jsonString, JsonObject.class);
+        assertNotNull(result);
+        String output = eJson.toJson(123);
+        assertNotNull(output);
+    }
+
+    @Test
+    public void parse_valid_json_to_object() {
+        EJson ejson = new EJson();
+        String json = "{\"name\":\"test\",\"value\":123}";
+
+        TestClass result = ejson.fromJson(json, TestClass.class);
+
+        assertNotNull(result);
+        assertEquals("test", result.getName());
+        assertEquals(123, result.getValue());
+    }
+
+    private static final class TestClass {
+        String name;
+        int value;
+
+        public String getName() {
+            return name;
+        }
+
+        public int getValue() {
+            return value;
+        }
+    }
+
+    @Test
+    public void handle_empty_json_string() {
+        EJson eJson = new EJson();
+        String emptyJson = "";
+
+        assertThrows(MalformedJsonException.class, () -> eJson.fromJson(emptyJson, TestClass.class));
+    }
+
+    private static final class SimpleTestClass {
+        private String name;
+        private int value;
+
+        public String getName() {
+            return name;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public void setValue(int value) {
+            this.value = value;
+        }
+    }
+
+    @Test
+    public void test_convert_simple_object_to_json() {
+        EJson eJson = new EJson();
+
+        SimpleTestClass testObj = new SimpleTestClass();
+        testObj.setName("test");
+        testObj.setValue(123);
+
+        String result = eJson.toJson(testObj);
+
+        assertEquals("{\"name\":\"test\",\"value\":123}", result);
+        assertEquals("test", testObj.getName());
+        assertEquals(123, testObj.getValue());
+    }
+
+    @Test
+    public void test_convert_simple_object_to_json2() {
+        EJson eJson = new EJson();
+        String testString = "test";
+
+        String result = eJson.toJson(testString);
+
+        assertEquals("\"test\"", result);
+    }
+
+    @Test
+    public void test_handle_null_input() {
+        EJson eJson = new EJson();
+
+        final String nothing = System.getProperty("mpp.no.such.property");
+
+        assertThrows(NullPointerException.class, () -> eJson.toJson(nothing));
+    }
+
+    @Test
+    public void reader_and_writer_are_not_null() throws NoSuchFieldException, IllegalAccessException {
+        EJson eJson = new EJson();
+        final var reader = TestUtils.getPrivateField(eJson, "reader", JsonReader.class);
+        assertNotNull(reader);
+        final var writer = TestUtils.getPrivateField(eJson, "writer", JsonWriter.class);
+        assertNotNull(writer);
+    }
+
+    @Test
+    public void test_handle_null_json_element() {
+        Class<String> targetClass = String.class;
+
+        EJson eJson = new EJson();
+
+        assertThrows(NullPointerException.class, () -> eJson.fromJson((JsonBaseElement) null, targetClass));
+    }
+
+    public static final class Holder {
+        public String a;
+        public String b;
+    }
+
+    @Test
+    public void test_skipped_keys_are_not_bound() {
+        final var eJson = new EJson();
+        final var json = eJson.fromJson("{\"a\":\"x\",\"b\":\"y\"}", JsonObject.class);
+
+        final var holder = eJson.fromJson(json, Holder.class, Set.of("b"));
+
+        assertEquals("x", holder.a);
+        assertNull(holder.b);
+    }
+
+    @Test
+    public void test_an_empty_skip_set_binds_everything() {
+        final var eJson = new EJson();
+        final var json = eJson.fromJson("{\"a\":\"x\",\"b\":\"y\"}", JsonObject.class);
+
+        final var holder = eJson.fromJson(json, Holder.class, Set.of());
+
+        assertEquals("x", holder.a);
+        assertEquals("y", holder.b);
+    }
+}

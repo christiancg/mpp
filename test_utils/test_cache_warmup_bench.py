@@ -95,10 +95,10 @@ def time_query(c: Conn, value):
     return dt_ms, r.get("status") == "OK"
 
 
-JAR = "target/lwnrdb.jar"
+JAR = "target/mpp.jar"
 
 
-SERVER_LOG = os.path.join(tempfile.gettempdir(), "lwnrdb-bench.log")
+SERVER_LOG = os.path.join(tempfile.gettempdir(), "mpp-bench.log")
 
 
 def kill_server():

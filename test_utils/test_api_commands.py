@@ -978,7 +978,7 @@ def test_map_arithmetic(c):
           concat_literal_null == concat_null_field == "xnully",
           detail=f"literal={concat_literal_null!r} field={concat_null_field!r}")
     check("CONCAT never emits a Java identity string",
-          "@" not in (concat_literal_null or "") and "org.techhouse" not in (concat_literal_null or ""),
+          "@" not in (concat_literal_null or "") and "org.ccg.mpp" not in (concat_literal_null or ""),
           detail=f"got {concat_literal_null!r}")
 
     concat_nested_null = map_math(c, "CONCAT", [["x", None, "y"]])
@@ -1948,7 +1948,7 @@ def main():
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
         if r.get("status") != "OK":
             print(f"\n[ERROR] Cannot authenticate as admin: {r.get('message')}")
-            print("        Make sure the server is running and lwnrdb.cfg has the correct")
+            print("        Make sure the server is running and mpp.cfg has the correct")
             print(f"        defaultAdminUsername={ADMIN_USERNAME} / defaultAdminPassword={ADMIN_PASSWORD} (base_utils.PASSWORD).\n")
             sys.exit(1)
         print("\n  Setting up fixtures...")

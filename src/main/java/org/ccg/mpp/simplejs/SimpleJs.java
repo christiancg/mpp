@@ -1,0 +1,444 @@
+package org.ccg.mpp.simplejs;
+
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.ARRAY_TOO_LARGE;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.CANCELLED;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.EXHAUSTED_MEMORY_MESSAGE;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.LIMIT;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.MEMORY;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.PENDING_RESULT;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.RESULT_TOO_LARGE;
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.TIMEOUT;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonNull;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.log.Logger;
+import org.ccg.mpp.simplejs.builtins.InterpreterOps;
+import org.ccg.mpp.simplejs.exceptions.JsThrowException;
+import org.ccg.mpp.simplejs.exceptions.RangeErrorException;
+import org.ccg.mpp.simplejs.exceptions.ReferenceErrorException;
+import org.ccg.mpp.simplejs.exceptions.ScriptAbortException;
+import org.ccg.mpp.simplejs.exceptions.ScriptArrayLengthException;
+import org.ccg.mpp.simplejs.exceptions.ScriptCallableException;
+import org.ccg.mpp.simplejs.exceptions.ScriptCancelledException;
+import org.ccg.mpp.simplejs.exceptions.ScriptMemoryException;
+import org.ccg.mpp.simplejs.exceptions.ScriptPendingResultException;
+import org.ccg.mpp.simplejs.exceptions.ScriptTimeoutException;
+import org.ccg.mpp.simplejs.exceptions.SimpleJsRuntimeException;
+import org.ccg.mpp.simplejs.exceptions.SyntaxErrorException;
+import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
+import org.ccg.mpp.simplejs.exceptions.UnexpectedCharacterException;
+import org.ccg.mpp.simplejs.exceptions.UnexpectedEndOfInputException;
+import org.ccg.mpp.simplejs.exceptions.UnexpectedTokenException;
+import org.ccg.mpp.simplejs.exceptions.UnsupportedNodeException;
+import org.ccg.mpp.simplejs.exceptions.UnterminatedCommentException;
+import org.ccg.mpp.simplejs.exceptions.UnterminatedRegexException;
+import org.ccg.mpp.simplejs.exceptions.UnterminatedStringException;
+import org.ccg.mpp.simplejs.exceptions.UnterminatedTemplateException;
+import org.ccg.mpp.simplejs.host.CapturingHostBindings;
+import org.ccg.mpp.simplejs.host.ConsoleCapture;
+import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ResourceLimits;
+import org.ccg.mpp.simplejs.host.ScriptResult;
+import org.ccg.mpp.simplejs.host.ScriptRunMetrics;
+import org.ccg.mpp.simplejs.internal.Interpreter;
+import org.ccg.mpp.simplejs.internal.JsCoercion;
+import org.ccg.mpp.simplejs.internal.Lexer;
+import org.ccg.mpp.simplejs.internal.Parser;
+import org.ccg.mpp.simplejs.internal.Session;
+import org.ccg.mpp.simplejs.nodes.ExportAllDeclaration;
+import org.ccg.mpp.simplejs.nodes.ExportNamedDeclaration;
+import org.ccg.mpp.simplejs.nodes.ImportDeclaration;
+import org.ccg.mpp.simplejs.values.EJsonInterop;
+import org.ccg.mpp.simplejs.values.JsClass;
+import org.ccg.mpp.simplejs.values.JsFunction;
+import org.ccg.mpp.simplejs.values.JsNativeFunction;
+import org.ccg.mpp.simplejs.values.JsNumber;
+import org.ccg.mpp.simplejs.values.JsObject;
+import org.ccg.mpp.simplejs.values.JsPromise;
+import org.ccg.mpp.simplejs.values.JsUndefined;
+import org.ccg.mpp.simplejs.values.JsValue;
+
+public final class SimpleJs {
+    private static final String INTERNAL_ERROR = "InternalError";
+    private static final String INTERNAL_ERROR_MESSAGE = "Internal script error";
+    private static final Logger logger = Logger.logFor(SimpleJs.class);
+
+    public CompiledScript compile(String source, boolean strictScriptGoal) {
+        final var program = Parser.parse(Lexer.lexWithPositions(source), strictScriptGoal);
+        return new CompiledScript(program, source, strictScriptGoal);
+    }
+
+    public List<String> moduleSpecifiers(CompiledScript compiled) {
+        final var specifiers = new LinkedHashSet<String>();
+        for (final var statement : compiled.program().getBody()) {
+            final var source = switch (statement) {
+                case ImportDeclaration declaration -> declaration.getSource();
+                case ExportNamedDeclaration declaration -> declaration.getSource();
+                case ExportAllDeclaration declaration -> declaration.getSource();
+                default -> null;
+            };
+            if (source != null && source.getValue() != null) {
+                specifiers.add(source.getValue());
+            }
+        }
+        return List.copyOf(specifiers);
+    }
+
+    public ModuleReferences moduleReferences(CompiledScript compiled) {
+        return ModuleReferences.scan(compiled.source(), moduleSpecifiers(compiled));
+    }
+
+    public ScriptResult run(String source, HostBindings host) {
+        final var limits = host.limits();
+        final var capture = new ConsoleCapture(
+                limits == null ? ResourceLimits.DEFAULT_MAX_LOG_LINES : limits.maxLogLines(),
+                limits == null ? ResourceLimits.DEFAULT_MAX_LOG_LINE_CHARS : limits.maxLogLineChars());
+        final var capturing = CapturingHostBindings.wrap(host, capture);
+        final var metrics = new Interpreter.RunMetrics();
+        try {
+            final var program = Parser.parse(Lexer.lexWithPositions(source), capturing.strictScriptGoal());
+            return resultOf(Interpreter.run(program, capturing, null, this::convertResult, metrics), capture, limits)
+                    .withMetrics(measured(metrics));
+        } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+            final var error = describe(failure, maxErrorChars(limits));
+            if (error == null) {
+                throw failure;
+            }
+            return failed(error.name(), error.message(), error.stack(), capture).withMetrics(measured(metrics));
+        }
+    }
+
+    public ScriptResult failure(RuntimeException failure) {
+        final var error = describe(failure, ResourceLimits.DEFAULT_MAX_LOG_LINE_CHARS);
+        if (error == null) {
+            throw failure;
+        }
+        return ScriptResult.error(error.name(), error.message(), error.stack(), List.of(), false);
+    }
+
+    public ScriptResult run(CompiledScript compiled, HostBindings host) {
+        return run(compiled, host, null);
+    }
+
+    public ScriptResult run(CompiledScript compiled, HostBindings host, Interpreter.ModuleBodyWrapper around) {
+        final var limits = host.limits();
+        final var capture = new ConsoleCapture(
+                limits == null ? ResourceLimits.DEFAULT_MAX_LOG_LINES : limits.maxLogLines(),
+                limits == null ? ResourceLimits.DEFAULT_MAX_LOG_LINE_CHARS : limits.maxLogLineChars());
+        final var capturing = CapturingHostBindings.wrap(host, capture);
+        final var metrics = new Interpreter.RunMetrics();
+        try {
+            final var program = compiled.strictScriptGoal() == capturing.strictScriptGoal()
+                    ? compiled.program()
+                    : Parser.parse(Lexer.lexWithPositions(compiled.source()), capturing.strictScriptGoal());
+            return resultOf(Interpreter.run(program, capturing, around, this::convertResult, metrics), capture, limits)
+                    .withMetrics(measured(metrics));
+        } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+            final var error = describe(failure, maxErrorChars(limits));
+            if (error == null) {
+                throw failure;
+            }
+            return failed(error.name(), error.message(), error.stack(), capture).withMetrics(measured(metrics));
+        }
+    }
+
+    private static ScriptRunMetrics measured(Interpreter.RunMetrics metrics) {
+        return new ScriptRunMetrics(metrics.instructions(), metrics.instructionBudget(), metrics.peakMemoryBytes(),
+                metrics.memoryBudget(), 0L, 0L);
+    }
+
+    public ScriptCallable openCallable(String source, HostBindings host) {
+        try {
+            return openCallable(compile(source, host.strictScriptGoal()), host);
+        } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+            throw asCallableException(failure, maxErrorChars(host.limits()));
+        }
+    }
+
+    public ScriptCallable openCallable(CompiledScript compiled, HostBindings host) {
+        final var maxErrorChars = maxErrorChars(host.limits());
+        try {
+            final var program = compiled.strictScriptGoal() == host.strictScriptGoal()
+                    ? compiled.program()
+                    : Parser.parse(Lexer.lexWithPositions(compiled.source()), host.strictScriptGoal());
+            final var session = Interpreter.open(program, host);
+            try {
+                return new SessionCallable(session, requireCallable(session.outcome()), maxErrorChars);
+            } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+                session.close();
+                throw failure;
+            }
+        } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+            throw asCallableException(failure, maxErrorChars);
+        }
+    }
+
+    private JsValue requireCallable(Interpreter.ProgramOutcome outcome) {
+        final var candidate = outcome.hasReturn() ? outcome.returnValue() : outcome.exportDefault();
+        if (candidate == null) {
+            throw new TypeErrorException("Script must export default (or return) a function");
+        }
+        if (candidate instanceof JsFunction function) {
+            if (function.isAsync() || function.isGenerator()) {
+                throw new TypeErrorException("Script function must not be async or a generator");
+            }
+            return function;
+        }
+        if (candidate instanceof JsNativeFunction || candidate instanceof JsClass) {
+            return candidate;
+        }
+        throw new TypeErrorException("Script must export default (or return) a function");
+    }
+
+    private static int maxErrorChars(ResourceLimits limits) {
+        return limits == null ? ResourceLimits.DEFAULT_MAX_LOG_LINE_CHARS : limits.maxLogLineChars();
+    }
+
+    private static ScriptCallableException asCallableException(Throwable failure, int maxErrorChars) {
+        final var error = describe(failure, maxErrorChars);
+        if (error == null) {
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw (Error) failure;
+        }
+        return new ScriptCallableException(error.name(), error.message(), error.stack());
+    }
+
+    private enum NonFiniteResult {
+        NULLED, REFUSED
+    }
+
+    private record SessionCallable(Session session, JsValue function, int maxErrorChars) implements ScriptCallable {
+        @Override
+        public JsonBaseElement apply(JsonObject document, Set<String> mutableRoots) {
+            return invoke(List.of(EJsonInterop.viewOf(document, mutableRoots)), document, null, NonFiniteResult.NULLED);
+        }
+
+        @Override
+        public boolean test(JsonObject document, Set<String> mutableRoots) {
+            return JsCoercion.toBoolean(call(List.of(EJsonInterop.viewOf(document, mutableRoots)), document));
+        }
+
+        @Override
+        public JsonBaseElement apply(JsonBaseElement accumulator, JsonObject document) {
+            return invoke(List.of(EJsonInterop.viewOrValue(accumulator), EJsonInterop.viewOf(document, Set.of())),
+                    document, accumulator, NonFiniteResult.NULLED);
+        }
+
+        @Override
+        public JsonBaseElement applyWithContext(JsonObject document, JsonObject context) {
+            return invoke(List.of(EJsonInterop.fromEjson(document), EJsonInterop.fromEjson(context)), document, context,
+                    NonFiniteResult.REFUSED);
+        }
+
+        private JsonBaseElement invoke(List<JsValue> args, JsonObject document, JsonBaseElement accumulator,
+                NonFiniteResult nonFinite) {
+            final var returned = call(args, document, accumulator);
+            try {
+                return nonFinite == NonFiniteResult.NULLED && isNonFinite(returned)
+                        ? JsonNull.INSTANCE
+                        : session.toHostEjson(returned);
+            } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+                throw asCallableException(failure, maxErrorChars);
+            }
+        }
+
+        private JsValue call(List<JsValue> args, JsonObject document) {
+            return call(args, document, null);
+        }
+
+        private JsValue call(List<JsValue> args, JsonObject document, JsonBaseElement accumulator) {
+            final var charged = EJsonInterop.estimatedBytes(document)
+                    + (accumulator == null ? 0 : EJsonInterop.estimatedBytes(accumulator));
+            session.charge(charged);
+            try {
+                return settled(session.call(function, args));
+            } catch (RuntimeException | OutOfMemoryError | StackOverflowError failure) {
+                throw asCallableException(failure, maxErrorChars);
+            } finally {
+                session.release(charged);
+            }
+        }
+
+        private static boolean isNonFinite(JsValue value) {
+            return value instanceof JsNumber number && !Double.isFinite(number.getValue());
+        }
+
+        @Override
+        public void close() {
+            session.close();
+        }
+    }
+
+    private record ScriptError(String name, String message, List<String> stack) {
+        ScriptError(String name, String message) {
+            this(name, message, null);
+        }
+
+        ScriptError bounded(int maxChars) {
+            return new ScriptError(name, clamp(message, maxChars),
+                    stack == null ? null : stack.stream().map(frame -> clamp(frame, maxChars)).toList());
+        }
+    }
+
+    private static String clamp(String text, int maxChars) {
+        return text != null && maxChars > 0 && text.length() > maxChars ? text.substring(0, maxChars) : text;
+    }
+
+    private static ScriptError describe(Throwable failure, int maxChars) {
+        final var error = describeUnbounded(failure, maxChars);
+        return error == null ? null : error.bounded(maxChars);
+    }
+
+    private static ScriptError describeUnbounded(Throwable failure, int maxChars) {
+        return switch (failure) {
+            case ScriptCancelledException cancelled -> new ScriptError(CANCELLED, cancelled.getMessage());
+            case ScriptTimeoutException timeout -> new ScriptError(TIMEOUT, timeout.getMessage());
+            case ScriptMemoryException memory -> new ScriptError(MEMORY, memory.getMessage());
+            case ScriptArrayLengthException array -> new ScriptError(ARRAY_TOO_LARGE, array.getMessage());
+            case ScriptAbortException limit -> new ScriptError(LIMIT, limit.getMessage());
+            case JsThrowException thrown -> throwName(thrown, maxChars);
+            case TypeErrorException error -> new ScriptError("TypeError", error.getMessage(), error.getCapturedStack());
+            case ReferenceErrorException error ->
+                new ScriptError("ReferenceError", error.getMessage(), error.getCapturedStack());
+            case RangeErrorException error ->
+                new ScriptError("RangeError", error.getMessage(), error.getCapturedStack());
+            case SyntaxErrorException error ->
+                new ScriptError("SyntaxError", error.getMessage(), error.getCapturedStack());
+            case UnexpectedTokenException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnexpectedEndOfInputException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnexpectedCharacterException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnterminatedStringException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnterminatedTemplateException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnterminatedCommentException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnterminatedRegexException error -> new ScriptError("SyntaxError", error.getMessage());
+            case UnsupportedNodeException error ->
+                new ScriptError("SyntaxError", "Unsupported syntax: " + error.getMessage());
+            case ScriptPendingResultException error ->
+                new ScriptError(PENDING_RESULT, error.getMessage(), error.getCapturedStack());
+            case SimpleJsRuntimeException error ->
+                new ScriptError(INTERNAL_ERROR, error.getMessage(), error.getCapturedStack());
+            case OutOfMemoryError _, StackOverflowError _ -> new ScriptError(MEMORY, EXHAUSTED_MEMORY_MESSAGE);
+            case ScriptCallableException _ -> null;
+            case RuntimeException unmapped -> reportedInternalError(unmapped);
+            default -> null;
+        };
+    }
+
+    private static ScriptError reportedInternalError(RuntimeException unmapped) {
+        logger.error("A script run failed with an exception the engine does not map, so it is reported as "
+                + INTERNAL_ERROR + " rather than escaping the interpreter", unmapped);
+        return new ScriptError(INTERNAL_ERROR, INTERNAL_ERROR_MESSAGE);
+    }
+
+    private static ScriptError throwName(JsThrowException thrown, int maxChars) {
+        final var value = thrown.getValue();
+        if (value instanceof JsObject object) {
+            return new ScriptError(clamp(errorName(object), maxChars), field(object), object.getErrorStack());
+        }
+        return new ScriptError("Error", JsCoercion.describe(value));
+    }
+
+    private ScriptResult resultOf(JsonBaseElement value, ConsoleCapture capture, ResourceLimits limits) {
+        final var element = value == null ? JsonNull.INSTANCE : value;
+        final var max = limits == null ? -1 : limits.maxResultBytes();
+        if (max >= 0) {
+            final var size = EJsonInterop.estimatedBytes(element);
+            if (size > max) {
+                return failed(RESULT_TOO_LARGE,
+                        "Script result of about " + size + " bytes exceeds the maximum of " + max + " bytes", null,
+                        capture);
+            }
+        }
+        return ok(element, capture);
+    }
+
+    private ScriptResult ok(JsonBaseElement value, ConsoleCapture capture) {
+        return ScriptResult.value(value, capture.lines(), capture.isTruncated());
+    }
+
+    private ScriptResult failed(String name, String message, List<String> stack, ConsoleCapture capture) {
+        return ScriptResult.error(name, message, stack, capture.lines(), capture.isTruncated());
+    }
+
+    private JsonBaseElement convertResult(Interpreter.ProgramOutcome outcome, InterpreterOps ops) {
+        return EJsonInterop.toHostEjson(contractResult(outcome), ops);
+    }
+
+    private JsValue contractResult(Interpreter.ProgramOutcome outcome) {
+        if (outcome.hasReturn()) {
+            return settled(outcome.returnValue());
+        }
+        if (outcome.exportDefault() != null) {
+            return settled(outcome.exportDefault());
+        }
+        if (!outcome.namedExports().isEmpty()) {
+            final var object = new JsObject();
+            outcome.namedExports().forEach(object::set);
+            return object;
+        }
+        return JsUndefined.getInstance();
+    }
+
+    private static JsValue settled(JsValue value) {
+        if (!(value instanceof JsPromise promise)) {
+            return value;
+        }
+        promise.markHandled();
+        return switch (promise.getState()) {
+            case FULFILLED -> promise.getResult();
+            case REJECTED -> throw new JsThrowException(promise.getResult());
+            case PENDING -> throw new ScriptPendingResultException("The script's result promise never settled");
+        };
+    }
+
+    private static String errorName(JsObject object) {
+        var current = object;
+        while (current != null) {
+            if (current.has("name")) {
+                return JsCoercion.describe(current.get("name"));
+            }
+            current = current.getProto() instanceof JsObject proto ? proto : null;
+        }
+        current = object;
+        while (current != null) {
+            if (current.has("constructor")) {
+                final var ctorName = constructorName(current.get("constructor"));
+                if (ctorName != null) {
+                    return ctorName;
+                }
+            }
+            current = current.getProto() instanceof JsObject proto ? proto : null;
+        }
+        return "Error";
+    }
+
+    private static String constructorName(JsValue constructorValue) {
+        if (constructorValue instanceof JsFunction function) {
+            return function.getName();
+        }
+        if (constructorValue instanceof JsNativeFunction function) {
+            return function.getName();
+        }
+        if (constructorValue instanceof JsClass klass) {
+            return klass.getName();
+        }
+        return null;
+    }
+
+    private static String field(JsObject object) {
+        var current = object;
+        while (current != null) {
+            if (current.has("message")) {
+                return JsCoercion.describe(current.get("message"));
+            }
+            current = current.getProto() instanceof JsObject proto ? proto : null;
+        }
+        return "";
+    }
+}

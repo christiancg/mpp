@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     CastType,
     Conjunction,
     ConjunctionFilter,

@@ -6,7 +6,7 @@
     </Match>
 
     <Match>
-        <Class name="~org\.techhouse\.(ejson|ops|simplejs)\..*"/>
+        <Class name="~org\.ccg\.mpp\.(ejson|ops|simplejs)\..*"/>
         <Bug pattern="BC_UNCONFIRMED_CAST"/>
     </Match>
 
@@ -24,36 +24,36 @@
 
     <Match>
         <Or>
-            <Class name="org.techhouse.data.auth.PasswordHasher"/>
-            <Class name="org.techhouse.utils.VectorUtils"/>
+            <Class name="org.ccg.mpp.data.auth.PasswordHasher"/>
+            <Class name="org.ccg.mpp.utils.VectorUtils"/>
         </Or>
         <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
     </Match>
 
     <Match>
         <Or>
-            <Class name="org.techhouse.ejson.elements.JsonNumber"/>
-            <Class name="org.techhouse.ejson.custom_types.JsonGeo"/>
-            <Class name="org.techhouse.ejson.custom_types.JsonVector"/>
-            <Class name="org.techhouse.ejson.validate.CappedErrors"/>
+            <Class name="org.ccg.mpp.ejson.elements.JsonNumber"/>
+            <Class name="org.ccg.mpp.ejson.custom_types.JsonGeo"/>
+            <Class name="org.ccg.mpp.ejson.custom_types.JsonVector"/>
+            <Class name="org.ccg.mpp.ejson.validate.CappedErrors"/>
         </Or>
         <Bug pattern="EQ_DOESNT_OVERRIDE_EQUALS"/>
     </Match>
 
     <Match>
-        <Class name="org.techhouse.unit.simplejs.RealmRetentionTest"/>
+        <Class name="org.ccg.mpp.unit.simplejs.RealmRetentionTest"/>
         <Bug pattern="DM_GC"/>
     </Match>
 
     <Match>
-        <Class name="org.techhouse.ejson.type_adapters.impl.BooleanTypeAdapter"/>
+        <Class name="org.ccg.mpp.ejson.type_adapters.impl.BooleanTypeAdapter"/>
         <Bug pattern="NP_BOOLEAN_RETURN_NULL"/>
     </Match>
 
     <Match>
         <Or>
             <Source name="~.*Test\.java"/>
-            <Class name="~org\.techhouse\.test\..*"/>
+            <Class name="~org\.ccg\.mpp\.test\..*"/>
         </Or>
         <Bug pattern="RV_EXCEPTION_NOT_THROWN,RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT,RV_RETURN_VALUE_IGNORED_BAD_PRACTICE,SS_SHOULD_BE_STATIC,UWF_UNWRITTEN_FIELD,VA_FORMAT_STRING_USES_NEWLINE,CNT_ROUGH_CONSTANT_VALUE,REFLF_REFLECTION_MAY_INCREASE_ACCESSIBILITY_OF_FIELD"/>
     </Match>
@@ -61,7 +61,7 @@
     <Match>
         <Or>
             <Source name="~.*Test\.java"/>
-            <Class name="~org\.techhouse\.test\..*"/>
+            <Class name="~org\.ccg\.mpp\.test\..*"/>
         </Or>
         <Bug pattern="NP_NULL_PARAM_DEREF_ALL_TARGETS_DANGEROUS,NP_NULL_PARAM_DEREF_NONVIRTUAL,UL_UNRELEASED_LOCK"/>
     </Match>

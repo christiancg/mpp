@@ -5,8 +5,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from lwnrdb import OPERATIONS
-from lwnrdb._internal.portal import SyncRuntime
+from mpp import OPERATIONS
+from mpp._internal.portal import SyncRuntime
 from tests.fixtures.recorder import record_async, record_sync
 from tests.fixtures.wire_cases import all_cases
 from tests.support.json_trees import equivalent

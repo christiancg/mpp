@@ -6,7 +6,7 @@ import type { BulkSaveResult, ReadOptions, SaveResult } from "./results.js";
 import { Schema } from "./schema.js";
 import { Triggers } from "./scripting/triggers.js";
 import type { ListenHandler, Subscription } from "./subscription.js";
-import { LwnrdbError } from "./errors/errors.js";
+import { MppError } from "./errors/errors.js";
 
 export class Collection<T, R> {
     readonly #ops: CollectionOps<T, R>;
@@ -89,7 +89,7 @@ export class Collection<T, R> {
         const listens = this.#ops.context.listens;
         if (handler === undefined || listens === undefined) {
             return Promise.reject(
-                new LwnrdbError(handler === undefined ? "listen needs a handler" : "listens are not available here"),
+                new MppError(handler === undefined ? "listen needs a handler" : "listens are not available here"),
             );
         }
         return listens.listen(

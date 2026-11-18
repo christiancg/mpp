@@ -1,0 +1,120 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.ccg.mpp.bckg_ops.ScheduleRegistry;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.ClusterAdminHelper;
+import org.ccg.mpp.ops.CompiledProcedureCache;
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.OperationProcessor;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.OperationType;
+import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.DeleteScheduleRequest;
+import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.ListSchedulesRequest;
+import org.ccg.mpp.ops.req.SaveProcedureRequest;
+import org.ccg.mpp.ops.req.SaveScheduleRequest;
+import org.ccg.mpp.ops.resp.ListSchedulesResponse;
+import org.ccg.mpp.ops.resp.SaveScheduleResponse;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class OperationProcessorScheduleTest {
+    private static final Configuration configuration = Configuration.getInstance();
+    private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
+    private final Cache cache = IocContainer.get(Cache.class);
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final ScheduleRegistry registry = IocContainer.get(ScheduleRegistry.class);
+
+    @BeforeAll
+    static void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+    }
+
+    @AfterAll
+    static void tearDown() throws Exception {
+        TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
+        TestUtils.setPrivateField(configuration, "schedulesEnabled", false);
+        IocContainer.get(ScheduleRegistry.class).clear();
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    @BeforeEach
+    void reset() throws Exception {
+        TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
+        TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
+        TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 100);
+        TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        }
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        }
+        cache.removeSchedulesForDatabase(TestGlobals.DB);
+        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        registry.clear();
+        processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "job", "return 1;"));
+    }
+
+    private static SaveScheduleRequest saveRequest() {
+        final var request = new SaveScheduleRequest(TestGlobals.DB, "nightly", "job");
+        request.setIntervalMs(60_000L);
+        return request;
+    }
+
+    @Test
+    public void test_dispatches_save_list_and_delete() {
+        assertInstanceOf(SaveScheduleResponse.class, processor.processMessage(saveRequest()));
+        final var listed = (ListSchedulesResponse) processor.processMessage(new ListSchedulesRequest(TestGlobals.DB));
+        assertEquals(1, listed.getSchedules().size());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DeleteScheduleRequest(TestGlobals.DB, "nightly")).getStatus());
+        assertNull(cache.getSchedule(TestGlobals.DB, "nightly"));
+    }
+
+    @Test
+    public void test_save_failure_is_reported_as_an_error_code() throws Exception {
+        TestUtils.setPrivateField(configuration, "schedulesEnabled", false);
+        assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), processor.processMessage(saveRequest()).getErrorCode());
+        assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(),
+                processor.processMessage(new DeleteScheduleRequest(TestGlobals.DB, "nightly")).getErrorCode());
+        assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(),
+                processor.processMessage(new ListSchedulesRequest(TestGlobals.DB)).getErrorCode());
+    }
+
+    @Test
+    public void test_schedule_mutations_are_coordinated_admin_ops() {
+        assertTrue(ClusterAdminHelper.isCoordinatedAdminOp(OperationType.SAVE_SCHEDULE));
+        assertTrue(ClusterAdminHelper.isCoordinatedAdminOp(OperationType.DELETE_SCHEDULE));
+        assertFalse(ClusterAdminHelper.isCoordinatedAdminOp(OperationType.LIST_SCHEDULES));
+    }
+
+    @Test
+    public void test_drop_database_removes_schedules() throws Exception {
+        final var dbName = "scheddropdb";
+        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest(dbName)).getStatus());
+        processor.processMessage(new SaveProcedureRequest(dbName, "job", "return 1;"));
+        final var request = new SaveScheduleRequest(dbName, "nightly", "job");
+        request.setIntervalMs(60_000L);
+        assertInstanceOf(SaveScheduleResponse.class, processor.processMessage(request));
+
+        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(dbName)).getStatus());
+        assertTrue(fs.metadataFiles().listScheduleNames(dbName).isEmpty());
+        assertNull(cache.getSchedule(dbName, "nightly"));
+    }
+}

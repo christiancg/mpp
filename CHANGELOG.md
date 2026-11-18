@@ -1,6 +1,6 @@
 # Changelog
 
-Every notable change to the LWNRDB server, its Docker image and its bundled command-line client. The format follows
+Every notable change to the MPP server, its Docker image and its bundled command-line client. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/),
 `0.x` for now, so anything may change in a minor release (see [docs/compatibility.md](docs/compatibility.md)).
 
@@ -51,9 +51,9 @@ The first release. Protocol version 1, storage format version 1.
   sizing, security hardening, metrics and suggested alerts, the log lines that need action, backups and restore
   drills, and a recovery runbook.
 - A Docker image for `linux/amd64` and `linux/arm64`, with a trimmed JRE and a health check, published to
-  `ghcr.io/christiancg/lwnrdb`.
+  `ghcr.io/christiancg/mpp`.
 - Windows support: the jar runs on Windows as well as Linux and macOS, with the same data files and wire protocol
   (lines end in a line feed everywhere). See [On Windows](docs/operations.md#on-windows).
 
-[Unreleased]: https://github.com/christiancg/lwnrdb/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/christiancg/lwnrdb/releases/tag/v0.1.0
+[Unreleased]: https://github.com/christiancg/mpp/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/christiancg/mpp/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { RETRYABLE_CODES } from "../../../src/errors/error-codes.js";
-import { ConnectionLostError, LwnrdbError, UnavailableError, UnknownOutcomeError } from "../../../src/index.js";
+import { ConnectionLostError, MppError, UnavailableError, UnknownOutcomeError } from "../../../src/index.js";
 import { ConnectionFactory } from "../../../src/internal/connection-factory.js";
 import { ConnectionPool } from "../../../src/internal/connection-pool.js";
 import { isRetryable, jitteredBackoff, PinnedChannel, PooledChannel } from "../../../src/internal/request-channel.js";
@@ -69,7 +69,7 @@ describe("PooledChannel retries", () => {
 
     test.each(["503-3", "500-33", "500-34", "400-1"])("never retries %s", async (code) => {
         const channel = await channelFor(failingFirst(1, (request) => error(request, "ERROR", code)));
-        await expect(channel.send("SAVE", { type: "SAVE" })).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(channel.send("SAVE", { type: "SAVE" })).rejects.toBeInstanceOf(MppError);
         expect(pauses).toEqual([]);
     });
 

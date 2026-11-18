@@ -20,9 +20,9 @@ class CustomBuildHook(BuildHookInterface[BuilderConfig]):
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
         if self.target_name != "wheel" or version == "editable":
             return
-        staging = Path(tempfile.mkdtemp(prefix="lwnrdb-docs-"))
-        for relative, text in inject(ROOT / "src" / "lwnrdb", ROOT / "apidocs").items():
+        staging = Path(tempfile.mkdtemp(prefix="mpp-docs-"))
+        for relative, text in inject(ROOT / "src" / "mpp", ROOT / "apidocs").items():
             target = staging / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8")
-            build_data["force_include"][str(target)] = f"lwnrdb/{relative.as_posix()}"
+            build_data["force_include"][str(target)] = f"mpp/{relative.as_posix()}"

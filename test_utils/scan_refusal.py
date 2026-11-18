@@ -81,7 +81,7 @@ def test_after_a_restart_the_scan_of_the_recreated_collection_admits(c: Conn):
 
 def run_scan_refusal_phase():
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-scan-refusal-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-scan-refusal-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, SCAN_PORT, maxMemory=SCAN_MAX_MEMORY)
     print(f"\n  Starting an own server on {HOST}:{SCAN_PORT} with maxMemory={SCAN_MAX_MEMORY} ...")

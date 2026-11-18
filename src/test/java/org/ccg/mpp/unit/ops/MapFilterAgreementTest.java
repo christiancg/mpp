@@ -1,0 +1,180 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonBoolean;
+import org.ccg.mpp.ejson.elements.JsonNull;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ops.FilterOperatorHelper;
+import org.ccg.mpp.ops.MapOperatorHelper;
+import org.ccg.mpp.ops.req.agg.BaseOperator;
+import org.ccg.mpp.ops.req.agg.ConjunctionOperatorType;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.operators.ConjunctionOperator;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.ccg.mpp.ops.req.agg.step.map.RemoveFieldMapOperator;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+public class MapFilterAgreementTest {
+
+    private static final String MARKER_FIELD = "marker";
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.releaseAllLocks();
+    }
+
+    private static JsonObject document(String id, boolean field1, boolean field2) {
+        final var jsonObject = new JsonObject();
+        jsonObject.addProperty(Globals.PK_FIELD, id);
+        jsonObject.addProperty("field1", field1);
+        jsonObject.addProperty("field2", field2);
+        jsonObject.addProperty(MARKER_FIELD, "present");
+        return jsonObject;
+    }
+
+    private static List<JsonObject> everyCombination() {
+        return List.of(document("neither", false, false), document("first", true, false),
+                document("second", false, true), document("both", true, true));
+    }
+
+    private static ConjunctionOperator conjunctionOf(ConjunctionOperatorType type) {
+        final List<BaseOperator> leaves = List.of(
+                new FieldOperator(FieldOperatorType.EQUALS, "field1", JsonBoolean.of(true)),
+                new FieldOperator(FieldOperatorType.EQUALS, "field2", JsonBoolean.of(true)));
+        return new ConjunctionOperator(type, leaves);
+    }
+
+    private static Set<String> idsSelectedByFilter(ConjunctionOperatorType type) throws IOException {
+        try (var filtered = FilterOperatorHelper.processOperator(conjunctionOf(type), everyCombination().stream(), "",
+                "")) {
+            return filtered.map(jsonObject -> jsonObject.get(Globals.PK_FIELD).asJsonString().getValue())
+                    .collect(LinkedHashSet::new, Set::add, Set::addAll);
+        }
+    }
+
+    private static Set<String> idsSelectedByMapCondition(ConjunctionOperatorType type) {
+        final var selected = new LinkedHashSet<String>();
+        for (final var jsonObject : everyCombination()) {
+            final var mapped = MapOperatorHelper
+                    .processOperator(new RemoveFieldMapOperator(MARKER_FIELD, conjunctionOf(type)), jsonObject);
+            if (!mapped.has(MARKER_FIELD)) {
+                selected.add(jsonObject.get(Globals.PK_FIELD).asJsonString().getValue());
+            }
+        }
+        return selected;
+    }
+
+    @Test
+    public void test_a_map_condition_selects_exactly_what_the_same_filter_selects() throws IOException {
+        final var disagreeing = new ArrayList<String>();
+        for (final var type : ConjunctionOperatorType.values()) {
+            final var byFilter = idsSelectedByFilter(type);
+            final var byMapCondition = idsSelectedByMapCondition(type);
+            if (!byFilter.equals(byMapCondition)) {
+                disagreeing.add(
+                        type + ": FILTER selected " + byFilter + " but the MAP condition selected " + byMapCondition);
+            }
+        }
+        assertEquals(List.of(), disagreeing,
+                "a conjunction must mean the same thing in a MAP condition as it does in a FILTER");
+    }
+
+    private static final String ARRAY_FIELD = "tags";
+
+    private static JsonObject documentWith(String id, JsonBaseElement fieldValue) {
+        final var jsonObject = new JsonObject();
+        jsonObject.addProperty(Globals.PK_FIELD, id);
+        jsonObject.add(ARRAY_FIELD, fieldValue);
+        jsonObject.addProperty(MARKER_FIELD, "present");
+        return jsonObject;
+    }
+
+    private static List<JsonObject> arrayOperandFixture() {
+        return List.of(documentWith("array_value", arrayOperand()),
+                documentWith("scalar_value", new JsonString("solo")), documentWith("null_value", JsonNull.INSTANCE));
+    }
+
+    private static JsonArray arrayOperand() {
+        final var array = new JsonArray();
+        array.add(new JsonString("a"));
+        array.add(new JsonString("b"));
+        return array;
+    }
+
+    private static Set<String> idsSelectedByFilter(BaseOperator condition, List<JsonObject> documents)
+            throws IOException {
+        try (var filtered = FilterOperatorHelper.processOperator(condition, documents.stream(), "", "")) {
+            return filtered.map(jsonObject -> jsonObject.get(Globals.PK_FIELD).asJsonString().getValue())
+                    .collect(LinkedHashSet::new, Set::add, Set::addAll);
+        }
+    }
+
+    private static Set<String> idsSelectedByMapCondition(BaseOperator condition, List<JsonObject> documents) {
+        final var selected = new LinkedHashSet<String>();
+        for (final var jsonObject : documents) {
+            final var mapped = MapOperatorHelper.processOperator(new RemoveFieldMapOperator(MARKER_FIELD, condition),
+                    jsonObject);
+            if (!mapped.has(MARKER_FIELD)) {
+                selected.add(jsonObject.get(Globals.PK_FIELD).asJsonString().getValue());
+            }
+        }
+        return selected;
+    }
+
+    @Test
+    public void test_not_equals_array_operand_agrees_between_filter_and_map_condition() throws IOException {
+        final var condition = new FieldOperator(FieldOperatorType.NOT_EQUALS, ARRAY_FIELD, arrayOperand());
+        final var documents = arrayOperandFixture();
+        final var expected = Set.of("scalar_value", "null_value");
+
+        final var byFilter = idsSelectedByFilter(condition, documents);
+        final var byMapCondition = idsSelectedByMapCondition(condition, documents);
+
+        assertEquals(expected, byFilter);
+        assertEquals(expected, byMapCondition);
+    }
+
+    private static FieldOperator isTrue(String field) {
+        return new FieldOperator(FieldOperatorType.EQUALS, field, JsonBoolean.of(true));
+    }
+
+    private static List<JsonObject> threeFlags() {
+        final var documents = new ArrayList<JsonObject>();
+        for (var bits = 0; bits < 8; bits++) {
+            final var jsonObject = new JsonObject();
+            jsonObject.addProperty(Globals.PK_FIELD, "bits" + bits);
+            jsonObject.addProperty("a", (bits & 1) != 0);
+            jsonObject.addProperty("b", (bits & 2) != 0);
+            jsonObject.addProperty("c", (bits & 4) != 0);
+            jsonObject.addProperty(MARKER_FIELD, "present");
+            documents.add(jsonObject);
+        }
+        return documents;
+    }
+
+    @Test
+    public void test_nested_conjunctions_agree_between_filter_and_map_condition() throws IOException {
+        for (final var outer : ConjunctionOperatorType.values()) {
+            for (final var inner : ConjunctionOperatorType.values()) {
+                final var nested = new ConjunctionOperator(inner, List.of(isTrue("b"), isTrue("c")));
+                final var condition = new ConjunctionOperator(outer, List.of(isTrue("a"), nested,
+                        new ConjunctionOperator(ConjunctionOperatorType.XOR, List.of(isTrue("a"), isTrue("c")))));
+
+                assertEquals(idsSelectedByFilter(condition, threeFlags()),
+                        idsSelectedByMapCondition(condition, threeFlags()), outer + " over " + inner);
+            }
+        }
+    }
+}

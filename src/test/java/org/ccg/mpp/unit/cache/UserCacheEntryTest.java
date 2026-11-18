@@ -1,0 +1,421 @@
+package org.ccg.mpp.unit.cache;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cache.CacheResidents;
+import org.ccg.mpp.cache.UserCache;
+import org.ccg.mpp.concurrency.ResourceLocking;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.DbEntry;
+import org.ccg.mpp.data.FieldIndexEntry;
+import org.ccg.mpp.data.PkIndexEntry;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonBoolean;
+import org.ccg.mpp.ejson.elements.JsonNumber;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.req.agg.FieldOperatorType;
+import org.ccg.mpp.ops.req.agg.operators.FieldOperator;
+import org.ccg.mpp.test.TestUtils;
+import org.ccg.mpp.utils.ReflectionUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+public class UserCacheEntryTest {
+    // Mockito mocks skip field initializers, so the real getIdsFromIndex (called via thenCallRealMethod)
+    // would see a null index lock. Inject a real ResourceLocking so the read lock can be acquired.
+    private static void injectRealLocking(UserCache mock) {
+        try {
+            final var rlField = UserCache.class.getDeclaredField("rl");
+            rlField.setAccessible(true);
+            rlField.set(mock, new ResourceLocking());
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @BeforeEach
+    public void setUp() throws NoSuchFieldException, IllegalAccessException, IOException {
+        TestUtils.standardInitialSetup();
+    }
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.standardTearDown();
+    }
+
+    @Test
+    public void test_retrieves_ids_for_double_values() throws IOException {
+        var cache = mock(UserCache.class);
+        injectRealLocking(cache);
+        var dbName = "testDB";
+        var collName = "testCollection";
+        var fieldName = "testField";
+        var operator = new FieldOperator(FieldOperatorType.EQUALS, fieldName, new JsonNumber(10.0));
+        var value = 10.0;
+
+        var indexEntries = List.of(new FieldIndexEntry<Number>(dbName, collName, value, Set.of("id1", "id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(indexEntries);
+
+        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, value)).thenCallRealMethod();
+
+        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, value);
+
+        assertNotNull(result);
+        assertTrue(result.contains("id1"));
+        assertTrue(result.contains("id2"));
+    }
+
+    @Test
+    public void test_handles_null_values_in_json_array() throws IOException {
+        var cache = new UserCache();
+        var dbName = "testDB";
+        var collName = "testCollection";
+        var fieldName = "testField";
+        var operator = new FieldOperator(FieldOperatorType.IN, fieldName, new JsonArray());
+        var jsonArray = new JsonArray();
+        jsonArray.add((JsonBaseElement) null);
+
+        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, jsonArray);
+
+        assertNull(result);
+    }
+
+    @Test
+    public void test_retrieves_ids_for_boolean_values() throws IOException {
+        var cache = mock(UserCache.class);
+        injectRealLocking(cache);
+        String dbName = "testDB";
+        String collName = "testCollection";
+        String fieldName = "testField";
+        FieldOperator operator = new FieldOperator(FieldOperatorType.EQUALS, fieldName, JsonBoolean.of(true));
+
+        List<FieldIndexEntry<Boolean>> booleanIndex = new ArrayList<>();
+        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Boolean.class))
+                .thenReturn(booleanIndex);
+
+        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, true)).thenCallRealMethod();
+
+        Set<String> result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, true);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void test_retrieves_ids_for_string_values() throws IOException {
+        var cache = mock(UserCache.class);
+        injectRealLocking(cache);
+        String dbName = "testDB";
+        String collName = "testCollection";
+        String fieldName = "testField";
+        FieldOperator operator = new FieldOperator(FieldOperatorType.EQUALS, fieldName, new JsonString("test"));
+
+        List<FieldIndexEntry<String>> stringIndex = new ArrayList<>();
+        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, String.class)).thenReturn(stringIndex);
+
+        Set<String> result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, "test");
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void test_add_entry_to_empty_cache() {
+        UserCache cache = new UserCache();
+        String dbName = "testDb";
+        String collName = "testColl";
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty(Globals.PK_FIELD, "123");
+        DbEntry entry = DbEntry.fromJsonObject(dbName, collName, jsonObject);
+
+        cache.addEntryToCache(dbName, collName, entry);
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+
+        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        assertTrue(collectionMap.containsKey(collId));
+        assertTrue(collectionMap.get(collId).containsKey("123"));
+    }
+
+    @Test
+    public void test_add_entry_with_null_id() {
+        UserCache cache = new UserCache();
+        String dbName = "testDb";
+        String collName = "testColl";
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty(Globals.PK_FIELD, "123");
+        DbEntry entry = DbEntry.fromJsonObject(dbName, collName, jsonObject);
+
+        cache.addEntryToCache(dbName, collName, entry);
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+
+        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        assertTrue(collectionMap.containsKey(collId));
+        assertNotNull(entry.get_id());
+        assertTrue(collectionMap.get(collId).containsKey(entry.get_id()));
+    }
+
+    @Test
+    public void test_adding_entries_to_empty_cache() {
+        UserCache cache = new UserCache();
+        String dbName = "testDb";
+        String collName = "testColl";
+        var jsonObject1 = new JsonObject();
+        jsonObject1.addProperty(Globals.PK_FIELD, "1");
+        var jsonObject2 = new JsonObject();
+        jsonObject2.addProperty(Globals.PK_FIELD, "2");
+        List<DbEntry> entries = List.of(DbEntry.fromJsonObject(dbName, collName, jsonObject1),
+                DbEntry.fromJsonObject(dbName, collName, jsonObject2));
+
+        cache.addEntriesToCache(dbName, collName, entries);
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+
+        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        assertEquals(2, collectionMap.get(collId).size());
+        assertTrue(collectionMap.get(collId).containsKey("1"));
+        assertTrue(collectionMap.get(collId).containsKey("2"));
+    }
+
+    @Test
+    public void test_adding_entries_with_duplicate_ids() {
+        UserCache cache = new UserCache();
+        String dbName = "testDb";
+        String collName = "testColl";
+
+        var jsonObject1 = new JsonObject();
+        jsonObject1.addProperty(Globals.PK_FIELD, "1");
+        var jsonObject2 = new JsonObject();
+        jsonObject2.addProperty(Globals.PK_FIELD, "1");
+
+        List<DbEntry> entries = List.of(DbEntry.fromJsonObject(dbName, collName, jsonObject1),
+                DbEntry.fromJsonObject(dbName, collName, jsonObject2));
+
+        cache.addEntriesToCache(dbName, collName, entries);
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+
+        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        assertEquals(1, collectionMap.get(collId).size());
+        assertTrue(collectionMap.get(collId).containsKey("1"));
+    }
+
+    @Test
+    public void retrieves_entry_from_cache_if_exists() throws Exception {
+        String dbName = "testDb";
+        String collName = "testColl";
+        PkIndexEntry idxEntry = new PkIndexEntry(dbName, collName, "testValue", 0, 100, 0);
+        UserCache cache = new UserCache();
+        DbEntry expectedEntry = new DbEntry();
+        expectedEntry.setDatabaseName(dbName);
+        expectedEntry.setCollectionName(collName);
+        expectedEntry.set_id("testValue");
+
+        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        collectionMap.putIfAbsent(collectionIdentifier, new ConcurrentHashMap<>());
+        collectionMap.get(collectionIdentifier).put("testValue", expectedEntry);
+
+        DbEntry result = cache.getById(dbName, collName, idxEntry);
+
+        assertEquals(expectedEntry, result);
+    }
+
+    private static void injectPkIndex(UserCache cache, String collId, List<PkIndexEntry> entries)
+            throws NoSuchFieldException, IllegalAccessException {
+        final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
+        };
+        final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", type);
+        pkIndexMap.put(collId, new ArrayList<>(entries));
+    }
+
+    private static void injectCachedEntry(UserCache cache, String collId, DbEntry entry) {
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        final var inner = collectionMap.computeIfAbsent(collId, _ -> new ConcurrentHashMap<>());
+        inner.put(entry.get_id(), entry);
+    }
+
+    @Test
+    public void test_getEntriesByIds_empty_or_null_returns_empty() throws Exception {
+        UserCache cache = new UserCache();
+        assertTrue(cache.getEntriesByIds("userDb", "c1", Set.of()).isEmpty());
+        assertTrue(cache.getEntriesByIds("userDb", "c1", null).isEmpty());
+    }
+
+    @Test
+    public void test_getEntriesByIds_serves_from_cache_without_fs_read() throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0)));
+        final var obj = new JsonObject();
+        obj.addProperty(Globals.PK_FIELD, "id1");
+        injectCachedEntry(cache, collId, DbEntry.fromJsonObject("userDb", "c1", obj));
+
+        final var result = cache.getEntriesByIds("userDb", "c1", Set.of("id1"));
+
+        assertEquals(1, result.size());
+        assertEquals("id1", result.getFirst().get_id());
+        verify(fsMock, never()).getByIndexEntries(anyList());
+    }
+
+    @Test
+    public void test_getEntriesByIds_targeted_read_for_missing_and_populates_cache() throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        final var pk1 = new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0);
+        final var pk2 = new PkIndexEntry("userDb", "c1", "id2", 50, 50, 0);
+        injectPkIndex(cache, collId, List.of(pk1, pk2));
+        final var cachedObj = new JsonObject();
+        cachedObj.addProperty(Globals.PK_FIELD, "id1");
+        injectCachedEntry(cache, collId, DbEntry.fromJsonObject("userDb", "c1", cachedObj));
+
+        final var readObj = new JsonObject();
+        readObj.addProperty(Globals.PK_FIELD, "id2");
+        final var readEntry = DbEntry.fromJsonObject("userDb", "c1", readObj);
+        when(fsMock.getByIndexEntries(anyList())).thenReturn(List.of(readEntry));
+
+        final var locks = IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
+        locks.lockRead("userDb", "c1");
+        final List<DbEntry> result;
+        try {
+            result = cache.getEntriesByIds("userDb", "c1", new HashSet<>(Set.of("id1", "id2")));
+        } finally {
+            locks.releaseRead("userDb", "c1");
+        }
+
+        assertEquals(2, result.size());
+        final var captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        //noinspection unchecked
+        verify(fsMock).getByIndexEntries(captor.capture());
+        //noinspection unchecked
+        final List<PkIndexEntry> requested = captor.getValue();
+        assertEquals(1, requested.size());
+        assertEquals("id2", requested.getFirst().getValue());
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        assertTrue(collectionMap.get(collId).containsKey("id2"));
+    }
+
+    @Test
+    public void test_a_lockless_reader_does_not_admit_a_document() throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        final var idxEntry = new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0);
+        final var obj = new JsonObject();
+        obj.addProperty(Globals.PK_FIELD, "id1");
+        when(fsMock.getById(any())).thenReturn(DbEntry.fromJsonObject("userDb", "c1", obj));
+
+        final var result = cache.getById("userDb", "c1", idxEntry);
+
+        assertNotNull(result);
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        final var inner = collectionMap.get(collId);
+        assertTrue(inner == null || !inner.containsKey("id1"),
+                "a reader holding no collection lock must not publish into the shared map: a writer can commit a"
+                        + " newer version or a delete between its disk read and the put");
+    }
+
+    @Test
+    public void test_a_locked_reader_still_admits_a_document() throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        final var idxEntry = new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0);
+        final var obj = new JsonObject();
+        obj.addProperty(Globals.PK_FIELD, "id1");
+        when(fsMock.getById(any())).thenReturn(DbEntry.fromJsonObject("userDb", "c1", obj));
+
+        final var locks = IocContainer.get(ResourceLocking.class);
+        locks.lockRead("userDb", "c1");
+        try {
+            cache.getById("userDb", "c1", idxEntry);
+        } finally {
+            locks.releaseRead("userDb", "c1");
+        }
+
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        assertTrue(collectionMap.get(collId).containsKey("id1"));
+    }
+
+    @Test
+    public void test_a_lockless_getEntriesByIds_does_not_admit_documents() throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userDb", "c1", "id2", 0, 50, 0)));
+        final var readObj = new JsonObject();
+        readObj.addProperty(Globals.PK_FIELD, "id2");
+        when(fsMock.getByIndexEntries(anyList())).thenReturn(List.of(DbEntry.fromJsonObject("userDb", "c1", readObj)));
+
+        final var result = cache.getEntriesByIds("userDb", "c1", new HashSet<>(Set.of("id2")));
+
+        assertEquals(1, result.size());
+        final var collectionMap = CacheResidents.documentsByCollection(cache);
+        final var inner = collectionMap.get(collId);
+        assertTrue(inner == null || !inner.containsKey("id2"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void test_getEntriesByIds_with_more_ids_than_the_initial_capacity_mixes_cached_hits_and_misses()
+            throws Exception {
+        UserCache cache = new UserCache();
+        FileSystem fsMock = mock(FileSystem.class);
+        TestUtils.setPrivateField(cache, "fs", fsMock);
+        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
+        final var known = new ArrayList<PkIndexEntry>();
+        final var requested = new HashSet<String>();
+        for (var i = 0; i < 500; i++) {
+            final var id = "id%03d".formatted(i);
+            requested.add(id);
+            if (i < 350) {
+                known.add(new PkIndexEntry("userDb", "c1", id, i * 50L, 50, 0));
+            }
+            if (i < 250) {
+                final var object = new JsonObject();
+                object.addProperty(Globals.PK_FIELD, id);
+                injectCachedEntry(cache, collId, DbEntry.fromJsonObject("userDb", "c1", object));
+            }
+        }
+        injectPkIndex(cache, collId, known);
+        when(fsMock.getByIndexEntries(anyList()))
+                .thenAnswer(invocation -> ((List<PkIndexEntry>) invocation.getArgument(0)).stream().map(pk -> {
+                    final var object = new JsonObject();
+                    object.addProperty(Globals.PK_FIELD, pk.getValue());
+                    return DbEntry.fromJsonObject("userDb", "c1", object);
+                }).toList());
+
+        final var result = cache.getEntriesByIds("userDb", "c1", requested);
+
+        assertEquals(350, result.size());
+        assertEquals(350, result.stream().map(DbEntry::get_id).distinct().count());
+        verify(fsMock).getByIndexEntries(argThat(read -> read.size() == 100));
+    }
+}

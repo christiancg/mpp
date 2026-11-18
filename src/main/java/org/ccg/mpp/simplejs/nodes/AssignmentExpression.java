@@ -1,0 +1,46 @@
+package org.ccg.mpp.simplejs.nodes;
+
+public class AssignmentExpression extends Expression {
+    private final String operator;
+    private final BinaryOperator compoundKind;
+    private final JsNode target;
+    private final Expression value;
+    private final boolean targetParenthesized;
+
+    public AssignmentExpression(String operator, JsNode target, Expression value) {
+        this(operator, target, value, false);
+    }
+
+    public AssignmentExpression(String operator, JsNode target, Expression value, boolean targetParenthesized) {
+        this.operator = operator;
+        this.compoundKind = BinaryOperator.compoundOf(operator);
+        this.target = target;
+        this.value = value;
+        this.targetParenthesized = targetParenthesized;
+    }
+
+    public String getOperator() {
+        return operator;
+    }
+
+    public BinaryOperator compoundKind() {
+        return compoundKind;
+    }
+
+    public JsNode getTarget() {
+        return target;
+    }
+
+    public Expression getValue() {
+        return value;
+    }
+
+    public boolean isTargetParenthesized() {
+        return targetParenthesized;
+    }
+
+    @Override
+    public NodeType getType() {
+        return NodeType.ASSIGNMENT_EXPRESSION;
+    }
+}

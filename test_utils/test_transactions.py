@@ -883,7 +883,7 @@ def test_a_transaction_over_four_megabytes_commits_whole(c):
 def test_transactional_deletes_count_deleted_document_bytes():
     section("A transactional DELETE with a delete trigger counts the deleted document's bytes")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-txn-triggers-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-txn-triggers-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, TRIGGER_SERVER_PORT, transactionMaxBytes="64Kb", scriptsEnabled=True,
                     triggersEnabled=True, maxMemory="512mb")
@@ -923,7 +923,7 @@ def test_transactional_deletes_count_deleted_document_bytes():
 def test_an_aggregate_inside_a_transaction_obeys_the_deadline():
     section("An aggregate over a transaction's overlay stops at aggregateTimeoutMs")
     bu.require_jar()
-    work_dir = tempfile.mkdtemp(prefix="lwnrdb-txn-deadline-")
+    work_dir = tempfile.mkdtemp(prefix="mpp-txn-deadline-")
     log_path = os.path.join(work_dir, "server.log")
     bu.write_config(work_dir, TRIGGER_SERVER_PORT, aggregateTimeoutMs=1, maxMemory="512mb")
     proc = bu.start_server(work_dir, log_path, port=TRIGGER_SERVER_PORT)
@@ -953,7 +953,7 @@ def main():
         r = c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
         if r.get("status") != "OK":
             print(f"\n[ERROR] Cannot authenticate as admin: {r.get('message')}")
-            print("        Make sure the server is running and lwnrdb.cfg has the correct")
+            print("        Make sure the server is running and mpp.cfg has the correct")
             print(f"        defaultAdminUsername={ADMIN_USERNAME} / defaultAdminPassword={ADMIN_PASSWORD} (base_utils.PASSWORD).\n")
             sys.exit(1)
         print("\n  Setting up fixtures...")

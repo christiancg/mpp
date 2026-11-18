@@ -1,0 +1,89 @@
+package org.ccg.mpp.unit.utils;
+
+import static org.ccg.mpp.utils.ReflectionUtils.getClassFromSimpleName;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.Map;
+import org.ccg.mpp.ejson.custom_types.CustomTypeFactory;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonCustom;
+import org.ccg.mpp.ejson.exceptions.WrongFormatCustomTypeException;
+import org.ccg.mpp.utils.ReflectionUtils;
+import org.junit.jupiter.api.Test;
+
+public class ReflectionUtilsTest {
+    @Test
+    public void test_type_token_extracts_class_from_direct_subclass() {
+        ReflectionUtils.TypeToken<String> token = new ReflectionUtils.TypeToken<>() {
+        };
+
+        Class<String> result = token.getTypeParameter();
+
+        assertEquals(String.class, result);
+    }
+
+    @Test
+    @SuppressWarnings("rawtypes")
+    public void test_type_token_throws_for_raw_type() {
+        ReflectionUtils.TypeToken<?> rawToken = new ReflectionUtils.TypeToken() {
+        };
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, rawToken::getTypeParameter);
+
+        assertTrue(exception.getMessage().contains("TypeToken must be created with a type argument"));
+    }
+
+    @Test
+    public void test_returns_string_class_for_string_input() {
+        Class<?> result = getClassFromSimpleName("String");
+
+        assertEquals(String.class, result);
+    }
+
+    @Test
+    public void test_returns_number_class() {
+        Class<?> result = getClassFromSimpleName("Number");
+        assertEquals(Number.class, result);
+    }
+
+    @Test
+    public void test_returns_boolean_class() {
+        Class<?> result = getClassFromSimpleName("Boolean");
+        assertEquals(Boolean.class, result);
+    }
+
+    public static class MyCustomType extends JsonCustom<String> {
+        @Override
+        public String getCustomTypeName() {
+            return "MyCustomType";
+        }
+        @Override
+        protected String parse() throws WrongFormatCustomTypeException {
+            return "";
+        }
+        @Override
+        public Integer compare(String another) {
+            return 0;
+        }
+        @Override
+        public boolean applyCustomOperator(String operatorName, Map<String, JsonBaseElement> args) {
+            throw new UnsupportedOperationException();
+        }
+        @Override
+        public double applyCustomRankingOperator(String operatorName, Map<String, JsonBaseElement> args) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Test
+    public void test_returns_registered_custom_type_class() {
+        CustomTypeFactory.registerCustomType(MyCustomType.class);
+        try {
+            Class<?> result = getClassFromSimpleName("MyCustomType");
+            assertEquals(MyCustomType.class, result);
+        } finally {
+            CustomTypeFactory.getCustomTypes().remove("MyCustomType");
+        }
+    }
+
+}

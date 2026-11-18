@@ -5,13 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>example</groupId>
-    <artifactId>lwnrdb-spring-boot-consumer</artifactId>
+    <artifactId>mpp-spring-boot-consumer</artifactId>
     <version>1.0</version>
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwnrdb.version>0.1.0-SNAPSHOT</lwnrdb.version>
+        <mpp.version>0.1.0-SNAPSHOT</mpp.version>
         <spring-boot.version>4.1.2</spring-boot.version>
     </properties>
 
@@ -19,8 +19,8 @@
         <dependencies>
             <dependency>
                 <groupId>io.github.christiancg</groupId>
-                <artifactId>lwnrdb-client-bom</artifactId>
-                <version>${lwnrdb.version}</version>
+                <artifactId>mpp-client-bom</artifactId>
+                <version>${mpp.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -41,7 +41,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.christiancg</groupId>
-            <artifactId>lwnrdb-spring-boot-starter</artifactId>
+            <artifactId>mpp-spring-boot-starter</artifactId>
         </dependency>
     </dependencies>
 </project>

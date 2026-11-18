@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <profiles version="23">
-    <profile kind="CodeFormatterProfile" name="lwnrdb" version="23">
+    <profile kind="CodeFormatterProfile" name="mpp" version="23">
         <!-- Indentation: 4 spaces, no tabs -->
         <setting id="org.eclipse.jdt.core.formatter.tabulation.char" value="space"/>
         <setting id="org.eclipse.jdt.core.formatter.tabulation.size" value="4"/>

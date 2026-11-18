@@ -1,0 +1,125 @@
+package org.ccg.mpp.cache.heap;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ejson.elements.JsonBaseElement;
+import org.ccg.mpp.ejson.elements.JsonBoolean;
+import org.ccg.mpp.ejson.elements.JsonCustom;
+import org.ccg.mpp.ejson.elements.JsonNull;
+import org.ccg.mpp.ejson.elements.JsonNumber;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.ejson.internal.KeyTable;
+
+public final class DocumentHeapSizer {
+    private static final long SMALLEST_SHARED_BOX = -128L;
+    private static final long LARGEST_SHARED_BOX = 127L;
+
+    private DocumentHeapSizer() {
+    }
+
+    public static long sizeOf(JsonBaseElement element, HeapLayout layout) {
+        return sizeOf(element, layout, false);
+    }
+
+    public static long sizeAtMost(JsonBaseElement element, HeapLayout layout) {
+        return sizeOf(element, layout, true);
+    }
+
+    private static long sizeOf(JsonBaseElement element, HeapLayout layout, boolean wide) {
+        return switch (element) {
+            case null -> 0L;
+            case JsonNull _ -> 0L;
+            case JsonObject object -> objectSize(object, layout, wide);
+            case JsonArray array -> arraySize(array, layout, wide);
+            case JsonCustom<?> custom -> customSize(custom, layout, wide);
+            case JsonString string ->
+                layout.shallowSize(string.getClass()) + stringSize(string.getValue(), layout, wide);
+            case JsonNumber number -> layout.shallowSize(number.getClass());
+            case JsonBoolean _ -> 0L;
+            default -> layout.shallowSize(element.getClass());
+        };
+    }
+
+    public static long indexedValueSize(Object value, HeapLayout layout) {
+        return switch (value) {
+            case null -> 0L;
+            case JsonCustom<?> custom -> customSize(custom, layout, false);
+            case String string -> layout.stringSize(string);
+            case Boolean _ -> 0L;
+            case Number number -> boxSize(number, layout);
+            default -> parsedValueSize(value, layout);
+        };
+    }
+
+    private static long objectSize(JsonObject object, HeapLayout layout, boolean wide) {
+        final var capacity = object.capacity();
+        final var sharedKeys = object.shape() != null && object.shape().isPinned();
+        var total = layout.shallowSize(JsonObject.class);
+        if (capacity > 0) {
+            total += (sharedKeys ? 1 : 2) * layout.referenceArraySize(capacity);
+        }
+        if (object.indexSlots() > 0 && !sharedKeys) {
+            total += layout.arraySize(Integer.BYTES, object.indexSlots());
+        }
+        for (var i = 0; i < object.size(); i++) {
+            total += (sharedKeys ? 0L : keySize(object.keyAt(i), layout, wide))
+                    + sizeOf(object.valueAt(i), layout, wide);
+        }
+        return total;
+    }
+
+    private static long keySize(String key, HeapLayout layout, boolean wide) {
+        return KeyTable.isPinned(key) ? 0L : stringSize(key, layout, wide);
+    }
+
+    private static long arraySize(JsonArray array, HeapLayout layout, boolean wide) {
+        var total = layout.shallowSize(JsonArray.class) + layout.shallowSize(ArrayList.class)
+                + layout.arrayListArraySize(array.size());
+        for (final var element : array) {
+            total += sizeOf(element, layout, wide);
+        }
+        return total;
+    }
+
+    private static long customSize(JsonCustom<?> custom, HeapLayout layout, boolean wide) {
+        return layout.shallowSize(custom.getClass()) + stringSize(custom.getValue(), layout, wide)
+                + parsedValueSize(custom.getCustomValue(), layout);
+    }
+
+    private static long parsedValueSize(Object value, HeapLayout layout) {
+        return switch (value) {
+            case null -> 0L;
+            case double[] components -> layout.arraySize(Double.BYTES, components.length);
+            case LocalDateTime _ -> layout.shallowSize(LocalDateTime.class) + layout.shallowSize(LocalDate.class)
+                    + layout.shallowSize(LocalTime.class);
+            default -> layout.shallowSize(value.getClass());
+        };
+    }
+
+    private static long boxSize(Number value, HeapLayout layout) {
+        if (value == null) {
+            return 0L;
+        }
+        if (isSharedBox(value)) {
+            return 0L;
+        }
+        return layout.shallowSize(value.getClass());
+    }
+
+    private static boolean isSharedBox(Number value) {
+        final var cachedByValueOf = value instanceof Integer || value instanceof Long || value instanceof Short
+                || value instanceof Byte;
+        return cachedByValueOf && value.longValue() >= SMALLEST_SHARED_BOX && value.longValue() <= LARGEST_SHARED_BOX;
+    }
+
+    private static long stringSize(String value, HeapLayout layout, boolean wide) {
+        if (value == null) {
+            return 0L;
+        }
+        return wide ? layout.stringSizeAtMost(value) : layout.stringSize(value);
+    }
+}

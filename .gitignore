@@ -62,7 +62,7 @@ test_utils/bench/generated/
 
 ### test262 corpus (fetched, never committed) ###
 # Anchored: an unanchored `test262/` would also ignore the worker's Java package
-# (src/test/java/org/techhouse/unit/simplejs/test262/).
+# (src/test/java/org/ccg/mpp/unit/simplejs/test262/).
 /test262/
 
 ### TLS keystores (auto-generated, contain private keys — never commit) ###

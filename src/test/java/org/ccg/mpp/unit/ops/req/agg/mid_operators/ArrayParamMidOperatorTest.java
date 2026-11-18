@@ -1,0 +1,47 @@
+package org.ccg.mpp.unit.ops.req.agg.mid_operators;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import org.ccg.mpp.ejson.elements.JsonArray;
+import org.ccg.mpp.ops.req.agg.mid_operators.ArrayParamMidOperator;
+import org.ccg.mpp.ops.req.agg.mid_operators.MidOperationType;
+import org.junit.jupiter.api.Test;
+
+public class ArrayParamMidOperatorTest {
+    @Test
+    public void test_create_with_valid_params() {
+        JsonArray operands = new JsonArray();
+        operands.add("test");
+
+        ArrayParamMidOperator operator = new ArrayParamMidOperator(MidOperationType.SIZE, operands);
+
+        assertEquals(MidOperationType.SIZE, operator.getType());
+        assertEquals(operands, operator.getOperands());
+        assertEquals(1, operator.getOperands().size());
+    }
+
+    @Test
+    public void test_create_with_null_operands() {
+        ArrayParamMidOperator operator = new ArrayParamMidOperator(MidOperationType.AVG, null);
+
+        assertEquals(MidOperationType.AVG, operator.getType());
+        assertNull(operator.getOperands());
+    }
+
+    @Test
+    public void test_getters_and_setters_with_non_null_operands() {
+        JsonArray jsonArray = new JsonArray();
+        jsonArray.add("test");
+        ArrayParamMidOperator operator = new ArrayParamMidOperator(MidOperationType.CONCAT, jsonArray);
+
+        assertEquals(MidOperationType.CONCAT, operator.getType());
+        assertEquals(jsonArray, operator.getOperands());
+
+        JsonArray newJsonArray = new JsonArray();
+        newJsonArray.add("newTest");
+        operator.setOperands(newJsonArray);
+
+        assertEquals(newJsonArray, operator.getOperands());
+    }
+}

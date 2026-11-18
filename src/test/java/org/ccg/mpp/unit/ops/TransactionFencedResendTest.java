@@ -1,0 +1,252 @@
+package org.ccg.mpp.unit.ops;
+
+import static org.ccg.mpp.test.ClusterTestHarness.node;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
+import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.ownership.OwnershipManager;
+import org.ccg.mpp.concurrency.ResourceLocking;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.conn.ClientTracker;
+import org.ccg.mpp.data.admin.AdminCollEntry;
+import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
+import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.TransactionOperationHelper;
+import org.ccg.mpp.ops.TxCommitLog;
+import org.ccg.mpp.ops.req.SaveRequest;
+import org.ccg.mpp.test.ClusterTestHarness;
+import org.ccg.mpp.test.TestGlobals;
+import org.ccg.mpp.test.TestUtils;
+import org.ccg.mpp.test.TransactionRecordCalls;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
+public class TransactionFencedResendTest {
+    private final ClusterTestHarness cluster = new ClusterTestHarness();
+    private final Configuration config = Configuration.getInstance();
+    private final Cache cache = IocContainer.get(Cache.class);
+    private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
+    private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
+    private final OwnershipManager ownership = IocContainer.get(OwnershipManager.class);
+    private final FileSystem fs = IocContainer.get(FileSystem.class);
+
+    @BeforeEach
+    public void setUp() throws Exception {
+        TestUtils.standardInitialSetup();
+        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.resetClients();
+        cluster.start(false, 1000L);
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        cluster.stop();
+        TestUtils.releaseAllLocks();
+        TestUtils.standardTearDown();
+    }
+
+    private static JsonObject document(String id) {
+        final var object = new JsonObject();
+        object.add(Globals.PK_FIELD, new JsonString(id));
+        object.add("value", new JsonString("v"));
+        return object;
+    }
+
+    private UUID transactionWithOneSave(String coll, String id) {
+        final var clientId = clientTracker.registerForwardedClient("resender");
+        TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
+        TransactionOperationHelper.start(clientId);
+        final var request = new SaveRequest(TestGlobals.DB, coll);
+        request.setObject(document(id));
+        request.set_id(id);
+        TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
+        return clientId;
+    }
+
+    private UUID fencedTransaction(String coll, String id) throws Exception {
+        final var clientId = transactionWithOneSave(coll, id);
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        TransactionRecordCalls.persistBufferedOps(transaction);
+        TxCommitLog.recordLocalCommit(transaction.getTransactionId().toString(), transaction.getBufferedOpIds(),
+                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, coll)));
+        return clientId;
+    }
+
+    private void loseQuorum() throws Exception {
+        TestUtils.setPrivateField(config, "clusterEnabled", true);
+        cluster.configureMembership(3, node("self", cluster.serverPort()));
+    }
+
+    private String collectionOwnedByOther() throws Exception {
+        TestUtils.setPrivateField(config, "clusterEnabled", true);
+        cluster.configureMembership(2, node("self", cluster.serverPort()), node("other", 19991));
+        for (var i = 0; i < 500; i++) {
+            final var coll = "resend-moved-" + i;
+            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+                return coll;
+            }
+        }
+        throw new IllegalStateException("no collection owned by the other node");
+    }
+
+    private void createCollection(String coll) throws Exception {
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
+        fs.createCollectionFile(TestGlobals.DB, coll);
+    }
+
+    private void assertSliceRetained(UUID clientId, String txId, List<String> opIds) {
+        assertTrue(TxCommitLog.isLocallyCommitted(txId), "the commit marker must survive the refused re-send");
+        assertTrue(opIds.stream().allMatch(id -> cache.getPkIndexTransaction(id) != null),
+                "every op the marker names must survive the refused re-send");
+        assertNotNull(clientTracker.getActiveTransaction(clientId),
+                "the transaction stays registered so its locks keep an owner");
+        assertTrue(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)),
+                "the half-applied collection must stay locked");
+    }
+
+    private void assertFinished(UUID clientId, String txId, String coll, String id) throws Exception {
+        assertFalse(TxCommitLog.isLocallyCommitted(txId), "a finished commit clears its marker");
+        assertNull(clientTracker.getActiveTransaction(clientId), "a finished commit deregisters the transaction");
+        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, coll)),
+                "a finished commit releases its locks");
+        assertNotNull(
+                cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, coll).stream()
+                        .filter(entry -> entry.getValue().equals(id)).findFirst().orElse(null),
+                "the committed document must be present");
+    }
+
+    @Test
+    public void test_resent_commit_without_quorum_finishes_the_decided_slice() throws Exception {
+        final var clientId = fencedTransaction(TestGlobals.COLL, "no-quorum");
+        final var txId = clientTracker.getActiveTransaction(clientId).getTransactionId().toString();
+        loseQuorum();
+
+        final var response = TransactionOperationHelper.commit(clientId);
+
+        assertEquals(ErrorCode.REPLICATION_TIMEOUT.getCode(), response.getErrorCode(),
+                "the decision is binding, so the slice lands and only its replication waits for the quorum");
+        assertFinished(clientId, txId, TestGlobals.COLL, "no-quorum");
+    }
+
+    @Test
+    public void test_resent_commit_after_ownership_moved_finishes_the_decided_slice() throws Exception {
+        final var coll = collectionOwnedByOther();
+        TestUtils.setPrivateField(config, "clusterEnabled", false);
+        createCollection(coll);
+        final var clientId = fencedTransaction(coll, "moved");
+        final var txId = clientTracker.getActiveTransaction(clientId).getTransactionId().toString();
+        TestUtils.setPrivateField(config, "clusterEnabled", true);
+
+        final var response = TransactionOperationHelper.commit(clientId);
+
+        assertEquals(OperationStatus.OK, response.getStatus(),
+                "the versioned apply leaves newer writes alone, so a decided slice finishes wherever it is");
+        assertFinished(clientId, txId, coll, "moved");
+    }
+
+    @Test
+    public void test_resent_commit_with_quorum_finishes_the_decided_slice() throws Exception {
+        final var clientId = fencedTransaction(TestGlobals.COLL, "healed");
+        final var txId = clientTracker.getActiveTransaction(clientId).getTransactionId().toString();
+
+        final var response = TransactionOperationHelper.commit(clientId);
+
+        assertEquals(OperationStatus.OK, response.getStatus(), "the re-send must finish the decided commit");
+        assertFinished(clientId, txId, TestGlobals.COLL, "healed");
+    }
+
+    @Test
+    public void test_unfenced_commit_without_quorum_still_discards_its_ops() throws Exception {
+        final var clientId = transactionWithOneSave(TestGlobals.COLL, "undecided");
+        final var opIds = List.copyOf(clientTracker.getActiveTransaction(clientId).getBufferedOpIds());
+        loseQuorum();
+
+        final var response = TransactionOperationHelper.commit(clientId);
+
+        assertEquals("503-2", response.getErrorCode(), "an undecided commit without quorum is refused as before");
+        assertFalse(opIds.stream().anyMatch(id -> cache.getPkIndexTransaction(id) != null),
+                "the refused commit discards its buffered ops");
+        assertNull(clientTracker.getActiveTransaction(clientId), "the refused commit deregisters the transaction");
+    }
+
+    @Test
+    public void test_resent_commit_does_not_rewrite_the_decided_marker() throws Exception {
+        final var clientId = fencedTransaction(TestGlobals.COLL, "marker-once");
+        final var txId = clientTracker.getActiveTransaction(clientId).getTransactionId().toString();
+
+        try (var log = Mockito.mockStatic(TxCommitLog.class, Mockito.CALLS_REAL_METHODS)) {
+            assertEquals(OperationStatus.OK, TransactionOperationHelper.commit(clientId).getStatus());
+
+            log.verify(() -> TxCommitLog.recordLocalCommit(ArgumentMatchers.anyString(), ArgumentMatchers.anyList(),
+                    ArgumentMatchers.anyList()), Mockito.never());
+        }
+        assertFinished(clientId, txId, TestGlobals.COLL, "marker-once");
+    }
+
+    @Test
+    public void test_resent_commit_whose_op_read_fails_keeps_the_fenced_slice() throws Exception {
+        final var clientId = fencedTransaction(TestGlobals.COLL, "read-io");
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        final var txId = transaction.getTransactionId().toString();
+        final var opIds = List.copyOf(transaction.getBufferedOpIds());
+
+        try (var admin = Mockito.mockStatic(AdminOperationHelper.class, Mockito.CALLS_REAL_METHODS)) {
+            admin.when(() -> AdminOperationHelper.readTransactionOps(ArgumentMatchers.anyList()))
+                    .thenThrow(new IOException("disk full"));
+            final var response = TransactionOperationHelper.commit(clientId);
+
+            assertEquals("500-33", response.getErrorCode(),
+                    "a decided commit whose ops cannot be read is still half applied, not failed");
+        }
+        assertSliceRetained(clientId, txId, opIds);
+    }
+
+    @Test
+    public void test_resent_commit_missing_an_op_keeps_the_fenced_slice() throws Exception {
+        final var clientId = fencedTransaction(TestGlobals.COLL, "lost-op");
+        final var transaction = clientTracker.getActiveTransaction(clientId);
+        final var txId = transaction.getTransactionId().toString();
+        final var opIds = List.copyOf(transaction.getBufferedOpIds());
+
+        try (var admin = Mockito.mockStatic(AdminOperationHelper.class, Mockito.CALLS_REAL_METHODS)) {
+            admin.when(() -> AdminOperationHelper.readTransactionOps(ArgumentMatchers.anyList())).thenReturn(List.of());
+            final var response = TransactionOperationHelper.commit(clientId);
+
+            assertEquals("500-33", response.getErrorCode(),
+                    "a decided commit missing a buffered op must stay fenced for recovery");
+        }
+        assertSliceRetained(clientId, txId, opIds);
+    }
+
+    @Test
+    public void test_unfenced_commit_whose_begin_record_fails_still_releases() {
+        final var clientId = transactionWithOneSave(TestGlobals.COLL, "undecided-io");
+
+        try (var admin = Mockito.mockStatic(AdminOperationHelper.class, Mockito.CALLS_REAL_METHODS)) {
+            admin.when(() -> AdminOperationHelper.writeTransactionRecords(ArgumentMatchers.anyList(),
+                    ArgumentMatchers.anyList())).thenThrow(new IOException("disk full"));
+            final var response = TransactionOperationHelper.commit(clientId);
+
+            assertEquals("500-24", response.getErrorCode(), "an undecided commit that fails before applying fails");
+        }
+        assertNull(clientTracker.getActiveTransaction(clientId), "the failed commit deregisters the transaction");
+        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)),
+                "the failed commit releases its locks");
+    }
+}

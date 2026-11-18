@@ -1,0 +1,280 @@
+package org.ccg.mpp.unit.config;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import org.ccg.mpp.config.ConfigReader;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.ex.InvalidConfigurationException;
+import org.ccg.mpp.test.ConfigFixture;
+import org.ccg.mpp.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+
+public class ConfigurationTest {
+    @BeforeEach
+    public void setUp() {
+        final var originalConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        if (originalConfigFile.exists()) {
+            if (!originalConfigFile.renameTo(new File(Globals.FILE_CONFIG_NAME + ".moved"))) {
+                fail("Could not rename config file");
+            }
+        }
+    }
+
+    @AfterEach
+    public void tearDown() throws NoSuchFieldException, IllegalAccessException {
+        final var movedConfigFile = new File(Globals.FILE_CONFIG_NAME + ".moved");
+        if (movedConfigFile.exists()) {
+            if (!movedConfigFile.renameTo(new File(Globals.FILE_CONFIG_NAME))) {
+                fail("Failed returning to original file");
+            }
+        }
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        Configuration.getInstance();
+    }
+
+    @Test
+    public void test_loads_with_valid_default_settings() {
+        Configuration config = Configuration.getInstance();
+        assertEquals(8989, config.getPort());
+        assertEquals(100, config.getMaxConnections());
+        assertEquals("db", config.getFilePath());
+        assertEquals(10, config.getBackgroundProcessingThreads());
+        assertEquals("logs", config.getLogPath());
+        assertEquals(7, config.getMaxLogFiles());
+    }
+
+    @Test
+    public void test_loads_all_properties_correctly() throws IOException, NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        final var newConfigFile = getFile();
+        try {
+            Configuration config = Configuration.getInstance();
+            assertEquals(1111, config.getPort());
+            assertEquals(1, config.getMaxConnections());
+            assertEquals("test", config.getFilePath());
+            assertEquals(1, config.getBackgroundProcessingThreads());
+            assertEquals("test_log", config.getLogPath());
+            assertEquals(1, config.getMaxLogFiles());
+        } finally {
+            if (!newConfigFile.delete()) {
+                fail("Failed deleting temp test file");
+            }
+        }
+    }
+
+    private File getFile() throws IOException {
+        final var newConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        try (var writer = new BufferedWriter(new FileWriter(newConfigFile, StandardCharsets.UTF_8, true))) {
+            writer.write("port=1111");
+            writer.newLine();
+            writer.write("maxConnections=1");
+            writer.newLine();
+            writer.write("filePath=test");
+            writer.newLine();
+            writer.write("backgroundProcessingThreads=1");
+            writer.newLine();
+            writer.write("logPath=test_log");
+            writer.newLine();
+            writer.write("maxLogFiles=1");
+            writer.newLine();
+        }
+        return newConfigFile;
+    }
+
+    @Test
+    public void test_loads_default_admin_credentials()
+            throws IOException, NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        final var newConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        try (var writer = new BufferedWriter(new FileWriter(newConfigFile, StandardCharsets.UTF_8, true))) {
+            writer.write("defaultAdminUsername=admin_user");
+            writer.newLine();
+            writer.write("defaultAdminPassword=secret_pass");
+            writer.newLine();
+        }
+        try {
+            final var config = Configuration.getInstance();
+            assertEquals("admin_user", config.getDefaultAdminUsername());
+            assertEquals("secret_pass", config.getDefaultAdminPassword());
+        } finally {
+            if (!newConfigFile.delete()) {
+                fail("Failed deleting temp test file");
+            }
+        }
+    }
+
+    private static Map<String, String> fullValidConfig() {
+        return ConfigFixture.fullValid();
+    }
+
+    @Test
+    public void test_configuration_loads_a_full_valid_map() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.setPrivateField(Configuration.getInstance(), "port", 0);
+        try (MockedStatic<ConfigReader> mockConfigReader = mockStatic(ConfigReader.class)) {
+            mockConfigReader.when(ConfigReader::loadConfiguration).thenReturn(fullValidConfig());
+            Configuration config = Configuration.getInstance();
+            assertEquals(8989, config.getPort());
+            assertEquals(100, config.getMaxConnections());
+            assertEquals("db", config.getFilePath());
+            assertEquals(10, config.getBackgroundProcessingThreads());
+            assertEquals("logs", config.getLogPath());
+            assertEquals(7, config.getMaxLogFiles());
+            assertEquals(2L * 1024L * 1024L, config.getMaxPageSize());
+            assertEquals(1024L * 1024L, config.getMaxEntrySize());
+            assertEquals(5000L, config.getTransactionLockTimeoutMs());
+            assertFalse(config.isScriptsEnabled());
+            assertFalse(config.isScriptTextImportEnabled());
+            assertEquals(10_000_000L, config.getScriptInstructionBudget());
+            assertEquals(5000L, config.getScriptTimeoutMs());
+            assertEquals(16, config.getMaxConcurrentScripts());
+            assertEquals(250L, config.getScriptQueueWaitMs());
+            assertEquals(200, config.getScriptMaxDepth());
+            assertEquals(256L * 1024L, config.getScriptMaxSourceBytes());
+            assertEquals(1000, config.getScriptMaxLogLines());
+            assertEquals(4096, config.getScriptMaxLogLineChars());
+            assertEquals(64L * 1024L * 1024L, config.getScriptMaxMemoryBytes());
+        }
+    }
+
+    @Test
+    public void test_configuration_throws_when_validation_fails() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.setPrivateField(Configuration.getInstance(), "port", 0);
+        final var invalid = fullValidConfig();
+        invalid.put("port", "not-a-number");
+        invalid.put("maxConnections", "-5");
+        try (MockedStatic<ConfigReader> mockConfigReader = mockStatic(ConfigReader.class)) {
+            mockConfigReader.when(ConfigReader::loadConfiguration).thenReturn(invalid);
+            assertThrows(InvalidConfigurationException.class, Configuration::getInstance);
+        }
+    }
+
+    @Test
+    public void test_loads_maxMemory_humanReadable() throws IOException, NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        final var newConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        try (var writer = new BufferedWriter(new FileWriter(newConfigFile, StandardCharsets.UTF_8, true))) {
+            writer.write("maxMemory=64Mb");
+            writer.newLine();
+        }
+        try {
+            final var config = Configuration.getInstance();
+            assertEquals(64L * 1024L * 1024L, config.getMaxMemoryBytes());
+            assertFalse(config.isCachingDisabled());
+            assertFalse(config.isCacheUnlimited());
+        } finally {
+            if (!newConfigFile.delete()) {
+                fail("Failed deleting temp test file");
+            }
+        }
+    }
+
+    @Test
+    public void test_maxMemory_unlimited_when_zero() throws NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        TestUtils.setPrivateField(configInstance, "maxMemoryBytes", 0L);
+        final var configMap = fullValidConfig();
+        configMap.put("maxMemory", "0");
+        try (MockedStatic<ConfigReader> mockConfigReader = mockStatic(ConfigReader.class)) {
+            mockConfigReader.when(ConfigReader::loadConfiguration).thenReturn(configMap);
+            final var config = Configuration.getInstance();
+            assertEquals(0L, config.getMaxMemoryBytes());
+            assertTrue(config.isCacheUnlimited());
+            assertFalse(config.isCachingDisabled());
+        }
+    }
+
+    @Test
+    public void test_maxMemory_disabled_when_minus_one()
+            throws IOException, NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        final var newConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        try (var writer = new BufferedWriter(new FileWriter(newConfigFile, StandardCharsets.UTF_8, true))) {
+            writer.write("maxMemory=-1");
+            writer.newLine();
+        }
+        try {
+            final var config = Configuration.getInstance();
+            assertEquals(-1L, config.getMaxMemoryBytes());
+            assertTrue(config.isCachingDisabled());
+            assertFalse(config.isCacheUnlimited());
+        } finally {
+            if (!newConfigFile.delete()) {
+                fail("Failed deleting temp test file");
+            }
+        }
+    }
+
+    @Test
+    public void test_loads_tls_values() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.setPrivateField(Configuration.getInstance(), "port", 0);
+        final var configMap = fullValidConfig();
+        configMap.put("tlsEnabled", "true");
+        configMap.put("tlsKeystorePath", "certs/server.p12");
+        configMap.put("tlsKeystorePassword", "topsecret");
+        try (MockedStatic<ConfigReader> mockConfigReader = mockStatic(ConfigReader.class)) {
+            mockConfigReader.when(ConfigReader::loadConfiguration).thenReturn(configMap);
+            final var config = Configuration.getInstance();
+            assertTrue(config.isTlsEnabled());
+            assertEquals("certs/server.p12", config.getTlsKeystorePath());
+            assertEquals("topsecret", config.getTlsKeystorePassword());
+        }
+    }
+
+    @Test
+    public void test_tls_disabled_by_default() throws NoSuchFieldException, IllegalAccessException {
+        TestUtils.setPrivateField(Configuration.getInstance(), "port", 0);
+        try (MockedStatic<ConfigReader> mockConfigReader = mockStatic(ConfigReader.class)) {
+            mockConfigReader.when(ConfigReader::loadConfiguration).thenReturn(fullValidConfig());
+            final var config = Configuration.getInstance();
+            assertFalse(config.isTlsEnabled());
+        }
+    }
+
+    @Test
+    public void test_maxMemory_invalid_throws() throws IOException, NoSuchFieldException, IllegalAccessException {
+        final var configInstance = Configuration.getInstance();
+        TestUtils.setPrivateField(configInstance, "port", 0);
+        final var newConfigFile = new File(Globals.FILE_CONFIG_NAME);
+        try (var writer = new BufferedWriter(new FileWriter(newConfigFile, StandardCharsets.UTF_8, true))) {
+            writer.write("maxMemory=nonsense");
+            writer.newLine();
+        }
+        try {
+            assertThrows(InvalidConfigurationException.class, Configuration::getInstance);
+        } finally {
+            if (!newConfigFile.delete()) {
+                fail("Failed deleting temp test file");
+            }
+        }
+    }
+
+    @Test
+    public void test_schema_validation_budget_defaults_to_five_million() {
+        assertEquals(5_000_000, Configuration.getInstance().getSchemaValidationBudget());
+    }
+
+    @Test
+    public void test_connection_limits_resolve_their_shipped_defaults() {
+        final var config = Configuration.getInstance();
+        assertEquals(64L * 1024 * 1024, config.getMaxRequestSize());
+        assertEquals(10_000L, config.getAuthTimeoutMs());
+        assertEquals(30_000L, config.getTransactionIdleTimeoutMs());
+    }
+}

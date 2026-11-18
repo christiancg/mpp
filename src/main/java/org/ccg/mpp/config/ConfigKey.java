@@ -1,0 +1,206 @@
+package org.ccg.mpp.config;
+
+import java.util.Arrays;
+import java.util.List;
+
+public enum ConfigKey {
+    // @formatter:off
+    PORT("port", ValueType.INT, "8989", Rule.range(1, 65535)),
+    BIND_ADDRESS("bindAddress", ValueType.STRING, "", Rule.bindAddress()),
+    METRICS_PORT("metricsPort", ValueType.INT, "0", Rule.range(0, 65535)),
+    METRICS_BIND_ADDRESS("metricsBindAddress", ValueType.STRING, "127.0.0.1", Rule.bindAddress()),
+    METRICS_TOKEN("metricsToken", ValueType.STRING, "", Rule.none()),
+    MAX_CONNECTIONS("maxConnections", ValueType.INT, "100", Rule.atLeast(0)),
+    MAX_UNAUTHENTICATED_CONNECTIONS_PER_ADDRESS("maxUnauthenticatedConnectionsPerAddress", ValueType.INT, "16", Rule.atLeast(0)),
+    MAX_UNAUTHENTICATED_INVALID_REQUESTS("maxUnauthenticatedInvalidRequests", ValueType.INT, "5", Rule.atLeast(0)),
+    MAX_FAILED_AUTH_ATTEMPTS("maxFailedAuthAttempts", ValueType.INT, "5", Rule.atLeast(0)),
+    AUTH_FAILURE_DELAY_BASE_MS("authFailureDelayBaseMs", ValueType.LONG, "250", Rule.atLeast(0)),
+    AUTH_FAILURE_DELAY_MAX_MS("authFailureDelayMaxMs", ValueType.LONG, "30000", Rule.atLeast(0)),
+    MAX_CONCURRENT_PASSWORD_CHECKS("maxConcurrentPasswordChecks", ValueType.INT, "0", Rule.atLeast(0)),
+    AUTH_VERIFIER_CACHE_ENABLED("authVerifierCacheEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    BACKGROUND_PROCESSING_THREADS("backgroundProcessingThreads", ValueType.INT, "10", Rule.atLeast(1)),
+    BACKGROUND_QUEUE_MAX_EVENTS("backgroundQueueMaxEvents", ValueType.INT, "200000", Rule.atLeast(1)),
+    BACKGROUND_BACKLOG_WAIT_MS("backgroundBacklogWaitMs", ValueType.LONG, "5000", Rule.atLeast(0)),
+    MAX_LOG_FILES("maxLogFiles", ValueType.INT, "7", Rule.atLeast(1)),
+    MAX_LOG_FILE_SIZE("maxLogFileSize", ValueType.SIZE, "100Mb", Rule.positiveSize()),
+    MAX_PAGE_SIZE("maxPageSize", ValueType.SIZE, "2Mb", Rule.positiveSize()),
+    SYNC_WRITES("syncWrites", ValueType.BOOLEAN, "true", Rule.bool()),
+    WAL_CHECKPOINT_BYTES("walCheckpointBytes", ValueType.SIZE, "8Mb", Rule.positiveSize()),
+    WAL_IDLE_CHECKPOINT_MS("walIdleCheckpointMs", ValueType.LONG, "60000", Rule.atLeast(0)),
+    MAX_ENTRY_SIZE("maxEntrySize", ValueType.SIZE, "1Mb", Rule.positiveSize()),
+    MAX_MEMORY("maxMemory", ValueType.SIZE, HeapShares.AUTO, Rule.orAuto(Rule.memory())),
+    TRANSIENT_LOAD_PERMITS("transientLoadPermits", ValueType.INT, "4", Rule.atLeast(1)),
+    SCHEMA_VALIDATION_BUDGET("schemaValidationBudget", ValueType.INT, "5000000", Rule.atLeast(1000)),
+    SCHEMA_MAX_PATTERN_LENGTH("schemaMaxPatternLength", ValueType.INT, "4096", Rule.atLeast(1)),
+    SCHEMA_MAX_PATTERNS("schemaMaxPatterns", ValueType.INT, "256", Rule.atLeast(1)),
+    SCHEMA_PATTERN_CACHE_MAX_BYTES("schemaPatternCacheMaxBytes", ValueType.SIZE, "32Mb", Rule.positiveSize()),
+    TRANSACTION_LOCK_TIMEOUT_MS("transactionLockTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    SHUTDOWN_TIMEOUT_MS("shutdownTimeoutMs", ValueType.LONG, "15000", Rule.atLeast(1)),
+    MAX_REQUEST_SIZE("maxRequestSize", ValueType.SIZE, "64Mb", Rule.positiveSize()),
+    CLIENT_OUTBOUND_QUEUE_MAX_BYTES("clientOutboundQueueMaxBytes", ValueType.SIZE, "16Mb", Rule.positiveSize()),
+    MAX_UNSENT_RESPONSE_BYTES("maxUnsentResponseBytes", ValueType.SIZE, "0", Rule.nonNegativeSize()),
+    CLIENT_WRITE_STALL_TIMEOUT_MS("clientWriteStallTimeoutMs", ValueType.LONG, "30000", Rule.atLeast(1000)),
+    AUTH_TIMEOUT_MS("authTimeoutMs", ValueType.LONG, "10000", Rule.atLeast(1)),
+    TRANSACTION_IDLE_TIMEOUT_MS("transactionIdleTimeoutMs", ValueType.LONG, "30000", Rule.atLeast(1)),
+    TRANSACTION_MAX_OPS("transactionMaxOps", ValueType.INT, "100000", Rule.atLeast(0)),
+    TRANSACTION_MAX_BYTES("transactionMaxBytes", ValueType.SIZE, "256Mb", Rule.positiveSize()),
+    TRANSACTION_TOTAL_MAX_BYTES("transactionTotalMaxBytes", ValueType.SIZE, HeapShares.AUTO, Rule.orAuto(Rule.positiveSize())),
+    TRANSACTION_MAX_AGE_MS("transactionMaxAgeMs", ValueType.LONG, "600000", Rule.atLeast(0)),
+    SNAPSHOT_MAX_BYTES("snapshotMaxBytes", ValueType.SIZE, "1Gb", Rule.positiveSize()),
+    SNAPSHOT_MAX_OPEN("snapshotMaxOpen", ValueType.INT, "4", Rule.atLeast(1)),
+    SNAPSHOT_IDLE_TIMEOUT_MS("snapshotIdleTimeoutMs", ValueType.LONG, "300000", Rule.atLeast(1000)),
+    MAX_LISTENS_PER_CONNECTION("maxListensPerConnection", ValueType.INT, "64", Rule.atLeast(0)),
+    MAX_LISTENS("maxListens", ValueType.INT, "10000", Rule.atLeast(0)),
+    MAX_LISTENS_PER_USER("maxListensPerUser", ValueType.INT, "256", Rule.atLeast(0)),
+    LISTEN_MAX_REQUEST_BYTES("listenMaxRequestBytes", ValueType.SIZE, "1Mb", Rule.positiveSize()),
+    LISTEN_MAX_RETAINED_BYTES("listenMaxRetainedBytes", ValueType.SIZE, "64Mb", Rule.positiveSize()),
+    LISTEN_RERUN_TIMEOUT_MS("listenRerunTimeoutMs", ValueType.LONG, "10000", Rule.atLeast(1)),
+    LISTEN_THREADS("listenThreads", ValueType.INT, "2", Rule.atLeast(1)),
+    MAX_FILTER_OPERANDS("maxFilterOperands", ValueType.INT, "10000", Rule.atLeast(0)),
+    DELETE_MAX_MATCHES("deleteMaxMatches", ValueType.INT, "100000", Rule.atLeast(1)),
+    UPDATE_MAX_MATCHES("updateMaxMatches", ValueType.INT, "100000", Rule.atLeast(1)),
+    MAX_VECTOR_DIMENSIONS("maxVectorDimensions", ValueType.INT, "16384", Rule.atLeast(1)),
+    AGGREGATE_TIMEOUT_MS("aggregateTimeoutMs", ValueType.LONG, "300000", Rule.atLeast(0)),
+    AGGREGATE_MAX_RESULT_BYTES("aggregateMaxResultBytes", ValueType.SIZE, HeapShares.AUTO, Rule.orAuto(Rule.positiveSize())),
+    AGGREGATE_TOTAL_HELD_BYTES("aggregateTotalHeldBytes", ValueType.SIZE, HeapShares.AUTO, Rule.orAuto(Rule.positiveSize())),
+    INDEX_SCAN_FALLBACK_PERCENT("indexScanFallbackPercent", ValueType.INT, "25", Rule.range(1, 100)),
+    TLS_ENABLED("tlsEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    CLUSTER_ENABLED("clusterEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    CLUSTER_PORT("clusterPort", ValueType.INT, "9990", Rule.range(1, 65535)),
+    CLUSTER_EXPECTED_SIZE("clusterExpectedSize", ValueType.INT, "1", Rule.atLeast(1)),
+    GOSSIP_INTERVAL_MS("gossipIntervalMs", ValueType.LONG, "1000", Rule.atLeast(1)),
+    SUSPECT_TIMEOUT_MS("suspectTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    DEAD_TIMEOUT_MS("deadTimeoutMs", ValueType.LONG, "15000", Rule.atLeast(1)),
+    DEAD_EVICTION_MS("deadEvictionMs", ValueType.LONG, "86400000", Rule.atLeast(1)),
+    DEAD_PROBE_INTERVAL_MS("deadProbeIntervalMs", ValueType.LONG, "10000", Rule.atLeast(1)),
+    REPLICATION_ACK_TIMEOUT_MS("replicationAckTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    VIRTUAL_NODES_PER_NODE("virtualNodesPerNode", ValueType.INT, "128", Rule.atLeast(1)),
+    READ_FALLBACK_TO_LOCAL("readFallbackToLocal", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_ROUTING_ENABLED("scriptRoutingEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_LOCALITY_WEIGHT("scriptLocalityWeight", ValueType.INT, "50", Rule.range(0, 100)),
+    CLUSTER_TLS_ENABLED("clusterTlsEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    ANTI_ENTROPY_INTERVAL_MS("antiEntropyIntervalMs", ValueType.LONG, "60000", Rule.atLeast(1)),
+    TOMBSTONE_RETENTION_MS("tombstoneRetentionMs", ValueType.LONG, "86400000", Rule.atLeast(1)),
+    CLUSTER_MAX_FRAME_SIZE("clusterMaxFrameSize", ValueType.SIZE, "256Mb", Rule.positiveSize()),
+    CLUSTER_HANDSHAKE_TIMEOUT_MS("clusterHandshakeTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    CLUSTER_MAX_CLOCK_SKEW_MS("clusterMaxClockSkewMs", ValueType.LONG, "3600000", Rule.atLeast(1)),
+    SCRIPTS_ENABLED("scriptsEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_INSTRUCTION_BUDGET("scriptInstructionBudget", ValueType.LONG, "10000000", Rule.atLeast(1)),
+    SCRIPT_TIMEOUT_MS("scriptTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    SCRIPT_MAX_DEPTH("scriptMaxDepth", ValueType.INT, "200", Rule.atLeast(1)),
+    SCRIPT_MAX_SOURCE_BYTES("scriptMaxSourceBytes", ValueType.SIZE, "256Kb", Rule.positiveSize()),
+    SCRIPT_MAX_LOG_LINES("scriptMaxLogLines", ValueType.INT, "1000", Rule.atLeast(1)),
+    SCRIPT_MAX_LOG_LINE_CHARS("scriptMaxLogLineChars", ValueType.INT, "4096", Rule.atLeast(1)),
+    SCRIPT_TEXT_IMPORT_ENABLED("scriptTextImportEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    SCRIPT_PROCEDURE_IMPORT_ENABLED("scriptProcedureImportEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_MAX_MEMORY_BYTES("scriptMaxMemoryBytes", ValueType.SIZE, "64Mb", Rule.positiveSize()),
+    SCRIPT_HEAP_CEILING_PERCENT("scriptHeapCeilingPercent", ValueType.INT, "75", Rule.range(10, 95)),
+    SCRIPT_MAX_RESULT_BYTES("scriptMaxResultBytes", ValueType.SIZE, "16Mb", Rule.positiveSize()),
+    SCRIPT_MAX_ARRAY_LENGTH("scriptMaxArrayLength", ValueType.INT, "16777216", Rule.atLeast(1)),
+    SCRIPT_CURSOR_BATCH_SIZE("scriptCursorBatchSize", ValueType.INT, "500", Rule.atLeast(1)),
+    SCRIPT_CURSOR_MAX_BATCH_SIZE("scriptCursorMaxBatchSize", ValueType.INT, "5000", Rule.atLeast(1)),
+    AGGREGATION_SCRIPT_INSTRUCTION_BUDGET("aggregationScriptInstructionBudget", ValueType.LONG, "1000000", Rule.atLeast(1)),
+    AGGREGATION_SCRIPT_TIMEOUT_MS("aggregationScriptTimeoutMs", ValueType.LONG, "2000", Rule.atLeast(1)),
+    AGGREGATION_SCRIPT_MAX_SOURCE_BYTES("aggregationScriptMaxSourceBytes", ValueType.SIZE, "16Kb", Rule.positiveSize()),
+    MAX_CONCURRENT_SCRIPTS("maxConcurrentScripts", ValueType.INT, "16", Rule.atLeast(0)),
+    SCRIPT_QUEUE_WAIT_MS("scriptQueueWaitMs", ValueType.LONG, "250", Rule.atLeast(0)),
+    MAX_CONCURRENT_SCRIPTS_PER_USER("maxConcurrentScriptsPerUser", ValueType.INT, "4", Rule.atLeast(0)),
+    MAX_CONCURRENT_SCRIPTS_PER_DATABASE("maxConcurrentScriptsPerDatabase", ValueType.INT, "8", Rule.atLeast(0)),
+    SCRIPT_RUN_HISTORY_ENABLED("scriptRunHistoryEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_RUN_HISTORY_RETENTION_MS("scriptRunHistoryRetentionMs", ValueType.LONG, "604800000", Rule.atLeast(1)),
+    SCRIPT_RUN_HISTORY_INCLUDE_LOGS("scriptRunHistoryIncludeLogs", ValueType.BOOLEAN, "false", Rule.bool()),
+    SCRIPT_RUN_HISTORY_MAX_ERROR_CHARS("scriptRunHistoryMaxErrorChars", ValueType.INT, "2000", Rule.atLeast(1)),
+    SCRIPT_RUN_HISTORY_MAX_QUEUED("scriptRunHistoryMaxQueued", ValueType.INT, "10000", Rule.atLeast(1)),
+    SCRIPT_RUN_HISTORY_MAX_ROWS("scriptRunHistoryMaxRows", ValueType.LONG, "100000", Rule.atLeast(0)),
+    SCRIPT_RUN_HISTORY_SWEEP_MS("scriptRunHistorySweepMs", ValueType.LONG, "3600000", Rule.atLeast(1000)),
+    SCRIPT_FETCH_ENABLED("scriptFetchEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCRIPT_FETCH_TIMEOUT_MS("scriptFetchTimeoutMs", ValueType.LONG, "5000", Rule.atLeast(1)),
+    SCRIPT_FETCH_MAX_RESPONSE_BYTES("scriptFetchMaxResponseBytes", ValueType.SIZE, "1Mb", Rule.positiveSize()),
+    SCRIPT_FETCH_MAX_CONCURRENT("scriptFetchMaxConcurrent", ValueType.INT, "8", Rule.atLeast(1)),
+    MAX_PROCEDURES_PER_DATABASE("maxProceduresPerDatabase", ValueType.INT, "500", Rule.atLeast(1)),
+    MAX_COLLECTIONS_PER_DATABASE("maxCollectionsPerDatabase", ValueType.INT, "1000", Rule.atLeast(1)),
+    MAX_DATABASES("maxDatabases", ValueType.INT, "1000", Rule.atLeast(1)),
+    MAX_INDEXES_PER_COLLECTION("maxIndexesPerCollection", ValueType.INT, "64", Rule.atLeast(1)),
+    PROCEDURE_CACHE_SIZE("procedureCacheSize", ValueType.INT, "128", Rule.atLeast(0)),
+    PROCEDURE_CACHE_MAX_BYTES("procedureCacheMaxBytes", ValueType.SIZE, "16Mb", Rule.positiveSize()),
+    METADATA_CACHE_MAX_BYTES("metadataCacheMaxBytes", ValueType.SIZE, "72Mb", Rule.positiveSize()),
+    METADATA_CACHE_MAX_ENTRIES("metadataCacheMaxEntries", ValueType.INT, "4096", Rule.atLeast(0)),
+    TRIGGERS_ENABLED("triggersEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    TRIGGER_THREADS("triggerThreads", ValueType.INT, "2", Rule.atLeast(1)),
+    TRIGGER_QUEUE_SIZE("triggerQueueSize", ValueType.INT, "10000", Rule.atLeast(1)),
+    TRIGGER_QUEUE_MAX_BYTES("triggerQueueMaxBytes", ValueType.SIZE, "64Mb", Rule.positiveSize()),
+    TRIGGER_MAX_PER_COLLECTION("triggerMaxPerCollection", ValueType.INT, "50", Rule.atLeast(1)),
+    TRIGGER_MAX_DEPTH("triggerMaxDepth", ValueType.INT, "3", Rule.atLeast(0)),
+    TRIGGER_TIMEOUT_MS("triggerTimeoutMs", ValueType.LONG, "1000", Rule.atLeast(1)),
+    TRIGGER_RUN_LOG_ENABLED("triggerRunLogEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    TRIGGER_RUN_RETENTION_MS("triggerRunRetentionMs", ValueType.LONG, "86400000", Rule.atLeast(1)),
+    TRIGGER_MAX_ATTEMPTS("triggerMaxAttempts", ValueType.INT, "3", Rule.atLeast(1)),
+    TRIGGER_RETRY_BACKOFF_MS("triggerRetryBackoffMs", ValueType.LONG, "1000", Rule.atLeast(0)),
+    TRIGGER_RETRY_MAX_BACKOFF_MS("triggerRetryMaxBackoffMs", ValueType.LONG, "60000", Rule.atLeast(0)),
+    TRIGGER_DEAD_LETTER_RETENTION_MS("triggerDeadLetterRetentionMs", ValueType.LONG, "604800000", Rule.atLeast(1)),
+    TRIGGER_DEAD_LETTER_MAX_RUNS("triggerDeadLetterMaxRuns", ValueType.LONG, "10000", Rule.atLeast(0)),
+    BEFORE_HOOK_INSTRUCTION_BUDGET("beforeHookInstructionBudget", ValueType.LONG, "200000", Rule.atLeast(1)),
+    BEFORE_HOOK_TIMEOUT_MS("beforeHookTimeoutMs", ValueType.LONG, "200", Rule.atLeast(1)),
+    SCHEDULES_ENABLED("schedulesEnabled", ValueType.BOOLEAN, "true", Rule.bool()),
+    SCHEDULE_THREADS("scheduleThreads", ValueType.INT, "2", Rule.atLeast(1)),
+    SCHEDULE_QUEUE_SIZE("scheduleQueueSize", ValueType.INT, "100", Rule.atLeast(1)),
+    SCHEDULE_TICK_MS("scheduleTickMs", ValueType.LONG, "1000", Rule.atLeast(1)),
+    SCHEDULE_REFRESH_MS("scheduleRefreshMs", ValueType.LONG, "60000", Rule.atLeast(1)),
+    SCHEDULE_TIMEOUT_MS("scheduleTimeoutMs", ValueType.LONG, "30000", Rule.atLeast(1)),
+    SCHEDULE_MAX_TIMEOUT_MS("scheduleMaxTimeoutMs", ValueType.LONG, "300000", Rule.atLeast(1)),
+    SCHEDULE_MAX_PER_DATABASE("scheduleMaxPerDatabase", ValueType.INT, "100", Rule.atLeast(1)),
+    SCHEDULE_MAX_TOTAL_PER_USER("scheduleMaxTotalPerUser", ValueType.INT, "500", Rule.atLeast(1)),
+    SCHEDULE_MIN_INTERVAL_MS("scheduleMinIntervalMs", ValueType.LONG, "1000", Rule.atLeast(1)),
+    FAULT_INJECTION_ENABLED("faultInjectionEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
+    POWER_LOSS_SHADOW_PATH("powerLossShadowPath", ValueType.STRING, "", Rule.none()),
+    FILE_PATH("filePath", ValueType.STRING, "db", Rule.none()),
+    LOG_PATH("logPath", ValueType.STRING, "logs", Rule.none()),
+    LOG_LEVEL("logLevel", ValueType.STRING, "INFO", Rule.oneOf("FATAL", "ERROR", "WARNING", "INFO")),
+    DEFAULT_ADMIN_USERNAME("defaultAdminUsername", ValueType.STRING, "admin", Rule.none()),
+    DEFAULT_ADMIN_PASSWORD("defaultAdminPassword", ValueType.STRING, "", Rule.none()),
+    TLS_KEYSTORE_PATH("tlsKeystorePath", ValueType.STRING, "certs/mpp.p12", Rule.none()),
+    TLS_KEYSTORE_PASSWORD("tlsKeystorePassword", ValueType.STRING, "change_it", Rule.none()),
+    CLUSTER_BIND_ADDRESS("clusterBindAddress", ValueType.STRING, "0.0.0.0", Rule.none()),
+    CLUSTER_ADVERTISED_ADDRESS("clusterAdvertisedAddress", ValueType.STRING, "127.0.0.1", Rule.none()),
+    CLUSTER_SEEDS("clusterSeeds", ValueType.STRING, "", Rule.none()),
+    NODE_ID("nodeId", ValueType.STRING, "", Rule.none()),
+    CLUSTER_SECRET("clusterSecret", ValueType.STRING, "", Rule.none()),
+    SCRIPT_TIME_ZONE("scriptTimeZone", ValueType.STRING, "UTC", Rule.none()),
+    SCRIPT_LOCALE("scriptLocale", ValueType.STRING, "en-US", Rule.none()),
+    SCRIPT_RUN_HISTORY_KINDS("scriptRunHistoryKinds", ValueType.STRING, "CALL_PROCEDURE,TRIGGER,SCHEDULE", Rule.none()),
+    SCRIPT_FETCH_ALLOWLIST("scriptFetchAllowlist", ValueType.STRING, "*", Rule.none());
+    // @formatter:on
+
+    private final String key;
+    private final ValueType type;
+    private final String defaultValue;
+    private final Rule rule;
+
+    ConfigKey(String key, ValueType type, String defaultValue, Rule rule) {
+        this.key = key;
+        this.type = type;
+        this.defaultValue = defaultValue;
+        this.rule = rule;
+    }
+
+    public String key() {
+        return key;
+    }
+
+    public ValueType type() {
+        return type;
+    }
+
+    public String defaultValue() {
+        return defaultValue;
+    }
+
+    public String validate(String value) {
+        final var problem = rule.check().apply(value);
+        return problem != null || type != ValueType.INT ? problem : Rule.fitsInInt(value);
+    }
+
+    public static List<ConfigKey> all() {
+        return Arrays.asList(values());
+    }
+}

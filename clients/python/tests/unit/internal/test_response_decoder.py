@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     AuthenticationError,
     ConflictError,
     ForbiddenError,
     ListenEndedError,
-    LwnrdbError,
+    MppError,
     NotFoundError,
     Status,
     UnavailableError,
     UnknownOutcomeError,
 )
-from lwnrdb._internal.response_decoder import (
+from mpp._internal.response_decoder import (
     boolean_of,
     check,
     document,
@@ -36,10 +36,10 @@ from lwnrdb._internal.response_decoder import (
         ("503-2", "ERROR", UnavailableError),
         ("500-33", "ERROR", UnknownOutcomeError),
         ("500-34", "ERROR", UnknownOutcomeError),
-        ("400-1", "ERROR", LwnrdbError),
+        ("400-1", "ERROR", MppError),
     ],
 )
-def test_the_error_class_follows_the_code_range(code: str, status: str, kind: type[LwnrdbError]) -> None:
+def test_the_error_class_follows_the_code_range(code: str, status: str, kind: type[MppError]) -> None:
     error = raise_for({"type": "SAVE", "status": status, "errorCode": code, "message": "no"})
     assert type(error) is kind
     assert error.raw_code == code
@@ -53,7 +53,7 @@ def test_without_a_code_the_status_picks_the_class() -> None:
     assert type(raise_for({"status": "UNAUTHENTICATED"})) is AuthenticationError
     assert type(raise_for({"status": "NOT_FOUND"})) is NotFoundError
     error = raise_for({"status": "WEIRD"})
-    assert type(error) is LwnrdbError
+    assert type(error) is MppError
     assert error.status is Status.ERROR
     assert str(error) == "request failed"
 

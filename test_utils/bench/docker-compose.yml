@@ -1,4 +1,4 @@
-name: lwnrdb-bench
+name: mpp-bench
 
 x-engine: &engine
   cpus: ${BENCH_CPUS:-2}
@@ -12,18 +12,18 @@ x-engine: &engine
       hard: 70000
 
 services:
-  lwnrdb:
+  mpp:
     <<: *engine
     build:
       context: ../..
-    image: lwnrdb-bench-server
-    command: ["java", "-XX:+UseG1GC", "-Xlog:gc:file=/tmp/gc.log", "-XX:MaxRAMPercentage=${LWNRDB_HEAP_PERCENT:-35}", "-jar", "app.jar"]
+    image: mpp-bench-server
+    command: ["java", "-XX:+UseG1GC", "-Xlog:gc:file=/tmp/gc.log", "-XX:MaxRAMPercentage=${MPP_HEAP_PERCENT:-35}", "-jar", "app.jar"]
     environment:
-      JDK_JAVA_OPTIONS: ${LWNRDB_JAVA_OPTS:-}
+      JDK_JAVA_OPTIONS: ${MPP_JAVA_OPTS:-}
     volumes:
-      - lwnrdb-data:/app/db
-      - ./generated/lwnrdb.cfg:/app/lwnrdb.cfg:ro
-    profiles: [lwnrdb]
+      - mpp-data:/app/db
+      - ./generated/mpp.cfg:/app/mpp.cfg:ro
+    profiles: [mpp]
 
   mysql:
     <<: *engine
@@ -80,7 +80,7 @@ services:
 
   bench:
     build: .
-    image: lwnrdb-bench-client
+    image: mpp-bench-client
     cpuset: ${BENCH_CLIENT_CPUSET:-2-9}
     environment:
       COUCHBASE_DATA_QUOTA: ${COUCHBASE_DATA_QUOTA:-2048}
@@ -92,7 +92,7 @@ services:
     profiles: [client]
 
 volumes:
-  lwnrdb-data:
+  mpp-data:
   mysql-data:
   postgres-data:
   mongo-data:

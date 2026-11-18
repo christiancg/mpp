@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from lwnrdb import GeoPoint, LocalDateTime, LocalTime, MappingError, Vector
-from lwnrdb._internal.custom_values import format_custom, looks_custom, parse_custom, parse_custom_exact
-from lwnrdb._internal.values_codec import EncodeOptions, decode_value, encode_document, encode_value
+from mpp import GeoPoint, LocalDateTime, LocalTime, MappingError, Vector
+from mpp._internal.custom_values import format_custom, looks_custom, parse_custom, parse_custom_exact
+from mpp._internal.values_codec import EncodeOptions, decode_value, encode_document, encode_value
 
 
 class Color(Enum):

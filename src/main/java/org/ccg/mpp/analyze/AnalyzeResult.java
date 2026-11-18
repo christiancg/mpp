@@ -1,0 +1,102 @@
+package org.ccg.mpp.analyze;
+
+import java.util.List;
+
+public class AnalyzeResult {
+    public long startTime;
+    public long endTime;
+    public long durationMillis;
+    public boolean indexUsed;
+    public List<String> indexesUsed;
+    public long documentsScanned;
+    public List<String> locksAcquired;
+    public long scriptInvocations;
+    public long scriptMillis;
+    public List<String> suggestions;
+
+    public void recordTiming(long start, long end) {
+        startTime = start;
+        endTime = end;
+        durationMillis = end - start;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
+    }
+
+    public long getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(long endTime) {
+        this.endTime = endTime;
+    }
+
+    public long getDurationMillis() {
+        return durationMillis;
+    }
+
+    public void setDurationMillis(long durationMillis) {
+        this.durationMillis = durationMillis;
+    }
+
+    public boolean isIndexUsed() {
+        return indexUsed;
+    }
+
+    public void setIndexUsed(boolean indexUsed) {
+        this.indexUsed = indexUsed;
+    }
+
+    public List<String> getIndexesUsed() {
+        return indexesUsed;
+    }
+
+    public void setIndexesUsed(List<String> indexesUsed) {
+        this.indexesUsed = indexesUsed;
+    }
+
+    public long getDocumentsScanned() {
+        return documentsScanned;
+    }
+
+    public void setDocumentsScanned(long documentsScanned) {
+        this.documentsScanned = documentsScanned;
+    }
+
+    public List<String> getLocksAcquired() {
+        return locksAcquired;
+    }
+
+    public void setLocksAcquired(List<String> locksAcquired) {
+        this.locksAcquired = locksAcquired;
+    }
+
+    public long getScriptInvocations() {
+        return scriptInvocations;
+    }
+
+    public void setScriptInvocations(long scriptInvocations) {
+        this.scriptInvocations = scriptInvocations;
+    }
+
+    public long getScriptMillis() {
+        return scriptMillis;
+    }
+
+    public void setScriptMillis(long scriptMillis) {
+        this.scriptMillis = scriptMillis;
+    }
+
+    public List<String> getSuggestions() {
+        return suggestions;
+    }
+
+    public void setSuggestions(List<String> suggestions) {
+        this.suggestions = suggestions;
+    }
+}

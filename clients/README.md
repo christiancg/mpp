@@ -1,15 +1,15 @@
-# LWNRDB client libraries
+# MPP client libraries
 
 The official clients, one folder per language. Each one supports every operation a client needs, has a fluent query
 builder and is published to its language's registry.
 
 | Client | Folder | Registry |
 |---|---|---|
-| Java | [`java/`](java/README.md) | Maven Central (`io.github.christiancg:lwnrdb-client`) |
-| Spring Data and Spring Boot | [`java/`](java/README.md#spring-data-and-spring-boot) | Maven Central (`io.github.christiancg:lwnrdb-spring-data`, `lwnrdb-spring-boot-starter`) |
-| TypeScript and JavaScript (Node.js) | [`typescript/`](typescript/README.md) | npm (`lwnrdb-client`) |
-| Python (sync and asyncio) | [`python/`](python/README.md) | PyPI (`lwnrdb-client`) |
-| .NET (C#, with LINQ) | [`dotnet/`](dotnet/README.md) | NuGet (`Lwnrdb.Client`) |
+| Java | [`java/`](java/README.md) | Maven Central (`io.github.christiancg:mpp-client`) |
+| Spring Data and Spring Boot | [`java/`](java/README.md#spring-data-and-spring-boot) | Maven Central (`io.github.christiancg:mpp-spring-data`, `mpp-spring-boot-starter`) |
+| TypeScript and JavaScript (Node.js) | [`typescript/`](typescript/README.md) | npm (`mpp-client`) |
+| Python (sync and asyncio) | [`python/`](python/README.md) | PyPI (`mpp-client`) |
+| .NET (C#, with LINQ) | [`dotnet/`](dotnet/README.md) | NuGet (`Mpp.Client`) |
 
 ## The shared contract
 

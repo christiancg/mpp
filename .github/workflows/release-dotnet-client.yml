@@ -36,19 +36,19 @@ jobs:
         working-directory: .
         run: mvn -B --no-transfer-progress -DskipTests package
       - name: Check formatting
-        run: dotnet format Lwnrdb.slnx --verify-no-changes
+        run: dotnet format Mpp.slnx --verify-no-changes
       - name: Build
-        run: dotnet build Lwnrdb.slnx -c Release
+        run: dotnet build Mpp.slnx -c Release
       - name: Unit tests with coverage
-        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net10.0 --no-build /p:CollectCoverage=true /p:Threshold=\"95,90\" /p:ThresholdType=\"line,branch\" /p:ThresholdStat=total
+        run: dotnet test tests/Mpp.Client.Tests -c Release -f net10.0 --no-build /p:CollectCoverage=true /p:Threshold=\"95,90\" /p:ThresholdType=\"line,branch\" /p:ThresholdStat=total
       - name: Unit tests (net11.0)
-        run: dotnet test tests/Lwnrdb.Client.Tests -c Release -f net11.0 --no-build
+        run: dotnet test tests/Mpp.Client.Tests -c Release -f net11.0 --no-build
       - name: Consumer
         run: |
-          dotnet pack src/Lwnrdb.Client -c Release -o artifacts --no-build
+          dotnet pack src/Mpp.Client -c Release -o artifacts --no-build
           dotnet run --project consumers/Console
       - name: Integration tests
-        run: LWNRDB_JAR="$GITHUB_WORKSPACE/target/lwnrdb.jar" dotnet test tests/Lwnrdb.Client.IntegrationTests -c Release --no-build
+        run: MPP_JAR="$GITHUB_WORKSPACE/target/mpp.jar" dotnet test tests/Mpp.Client.IntegrationTests -c Release --no-build
 
   publish:
     name: Publish to NuGet
@@ -72,7 +72,7 @@ jobs:
             10.0.x
             11.0.x
       - name: Pack the version from the tag
-        run: dotnet pack src/Lwnrdb.Client -c Release -o artifacts /p:Version="${VERSION#dotnet-client-v}" /p:ContinuousIntegrationBuild=true
+        run: dotnet pack src/Mpp.Client -c Release -o artifacts /p:Version="${VERSION#dotnet-client-v}" /p:ContinuousIntegrationBuild=true
       - name: Log in to NuGet through trusted publishing
         id: login
         uses: NuGet/login@v1

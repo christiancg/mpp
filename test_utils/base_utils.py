@@ -50,7 +50,7 @@ def server_pids(port: int) -> list:
         out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True).stdout
         listening = [line.split() for line in out.splitlines() if "LISTENING" in line]
         return sorted({int(fields[-1]) for fields in listening if fields[1].endswith(f":{port}")})
-    out = subprocess.run(["pgrep", "-f", "lwnrdb.jar"], capture_output=True, text=True).stdout
+    out = subprocess.run(["pgrep", "-f", "mpp.jar"], capture_output=True, text=True).stdout
     return [int(pid) for pid in out.split()]
 
 
@@ -154,7 +154,7 @@ PORT = 8989
 USERNAME = "admin"
 PASSWORD = "Tst-Admin-9xQ2mV"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-JAR_PATH = os.path.join(REPO_ROOT, "target", "lwnrdb.jar")
+JAR_PATH = os.path.join(REPO_ROOT, "target", "mpp.jar")
 
 
 def configure(host: Optional[str] = None, port: Optional[int] = None,
@@ -254,7 +254,7 @@ def check_field(label: str, response: dict, path: str, expected) -> bool:
 
 def banner(title: str, host: Optional[str] = None, port: Optional[int] = None) -> None:
     print("\n" + "═" * WIDTH)
-    print(f"  LWNRDB — {title}")
+    print(f"  MPP — {title}")
     print("═" * WIDTH)
     if host is not None:
         print(f"  Connecting to {host}:{port}")
@@ -477,7 +477,7 @@ def write_config(work_dir: str, port: int, *, admin_password: Optional[str] = No
     lines = [f"port={port}", "filePath=db", "logPath=logs",
              f"defaultAdminUsername={USERNAME}", f"defaultAdminPassword={password}"]
     lines += [f"{key}={_config_value(value)}" for key, value in settings.items()]
-    with open(os.path.join(work_dir, "lwnrdb.cfg"), "w") as fp:
+    with open(os.path.join(work_dir, "mpp.cfg"), "w") as fp:
         fp.write("\n".join(lines) + "\n")
 
 

@@ -1,0 +1,40 @@
+package org.ccg.mpp.ops.req.validations;
+
+import org.ccg.mpp.ops.ErrorCode;
+
+public final class ValidationResult {
+    private static final ValidationResult OK = new ValidationResult(true, null, null);
+    private final boolean valid;
+    private final String errorMessage;
+    private final ErrorCode errorCode;
+
+    private ValidationResult(boolean valid, String errorMessage, ErrorCode errorCode) {
+        this.valid = valid;
+        this.errorMessage = errorMessage;
+        this.errorCode = errorCode;
+    }
+
+    public static ValidationResult ok() {
+        return OK;
+    }
+
+    public static ValidationResult fail(String errorMessage) {
+        return new ValidationResult(false, errorMessage, ErrorCode.VALIDATION_ERROR);
+    }
+
+    public static ValidationResult fail(ErrorCode errorCode, String errorMessage) {
+        return new ValidationResult(false, errorMessage, errorCode);
+    }
+
+    public boolean isValid() {
+        return valid;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public ErrorCode getErrorCode() {
+        return errorCode;
+    }
+}

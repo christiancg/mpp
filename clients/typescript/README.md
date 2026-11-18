@@ -1,13 +1,13 @@
-# LWNRDB Node.js client
+# MPP Node.js client
 
-The JavaScript and TypeScript client for [LWNRDB](https://github.com/christiancg/lwnrdb). It keeps a pool of
+The JavaScript and TypeScript client for [MPP](https://github.com/christiancg/mpp). It keeps a pool of
 authenticated connections and gives you a fluent query builder, transactions, live queries and the server's custom
 value types. It needs Node.js 22.12 or newer and has no runtime dependencies.
 
 ## Installation
 
 ```bash
-npm install lwnrdb-client
+npm install mpp-client
 ```
 
 The package is ESM with its type declarations included. CommonJS code can load it with `require`.
@@ -15,11 +15,11 @@ The package is ESM with its type declarations included. CommonJS code can load i
 ## Quick start
 
 ```ts
-import { and, field, LwnrdbClient, Order } from "lwnrdb-client";
+import { and, field, MppClient, Order } from "mpp-client";
 
-const client = await LwnrdbClient.connect({
+const client = await MppClient.connect({
     hosts: [{ host: "localhost", port: 8989 }],
-    credentials: { username: "admin", password: process.env.LWNRDB_PASSWORD ?? "" },
+    credentials: { username: "admin", password: process.env.MPP_PASSWORD ?? "" },
 });
 
 const shop = client.database("shop");
@@ -129,7 +129,7 @@ queries use their own connections, which keep the process alive until you close 
 
 ## Errors and retries
 
-Every refusal from the server is an `LwnrdbError` with the server's error code. There is a subclass per range:
+Every refusal from the server is an `MppError` with the server's error code. There is a subclass per range:
 `AuthenticationError` (401), `ForbiddenError` (403), `NotFoundError` (404), `ConflictError` (409), `ListenEndedError`
 (410), `UnavailableError` (503) and `UnknownOutcomeError` (`500-33`, `500-34`).
 
@@ -140,9 +140,9 @@ transaction.
 ## TLS
 
 ```ts
-const client = await LwnrdbClient.connect({
+const client = await MppClient.connect({
     hosts: [{ host: "db.example.com", port: 8989 }],
-    tls: { ca: readFileSync("lwnrdb-ca.pem") },
+    tls: { ca: readFileSync("mpp-ca.pem") },
 });
 ```
 
@@ -150,7 +150,7 @@ const client = await LwnrdbClient.connect({
 Node can't read a PKCS12 trust store, so export the server's certificate as PEM:
 
 ```bash
-keytool -exportcert -rfc -alias <alias> -keystore lwnrdb.p12 -storetype PKCS12 -storepass <password> > lwnrdb-ca.pem
+keytool -exportcert -rfc -alias <alias> -keystore mpp.p12 -storetype PKCS12 -storepass <password> > mpp-ca.pem
 ```
 
 ## API reference
@@ -164,7 +164,7 @@ npm ci
 npm run verify
 npm run consumers
 mvn package -DskipTests         # at the repository root, the server jar the integration tests use
-LWNRDB_JAR=$PWD/../../target/lwnrdb.jar npm run test:it
+MPP_JAR=$PWD/../../target/mpp.jar npm run test:it
 ```
 
 ## Releasing

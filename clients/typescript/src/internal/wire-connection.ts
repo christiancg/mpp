@@ -1,10 +1,5 @@
 import type { Socket } from "node:net";
-import {
-    ConnectionLostError,
-    LwnrdbError,
-    RequestTimeoutError,
-    ServerClosedConnectionError,
-} from "../errors/errors.js";
+import { ConnectionLostError, MppError, RequestTimeoutError, ServerClosedConnectionError } from "../errors/errors.js";
 import { Status } from "../protocol/status.js";
 import { Route, route } from "./frame-router.js";
 import { LineReader, type LineEvent } from "./line-reader.js";
@@ -13,12 +8,12 @@ import type { JsonObject } from "./values-codec.js";
 
 interface PendingReply {
     readonly resolve: (frame: JsonObject) => void;
-    readonly reject: (error: LwnrdbError) => void;
+    readonly reject: (error: MppError) => void;
     readonly awaitsClose: boolean;
 }
 
 export type PushSink = (frame: JsonObject) => void;
-export type CloseListener = (cause: LwnrdbError) => void;
+export type CloseListener = (cause: MppError) => void;
 
 const CLOSE_CONNECTION = "CLOSE_CONNECTION";
 
@@ -33,7 +28,7 @@ export class WireConnection {
     readonly #label: string;
     #pushSink: PushSink = () => undefined;
     #closeListener: CloseListener = () => undefined;
-    #closeCause: LwnrdbError | undefined;
+    #closeCause: MppError | undefined;
     #held = false;
 
     constructor(socket: Socket, maxReplyBytes: number) {
@@ -124,7 +119,7 @@ export class WireConnection {
         this.close();
     }
 
-    close(cause: LwnrdbError = new ConnectionLostError("connection closed by the client")): void {
+    close(cause: MppError = new ConnectionLostError("connection closed by the client")): void {
         if (this.#closeCause !== undefined) {
             return;
         }
@@ -155,7 +150,7 @@ export class WireConnection {
 
     #onLine(event: LineEvent): void {
         if (event.tooLarge) {
-            this.#failHead(new LwnrdbError("the reply exceeded maxReplyBytes and was discarded"));
+            this.#failHead(new MppError("the reply exceeded maxReplyBytes and was discarded"));
             return;
         }
         if (event.text.length === 0) {
@@ -168,7 +163,7 @@ export class WireConnection {
             frame = undefined;
         }
         if (!isJsonObject(frame)) {
-            this.#failHead(new LwnrdbError(`the server refused the request: ${event.text}`));
+            this.#failHead(new MppError(`the server refused the request: ${event.text}`));
             return;
         }
         this.#dispatch(frame);
@@ -202,7 +197,7 @@ export class WireConnection {
         head.resolve(frame);
     }
 
-    #failHead(cause: LwnrdbError): void {
+    #failHead(cause: MppError): void {
         const head = this.#pending.shift();
         this.#updateRef();
         head?.reject(cause);

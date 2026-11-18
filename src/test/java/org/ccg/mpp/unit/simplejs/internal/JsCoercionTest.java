@@ -1,0 +1,257 @@
+package org.ccg.mpp.unit.simplejs.internal;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.math.BigInteger;
+import java.util.List;
+import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
+import org.ccg.mpp.simplejs.internal.Environment;
+import org.ccg.mpp.simplejs.internal.Interpreter;
+import org.ccg.mpp.simplejs.internal.JsCoercion;
+import org.ccg.mpp.simplejs.values.JsArray;
+import org.ccg.mpp.simplejs.values.JsBigInt;
+import org.ccg.mpp.simplejs.values.JsBoolean;
+import org.ccg.mpp.simplejs.values.JsFunction;
+import org.ccg.mpp.simplejs.values.JsMap;
+import org.ccg.mpp.simplejs.values.JsNativeFunction;
+import org.ccg.mpp.simplejs.values.JsNull;
+import org.ccg.mpp.simplejs.values.JsNumber;
+import org.ccg.mpp.simplejs.values.JsObject;
+import org.ccg.mpp.simplejs.values.JsProxy;
+import org.ccg.mpp.simplejs.values.JsString;
+import org.ccg.mpp.simplejs.values.JsSymbol;
+import org.ccg.mpp.simplejs.values.JsUndefined;
+import org.junit.jupiter.api.Test;
+
+public class JsCoercionTest {
+    @Test
+    public void test_to_boolean() {
+        assertTrue(JsCoercion.toBoolean(JsBoolean.TRUE));
+        assertFalse(JsCoercion.toBoolean(JsBoolean.FALSE));
+        assertFalse(JsCoercion.toBoolean(new JsNumber(0)));
+        assertFalse(JsCoercion.toBoolean(new JsNumber(Double.NaN)));
+        assertTrue(JsCoercion.toBoolean(new JsNumber(5)));
+        assertFalse(JsCoercion.toBoolean(new JsString("")));
+        assertTrue(JsCoercion.toBoolean(new JsString("a")));
+        assertFalse(JsCoercion.toBoolean(new JsBigInt(BigInteger.ZERO)));
+        assertTrue(JsCoercion.toBoolean(new JsBigInt(BigInteger.TEN)));
+        assertFalse(JsCoercion.toBoolean(JsNull.getInstance()));
+        assertFalse(JsCoercion.toBoolean(JsUndefined.getInstance()));
+        assertTrue(JsCoercion.toBoolean(new JsObject()));
+        assertTrue(JsCoercion.toBoolean(new JsArray()));
+    }
+
+    @Test
+    public void test_to_number() {
+        assertEquals(5, JsCoercion.toNumber(new JsNumber(5)));
+        assertEquals(1, JsCoercion.toNumber(JsBoolean.TRUE));
+        assertEquals(0, JsCoercion.toNumber(JsNull.getInstance()));
+        assertTrue(Double.isNaN(JsCoercion.toNumber(JsUndefined.getInstance())));
+        assertEquals(0, JsCoercion.toNumber(new JsString("")));
+        assertEquals(12, JsCoercion.toNumber(new JsString("  12  ")));
+        assertEquals(1000, JsCoercion.toNumber(new JsString("1e3")));
+        assertEquals(16, JsCoercion.toNumber(new JsString("0x10")));
+        assertEquals(8, JsCoercion.toNumber(new JsString("0o10")));
+        assertEquals(5, JsCoercion.toNumber(new JsString("0b101")));
+        assertEquals(Double.POSITIVE_INFINITY, JsCoercion.toNumber(new JsString("Infinity")));
+        assertEquals(Double.NEGATIVE_INFINITY, JsCoercion.toNumber(new JsString("-Infinity")));
+        assertTrue(Double.isNaN(JsCoercion.toNumber(new JsString("abc"))));
+        assertTrue(Double.isNaN(JsCoercion.toNumber(new JsString("5d"))));
+    }
+
+    @Test
+    public void test_to_number_bigint_throws() {
+        assertThrows(TypeErrorException.class, () -> JsCoercion.toNumber(new JsBigInt(BigInteger.ONE)));
+    }
+
+    @Test
+    public void test_to_str() {
+        assertEquals("hi", JsCoercion.toStrDataOnly(new JsString("hi")));
+        assertEquals("10", JsCoercion.toStrDataOnly(new JsNumber(10)));
+        assertEquals("1.5", JsCoercion.toStrDataOnly(new JsNumber(1.5)));
+        assertEquals("NaN", JsCoercion.toStrDataOnly(new JsNumber(Double.NaN)));
+        assertEquals("Infinity", JsCoercion.toStrDataOnly(new JsNumber(Double.POSITIVE_INFINITY)));
+        assertEquals("-Infinity", JsCoercion.toStrDataOnly(new JsNumber(Double.NEGATIVE_INFINITY)));
+        assertEquals("0", JsCoercion.toStrDataOnly(new JsNumber(0)));
+        assertEquals("true", JsCoercion.toStrDataOnly(JsBoolean.TRUE));
+        assertEquals("42", JsCoercion.toStrDataOnly(new JsBigInt(BigInteger.valueOf(42))));
+        assertEquals("null", JsCoercion.toStrDataOnly(JsNull.getInstance()));
+        assertEquals("undefined", JsCoercion.toStrDataOnly(JsUndefined.getInstance()));
+        assertEquals("[object Object]", JsCoercion.toStrDataOnly(new JsObject()));
+    }
+
+    @Test
+    public void test_to_str_number_matches_spec() {
+        assertEquals("0", JsCoercion.toStrDataOnly(new JsNumber(-0d)));
+        assertEquals("1000000000000000", JsCoercion.toStrDataOnly(new JsNumber(1e15)));
+        assertEquals("100000000000000000000", JsCoercion.toStrDataOnly(new JsNumber(1e20)));
+        assertEquals("1e+21", JsCoercion.toStrDataOnly(new JsNumber(1e21)));
+        assertEquals("1.5e+21", JsCoercion.toStrDataOnly(new JsNumber(1.5e21)));
+        assertEquals("0.000001", JsCoercion.toStrDataOnly(new JsNumber(1e-6)));
+        assertEquals("1e-7", JsCoercion.toStrDataOnly(new JsNumber(1e-7)));
+        assertEquals("5e-324", JsCoercion.toStrDataOnly(new JsNumber(Double.MIN_VALUE)));
+        assertEquals("0.30000000000000004", JsCoercion.toStrDataOnly(new JsNumber(0.1 + 0.2)));
+        assertEquals("0.3333333333333333", JsCoercion.toStrDataOnly(new JsNumber(1d / 3)));
+    }
+
+    @Test
+    public void test_to_str_array() {
+        final var array = new JsArray(List.of(new JsNumber(1), JsNull.getInstance(), new JsNumber(3)));
+        assertEquals("1,,3", JsCoercion.toStrDataOnly(array));
+    }
+
+    @Test
+    public void test_type_of() {
+        assertEquals("number", JsCoercion.typeOf(new JsNumber(1)));
+        assertEquals("string", JsCoercion.typeOf(new JsString("a")));
+        assertEquals("boolean", JsCoercion.typeOf(JsBoolean.TRUE));
+        assertEquals("bigint", JsCoercion.typeOf(new JsBigInt(BigInteger.ONE)));
+        assertEquals("undefined", JsCoercion.typeOf(JsUndefined.getInstance()));
+        assertEquals("object", JsCoercion.typeOf(JsNull.getInstance()));
+        assertEquals("object", JsCoercion.typeOf(new JsObject()));
+        assertEquals("object", JsCoercion.typeOf(new JsArray()));
+    }
+
+    @Test
+    public void test_to_primitive() {
+        assertEquals("[object Object]", ((JsString) JsCoercion.toPrimitive(new JsObject())).getValue());
+        assertEquals(5, ((JsNumber) JsCoercion.toPrimitive(new JsNumber(5))).getValue());
+    }
+
+    @Test
+    public void test_function_coercion() {
+        final var function = new JsFunction("f", List.of(), null, false, false, false, false, Environment.global());
+        final var nativeFunction = new JsNativeFunction("n", (_, _) -> JsUndefined.getInstance());
+        assertEquals("function", JsCoercion.typeOf(function));
+        assertEquals("function", JsCoercion.typeOf(nativeFunction));
+        assertEquals("function f() { [native code] }", JsCoercion.toStrDataOnly(function));
+        assertEquals("function n() { [native code] }", JsCoercion.toStrDataOnly(nativeFunction));
+        assertTrue(JsCoercion.toBoolean(function));
+    }
+
+    @Test
+    public void test_ops_aware_overloads_null_ops() {
+        assertEquals(5, JsCoercion.toNumber(new JsNumber(5), null));
+        assertEquals("[object Object]", JsCoercion.toStr(new JsObject(), null));
+        final var primitive = JsCoercion.toPrimitive(new JsObject(), "number", null);
+        assertEquals("[object Object]", ((JsString) primitive).getValue());
+        assertEquals("1,2", JsCoercion.toStr(new JsArray(List.of(new JsNumber(1), new JsNumber(2))), null));
+    }
+
+    @Test
+    public void test_is_object() {
+        assertFalse(JsCoercion.isObject(new JsNumber(1)));
+        assertFalse(JsCoercion.isObject(new JsString("a")));
+        assertFalse(JsCoercion.isObject(JsBoolean.TRUE));
+        assertFalse(JsCoercion.isObject(new JsBigInt(BigInteger.ONE)));
+        assertFalse(JsCoercion.isObject(JsNull.getInstance()));
+        assertFalse(JsCoercion.isObject(JsUndefined.getInstance()));
+        assertFalse(JsCoercion.isObject(new JsSymbol("s")));
+        assertTrue(JsCoercion.isObject(new JsObject()));
+        assertTrue(JsCoercion.isObject(new JsArray()));
+        assertTrue(JsCoercion.isObject(new JsNativeFunction("n", (_, _) -> JsUndefined.getInstance())));
+    }
+
+    @Test
+    public void test_to_primitive_object_like() {
+        final var function = new JsNativeFunction("f", (_, _) -> JsUndefined.getInstance());
+        assertEquals("function f() { [native code] }", ((JsString) JsCoercion.toPrimitive(function)).getValue());
+        assertEquals("1,2",
+                ((JsString) JsCoercion.toPrimitive(new JsArray(List.of(new JsNumber(1), new JsNumber(2))))).getValue());
+        assertEquals("[object Map]", ((JsString) JsCoercion.toPrimitive(new JsMap())).getValue());
+    }
+
+    @Test
+    public void test_wrapper_coercion() {
+        final var wrapper = new JsObject();
+        wrapper.setPrimitive(new JsNumber(7));
+        assertEquals(7, JsCoercion.toNumber(wrapper));
+        assertEquals("7", JsCoercion.toStrDataOnly(wrapper));
+        assertEquals(7, ((JsNumber) JsCoercion.toPrimitive(wrapper)).getValue());
+        final var symbolWrapper = new JsObject();
+        symbolWrapper.setPrimitive(new JsSymbol("tag"));
+        assertEquals("Symbol(tag)", JsCoercion.toStrDataOnly(symbolWrapper));
+    }
+
+    @Test
+    public void test_to_number_symbol_throws() {
+        assertThrows(TypeErrorException.class, () -> JsCoercion.toNumber(new JsSymbol("s")));
+    }
+
+    @Test
+    public void test_to_numeric() {
+        assertEquals(BigInteger.TEN, ((JsBigInt) JsCoercion.toNumeric(new JsBigInt(BigInteger.TEN), null)).getValue());
+        assertEquals(3, ((JsNumber) JsCoercion.toNumeric(new JsString("3"), null)).getValue());
+        assertEquals(1, ((JsNumber) JsCoercion.toNumeric(JsBoolean.TRUE, null)).getValue());
+    }
+
+    @Test
+    public void test_string_to_big_int() {
+        assertEquals(BigInteger.ZERO, JsCoercion.stringToBigInt(""));
+        assertEquals(BigInteger.ZERO, JsCoercion.stringToBigInt("   "));
+        assertEquals(BigInteger.ONE, JsCoercion.stringToBigInt(" 1 "));
+        assertEquals(BigInteger.valueOf(-1), JsCoercion.stringToBigInt("-1"));
+        assertEquals(BigInteger.valueOf(1), JsCoercion.stringToBigInt("+1"));
+        assertEquals(BigInteger.valueOf(16), JsCoercion.stringToBigInt("0x10"));
+        assertEquals(BigInteger.valueOf(8), JsCoercion.stringToBigInt("0o10"));
+        assertEquals(BigInteger.valueOf(5), JsCoercion.stringToBigInt("0b101"));
+        assertEquals(new BigInteger("9007199254740993"), JsCoercion.stringToBigInt("9007199254740993"));
+        assertNull(JsCoercion.stringToBigInt("0."));
+        assertNull(JsCoercion.stringToBigInt(".0"));
+        assertNull(JsCoercion.stringToBigInt("1e0"));
+        assertNull(JsCoercion.stringToBigInt("0n"));
+        assertNull(JsCoercion.stringToBigInt("Infinity"));
+        assertNull(JsCoercion.stringToBigInt("0b2"));
+        assertNull(JsCoercion.stringToBigInt("-0x10"));
+    }
+
+    @Test
+    public void describeRendersAHugeBigIntByItsBitLength() {
+        final var huge = BigInteger.ONE.shiftLeft(16_777_214).subtract(BigInteger.ONE);
+        assertEquals("a 16777214-bit BigInt", JsCoercion.describe(new JsBigInt(huge)));
+        assertEquals("a 4097-bit BigInt", JsCoercion.describe(new JsBigInt(BigInteger.ONE.shiftLeft(4096))));
+        final var wrapper = new JsObject();
+        wrapper.setPrimitive(new JsBigInt(huge));
+        assertEquals("a 16777214-bit BigInt", JsCoercion.describe(wrapper));
+        assertEquals("1,a 16777214-bit BigInt",
+                JsCoercion.describe(new JsArray(List.of(new JsNumber(1), new JsBigInt(huge)))));
+    }
+
+    @Test
+    public void describePrintsAShortBigIntInFull() {
+        final var atLimit = BigInteger.ONE.shiftLeft(4096).subtract(BigInteger.ONE);
+        assertEquals(atLimit.toString(), JsCoercion.describe(new JsBigInt(atLimit)));
+        assertEquals("-42", JsCoercion.describe(new JsBigInt(BigInteger.valueOf(-42))));
+        final var wrapper = new JsObject();
+        wrapper.setPrimitive(new JsBigInt(BigInteger.TEN));
+        assertEquals("10", JsCoercion.describe(wrapper));
+    }
+
+    @Test
+    public void describeMatchesToStrForNonBigInts() {
+        final var symbolWrapper = new JsObject();
+        symbolWrapper.setPrimitive(new JsSymbol("tag"));
+        final var values = List.of(new JsString("hi"), new JsNumber(1.5), JsBoolean.TRUE, JsNull.getInstance(),
+                JsUndefined.getInstance(), new JsObject(), symbolWrapper,
+                new JsArray(List.of(new JsNumber(1), JsNull.getInstance(), new JsNumber(3))),
+                new JsProxy(new JsArray(List.of(new JsNumber(1))), new JsObject()),
+                new JsProxy(new JsObject(), new JsObject()));
+        for (final var value : values) {
+            assertEquals(JsCoercion.toStrDataOnly(value), JsCoercion.describe(value));
+        }
+        assertThrows(TypeErrorException.class, () -> JsCoercion.describe(new JsSymbol("s")));
+    }
+
+    @Test
+    public void errorMessagesNameAHugeBigIntByItsBitLength() {
+        final var thrown = assertThrows(TypeErrorException.class,
+                () -> Interpreter.run("const x = (1n << 16777214n) - 1n; x();"));
+        assertEquals("a 16777214-bit BigInt is not a function", thrown.getMessage());
+        final var shortOne = assertThrows(TypeErrorException.class, () -> Interpreter.run("(2n ** 70n)();"));
+        assertEquals("1180591620717411303424 is not a function", shortOne.getMessage());
+    }
+}

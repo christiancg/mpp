@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import sys
 
-from lwnrdb import (
+from mpp import (
     ClientSettings,
     GeoPoint,
-    LwnrdbClient,
-    LwnrdbError,
     MapOps,
     MidOps,
+    MppClient,
+    MppError,
     Order,
     ServerAddress,
     Vector,
@@ -24,11 +24,11 @@ def main() -> int:
     if len(getattr(condition, "operands", ())) != 2:
         raise SystemExit("the & operator built the wrong filter")
     try:
-        LwnrdbClient.connect(ClientSettings(hosts=(ServerAddress("127.0.0.1", 1),), connect_timeout=2))
-    except LwnrdbError:
+        MppClient.connect(ClientSettings(hosts=(ServerAddress("127.0.0.1", 1),), connect_timeout=2))
+    except MppError:
         sys.stdout.write("sync consumer ok\n")
         return 0
-    raise SystemExit("connecting to a closed port should fail with an LwnrdbError")
+    raise SystemExit("connecting to a closed port should fail with an MppError")
 
 
 if __name__ == "__main__":

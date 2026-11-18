@@ -1,0 +1,87 @@
+package org.ccg.mpp.unit.config;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.ccg.mpp.config.ConfigKey;
+import org.junit.jupiter.api.Test;
+
+public class ConfigKeyTest {
+    private static Map<String, String> shippedDefaults() throws IOException {
+        final var defaults = new LinkedHashMap<String, String>();
+        final var stream = ConfigKey.class.getResourceAsStream("/default.cfg");
+        assertNotNull(stream, "default.cfg must ship on the classpath");
+        try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                final var trimmed = line.trim();
+                if (trimmed.startsWith("#") || !trimmed.contains("=")) {
+                    continue;
+                }
+                final var split = trimmed.indexOf('=');
+                defaults.put(trimmed.substring(0, split).trim(), trimmed.substring(split + 1).trim());
+            }
+        }
+        return defaults;
+    }
+
+    @Test
+    public void test_every_key_is_declared_in_default_cfg() throws IOException {
+        final var defaults = shippedDefaults();
+        for (final var key : ConfigKey.all()) {
+            assertNotNull(defaults.get(key.key()), key.key() + " is missing from default.cfg");
+        }
+    }
+
+    @Test
+    public void test_default_cfg_declares_no_unknown_key() throws IOException {
+        final var known = ConfigKey.all().stream().map(ConfigKey::key).toList();
+        for (final var key : shippedDefaults().keySet()) {
+            assertTrue(known.contains(key), key + " in default.cfg has no ConfigKey");
+        }
+    }
+
+    @Test
+    public void test_registry_default_matches_default_cfg() throws IOException {
+        final var defaults = shippedDefaults();
+        for (final var key : ConfigKey.all()) {
+            assertEquals(defaults.get(key.key()), key.defaultValue(), key.key() + " default drifted from default.cfg");
+        }
+    }
+
+    @Test
+    public void test_every_shipped_default_passes_its_own_rule() {
+        for (final var key : ConfigKey.all()) {
+            assertNull(key.validate(key.defaultValue()), key.key() + " ships a default its own rule rejects");
+        }
+    }
+
+    @Test
+    public void test_schema_validation_budget_has_a_floor_of_one_thousand() {
+        assertEquals("5000000", ConfigKey.SCHEMA_VALIDATION_BUDGET.defaultValue());
+        assertNull(ConfigKey.SCHEMA_VALIDATION_BUDGET.validate("1000"));
+        assertNotNull(ConfigKey.SCHEMA_VALIDATION_BUDGET.validate("999"));
+    }
+
+    @Test
+    public void test_script_fetch_max_concurrent_must_be_at_least_one() {
+        assertNotNull(ConfigKey.SCRIPT_FETCH_MAX_CONCURRENT.validate("0"));
+        assertNull(ConfigKey.SCRIPT_FETCH_MAX_CONCURRENT.validate("1"));
+        assertEquals("8", ConfigKey.SCRIPT_FETCH_MAX_CONCURRENT.defaultValue());
+    }
+
+    @Test
+    public void intAboveIntMaxRefused() {
+        assertNotNull(ConfigKey.MAX_CONNECTIONS.validate("2147483648"));
+        assertNull(ConfigKey.MAX_CONNECTIONS.validate("2147483647"));
+        assertNull(ConfigKey.TRANSACTION_MAX_AGE_MS.validate("2147483648"), "a LONG key is not int-bounded");
+    }
+}

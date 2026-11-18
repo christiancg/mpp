@@ -5,18 +5,18 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from lwnrdb import (
-    AsyncLwnrdbClient,
+from mpp import (
+    AsyncMppClient,
     ClientSettings,
     ConnectionLostError,
     Credentials,
-    LwnrdbError,
+    MppError,
     ServerAddress,
     UnknownOutcomeError,
     field,
 )
-from lwnrdb._internal.connection_factory import open_streams
-from lwnrdb._internal.values_codec import JsonObject
+from mpp._internal.connection_factory import open_streams
+from mpp._internal.values_codec import JsonObject
 from tests.conftest import no_backoff
 from tests.support.fake_server import FakeServer, Session
 from tests.support.recording_channel import error, ok
@@ -41,9 +41,9 @@ def transactional(commit_code: str | None = None) -> object:
 
 
 @pytest.fixture
-async def client(fake: FakeServer) -> AsyncIterator[AsyncLwnrdbClient]:
+async def client(fake: FakeServer) -> AsyncIterator[AsyncMppClient]:
     fake.responder = transactional()
-    connected = await AsyncLwnrdbClient._connect(
+    connected = await AsyncMppClient._connect(
         fake.settings(credentials=Credentials("alice", "pw")), no_backoff, open_streams
     )
     yield connected
@@ -53,10 +53,10 @@ async def client(fake: FakeServer) -> AsyncIterator[AsyncLwnrdbClient]:
 async def test_connect_fails_cleanly_when_no_server_answers() -> None:
     settings = ClientSettings(hosts=(ServerAddress("127.0.0.1", free_port()),), connect_timeout=2)
     with pytest.raises(ConnectionLostError):
-        await AsyncLwnrdbClient.connect(settings)
+        await AsyncMppClient.connect(settings)
 
 
-async def test_client_level_reads(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_client_level_reads(client: AsyncMppClient, fake: FakeServer) -> None:
     assert await client.list_databases() == ("shop",)
     info = await client.server_info()
     assert (info.state, info.version) == ("READY", "1.0")
@@ -72,12 +72,12 @@ async def test_client_level_reads(client: AsyncLwnrdbClient, fake: FakeServer) -
 
 
 async def test_change_password_needs_credentials(fake: FakeServer) -> None:
-    async with await AsyncLwnrdbClient._connect(fake.settings(), no_backoff, open_streams) as anonymous:
-        with pytest.raises(LwnrdbError, match="no credentials"):
+    async with await AsyncMppClient._connect(fake.settings(), no_backoff, open_streams) as anonymous:
+        with pytest.raises(MppError, match="no credentials"):
             await anonymous.change_password("a", "b")
 
 
-async def test_a_transaction_body_commits_on_a_clean_exit(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_transaction_body_commits_on_a_clean_exit(client: AsyncMppClient, fake: FakeServer) -> None:
     async with client.transaction() as transaction:
         assert transaction.id == "tx-1"
         await transaction.collection("shop", "orders").save({"_id": "o-1"})
@@ -92,7 +92,7 @@ async def test_a_transaction_body_commits_on_a_clean_exit(client: AsyncLwnrdbCli
     assert len(sessions) == 1
 
 
-async def test_a_failing_body_rolls_back_and_reraises(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_failing_body_rolls_back_and_reraises(client: AsyncMppClient, fake: FakeServer) -> None:
     with pytest.raises(RuntimeError, match="body failed"):
         async with client.transaction():
             raise RuntimeError("body failed")
@@ -101,18 +101,18 @@ async def test_a_failing_body_rolls_back_and_reraises(client: AsyncLwnrdbClient,
 
 
 async def test_a_body_that_ends_the_transaction_itself_is_not_committed_again(
-    client: AsyncLwnrdbClient, fake: FakeServer
+    client: AsyncMppClient, fake: FakeServer
 ) -> None:
     async with client.transaction() as transaction:
         await transaction.rollback()
     assert not fake.requests_of_type("COMMIT_TRANSACTION")
-    with pytest.raises(LwnrdbError, match="already committed or rolled back"):
+    with pytest.raises(MppError, match="already committed or rolled back"):
         await transaction.commit()
-    with pytest.raises(LwnrdbError, match="already committed"):
+    with pytest.raises(MppError, match="already committed"):
         transaction.collection("shop", "orders")
 
 
-async def test_a_rollback_failure_does_not_hide_the_body_error(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_a_rollback_failure_does_not_hide_the_body_error(client: AsyncMppClient, fake: FakeServer) -> None:
     def refuse_rollback(request: JsonObject, session: Session) -> None:
         if request.get("type") == "ROLLBACK_TRANSACTION":
             session.send(error(request, "ERROR", "409-4"))
@@ -125,7 +125,7 @@ async def test_a_rollback_failure_does_not_hide_the_body_error(client: AsyncLwnr
             raise RuntimeError("original")
 
 
-async def test_an_unknown_commit_outcome_discards_the_connection(client: AsyncLwnrdbClient, fake: FakeServer) -> None:
+async def test_an_unknown_commit_outcome_discards_the_connection(client: AsyncMppClient, fake: FakeServer) -> None:
     fake.responder = transactional("500-34")
     transaction = await client.begin_transaction()
     pinned = transaction._lease.connection
@@ -135,7 +135,7 @@ async def test_an_unknown_commit_outcome_discards_the_connection(client: AsyncLw
 
 
 async def test_a_transaction_used_as_a_context_rolls_back_when_left_open(
-    client: AsyncLwnrdbClient, fake: FakeServer
+    client: AsyncMppClient, fake: FakeServer
 ) -> None:
     async with await client.begin_transaction() as transaction:
         query = transaction.collection("shop", "orders").query()
@@ -151,7 +151,7 @@ async def test_a_lost_connection_during_start_discards_it(fake: FakeServer) -> N
             session.send(ok(request))
 
     fake.responder = hang_up_on_start
-    async with await AsyncLwnrdbClient._connect(fake.settings(), no_backoff, open_streams) as client:
+    async with await AsyncMppClient._connect(fake.settings(), no_backoff, open_streams) as client:
         with pytest.raises(ConnectionLostError):
             await client.begin_transaction()
         assert client._pool.connections_in_use == 0
@@ -159,7 +159,7 @@ async def test_a_lost_connection_during_start_discards_it(fake: FakeServer) -> N
 
 async def test_closing_while_requests_run_fails_them(fake: FakeServer) -> None:
     fake.responder = lambda request, session: None
-    client = await AsyncLwnrdbClient._connect(fake.settings(shutdown_timeout=0.1), no_backoff, open_streams)
+    client = await AsyncMppClient._connect(fake.settings(shutdown_timeout=0.1), no_backoff, open_streams)
     pending = asyncio.create_task(client.database("shop").collection("orders").find_by_id("o-1"))
     await fake.await_request("FIND_BY_ID")
     await client.close()

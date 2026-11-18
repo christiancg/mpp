@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, time
 
-from lwnrdb import (
+from mpp import (
     CastType,
     CustomType,
     FieldCondition,

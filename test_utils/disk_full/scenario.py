@@ -12,7 +12,7 @@ from durability import oracles
 from durability.workload import Divergence, History, Workload
 
 PORT = int(os.environ.get("DISK_FULL_TEST_PORT", "9455"))
-NAME = os.environ.get("DISK_FULL_CONTAINER", "lwnrdb-disk-full")
+NAME = os.environ.get("DISK_FULL_CONTAINER", "mpp-disk-full")
 LOCK_TIMEOUT_MS = 5000
 SETTLE_TIMEOUT_S = 10.0
 SETTINGS = {"maxMemory": "1mb", "maxPageSize": "8kb", "maxEntrySize": "4kb", "walCheckpointBytes": "64kb",
@@ -76,7 +76,7 @@ class Run:
         self.errors_shown = 0
         self.workload = None
         self.schema = None
-        self.scratch = tempfile.mkdtemp(prefix="lwnrdb-disk-full-run-")
+        self.scratch = tempfile.mkdtemp(prefix="mpp-disk-full-run-")
         self.snapshots = 0
         self.stranded = set()
 

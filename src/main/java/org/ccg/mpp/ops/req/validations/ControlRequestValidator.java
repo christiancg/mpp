@@ -1,0 +1,143 @@
+package org.ccg.mpp.ops.req.validations;
+
+import java.util.Locale;
+import java.util.UUID;
+import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.admin.TriggerRunStatus;
+import org.ccg.mpp.fault.FaultAction;
+import org.ccg.mpp.fault.FaultInjector;
+import org.ccg.mpp.fault.FaultPoint;
+import org.ccg.mpp.ops.ErrorCode;
+import org.ccg.mpp.ops.req.ArmFaultRequest;
+import org.ccg.mpp.ops.req.AwaitFaultRequest;
+import org.ccg.mpp.ops.req.CancelScriptRequest;
+import org.ccg.mpp.ops.req.ListTriggerRunsRequest;
+import org.ccg.mpp.ops.req.ListenRequest;
+import org.ccg.mpp.ops.req.ReleaseFaultRequest;
+import org.ccg.mpp.ops.req.ResolveTransactionRequest;
+import org.ccg.mpp.ops.req.ResolveTriggerRunRequest;
+import org.ccg.mpp.ops.req.StopListenRequest;
+
+public final class ControlRequestValidator {
+    private static final String TRIGGER_RUN_STATUS_RULE = "status must be 'PENDING' or 'DEAD'";
+    private static final String FAULT_POINT_RULE = "point must name a fault point";
+
+    private ControlRequestValidator() {
+    }
+
+    static ValidationResult validateCancelScript(CancelScriptRequest request) {
+        final var runId = request.getRunId();
+        if (runId == null || runId.isBlank()) {
+            return ValidationResult.fail("runId is required");
+        }
+        try {
+            UUID.fromString(runId);
+        } catch (IllegalArgumentException e) {
+            return ValidationResult.fail("runId must be a UUID");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateListTriggerRuns(ListTriggerRunsRequest request) {
+        final var status = request.getStatus();
+        if (status == null || status.isBlank()) {
+            return ValidationResult.ok();
+        }
+        final TriggerRunStatus parsed;
+        try {
+            parsed = TriggerRunStatus.valueOf(status.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return ValidationResult.fail(TRIGGER_RUN_STATUS_RULE);
+        }
+        return parsed == parsed.reported() ? ValidationResult.ok() : ValidationResult.fail(TRIGGER_RUN_STATUS_RULE);
+    }
+
+    static ValidationResult validateResolveTriggerRun(ResolveTriggerRunRequest request) {
+        final var runId = request.getRunId();
+        if (runId == null || runId.isBlank()) {
+            return ValidationResult.fail("runId is required");
+        }
+        if (!ResolveTriggerRunRequest.DECISION_REPLAY.equals(request.getDecision())
+                && !ResolveTriggerRunRequest.DECISION_DISCARD.equals(request.getDecision())) {
+            return ValidationResult.fail("decision must be 'replay' or 'discard'");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateResolveTransaction(ResolveTransactionRequest request) {
+        if (request.getDtxId() == null || request.getDtxId().isBlank()) {
+            return ValidationResult.fail("dtxId is required");
+        }
+        if (!ResolveTransactionRequest.DECISION_COMMIT.equals(request.getDecision())
+                && !ResolveTransactionRequest.DECISION_ABORT.equals(request.getDecision())) {
+            return ValidationResult.fail("decision must be 'commit' or 'abort'");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateListen(ListenRequest request) {
+        final var base = NameValidations.validateDbAndColl(request, false);
+        if (!base.isValid()) {
+            return base;
+        }
+        if (request.getAggregationSteps() == null) {
+            return ValidationResult.fail("LISTEN request requires an aggregationSteps array");
+        }
+        // A LISTEN pipeline re-runs on every matching change, so a script in it would run per write.
+        if (AggregationStepValidator.containsScript(request.getAggregationSteps())) {
+            return ValidationResult.fail(ErrorCode.SCRIPT_NOT_ALLOWED_IN_LISTEN,
+                    ErrorCode.SCRIPT_NOT_ALLOWED_IN_LISTEN.getDefaultMessage());
+        }
+        return DataRequestValidator.validateAggregationSteps(request.getAggregationSteps());
+    }
+
+    static ValidationResult validateStopListen(StopListenRequest request) {
+        if (request.getListenId() == null || request.getListenId().isBlank()) {
+            return ValidationResult.fail("STOP_LISTEN request requires a listenId");
+        }
+        try {
+            java.util.UUID.fromString(request.getListenId());
+        } catch (IllegalArgumentException e) {
+            return ValidationResult.fail("STOP_LISTEN listenId must be a valid UUID");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateArmFault(ArmFaultRequest request) {
+        final var point = FaultInjector.parse(FaultPoint.class, request.getPoint());
+        if (point == null) {
+            return ValidationResult.fail(FAULT_POINT_RULE);
+        }
+        final var action = FaultInjector.parse(FaultAction.class, request.getAction());
+        if (action == null) {
+            return ValidationResult.fail("action must be PAUSE, HALT, DROP or FAIL");
+        }
+        if (action == FaultAction.DROP && !point.isDroppable()) {
+            return ValidationResult.fail("only a message fault point can drop");
+        }
+        if (action == FaultAction.FAIL && !point.isFailable()) {
+            return ValidationResult.fail("only a failable fault point can fail");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateAwaitFault(AwaitFaultRequest request) {
+        if (FaultInjector.parse(FaultPoint.class, request.getPoint()) == null) {
+            return ValidationResult.fail(FAULT_POINT_RULE);
+        }
+        if (outOfRange(request.getTimeoutMs())) {
+            return ValidationResult.fail("timeoutMs must be between 1 and " + Globals.FAULT_PAUSE_LIMIT_MS);
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateReleaseFault(ReleaseFaultRequest request) {
+        return request.getPoint() == null || FaultInjector.parse(FaultPoint.class, request.getPoint()) != null
+                ? ValidationResult.ok()
+                : ValidationResult.fail(FAULT_POINT_RULE);
+    }
+
+    private static boolean outOfRange(Long value) {
+        return value == null || value < 1 || value > Globals.FAULT_PAUSE_LIMIT_MS;
+    }
+}

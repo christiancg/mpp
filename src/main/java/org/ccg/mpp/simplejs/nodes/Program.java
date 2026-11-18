@@ -1,0 +1,20 @@
+package org.ccg.mpp.simplejs.nodes;
+
+import java.util.List;
+
+public class Program extends JsNode {
+    private final List<Statement> body;
+
+    public Program(List<Statement> body) {
+        this.body = body;
+    }
+
+    public List<Statement> getBody() {
+        return body;
+    }
+
+    @Override
+    public NodeType getType() {
+        return NodeType.PROGRAM;
+    }
+}

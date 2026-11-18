@@ -1,0 +1,32 @@
+package org.ccg.mpp.ops.resp;
+
+import java.util.List;
+import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.OperationType;
+
+public class BulkSaveResponse extends OperationResponse {
+    public List<String> inserted;
+    public List<String> updated;
+
+    public BulkSaveResponse(String message, List<String> inserted, List<String> updated) {
+        super(OperationType.BULK_SAVE, OperationStatus.OK, message);
+        this.inserted = inserted;
+        this.updated = updated;
+    }
+
+    public List<String> getInserted() {
+        return inserted;
+    }
+
+    public void setInserted(List<String> inserted) {
+        this.inserted = inserted;
+    }
+
+    public List<String> getUpdated() {
+        return updated;
+    }
+
+    public void setUpdated(List<String> updated) {
+        this.updated = updated;
+    }
+}

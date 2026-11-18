@@ -7,7 +7,7 @@ from typing import Annotated
 
 import pytest
 
-from lwnrdb import AsVector, DataclassCodec, GeoPoint, LocalDateTime, LocalTime, MappingError, Vector
+from mpp import AsVector, DataclassCodec, GeoPoint, LocalDateTime, LocalTime, MappingError, Vector
 
 
 class Status(Enum):

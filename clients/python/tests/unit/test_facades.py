@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from lwnrdb import (
+from mpp import (
     AsyncAdmin,
     AsyncDatabase,
     ConflictError,
@@ -18,7 +18,7 @@ from lwnrdb import (
     collection_key,
     field,
 )
-from lwnrdb._internal.values_codec import JsonObject
+from mpp._internal.values_codec import JsonObject
 from tests.support.protocol_fixtures import responses
 from tests.support.recording_channel import RecordingChannel, error, ok, recording_context
 

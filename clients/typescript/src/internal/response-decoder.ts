@@ -5,11 +5,11 @@ import {
     ConflictError,
     ForbiddenError,
     ListenEndedError,
-    LwnrdbError,
+    MppError,
     NotFoundError,
     UnavailableError,
     UnknownOutcomeError,
-    type LwnrdbErrorOptions,
+    type MppErrorOptions,
 } from "../errors/errors.js";
 import { Status } from "../protocol/status.js";
 import { decodeDocument, type Json, type JsonObject } from "./values-codec.js";
@@ -18,7 +18,7 @@ const FAILURES = new Set<Status>([Status.ERROR, Status.NOT_FOUND, Status.UNAUTHE
 const UNKNOWN_OUTCOME = new Set(["500-33", "500-34"]);
 const KNOWN_STATUSES = new Set<string>(Object.values(Status));
 
-type ErrorClass = new (message: string, options: LwnrdbErrorOptions) => LwnrdbError;
+type ErrorClass = new (message: string, options: MppErrorOptions) => MppError;
 
 const BY_RANGE = new Map<string, ErrorClass>([
     ["401", AuthenticationError],
@@ -63,10 +63,10 @@ function errorClassOf(code: string | undefined, status: Status | undefined): Err
         return UnknownOutcomeError;
     }
     const byRange = code === undefined ? undefined : BY_RANGE.get(code.slice(0, 3));
-    return byRange ?? (status === undefined ? undefined : BY_STATUS.get(status)) ?? LwnrdbError;
+    return byRange ?? (status === undefined ? undefined : BY_STATUS.get(status)) ?? MppError;
 }
 
-export function raise(frame: JsonObject): LwnrdbError {
+export function raise(frame: JsonObject): MppError {
     const code = textOf(frame.errorCode);
     const status = statusOf(frame);
     const message = textOf(frame.message) ?? errorCodeDetails(code)?.message ?? "request failed";

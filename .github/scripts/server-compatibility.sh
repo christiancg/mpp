@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-globals=src/main/java/org/techhouse/config/Globals.java
+globals=src/main/java/org/ccg/mpp/config/Globals.java
 
 protocol_of() {
   git show "$1:$globals" 2>/dev/null | sed -n 's/.*PROTOCOL_VERSION = \([0-9][0-9]*\);.*/\1/p' || true
@@ -26,6 +26,6 @@ if [ -z "$lowest" ]; then
   exit 1
 fi
 
-compatibility="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-christiancg/lwnrdb}/blob/main/docs/compatibility.md#client-libraries"
-printf '**Server compatibility:** speaks protocol version %s, so it works with LWNRDB server %s and every later release that speaks protocol version %s. See [compatibility](%s).\n' \
+compatibility="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-christiancg/mpp}/blob/main/docs/compatibility.md#client-libraries"
+printf '**Server compatibility:** speaks protocol version %s, so it works with MPP server %s and every later release that speaks protocol version %s. See [compatibility](%s).\n' \
   "$protocol" "$lowest" "$protocol" "$compatibility"

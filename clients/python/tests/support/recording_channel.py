@@ -4,12 +4,12 @@ import copy
 from collections.abc import Callable
 from typing import Any
 
-from lwnrdb._internal.client_context import ClientContext
-from lwnrdb._internal.request_encoder import RequestEncoder
-from lwnrdb._internal.response_decoder import check
-from lwnrdb._internal.script_request_encoder import ScriptRequestEncoder
-from lwnrdb._internal.values_codec import EncodeOptions, JsonObject
-from lwnrdb.settings import check_zone
+from mpp._internal.client_context import ClientContext
+from mpp._internal.request_encoder import RequestEncoder
+from mpp._internal.response_decoder import check
+from mpp._internal.script_request_encoder import ScriptRequestEncoder
+from mpp._internal.values_codec import EncodeOptions, JsonObject
+from mpp.settings import check_zone
 
 Replier = Callable[[JsonObject], JsonObject]
 

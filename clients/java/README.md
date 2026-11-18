@@ -1,6 +1,6 @@
-# LWNRDB Java client
+# MPP Java client
 
-The Java client for [LWNRDB](../../README.md). It keeps a pool of authenticated connections and gives you a fluent
+The Java client for [MPP](../../README.md). It keeps a pool of authenticated connections and gives you a fluent
 query builder, transactions, live queries and mapping to your own types. It needs Java 17 or newer, and its only
 runtime dependency is Jackson 3, which can live next to an application's Jackson 2.
 
@@ -15,7 +15,7 @@ Maven:
     <dependencies>
         <dependency>
             <groupId>io.github.christiancg</groupId>
-            <artifactId>lwnrdb-client-bom</artifactId>
+            <artifactId>mpp-client-bom</artifactId>
             <version>0.1.0</version>
             <type>pom</type>
             <scope>import</scope>
@@ -26,7 +26,7 @@ Maven:
 <dependencies>
     <dependency>
         <groupId>io.github.christiancg</groupId>
-        <artifactId>lwnrdb-client</artifactId>
+        <artifactId>mpp-client</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -35,8 +35,8 @@ Gradle (Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation(platform("io.github.christiancg:lwnrdb-client-bom:0.1.0"))
-    implementation("io.github.christiancg:lwnrdb-client")
+    implementation(platform("io.github.christiancg:mpp-client-bom:0.1.0"))
+    implementation("io.github.christiancg:mpp-client")
 }
 ```
 
@@ -48,7 +48,7 @@ ClientSettings settings = ClientSettings.builder()
         .credentials("admin", password)
         .build();
 
-try (LwnrdbClient client = LwnrdbClient.connect(settings)) {
+try (MppClient client = MppClient.connect(settings)) {
     Database shop = client.database("shop");
     shop.create();
     Collection<Document> orders = shop.collection("orders");
@@ -66,7 +66,7 @@ try (LwnrdbClient client = LwnrdbClient.connect(settings)) {
 ```
 
 A collection has to exist before you write to it. Besides `save` and `findById`, a collection has `insert`, `saveAll`,
-`delete`, `updateWhere` and `deleteWhere`. `LwnrdbClient` is thread-safe, and the pool size is how many requests run at
+`delete`, `updateWhere` and `deleteWhere`. `MppClient` is thread-safe, and the pool size is how many requests run at
 once.
 
 ## Settings
@@ -149,7 +149,7 @@ connections, not the pool.
 
 ## Errors and retries
 
-Every refusal from the server is a `LwnrdbException` with the server's error code. There is a subclass per range:
+Every refusal from the server is an `MppException` with the server's error code. There is a subclass per range:
 `AuthenticationException` (401), `ForbiddenException` (403), `NotFoundException` (404), `ConflictException` (409),
 `ListenEndedException` (410), `UnavailableException` (503) and `UnknownOutcomeException` (`500-33`, `500-34`).
 
@@ -162,7 +162,7 @@ transaction.
 ```java
 ClientSettings.builder()
         .host("db.example.com", 8989)
-        .tls(TlsSettings.trustStore(Path.of("lwnrdb-ca.p12"), storePassword))
+        .tls(TlsSettings.trustStore(Path.of("mpp-ca.p12"), storePassword))
         ...
 ```
 
@@ -171,43 +171,43 @@ is only for development.
 
 ## Spring Data and Spring Boot
 
-`lwnrdb-spring-data` adds Spring Data repositories, a template and a transaction manager on top of the client, and
-`lwnrdb-spring-boot-starter` configures all of it from `lwnrdb.*` properties. Both need Spring Boot 4. Import the BOM as
+`mpp-spring-data` adds Spring Data repositories, a template and a transaction manager on top of the client, and
+`mpp-spring-boot-starter` configures all of it from `mpp.*` properties. Both need Spring Boot 4. Import the BOM as
 above and add the starter:
 
 ```xml
 <dependency>
     <groupId>io.github.christiancg</groupId>
-    <artifactId>lwnrdb-spring-boot-starter</artifactId>
+    <artifactId>mpp-spring-boot-starter</artifactId>
 </dependency>
 ```
 
 ```properties
-lwnrdb.hosts=db1.example.com:8989,db2.example.com:8989
-lwnrdb.username=app
-lwnrdb.password=${LWNRDB_PASSWORD}
-lwnrdb.database=shop
+mpp.hosts=db1.example.com:8989,db2.example.com:8989
+mpp.username=app
+mpp.password=${MPP_PASSWORD}
+mpp.database=shop
 ```
 
-`lwnrdb.database` is the database of an entity that names none. The client's other settings have properties of the
-same name in kebab case (`lwnrdb.pool-size`, `lwnrdb.tls.*`, `lwnrdb.retry.*`). With the actuator on the classpath,
-`/actuator/health` includes `lwnrdb`.
+`mpp.database` is the database of an entity that names none. The client's other settings have properties of the
+same name in kebab case (`mpp.pool-size`, `mpp.tls.*`, `mpp.retry.*`). With the actuator on the classpath,
+`/actuator/health` includes `mpp`.
 
 ### Entities
 
 ```java
-@LwnrdbEntity(collection = "orders")
+@MppEntity(collection = "orders")
 public record Order(String id, String status, double total, LocalDateTime placedAt) {
 }
 ```
 
-`@LwnrdbEntity` is optional. The id is the property annotated with `@Id` or named `id`, a `String` stored as `_id`,
+`@MppEntity` is optional. The id is the property annotated with `@Id` or named `id`, a `String` stored as `_id`,
 and a `null` id gets a random UUID on save.
 
 ### Repositories
 
 ```java
-public interface OrderRepository extends LwnrdbRepository<Order, String> {
+public interface OrderRepository extends MppRepository<Order, String> {
     List<Order> findByStatusAndTotalGreaterThanOrderByTotalDesc(String status, double total);
 
     Page<Order> findByStatus(String status, Pageable pageable);
@@ -216,7 +216,7 @@ public interface OrderRepository extends LwnrdbRepository<Order, String> {
 }
 ```
 
-The starter enables the repositories in the application's packages. Anywhere else, use `@EnableLwnrdbRepositories`.
+The starter enables the repositories in the application's packages. Anywhere else, use `@EnableMppRepositories`.
 
 | Keyword | Filter |
 |---|---|
@@ -233,7 +233,7 @@ A keyword the server can't run, such as `Like` or `Regex`, is refused when the r
 
 ### Transactions
 
-The starter registers a `LwnrdbTransactionManager`, so `@Transactional` works:
+The starter registers an `MppTransactionManager`, so `@Transactional` works:
 
 ```java
 @Transactional
@@ -248,7 +248,7 @@ savepoints. Server errors become Spring `DataAccessException`s.
 
 ### The template
 
-`LwnrdbTemplate` has what the repositories use, plus `query(Order.class)`, which gives you the client's `Query<Order>`
+`MppTemplate` has what the repositories use, plus `query(Order.class)`, which gives you the client's `Query<Order>`
 for what derived queries can't express, and `execute(client -> ...)` for anything else.
 
 ## API reference
@@ -260,7 +260,7 @@ The API docs are in [`apidocs/`](apidocs) and in the published Javadoc jar.
 ```bash
 mvn -f clients/java/pom.xml verify
 mvn package -DskipTests                                # at the repository root, the server jar the integration tests use
-mvn -f clients/java/pom.xml verify -Pintegration -Dlwnrdb.jar=$PWD/target/lwnrdb.jar
+mvn -f clients/java/pom.xml verify -Pintegration -Dmpp.jar=$PWD/target/mpp.jar
 mvn -f clients/java/pom.xml -P javadoc package
 ```
 

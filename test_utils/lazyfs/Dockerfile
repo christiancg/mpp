@@ -17,6 +17,6 @@ COPY --from=lazyfs /opt/lazyfs-src/lazyfs/build/lazyfs /usr/local/bin/lazyfs
 COPY --from=lazyfs /opt/lazyfs-src/libs/libpcache/build/libpcache.so* /usr/local/lib/
 RUN ldconfig
 COPY test_utils/lazyfs/lazyfs.toml /app/lazyfs.toml
-COPY target/lwnrdb.jar /app/app.jar
+COPY target/mpp.jar /app/app.jar
 WORKDIR /app
 CMD ["sleep", "infinity"]

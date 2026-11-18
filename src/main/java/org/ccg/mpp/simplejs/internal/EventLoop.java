@@ -1,0 +1,246 @@
+package org.ccg.mpp.simplejs.internal;
+
+import static org.ccg.mpp.simplejs.host.ScriptErrorNames.TIMED_OUT_MESSAGE;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
+import org.ccg.mpp.simplejs.builtins.InterpreterOps;
+import org.ccg.mpp.simplejs.builtins.Intrinsics;
+import org.ccg.mpp.simplejs.exceptions.JsThrowException;
+import org.ccg.mpp.simplejs.exceptions.ScriptCancelledException;
+import org.ccg.mpp.simplejs.exceptions.ScriptTimeoutException;
+import org.ccg.mpp.simplejs.host.CancellationToken;
+import org.ccg.mpp.simplejs.values.JsPromise;
+
+public final class EventLoop {
+    private static final long CANCEL_POLL_NANOS = 50_000_000L;
+    private static final long MICROTASK_BYTES = 64L;
+    private static final long TIMER_BYTES = 160L;
+
+    private static final class Timer {
+        private final long id;
+        private long dueNanos;
+        private final long intervalNanos;
+        private final boolean repeat;
+        private final long seq;
+        private final Runnable callback;
+        private boolean cancelled;
+
+        private Timer(long id, long dueNanos, long intervalNanos, boolean repeat, long seq, Runnable callback) {
+            this.id = id;
+            this.dueNanos = dueNanos;
+            this.intervalNanos = intervalNanos;
+            this.repeat = repeat;
+            this.seq = seq;
+            this.callback = callback;
+        }
+
+        private long due() {
+            return dueNanos;
+        }
+
+        private long seq() {
+            return seq;
+        }
+    }
+
+    private final ArrayDeque<Runnable> microtasks = new ArrayDeque<>();
+    private final PriorityQueue<Timer> timers = new PriorityQueue<>(
+            Comparator.comparingLong(Timer::due).thenComparingLong(Timer::seq));
+    private final Map<Long, Timer> live = new HashMap<>();
+    private final List<JsPromise> promises = new ArrayList<>();
+    private final ConcurrentLinkedQueue<Runnable> asyncCompletions = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger pendingAsyncJobs = new AtomicInteger();
+    private volatile Thread drainThread;
+    private long nextTimerId = 1;
+    private long nextSeq;
+    private InterpreterOps ops;
+    private Intrinsics intrinsics;
+    private CancellationToken cancellation;
+
+    public void wireInterpreter(InterpreterOps ops, Intrinsics intrinsics) {
+        this.ops = ops;
+        this.intrinsics = intrinsics;
+    }
+
+    public void wireCancellation(CancellationToken cancellation) {
+        this.cancellation = cancellation;
+    }
+
+    public InterpreterOps ops() {
+        return ops;
+    }
+
+    public Intrinsics intrinsics() {
+        return intrinsics;
+    }
+
+    public void queueMicrotask(Runnable task) {
+        InterpreterOps.charge(ops, MICROTASK_BYTES);
+        microtasks.add(task);
+    }
+
+    public void beginAsyncJob() {
+        pendingAsyncJobs.incrementAndGet();
+    }
+
+    public void completeAsyncJob(Runnable onLoopThread) {
+        asyncCompletions.add(onLoopThread);
+        pendingAsyncJobs.decrementAndGet();
+        final var thread = drainThread;
+        if (thread != null) {
+            LockSupport.unpark(thread);
+        }
+    }
+
+    public void registerPromise(JsPromise promise) {
+        promises.add(promise);
+    }
+
+    public List<JsPromise> promises() {
+        return promises;
+    }
+
+    public long setTimer(Runnable callback, long delayMillis, boolean repeat) {
+        final var delay = Math.max(0, delayMillis);
+        final var intervalNanos = delay * 1_000_000L;
+        InterpreterOps.charge(ops, TIMER_BYTES);
+        final var id = nextTimerId++;
+        final var timer = new Timer(id, System.nanoTime() + intervalNanos, intervalNanos, repeat, nextSeq++, callback);
+        live.put(id, timer);
+        timers.add(timer);
+        return id;
+    }
+
+    public void clearTimer(long id) {
+        final var timer = live.remove(id);
+        if (timer != null) {
+            timer.cancelled = true;
+        }
+    }
+
+    public void drain() {
+        drain(-1);
+    }
+
+    public void drain(long deadlineNanos) {
+        drainUntil(() -> false, deadlineNanos);
+    }
+
+    public void drainUntil(BooleanSupplier done, long deadlineNanos) {
+        final var outer = drainThread;
+        drainThread = Thread.currentThread();
+        try {
+            drainLoop(done, deadlineNanos);
+        } finally {
+            drainThread = outer;
+        }
+    }
+
+    private void drainLoop(BooleanSupplier done, long deadlineNanos) {
+        while (!done.getAsBoolean()) {
+            runMicrotasks(done);
+            if (done.getAsBoolean()) {
+                return;
+            }
+            final var completion = asyncCompletions.poll();
+            if (completion != null) {
+                completion.run();
+                continue;
+            }
+            final var timer = pollNextLiveTimer();
+            if (timer == null) {
+                if (pendingAsyncJobs.get() > 0) {
+                    awaitAsyncCompletion(deadlineNanos);
+                    continue;
+                }
+                if (!asyncCompletions.isEmpty()) {
+                    continue;
+                }
+                return;
+            }
+            if (!awaitUntil(timer.dueNanos, deadlineNanos)) {
+                timers.add(timer);
+                continue;
+            }
+            if (timer.repeat) {
+                timer.dueNanos = System.nanoTime() + timer.intervalNanos;
+                timers.add(timer);
+            } else {
+                live.remove(timer.id);
+                InterpreterOps.release(ops, TIMER_BYTES);
+            }
+            try {
+                timer.callback.run();
+            } catch (JsThrowException ignored) {
+            }
+        }
+    }
+
+    private void runMicrotasks(BooleanSupplier done) {
+        while (!done.getAsBoolean()) {
+            final var task = microtasks.poll();
+            if (task == null) {
+                return;
+            }
+            InterpreterOps.release(ops, MICROTASK_BYTES);
+            InterpreterOps.tick(ops);
+            task.run();
+        }
+    }
+
+    private void awaitAsyncCompletion(long deadlineNanos) {
+        while (asyncCompletions.isEmpty()) {
+            checkCancelled();
+            if (deadlineNanos >= 0) {
+                final var remaining = deadlineNanos - System.nanoTime();
+                if (remaining <= 0) {
+                    throw new ScriptTimeoutException(TIMED_OUT_MESSAGE);
+                }
+                LockSupport.parkNanos(Math.min(remaining, CANCEL_POLL_NANOS));
+            } else {
+                LockSupport.parkNanos(CANCEL_POLL_NANOS);
+            }
+        }
+    }
+
+    private void checkCancelled() {
+        if (cancellation != null && cancellation.isCancelled()) {
+            throw new ScriptCancelledException("Script was cancelled");
+        }
+    }
+
+    private Timer pollNextLiveTimer() {
+        var timer = timers.poll();
+        while (timer != null && timer.cancelled) {
+            InterpreterOps.release(ops, TIMER_BYTES);
+            timer = timers.poll();
+        }
+        return timer;
+    }
+
+    private boolean awaitUntil(long dueNanos, long deadlineNanos) {
+        final var target = deadlineNanos >= 0 ? Math.min(dueNanos, deadlineNanos) : dueNanos;
+        long now;
+        while ((now = System.nanoTime()) < target) {
+            checkCancelled();
+            if (!asyncCompletions.isEmpty()) {
+                return false;
+            }
+            LockSupport.parkNanos(Math.min(target - now, CANCEL_POLL_NANOS));
+        }
+        if (deadlineNanos >= 0 && dueNanos > deadlineNanos) {
+            throw new ScriptTimeoutException(TIMED_OUT_MESSAGE);
+        }
+        return true;
+    }
+}

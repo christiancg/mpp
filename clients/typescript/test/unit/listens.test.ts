@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { connectWith, type LwnrdbClient } from "../../src/client.js";
+import { connectWith, type MppClient } from "../../src/client.js";
 import {
     ConnectionLostError,
     type Document,
@@ -8,7 +8,7 @@ import {
     ListenEndedError,
     type ListenHandler,
     type ListenUpdate,
-    LwnrdbError,
+    MppError,
     type Stored,
 } from "../../src/index.js";
 import type { JsonObject } from "../../src/internal/values-codec.js";
@@ -16,7 +16,7 @@ import { FakeServer, type Session } from "../support/fake-server.js";
 import { error, ok } from "../support/recording-channel.js";
 
 let server: FakeServer | undefined;
-let client: LwnrdbClient | undefined;
+let client: MppClient | undefined;
 let nextListen = 0;
 
 function listenReply(request: JsonObject, listenId: string): JsonObject {
@@ -27,9 +27,7 @@ function push(listenId: string, id: string): JsonObject {
     return { type: "LISTEN", status: "OK", listenId, results: [{ _id: id }], resultHash: id, isUpdate: true };
 }
 
-async function start(
-    onListen?: (request: JsonObject, session: Session, listenId: string) => void,
-): Promise<LwnrdbClient> {
+async function start(onListen?: (request: JsonObject, session: Session, listenId: string) => void): Promise<MppClient> {
     server = await FakeServer.start((request, session) => {
         if (request.type === "LISTEN") {
             const listenId = `listen-${++nextListen}`;
@@ -165,7 +163,7 @@ describe("listens", () => {
             .database("shop")
             .collection("orders");
         await expect(orders.listen(recorder().handler)).rejects.toThrow(/400-19/);
-        await expect(orders.listen(recorder().handler)).rejects.toBeInstanceOf(LwnrdbError);
+        await expect(orders.listen(recorder().handler)).rejects.toBeInstanceOf(MppError);
     });
 
     test("an ended listen calls onEnded and sends no STOP_LISTEN on close", async () => {

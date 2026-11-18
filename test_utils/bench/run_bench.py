@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional
 import phase_cpu
 import report
 from engines.base import DURABILITIES
-from engines.lwnrdb_engine import PASSWORD, USERNAME
+from engines.mpp_engine import PASSWORD, USERNAME
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMPOSE = ["docker", "compose", "-f", os.path.join(HERE, "docker-compose.yml")]
@@ -25,7 +25,7 @@ G1_PAUSE = re.compile(r"\bPause (Young|Remark|Cleanup|Full)\b.*?(\d+(?:\.\d+)?)m
 P99 = 0.99
 UNITS = {"k": 1024, "m": MIB, "g": 1024 * MIB}
 DATA_DIRS = {
-    "lwnrdb": "/app/db",
+    "mpp": "/app/db",
     "mysql": "/var/lib/mysql",
     "postgres": "/var/lib/postgresql",
     "mongo": "/data/db",
@@ -52,8 +52,8 @@ def resource_env(cpus: int, memory: int, host_cpus: int, synced: bool) -> Dict[s
         "BENCH_CPUSET": f"0-{cpus - 1}",
         "BENCH_CLIENT_CPUSET": f"{cpus}-{host_cpus - 1}",
         "BENCH_MEMORY": f"{mb}m",
-        "LWNRDB_HEAP_PERCENT": str(DEFAULT_HEAP_PERCENT),
-        "LWNRDB_JAVA_OPTS": "",
+        "MPP_HEAP_PERCENT": str(DEFAULT_HEAP_PERCENT),
+        "MPP_JAVA_OPTS": "",
         "MYSQL_BUFFER_POOL": f"{mb // 2}M",
         "POSTGRES_SHARED_BUFFERS": f"{mb // 4}MB",
         "POSTGRES_EFFECTIVE_CACHE": f"{mb * 3 // 4}MB",
@@ -65,14 +65,14 @@ def resource_env(cpus: int, memory: int, host_cpus: int, synced: bool) -> Dict[s
     }
 
 
-def write_lwnrdb_config(memory: int, synced: bool, heap_percent: int = DEFAULT_HEAP_PERCENT,
+def write_mpp_config(memory: int, synced: bool, heap_percent: int = DEFAULT_HEAP_PERCENT,
                         extra: Optional[List[str]] = None) -> None:
     os.makedirs(GENERATED, exist_ok=True)
     cache_budget_mb = memory * heap_percent // 100 // MIB // CACHE_SHARE_OF_HEAP_DIVISOR
     lines = ["port=8989", "filePath=db", "logPath=logs", f"defaultAdminUsername={USERNAME}",
              f"defaultAdminPassword={PASSWORD}", f"maxMemory={cache_budget_mb}mb", "maxConnections=500",
              f"syncWrites={str(synced).lower()}", *(extra or [])]
-    path = os.path.join(GENERATED, "lwnrdb.cfg")
+    path = os.path.join(GENERATED, "mpp.cfg")
     with open(path, "w") as handle:
         handle.write("\n".join(lines) + "\n")
     os.chmod(path, 0o644)
@@ -115,7 +115,7 @@ def parse_g1_pauses(log: Optional[str]) -> Optional[dict]:
 
 
 def _gc_pauses(env: Dict[str, str]) -> Optional[dict]:
-    result = compose(env, "--profile", "lwnrdb", "exec", "-T", "lwnrdb", "sh", "-c",
+    result = compose(env, "--profile", "mpp", "exec", "-T", "mpp", "sh", "-c",
                      f"test -f {GC_LOG} && cat {GC_LOG}", capture=True, check=False)
     return parse_g1_pauses(result.stdout if result.returncode == 0 else None)
 
@@ -126,7 +126,7 @@ def measure(env: Dict[str, str], engine: str) -> dict:
         "memory_peak": _exec_int(env, engine, "cat", "/sys/fs/cgroup/memory.peak"),
         "memory_current": _exec_int(env, engine, "cat", "/sys/fs/cgroup/memory.current"),
         "data_bytes": None if kilobytes is None else kilobytes * 1024,
-        "gc_pauses": _gc_pauses(env) if engine == "lwnrdb" else None,
+        "gc_pauses": _gc_pauses(env) if engine == "mpp" else None,
     }
 
 
@@ -189,7 +189,7 @@ def run_engine(env: Dict[str, str], engine: str, run_id: str, workload_args: Lis
 
 def _parse(argv: List[str]):
     parser = argparse.ArgumentParser(
-        description="Benchmark lwnrdb against other engines, each in an identically limited container. "
+        description="Benchmark mpp against other engines, each in an identically limited container. "
                     "Unrecognised flags (--docs, --concurrency, --ops-scale, ...) go to bench_client.py.")
     parser.add_argument("--engines", default=",".join(report.ORDER))
     parser.add_argument("--cpus", type=int, default=2)
@@ -197,13 +197,13 @@ def _parse(argv: List[str]):
     parser.add_argument("--durability", choices=DURABILITIES, default="relaxed",
                         help="relaxed: no engine syncs per commit; synced: every engine syncs every write")
     parser.add_argument("--keep", action="store_true", help="leave the last engine's container running")
-    parser.add_argument("--lwnrdb-config", action="append", default=[], metavar="KEY=VALUE",
-                        help="append a line to the generated lwnrdb.cfg (repeatable), e.g. groupCommitDelayMicros=100")
+    parser.add_argument("--mpp-config", action="append", default=[], metavar="KEY=VALUE",
+                        help="append a line to the generated mpp.cfg (repeatable), e.g. groupCommitDelayMicros=100")
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--heap-percent", type=int, default=DEFAULT_HEAP_PERCENT,
-                        help="-XX:MaxRAMPercentage of the lwnrdb container; maxMemory is set to half the resulting heap")
+                        help="-XX:MaxRAMPercentage of the mpp container; maxMemory is set to half the resulting heap")
     parser.add_argument("--java-opts", default="",
-                        help="extra JVM flags for lwnrdb, passed as JDK_JAVA_OPTIONS; write --java-opts=-XX:SoftMaxHeapSize=1g "
+                        help="extra JVM flags for mpp, passed as JDK_JAVA_OPTIONS; write --java-opts=-XX:SoftMaxHeapSize=1g "
                              "with an equals sign, because a value that starts with a dash is read as a flag")
     return parser.parse_known_args(argv)
 
@@ -222,14 +222,14 @@ def main(argv: List[str]) -> int:
     memory = parse_size(args.memory)
     synced = args.durability == "synced"
     env = resource_env(args.cpus, memory, host_cpus, synced)
-    env["LWNRDB_HEAP_PERCENT"] = str(args.heap_percent)
-    env["LWNRDB_JAVA_OPTS"] = args.java_opts
-    write_lwnrdb_config(memory, synced, args.heap_percent, args.lwnrdb_config)
+    env["MPP_HEAP_PERCENT"] = str(args.heap_percent)
+    env["MPP_JAVA_OPTS"] = args.java_opts
+    write_mpp_config(memory, synced, args.heap_percent, args.mpp_config)
     run_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     os.makedirs(os.path.join(RESULTS, run_id), exist_ok=True)
     compose(env, *profiles(list(DATA_DIRS)), "down", "-v", "--remove-orphans")
     if not args.no_build:
-        compose(env, *profiles([e for e in engines if e == "lwnrdb"] + ["client"]), "build")
+        compose(env, *profiles([e for e in engines if e == "mpp"] + ["client"]), "build")
     statuses = {engine: run_engine(env, engine, run_id, workload_args, args.keep and engine == engines[-1],
                                    args.durability)
                 for engine in engines}

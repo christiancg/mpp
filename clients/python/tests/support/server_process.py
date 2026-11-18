@@ -13,7 +13,7 @@ ADMIN = "admin"
 PASSWORD = "Tst-Admin-9xQ2mV"
 _STARTUP_SECONDS = 90.0
 _STOP_SECONDS = 30.0
-_DEFAULT_JAR = Path(__file__).resolve().parents[4] / "target" / "lwnrdb.jar"
+_DEFAULT_JAR = Path(__file__).resolve().parents[4] / "target" / "mpp.jar"
 
 
 def free_port() -> int:
@@ -39,10 +39,10 @@ class ServerProcess:
 
     @classmethod
     def start(cls, overrides: Mapping[str, str] | None = None) -> ServerProcess:
-        jar = Path(os.environ.get("LWNRDB_JAR", str(_DEFAULT_JAR))).resolve()
+        jar = Path(os.environ.get("MPP_JAR", str(_DEFAULT_JAR))).resolve()
         if not jar.exists():
             raise RuntimeError(f"no server jar at {jar}; run mvn package -DskipTests at the repository root")
-        work_dir = Path(tempfile.mkdtemp(prefix="lwnrdb-it-"))
+        work_dir = Path(tempfile.mkdtemp(prefix="mpp-it-"))
         port = free_port()
         config = {
             "port": str(port),
@@ -52,7 +52,7 @@ class ServerProcess:
             "maxMemory": "128Mb",
             **(overrides or {}),
         }
-        (work_dir / "lwnrdb.cfg").write_text("".join(f"{key}={value}\n" for key, value in config.items()))
+        (work_dir / "mpp.cfg").write_text("".join(f"{key}={value}\n" for key, value in config.items()))
         with (work_dir / "server.out").open("wb") as output:
             process = subprocess.Popen(
                 ["java", "-Xmx512m", "-XX:+UseG1GC", "-jar", str(jar)],

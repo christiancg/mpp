@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 
 PORT = int(os.environ.get("LAZYFS_TEST_PORT", "9458"))
-NAME = os.environ.get("LAZYFS_CONTAINER", "lwnrdb-lazyfs")
+NAME = os.environ.get("LAZYFS_CONTAINER", "mpp-lazyfs")
 os.environ["DISK_FULL_TEST_PORT"] = str(PORT)
 TEST_UTILS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TEST_UTILS))
