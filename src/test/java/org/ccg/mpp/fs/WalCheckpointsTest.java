@@ -18,19 +18,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalCheckpointsTest {
-    private static final String DB = "ckptDb";
+    private static final String PROJECT = "ckptProject";
 
     @TempDir
     File tmp;
 
     private static final CollectionTryLock FREE = new CollectionTryLock() {
         @Override
-        public boolean tryLock(String dbName, String collName) {
+        public boolean tryLock(String projectName, String collName) {
             return true;
         }
 
         @Override
-        public void unlock(String dbName, String collName) {
+        public void unlock(String projectName, String collName) {
         }
     };
 
@@ -49,14 +49,14 @@ public class WalCheckpointsTest {
     }
 
     private ReplacerFixture collection(String collName) throws IOException {
-        final var fixture = new ReplacerFixture(tmp, DB, collName);
+        final var fixture = new ReplacerFixture(tmp, PROJECT, collName);
         fixture.fx.seed(0, "a", "b");
         fixtures.add(fixture);
         return fixture;
     }
 
     private static int records(ReplacerFixture fixture) throws IOException {
-        final var log = fixture.fx.paths.writeAheadLog(DB, fixture.fx.collName);
+        final var log = fixture.fx.paths.writeAheadLog(PROJECT, fixture.fx.collName);
         return WalCodec.decodeAll(Files.readAllBytes(log.toPath())).records().size();
     }
 
@@ -67,12 +67,12 @@ public class WalCheckpointsTest {
     private static CheckpointGuard holdingIndexWorkOnBusy() {
         return new CheckpointGuard() {
             @Override
-            public boolean holdsIndexWork(String dbName, String coll) {
+            public boolean holdsIndexWork(String projectName, String coll) {
                 return "busy".equals(coll);
             }
 
             @Override
-            public Collection<String> pendingIds(String dbName, String coll) {
+            public Collection<String> pendingIds(String projectName, String coll) {
                 return List.of();
             }
         };
@@ -94,9 +94,9 @@ public class WalCheckpointsTest {
     @Test
     public void test_page_row_logs_are_left_for_the_startup_replay_at_shutdown() throws Exception {
         final var user = collection("user");
-        final var rows = new ReplacerFixture(tmp, Globals.ADMIN_PAGES_DB_NAME, "mydb_rows");
+        final var rows = new ReplacerFixture(tmp, Globals.ADMIN_PAGES_PROJECT_NAME, "mydb_rows");
         rows.fx.seed(0, "a", "b");
-        final var rowsLog = rows.fx.paths.writeAheadLog(Globals.ADMIN_PAGES_DB_NAME, "mydb_rows");
+        final var rowsLog = rows.fx.paths.writeAheadLog(Globals.ADMIN_PAGES_PROJECT_NAME, "mydb_rows");
 
         checkpoints().atShutdown(Long.MAX_VALUE);
 
@@ -157,12 +157,12 @@ public class WalCheckpointsTest {
     public void test_an_open_write_group_is_never_checkpointed_while_idle() throws Exception {
         final var fixture = collection("grouped");
         final var log = new WriteAheadLog(fixture.fx.paths);
-        log.openGroup(DB, "grouped");
+        log.openGroup(PROJECT, "grouped");
         try {
             assertEquals(0, checkpoints().idle(0L, 16, FREE));
-            assertFalse(log.checkpointIfIdle(DB, "grouped", 0L));
+            assertFalse(log.checkpointIfIdle(PROJECT, "grouped", 0L));
         } finally {
-            log.closeGroup(DB, "grouped");
+            log.closeGroup(PROJECT, "grouped");
         }
         assertEquals(2, records(fixture));
     }
@@ -172,10 +172,10 @@ public class WalCheckpointsTest {
         final var fixture = collection("recheck");
         final var log = new WriteAheadLog(fixture.fx.paths);
 
-        assertFalse(log.checkpointIfIdle(DB, "recheck", 60_000L));
-        assertFalse(log.checkpointIfIdle(DB, "unknown", 0L));
-        assertTrue(log.checkpointIfIdle(DB, "recheck", 0L));
-        assertFalse(log.checkpointIfIdle(DB, "recheck", 0L), "nothing is left to checkpoint");
+        assertFalse(log.checkpointIfIdle(PROJECT, "recheck", 60_000L));
+        assertFalse(log.checkpointIfIdle(PROJECT, "unknown", 0L));
+        assertTrue(log.checkpointIfIdle(PROJECT, "recheck", 0L));
+        assertFalse(log.checkpointIfIdle(PROJECT, "recheck", 0L), "nothing is left to checkpoint");
     }
 
     @Test
@@ -185,12 +185,12 @@ public class WalCheckpointsTest {
         final var unlocked = new ArrayList<String>();
         final var locks = new CollectionTryLock() {
             @Override
-            public boolean tryLock(String dbName, String collName) {
+            public boolean tryLock(String projectName, String collName) {
                 return !"held".equals(collName);
             }
 
             @Override
-            public void unlock(String dbName, String collName) {
+            public void unlock(String projectName, String collName) {
                 unlocked.add(collName);
             }
         };

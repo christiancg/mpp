@@ -15,7 +15,7 @@ PORT = int(os.environ.get("STREAM_TEST_PORT", "8989"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "stream_db"
+PROJECT = "stream_project"
 COLL = "stream_coll"
 JOIN_COLL = "stream_join"
 NUM_DOCS = int(os.environ.get("STREAM_TEST_DOCS", "8000"))
@@ -26,7 +26,7 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 
 
 def stats(c) -> dict:
-    return c.send({"type": "GET_DATABASE_STATS"})
+    return c.send({"type": "GET_PROJECT_STATS"})
 
 
 CACHE_CAP_TOLERANCE = 1.20
@@ -68,7 +68,7 @@ def assert_cache_respects_cap(label: str, snapshot: dict):
 
 
 def agg(c, coll, steps) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                        "aggregationSteps": steps})
 
 
@@ -85,9 +85,9 @@ def email_for(v: int) -> str:
 
 
 def setup_fixtures(c: Conn):
-    c.send({"type": "CREATE_DATABASE", "databaseName": DB})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": JOIN_COLL})
+    c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": JOIN_COLL})
 
     batch = []
     for v in range(NUM_DOCS):
@@ -100,26 +100,26 @@ def setup_fixtures(c: Conn):
         }
         batch.append(doc)
         if len(batch) >= BULK_BATCH_SIZE:
-            r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": batch})
+            r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": batch})
             if r.get("status") != "OK":
                 check_status("BULK_SAVE during fixture load", r, "OK")
                 return
             batch = []
     if batch:
-        c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": batch})
+        c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": batch})
 
-    c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": JOIN_COLL, "objects": [
+    c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": JOIN_COLL, "objects": [
         {"_id": "active", "status": "active", "label": "Active users"},
         {"_id": "inactive", "status": "inactive", "label": "Inactive users"},
     ]})
 
-    c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL, "fieldName": "status"})
-    c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL, "fieldName": "email"})
+    c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL, "fieldName": "status"})
+    c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL, "fieldName": "email"})
     time.sleep(3)
 
 
 def teardown_fixtures(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
 
 
 def test_indexed_filter_correctness(c):
@@ -292,7 +292,7 @@ TIGHT_WRITES = 400
 
 
 def dirty_find(c: Conn, id_: str) -> dict:
-    return c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": id_, "dirtyRead": True})
+    return c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": id_, "dirtyRead": True})
 
 
 def test_dirty_find_by_id_under_tight_memory():
@@ -306,10 +306,11 @@ def test_dirty_find_by_id_under_tight_memory():
         proc = bu.start_server(work_dir, log_path, port=TIGHT_PORT)
         with Conn(port=TIGHT_PORT) as c:
             c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
-            c.send({"type": "CREATE_DATABASE", "databaseName": DB})
-            c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
+            c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+            c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
             for start in range(0, TIGHT_DOCS, 1_000):
-                check_status(f"bulk {start}", c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+                check_status(f"bulk {start}", c.send({"type": "BULK_SAVE", "projectName": PROJECT,
+                                                      "collectionName": COLL,
                                                       "objects": [{"_id": f"t{i:05d}", "v": i}
                                                                   for i in range(start, start + 1_000)]},
                                                      timeout=120), "OK")
@@ -322,9 +323,9 @@ def test_dirty_find_by_id_under_tight_memory():
                 i = 0
                 while not stop.is_set() and i < TIGHT_WRITES:
                     j = (i * 7 + 3) % TIGHT_DOCS
-                    w.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                    w.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": f"t{j:05d}", "v": j}})
-                    w.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                    w.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": f"new{i:05d}", "v": -i}})
                     written.append(i)
                     i += 1
@@ -362,7 +363,7 @@ def test_dirty_find_by_id_under_tight_memory():
 def test_server_still_alive(c):
     section("Liveness check after the whole run")
     check_status("AUTHENTICATE still works", c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD), "OK")
-    check_status("LIST_DATABASES still responds", c.send({"type": "LIST_DATABASES"}), "OK")
+    check_status("LIST_PROJECTS still responds", c.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def main():

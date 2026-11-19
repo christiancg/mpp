@@ -15,20 +15,20 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.req.AggregateRequest;
 import org.ccg.mpp.ops.req.BulkSaveRequest;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
 import org.ccg.mpp.ops.req.CreateIndexRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DeleteRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
 import org.ccg.mpp.ops.req.DropIndexRequest;
 import org.ccg.mpp.ops.req.FindByIdRequest;
-import org.ccg.mpp.ops.req.GetDatabaseStatsRequest;
+import org.ccg.mpp.ops.req.GetProjectStatsRequest;
 import org.ccg.mpp.ops.req.ListCollectionsRequest;
-import org.ccg.mpp.ops.req.ListDatabasesRequest;
+import org.ccg.mpp.ops.req.ListProjectsRequest;
 import org.ccg.mpp.ops.req.ListUsersRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.ops.req.ReindexRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -45,7 +45,7 @@ public class OperationProcessorCatchTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         realAdminCache = TestUtils.getPrivateField(cache, "adminCache", AdminCache.class);
         realUserCache = TestUtils.getPrivateField(cache, "userCache", UserCache.class);
         final var throwing = mock(AdminCache.class, _ -> {
@@ -81,45 +81,45 @@ public class OperationProcessorCatchTest {
 
     @Test
     public void test_data_operation_catch_blocks() {
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.setObject(doc());
         assertErrors(save);
 
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(doc()));
         assertErrors(bulk);
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("x");
         assertErrors(find);
 
-        final var aggregate = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var aggregate = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         aggregate.setAggregationSteps(List.of());
         assertErrors(aggregate);
 
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("x");
         assertErrors(delete);
     }
 
     @Test
     public void test_admin_operation_catch_blocks() {
-        assertErrors(new CreateDatabaseRequest("anotherDb"));
-        assertErrors(new ListDatabasesRequest());
-        assertErrors(new CreateCollectionRequest(TestGlobals.DB, "newColl"));
-        assertErrors(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL));
-        assertErrors(new ListCollectionsRequest(TestGlobals.DB));
+        assertErrors(new CreateProjectRequest("anotherProject"));
+        assertErrors(new ListProjectsRequest());
+        assertErrors(new CreateCollectionRequest(TestGlobals.PROJECT, "newColl"));
+        assertErrors(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertErrors(new ListCollectionsRequest(TestGlobals.PROJECT));
         assertErrors(new ListUsersRequest());
-        assertErrors(new GetDatabaseStatsRequest());
-        final var owners = new SetDatabaseOwnersRequest(TestGlobals.DB);
+        assertErrors(new GetProjectStatsRequest());
+        final var owners = new SetProjectOwnersRequest(TestGlobals.PROJECT);
         owners.setOwners(List.of("bob"));
         assertErrors(owners);
     }
 
     @Test
     public void test_index_operation_catch_blocks() {
-        assertErrors(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "v"));
-        assertErrors(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "v"));
-        assertErrors(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("v")));
+        assertErrors(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "v"));
+        assertErrors(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "v"));
+        assertErrors(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("v")));
     }
 }

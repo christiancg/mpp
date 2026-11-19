@@ -31,7 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class TransactionOperationHelperReapTest {
-    private static final String STRANDED = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + "stranded";
+    private static final String STRANDED = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + "stranded";
 
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
@@ -41,7 +41,7 @@ public class TransactionOperationHelperReapTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         clientId = clientTracker.addClient(TestUtils.clientSocket());
     }
@@ -55,7 +55,7 @@ public class TransactionOperationHelperReapTest {
 
     private void openTransactionWithOneWrite(String id) {
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         save.setObject(object);
@@ -67,9 +67,9 @@ public class TransactionOperationHelperReapTest {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var free = new boolean[1];
         final var probe = Thread.ofPlatform().start(() -> {
-            free[0] = locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL);
+            free[0] = locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             if (free[0]) {
-                locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join(5000);
@@ -96,7 +96,7 @@ public class TransactionOperationHelperReapTest {
         final var txId = transaction.getTransactionId().toString();
         TransactionRecordCalls.persistBufferedOps(transaction);
         TxCommitLog.recordLocalCommit(txId, transaction.getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         try {
             assertFalse(TransactionOperationHelper.isReapable(clientId));
 

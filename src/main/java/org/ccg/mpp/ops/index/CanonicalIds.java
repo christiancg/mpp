@@ -10,12 +10,12 @@ public final class CanonicalIds {
     @SuppressWarnings("FieldMayBeFinal")
     private static Cache cache = IocContainer.get(Cache.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final Map<String, String> known = new HashMap<>();
 
-    public CanonicalIds(String dbName, String collName) {
-        this.dbName = dbName;
+    public CanonicalIds(String projectName, String collName) {
+        this.projectName = projectName;
         this.collName = collName;
     }
 
@@ -33,7 +33,7 @@ public final class CanonicalIds {
         if (remembered != null || known.containsKey(id)) {
             return remembered;
         }
-        final var canonical = cache.canonicalPkId(dbName, collName, id);
+        final var canonical = cache.canonicalPkId(projectName, collName, id);
         known.put(id, canonical);
         return canonical;
     }

@@ -68,15 +68,15 @@ public class DefinitionsTest {
 
     @Test
     public void test_permissions_are_immutable_snapshots() {
-        final var permissions = Permissions.builder().admin(true).global(GlobalPermission.DROP_DATABASE)
-                .database("shop", DataPermission.READ).collection("shop", "orders", DataPermission.READ_WRITE)
+        final var permissions = Permissions.builder().admin(true).global(GlobalPermission.DROP_PROJECT)
+                .project("shop", DataPermission.READ).collection("shop", "orders", DataPermission.READ_WRITE)
                 .scripts("shop", ScriptPermission.NONE).build();
         assertTrue(permissions.admin());
-        assertEquals(Set.of(GlobalPermission.DROP_DATABASE), permissions.global());
-        assertEquals(Map.of("shop", DataPermission.READ), permissions.databases());
+        assertEquals(Set.of(GlobalPermission.DROP_PROJECT), permissions.global());
+        assertEquals(Map.of("shop", DataPermission.READ), permissions.projects());
         assertEquals(Map.of("shop|orders", DataPermission.READ_WRITE), permissions.collections());
         assertEquals(Map.of("shop", ScriptPermission.NONE), permissions.scripts());
-        assertUnmodifiable(permissions.databases());
+        assertUnmodifiable(permissions.projects());
     }
 
     private static void assertUnmodifiable(Map<?, ?> map) {

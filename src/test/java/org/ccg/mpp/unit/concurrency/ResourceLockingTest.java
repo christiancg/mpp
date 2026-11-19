@@ -360,7 +360,7 @@ public class ResourceLockingTest {
     }
 
     @Test
-    public void test_lock_with_empty_database_name() {
+    public void test_lock_with_empty_project_name() {
         final var rl = new ResourceLocking();
         assertDoesNotThrow(() -> {
             rl.lock("", "coll");

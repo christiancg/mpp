@@ -48,22 +48,22 @@ public class ReadPathHelperPointModeTest {
     private static final long WAIT_MS = 5_000L;
     private static final long BLOCKED_MS = 300L;
     private static final String OTHER = "point_other";
-    private static final String ID = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String ID = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
 
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, OTHER)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, OTHER)).getStatus());
         for (var number = 0; number < 9; number++) {
             save(TestGlobals.COLL, "d" + number, new JsonString("c" + number % 3));
         }
         save(OTHER, "o1", new JsonString("c1"));
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "cat")).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "cat")).getStatus());
     }
 
     @AfterEach
@@ -76,13 +76,13 @@ public class ReadPathHelperPointModeTest {
         final var document = new JsonObject();
         document.add("_id", new JsonString(id));
         document.add("cat", cat);
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(document);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private static AggregateRequest request(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return request;
     }
@@ -101,8 +101,8 @@ public class ReadPathHelperPointModeTest {
     }
 
     private SettleWindow openWindow() throws InterruptedException {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
-        final var window = locks.openSettleWindow(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var window = locks.openSettleWindow(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(window.shared());
         return window;
     }
@@ -140,7 +140,7 @@ public class ReadPathHelperPointModeTest {
                     .getValue().longValue());
         }
         assertEquals(0, locks.longReaders(ID));
-        assertFalse(locks.holdsCollectionLock(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.holdsCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private static FilterAggregationStep catInMixedKinds() {

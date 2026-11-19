@@ -33,10 +33,10 @@ public class QueryIT extends ServerIT {
 
     @BeforeAll
     public void seed() {
-        final var database = client.database("query_it");
-        database.create();
-        orders = database.collection("orders");
-        final var customers = database.collection("customers");
+        final var project = client.project("query_it");
+        project.create();
+        orders = project.collection("orders");
+        final var customers = project.collection("customers");
         orders.create();
         customers.create();
         final var rows = new ArrayList<Document>();

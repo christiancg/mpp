@@ -64,17 +64,17 @@ public class LazyIndexSourcesTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             documents.add(document(String.format("d%04d", i), i % CATEGORIES, i % REGIONS, (i * 7919) % DOCUMENTS));
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, COLL);
         bulk.setObjects(documents);
         processor.processMessage(bulk);
         for (final var field : List.of("cat", "ts", "uid")) {
-            processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, field));
+            processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, field));
         }
         drainBackgroundWrites();
     }
@@ -82,7 +82,7 @@ public class LazyIndexSourcesTest {
     @AfterEach
     public void tearDown() throws NoSuchFieldException, IllegalAccessException, IOException, InterruptedException {
         TestUtils.releaseAllLocks();
-        processor.processMessage(new DropCollectionRequest(TestGlobals.DB, COLL));
+        processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, COLL));
         TestUtils.standardTearDown();
     }
 
@@ -98,18 +98,18 @@ public class LazyIndexSourcesTest {
 
     private void drainBackgroundWrites() throws IOException, InterruptedException {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        for (final var id : pending.idsFor(TestGlobals.DB, COLL)) {
-            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.DB, COLL, Set.of(id));
+        for (final var id : pending.idsFor(TestGlobals.PROJECT, COLL)) {
+            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.PROJECT, COLL, Set.of(id));
             if (!entries.isEmpty()) {
-                EventProcessorHelper
-                        .processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, COLL, entries.getFirst()));
+                EventProcessorHelper.processEvent(
+                        new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, COLL, entries.getFirst()));
             }
         }
-        assertTrue(pending.idsFor(TestGlobals.DB, COLL).isEmpty(), "the pending overlay must be drained");
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, COLL).isEmpty(), "the pending overlay must be drained");
     }
 
     private Answer run(UUID client, boolean dirty, BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setDirtyRead(dirty);
         request.setAggregationSteps(List.of(steps));
@@ -154,7 +154,7 @@ public class LazyIndexSourcesTest {
     }
 
     private void save(JsonObject document, UUID client) {
-        final var request = new SaveRequest(TestGlobals.DB, COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, COLL);
         request.setObject(document);
         final var response = client == null
                 ? processor.processMessage(request)
@@ -319,7 +319,7 @@ public class LazyIndexSourcesTest {
     public void pendingWritesFallBackToCurrentPaths() {
         save(document("late", 1, 2, 1), null);
         save(document("d0001", 1, 2, 2999), null);
-        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.DB, COLL).isEmpty());
+        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.PROJECT, COLL).isEmpty());
         final var cat = filter(equalsTo("cat", "c1"));
         final var sortedSteps = List.of(
                 new BaseAggregationStep[]{cat, new SortAggregationStep("ts", true), new LimitAggregationStep(5)},

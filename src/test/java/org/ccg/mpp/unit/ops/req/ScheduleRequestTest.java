@@ -51,15 +51,15 @@ public class ScheduleRequestTest {
         assertEquals(OperationType.DELETE_SCHEDULE, delete.getType());
         delete.setName("s");
         assertEquals("s", delete.getName());
-        assertEquals("db", new DeleteScheduleRequest("db", "s").getDatabaseName());
+        assertEquals("db", new DeleteScheduleRequest("db", "s").getProjectName());
         assertEquals(OperationType.LIST_SCHEDULES, new ListSchedulesRequest().getType());
-        assertEquals("db", new ListSchedulesRequest("db").getDatabaseName());
+        assertEquals("db", new ListSchedulesRequest("db").getProjectName());
     }
 
     @Test
     public void test_requests_parse_from_the_wire() {
         final var save = (SaveScheduleRequest) RequestParser.parseRequest(
-                "{\"type\":\"SAVE_SCHEDULE\",\"databaseName\":\"db\",\"name\":\"s\",\"procedureName\":\"p\","
+                "{\"type\":\"SAVE_SCHEDULE\",\"projectName\":\"db\",\"name\":\"s\",\"procedureName\":\"p\","
                         + "\"cron\":\"0 3 * * *\",\"args\":{\"days\":1},\"timeoutMs\":60000,\"ifVersion\":2}");
         assertEquals("s", save.getName());
         assertEquals("p", save.getProcedureName());
@@ -69,9 +69,9 @@ public class ScheduleRequestTest {
         assertEquals(1d, save.getArgs().get("days").asJsonNumber().getValue().doubleValue());
 
         assertInstanceOf(DeleteScheduleRequest.class,
-                RequestParser.parseRequest("{\"type\":\"DELETE_SCHEDULE\",\"databaseName\":\"db\",\"name\":\"s\"}"));
+                RequestParser.parseRequest("{\"type\":\"DELETE_SCHEDULE\",\"projectName\":\"db\",\"name\":\"s\"}"));
         assertInstanceOf(ListSchedulesRequest.class,
-                RequestParser.parseRequest("{\"type\":\"LIST_SCHEDULES\",\"databaseName\":\"db\"}"));
+                RequestParser.parseRequest("{\"type\":\"LIST_SCHEDULES\",\"projectName\":\"db\"}"));
     }
 
     @Test
@@ -83,7 +83,7 @@ public class ScheduleRequestTest {
     }
 
     @Test
-    public void test_validation_rejects_bad_names_and_databases() {
+    public void test_validation_rejects_bad_names_and_projects() {
         final var request = new SaveScheduleRequest("shop", "nightly", "rollup");
         request.setIntervalMs(1000L);
         assertTrue(RequestValidator.validate(request).isValid());

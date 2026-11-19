@@ -35,7 +35,7 @@ abstract class AntiEntropyTestBase {
     @BeforeEach
     public void setUpAntiEntropy() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         realMembership = TestUtils.getPrivateField(service, "membershipService", MembershipService.class);
         realPool = TestUtils.getPrivateField(service, "pool", PeerConnectionPool.class);
     }
@@ -52,13 +52,13 @@ abstract class AntiEntropyTestBase {
         final var obj = new JsonObject();
         obj.addProperty("_id", SEEDED_ID);
         obj.addProperty("v", 1);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(obj);
         processor.processMessage(request);
     }
 
     protected boolean hasLive(String id) throws Exception {
-        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .anyMatch(e -> e.getValue().equals(id));
     }
 

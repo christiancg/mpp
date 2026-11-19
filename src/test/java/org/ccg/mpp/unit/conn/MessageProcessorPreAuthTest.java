@@ -28,7 +28,7 @@ public class MessageProcessorPreAuthTest {
     private static final String AUTHENTICATE = "{\"type\":\"AUTHENTICATE\",\"username\":\"" + USERNAME
             + "\",\"password\":\"password123\"}";
     private static final String GARBAGE = "garbage";
-    private static final String LIST_DATABASES = "{\"type\":\"LIST_DATABASES\"}";
+    private static final String LIST_PROJECTS = "{\"type\":\"LIST_PROJECTS\"}";
     private final Configuration config = Configuration.getInstance();
     private final PreAuthSlots preAuthSlots = IocContainer.get(PreAuthSlots.class);
 
@@ -76,7 +76,7 @@ public class MessageProcessorPreAuthTest {
     @Test
     public void test_authenticating_frees_the_pre_auth_slot() throws Exception {
         TestUtils.setPrivateField(config, "maxUnauthenticatedConnectionsPerAddress", 1);
-        final var responses = run(AUTHENTICATE, "{\"type\":\"LIST_DATABASES\"}");
+        final var responses = run(AUTHENTICATE, "{\"type\":\"LIST_PROJECTS\"}");
         assertEquals(2, responses.size(), responses.toString());
         assertTrue(responses.get(1).contains("\"status\":\"OK\""), responses.get(1));
         assertEquals(0, preAuthSlots.heldBy(ADDRESS));
@@ -92,7 +92,7 @@ public class MessageProcessorPreAuthTest {
     @Test
     public void test_unparseable_lines_after_authentication_never_close_the_connection() throws Exception {
         TestUtils.setPrivateField(config, "maxUnauthenticatedInvalidRequests", 2);
-        final var responses = run(AUTHENTICATE, GARBAGE, GARBAGE, GARBAGE, "{\"type\":\"LIST_DATABASES\"}");
+        final var responses = run(AUTHENTICATE, GARBAGE, GARBAGE, GARBAGE, "{\"type\":\"LIST_PROJECTS\"}");
         assertEquals(5, responses.size(), responses.toString());
         assertTrue(responses.get(4).contains("\"status\":\"OK\""), responses.get(4));
     }
@@ -107,7 +107,7 @@ public class MessageProcessorPreAuthTest {
     @Test
     public void test_well_formed_pre_auth_requests_count_toward_the_invalid_cap() throws Exception {
         TestUtils.setPrivateField(config, "maxUnauthenticatedInvalidRequests", 3);
-        final var responses = run(LIST_DATABASES, LIST_DATABASES, LIST_DATABASES, LIST_DATABASES, AUTHENTICATE);
+        final var responses = run(LIST_PROJECTS, LIST_PROJECTS, LIST_PROJECTS, LIST_PROJECTS, AUTHENTICATE);
         assertEquals(3, responses.size(), responses.toString());
         assertTrue(responses.getLast().contains("401-1"), responses.getLast());
     }
@@ -115,7 +115,7 @@ public class MessageProcessorPreAuthTest {
     @Test
     public void test_a_successful_authentication_does_not_count_toward_the_invalid_cap() throws Exception {
         TestUtils.setPrivateField(config, "maxUnauthenticatedInvalidRequests", 1);
-        final var responses = run(AUTHENTICATE, LIST_DATABASES);
+        final var responses = run(AUTHENTICATE, LIST_PROJECTS);
         assertEquals(2, responses.size(), responses.toString());
         assertTrue(responses.get(1).contains("\"status\":\"OK\""), responses.get(1));
     }
@@ -142,7 +142,7 @@ public class MessageProcessorPreAuthTest {
     @Test
     public void test_an_unauthenticated_request_is_answered_401_without_validation() throws Exception {
         final var responses = run(
-                "{\"type\":\"SET_DATABASE_OWNERS\",\"databaseName\":\"anyDb\",\"owners\":[\"nobodyHere\"]}");
+                "{\"type\":\"SET_PROJECT_OWNERS\",\"projectName\":\"anyProject\",\"owners\":[\"nobodyHere\"]}");
         assertEquals(1, responses.size(), responses.toString());
         assertTrue(responses.getFirst().contains("401-1"), responses.getFirst());
         assertFalse(responses.getFirst().contains("does not exist"), responses.getFirst());

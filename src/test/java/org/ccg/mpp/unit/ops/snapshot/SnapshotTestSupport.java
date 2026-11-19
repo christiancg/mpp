@@ -26,7 +26,7 @@ import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 
 final class SnapshotTestSupport {
-    static final String DB = TestGlobals.DB;
+    static final String PROJECT = TestGlobals.PROJECT;
     static final String COLL = TestGlobals.COLL;
     static final String OTHER = "otherColl";
     static final String USER = "snapper";
@@ -42,9 +42,9 @@ final class SnapshotTestSupport {
 
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(DB, OTHER));
-        fs.createCollectionFile(DB, OTHER);
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(PROJECT, OTHER));
+        fs.createCollectionFile(PROJECT, OTHER);
         TestUtils.ensureAdminUser(USER);
         fs.snapshotFiles().onRetiredCopies(registry);
         client = connect();
@@ -79,24 +79,24 @@ final class SnapshotTestSupport {
     }
 
     void save(String id, Object value) {
-        ok("{\"type\":\"SAVE\",\"databaseName\":\"" + DB + "\",\"collectionName\":\"" + COLL + "\",\"object\":{\""
+        ok("{\"type\":\"SAVE\",\"projectName\":\"" + PROJECT + "\",\"collectionName\":\"" + COLL + "\",\"object\":{\""
                 + Globals.PK_FIELD + "\":\"" + id + "\",\"v\":" + eJson.toJson(value) + "}}");
     }
 
     void delete(String coll, String id) {
-        ok("{\"type\":\"DELETE\",\"databaseName\":\"" + DB + "\",\"collectionName\":\"" + coll + "\",\"_id\":\"" + id
-                + "\"}");
+        ok("{\"type\":\"DELETE\",\"projectName\":\"" + PROJECT + "\",\"collectionName\":\"" + coll + "\",\"_id\":\""
+                + id + "\"}");
     }
 
     String start() {
-        final var response = send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + DB + "\"}");
+        final var response = send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + PROJECT + "\"}");
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
         return ((StartSnapshotResponse) response).getSnapshotId();
     }
 
     OperationResponse read(UUID clientId, String snapshotId, String coll, String afterId, int limit) {
         return send(clientId,
-                "{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"" + DB + "\",\"collectionName\":\"" + coll
+                "{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"" + PROJECT + "\",\"collectionName\":\"" + coll
                         + "\",\"snapshotId\":\"" + snapshotId + "\""
                         + (afterId == null ? "" : ",\"afterId\":\"" + afterId + "\"") + ",\"limit\":" + limit + "}");
     }
@@ -126,7 +126,7 @@ final class SnapshotTestSupport {
     }
 
     OperationResponse release(UUID clientId, String snapshotId) {
-        return send(clientId, "{\"type\":\"RELEASE_SNAPSHOT\",\"databaseName\":\"" + DB + "\",\"snapshotId\":\""
+        return send(clientId, "{\"type\":\"RELEASE_SNAPSHOT\",\"projectName\":\"" + PROJECT + "\",\"snapshotId\":\""
                 + snapshotId + "\"}");
     }
 }

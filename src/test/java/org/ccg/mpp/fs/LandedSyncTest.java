@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 @RequiresDirectorySync
 public class LandedSyncTest {
-    private static final String DB = "landedDb";
+    private static final String PROJECT = "landedProject";
     private static final String COLL = "landedColl";
 
     @TempDir
@@ -29,7 +29,7 @@ public class LandedSyncTest {
     @BeforeEach
     public void setUp() throws Exception {
         recorder = RecordingForcer.install(true);
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
@@ -39,7 +39,7 @@ public class LandedSyncTest {
     }
 
     private File folder() {
-        return rf.fx.paths.collectionFolder(DB, COLL);
+        return rf.fx.paths.collectionFolder(PROJECT, COLL);
     }
 
     @Test
@@ -77,17 +77,17 @@ public class LandedSyncTest {
     public void test_a_created_folder_whose_sync_fails_is_reported_created() {
         recorder.failingFolders();
 
-        assertTrue(OwnerOnly.createDirectory(new File(tmp, "freshDb").toPath()));
+        assertTrue(OwnerOnly.createDirectory(new File(tmp, "freshProject").toPath()));
     }
 
     @Test
     public void test_a_vacuum_whose_folder_sync_fails_still_moves_its_rows_and_tells_the_cache() throws Exception {
         rf.replacer.delete(rf.fx.indexed("b"));
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
-        rf.fx.journal.end(rf.fx.journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(0))));
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
+        rf.fx.journal.end(rf.fx.journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(0))));
         recorder.failingTheSecondFolderSync();
 
-        final var vacuumed = rf.vacuum.vacuum(DB, COLL, 0, PageRows.of(rf.fx.store, null, DB, COLL, 0));
+        final var vacuumed = rf.vacuum.vacuum(PROJECT, COLL, 0, PageRows.of(rf.fx.store, null, PROJECT, COLL, 0));
 
         assertEquals(List.of(vacuumed), rf.vacuumed);
         assertTrue(rf.fx.everyRowReadsItsOwnRecord());

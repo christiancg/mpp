@@ -43,43 +43,43 @@ public class ShellTest {
 
     @Test
     public void test_sends_line_and_pretty_prints() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES", "\"databases\":[\"shop\"]"));
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS", "\"projects\":[\"shop\"]"));
 
-        assertEquals(ClientException.OK, runShell("{\"type\":\"LIST_DATABASES\"}\nexit\n"));
+        assertEquals(ClientException.OK, runShell("{\"type\":\"LIST_PROJECTS\"}\nexit\n"));
 
-        assertTrue(printed().startsWith(Shell.PROMPT + "{\n  \"type\": \"LIST_DATABASES\""), printed());
-        assertTrue(printed().contains("  \"databases\": [\n    \"shop\"\n  ]"), printed());
+        assertTrue(printed().startsWith(Shell.PROMPT + "{\n  \"type\": \"LIST_PROJECTS\""), printed());
+        assertTrue(printed().contains("  \"projects\": [\n    \"shop\"\n  ]"), printed());
     }
 
     @Test
     public void test_exit_and_quit_end_the_session() throws IOException {
-        runShell("exit\n{\"type\":\"LIST_DATABASES\"}\n");
-        runShell("  quit  \n{\"type\":\"LIST_DATABASES\"}\n");
+        runShell("exit\n{\"type\":\"LIST_PROJECTS\"}\n");
+        runShell("  quit  \n{\"type\":\"LIST_PROJECTS\"}\n");
 
         assertEquals(List.of("CLOSE_CONNECTION", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test
     public void test_eof_ends_the_session() throws IOException {
-        assertEquals(ClientException.OK, runShell("{\"type\":\"LIST_DATABASES\"}"));
+        assertEquals(ClientException.OK, runShell("{\"type\":\"LIST_PROJECTS\"}"));
 
-        assertEquals(List.of("LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
         assertTrue(printed().endsWith(Shell.PROMPT), printed());
     }
 
     @Test
     public void test_blank_line_ignored() throws IOException {
-        runShell("\n   \n{\"type\":\"LIST_DATABASES\"}\n");
+        runShell("\n   \n{\"type\":\"LIST_PROJECTS\"}\n");
 
-        assertEquals(List.of("LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test
     public void test_an_error_reply_does_not_end_the_session() throws IOException {
         server.reply("FIND_BY_ID", FakeLineServer.error("FIND_BY_ID", "NOT_FOUND", "404-2"));
 
-        assertEquals(ClientException.OK, runShell("{\"type\":\"FIND_BY_ID\"}\n{\"type\":\"LIST_DATABASES\"}\n"));
+        assertEquals(ClientException.OK, runShell("{\"type\":\"FIND_BY_ID\"}\n{\"type\":\"LIST_PROJECTS\"}\n"));
 
-        assertEquals(List.of("FIND_BY_ID", "LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("FIND_BY_ID", "LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
     }
 }

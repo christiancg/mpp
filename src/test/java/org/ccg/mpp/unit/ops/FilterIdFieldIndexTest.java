@@ -36,9 +36,9 @@ public class FilterIdFieldIndexTest extends FilterResolutionSupport {
     }
 
     private Set<String> scanned(Cache cache, FieldOperator op) throws IOException {
-        final var source = cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).values().stream()
+        final var source = cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).values().stream()
                 .map(DbEntry::getData);
-        return FilterOperatorHelper.processOperator(op, source, TestGlobals.DB, TestGlobals.COLL)
+        return FilterOperatorHelper.processOperator(op, source, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).collect(Collectors.toSet());
     }
 

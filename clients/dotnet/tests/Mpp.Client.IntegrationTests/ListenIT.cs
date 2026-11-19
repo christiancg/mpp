@@ -51,7 +51,7 @@ public sealed class ListenIT(ListenIT.Server fixture) : IClassFixture<ListenIT.S
 
     private async Task<Collection<Item>> Created(string name)
     {
-        var collection = fixture.Client.Database("listen_it").Collection<Item>(name);
+        var collection = fixture.Client.Project("listen_it").Collection<Item>(name);
         await collection.CreateAsync();
         return collection;
     }
@@ -130,6 +130,6 @@ public sealed class ListenIT(ListenIT.Server fixture) : IClassFixture<ListenIT.S
     {
         protected override IReadOnlyDictionary<string, string> Config => new Dictionary<string, string> { ["maxListensPerConnection"] = "2" };
 
-        protected override Task SeedAsync() => Client.Database("listen_it").CreateAsync();
+        protected override Task SeedAsync() => Client.Project("listen_it").CreateAsync();
     }
 }

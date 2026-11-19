@@ -33,7 +33,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
     private static final long RECREATED_PEER_VERSION = 1_000L;
 
     private void setLocalIncarnation(long incarnation) {
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(entry, "the test collection must be registered before its incarnation can be set");
         entry.setIncarnation(incarnation);
     }
@@ -58,7 +58,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
     }
 
     private static AntiEntropyPayload pullAnswerFor(List<String> ids) {
-        final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+        final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         final var versions = new ArrayList<String>();
         for (final var id : ids) {
@@ -74,7 +74,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
     }
 
     private static AntiEntropyPayload digestNaming(String id) {
-        final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+        final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
         payload.setNodeId("peer");
         payload.setDigest(List.of(new DigestEntry(id, PEER_VERSION, false, 24L)));
         return payload;
@@ -85,7 +85,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(100L);
 
-        final var payload = service.buildDigest(TestGlobals.DB, TestGlobals.COLL, null, 200L);
+        final var payload = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL, null, 200L);
 
         assertTrue(payload.isStaleIncarnation(),
                 "documents held under an incarnation the cluster has since re-created are dead and must not be"
@@ -99,7 +99,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(200L);
 
-        final var payload = service.buildDigest(TestGlobals.DB, TestGlobals.COLL, null, 100L);
+        final var payload = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL, null, 100L);
 
         assertTrue(payload.isStaleIncarnation(), "a peer asking under a dead incarnation must be told so rather"
                 + " than handed the live one's documents");
@@ -111,7 +111,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(100L);
 
-        final var payload = service.buildDigest(TestGlobals.DB, TestGlobals.COLL, null, 100L);
+        final var payload = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL, null, 100L);
 
         assertFalse(payload.isStaleIncarnation());
         assertNotNull(payload.getDigest());
@@ -124,14 +124,14 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(0L);
 
-        final var peerKnows = service.buildDigest(TestGlobals.DB, TestGlobals.COLL, null, 500L);
+        final var peerKnows = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL, null, 500L);
 
         assertFalse(peerKnows.isStaleIncarnation(), "an entry written before the incarnation field existed reads as"
                 + " zero and must be adopted, never quarantined");
         assertNotNull(peerKnows.getDigest());
 
         setLocalIncarnation(500L);
-        final var peerDoesNot = service.buildDigest(TestGlobals.DB, TestGlobals.COLL, null, 0L);
+        final var peerDoesNot = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL, null, 0L);
 
         assertFalse(peerDoesNot.isStaleIncarnation());
         assertNotNull(peerDoesNot.getDigest());
@@ -142,7 +142,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(100L);
 
-        final var payload = service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a"), 200L);
+        final var payload = service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a"), 200L);
 
         assertTrue(payload.isStaleIncarnation());
         assertNull(payload.getDocuments());
@@ -153,7 +153,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         seed();
         setLocalIncarnation(100L);
 
-        final var payload = service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a"), 100L);
+        final var payload = service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a"), 100L);
 
         assertFalse(payload.isStaleIncarnation());
         assertEquals(1, payload.getDocuments().size());
@@ -167,7 +167,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         final var sentTypes = new CopyOnWriteArrayList<ClusterMessageType>();
         injectPeer(poolAnswering(answer, sentTypes), node("peer", 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertFalse(sentTypes.contains(ClusterMessageType.PULL),
                 "a peer that answered staleIncarnation must never be pulled from");
@@ -184,7 +184,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         final var sentTypes = new CopyOnWriteArrayList<ClusterMessageType>();
         injectPeer(poolAnswering(answer, sentTypes), node("peer", 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertFalse(sentTypes.contains(ClusterMessageType.PULL));
         assertFalse(hasLive("resurrect"));
@@ -199,7 +199,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         final var sentTypes = new CopyOnWriteArrayList<ClusterMessageType>();
         injectPeer(poolAnswering(answer, sentTypes), node("peer", 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(sentTypes.contains(ClusterMessageType.PULL),
                 "an ordinary catch-up must still pull the ids this node lacks");
@@ -214,7 +214,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         peer.setAdminSyncing(true);
         injectPeer(poolAnswering(digestNaming("resurrect"), sentTypes), peer);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(sentTypes.isEmpty(),
                 "a peer that has not conformed to the admin snapshot yet must not be asked for a digest at all");
@@ -223,12 +223,12 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
 
     private void create() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, RECREATED_COLL)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, RECREATED_COLL)).getStatus());
     }
 
     private void dropAndRecreate() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, RECREATED_COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, RECREATED_COLL)).getStatus());
         create();
     }
 
@@ -252,7 +252,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(invocation -> {
             final ClusterMessage request = invocation.getArgument(1);
             requests.add(request);
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, RECREATED_COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, RECREATED_COLL);
             if (request.getType() == ClusterMessageType.DIGEST) {
                 beforeDigestAnswer.run();
                 payload.setDigest(List.of(peerEntry));
@@ -267,7 +267,7 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
     }
 
     private OperationStatus findDead() {
-        final var request = new FindByIdRequest(TestGlobals.DB, RECREATED_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, RECREATED_COLL);
         request.set_id("dead");
         return processor.processMessage(request).getStatus();
     }
@@ -275,13 +275,13 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
     @Test
     public void test_a_pull_answered_across_a_drop_and_recreate_seeds_nothing() throws Exception {
         create();
-        final var before = CollectionIncarnation.current(TestGlobals.DB, RECREATED_COLL);
+        final var before = CollectionIncarnation.current(TestGlobals.PROJECT, RECREATED_COLL);
         injectPeer(peerThatAnswers(new ArrayList<>(), this::dropAndRecreate, () -> {
         }, new DigestEntry("dead", RECREATED_PEER_VERSION, false)));
 
-        service.reconcile(TestGlobals.DB, RECREATED_COLL);
+        service.reconcile(TestGlobals.PROJECT, RECREATED_COLL);
 
-        assertNotEquals(before, CollectionIncarnation.current(TestGlobals.DB, RECREATED_COLL));
+        assertNotEquals(before, CollectionIncarnation.current(TestGlobals.PROJECT, RECREATED_COLL));
         assertEquals(OperationStatus.NOT_FOUND, findDead(),
                 "a pre-drop document pulled into the new incarnation is replicated cluster-wide from there");
     }
@@ -292,21 +292,21 @@ public class AntiEntropyIncarnationTest extends AntiEntropyTestBase {
         injectPeer(peerThatAnswers(new ArrayList<>(), () -> {
         }, this::dropAndRecreate, new DigestEntry("dead", RECREATED_PEER_VERSION, true)));
 
-        service.reconcile(TestGlobals.DB, RECREATED_COLL);
+        service.reconcile(TestGlobals.PROJECT, RECREATED_COLL);
 
-        assertFalse(fs.tombstones().read(TestGlobals.DB, RECREATED_COLL).containsKey("dead"));
+        assertFalse(fs.tombstones().read(TestGlobals.PROJECT, RECREATED_COLL).containsKey("dead"));
     }
 
     @Test
     public void test_a_reconcile_round_sends_the_incarnation_it_snapshotted() throws Exception {
         create();
-        final var incarnation = CollectionIncarnation.current(TestGlobals.DB, RECREATED_COLL);
+        final var incarnation = CollectionIncarnation.current(TestGlobals.PROJECT, RECREATED_COLL);
         final var requests = new ArrayList<ClusterMessage>();
         injectPeer(peerThatAnswers(requests, () -> {
         }, () -> {
         }, new DigestEntry("dead", RECREATED_PEER_VERSION, false)));
 
-        service.reconcile(TestGlobals.DB, RECREATED_COLL);
+        service.reconcile(TestGlobals.PROJECT, RECREATED_COLL);
 
         assertEquals(2, requests.size());
         for (final var request : requests) {

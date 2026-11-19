@@ -18,21 +18,21 @@ import tools.jackson.databind.node.ObjectNode;
 public final class CollectionOps<T> implements QueryTarget<T> {
     private final ClientContext context;
     private final RequestChannel channel;
-    private final String database;
+    private final String project;
     private final String collection;
     private final DocumentCodec<T> codec;
 
-    public CollectionOps(ClientContext context, RequestChannel channel, String database, String collection,
+    public CollectionOps(ClientContext context, RequestChannel channel, String project, String collection,
             DocumentCodec<T> codec) {
         this.context = context;
         this.channel = channel;
-        this.database = Names.database(database);
+        this.project = Names.project(project);
         this.collection = Names.collection(collection);
         this.codec = codec;
     }
 
-    public String database() {
-        return database;
+    public String project() {
+        return project;
     }
 
     public String collection() {
@@ -50,12 +50,12 @@ public final class CollectionOps<T> implements QueryTarget<T> {
 
     public SaveResult save(T value) {
         final var document = encoded(value);
-        return saved(channel.send(Operation.SAVE, context.encoder().save(database, collection, document)));
+        return saved(channel.send(Operation.SAVE, context.encoder().save(project, collection, document)));
     }
 
     public SaveResult insert(T value) {
         final var document = encoded(value);
-        return saved(channel.send(Operation.SAVE, context.encoder().insert(database, collection, document)));
+        return saved(channel.send(Operation.SAVE, context.encoder().insert(project, collection, document)));
     }
 
     private Document encoded(T value) {
@@ -71,8 +71,7 @@ public final class CollectionOps<T> implements QueryTarget<T> {
     public BulkSaveResult saveAll(List<T> values) {
         final var documents = values.stream().map(codec::encode).toList();
         documents.forEach(document -> document.id().ifPresent(Names::id));
-        final var reply = channel.send(Operation.BULK_SAVE,
-                context.encoder().bulkSave(database, collection, documents));
+        final var reply = channel.send(Operation.BULK_SAVE, context.encoder().bulkSave(project, collection, documents));
         return new BulkSaveResult(ResponseDecoder.strings(reply.get("inserted")),
                 ResponseDecoder.strings(reply.get("updated")));
     }
@@ -80,7 +79,7 @@ public final class CollectionOps<T> implements QueryTarget<T> {
     public Optional<T> findById(String id, boolean dirtyRead) {
         try {
             final var reply = channel.send(Operation.FIND_BY_ID,
-                    context.encoder().findById(database, collection, Names.id(id), dirtyRead));
+                    context.encoder().findById(project, collection, Names.id(id), dirtyRead));
             return ResponseDecoder.document(reply, "object").map(codec::decode);
         } catch (NotFoundException e) {
             if (e.hasCode(ErrorCode.ENTRY_NOT_FOUND)) {
@@ -91,17 +90,17 @@ public final class CollectionOps<T> implements QueryTarget<T> {
     }
 
     public void delete(String id) {
-        channel.send(Operation.DELETE, context.encoder().delete(database, collection, Names.id(id)));
+        channel.send(Operation.DELETE, context.encoder().delete(project, collection, Names.id(id)));
     }
 
     public long deleteWhere(Filter condition) {
         final var reply = channel.send(Operation.DELETE,
-                context.encoder().deleteWhere(database, collection, Objects.requireNonNull(condition, "condition")));
+                context.encoder().deleteWhere(project, collection, Objects.requireNonNull(condition, "condition")));
         return reply.path("deletedCount").asLong(0);
     }
 
     public long updateWhere(Filter condition, Object patch) {
-        final var request = context.encoder().updateWhere(database, collection,
+        final var request = context.encoder().updateWhere(project, collection,
                 Objects.requireNonNull(condition, "condition"), patchOf(Objects.requireNonNull(patch, "patch")));
         return channel.send(Operation.SAVE, request).path("updatedCount").asLong(0);
     }
@@ -118,7 +117,7 @@ public final class CollectionOps<T> implements QueryTarget<T> {
     public List<Document> aggregate(List<PipelineStep> steps, boolean dirtyRead) {
         try {
             final var reply = channel.send(Operation.AGGREGATE,
-                    context.encoder().aggregate(database, collection, steps, dirtyRead, false));
+                    context.encoder().aggregate(project, collection, steps, dirtyRead, false));
             return ResponseDecoder.documents(reply, "results");
         } catch (NotFoundException e) {
             if (e.hasCode(ErrorCode.NO_RESULTS)) {
@@ -131,7 +130,7 @@ public final class CollectionOps<T> implements QueryTarget<T> {
     @Override
     public AnalyzeResult analyze(List<PipelineStep> steps, boolean dirtyRead) {
         final var reply = channel.send(Operation.AGGREGATE,
-                context.encoder().aggregate(database, collection, steps, dirtyRead, true));
+                context.encoder().aggregate(project, collection, steps, dirtyRead, true));
         return new AnalyzeResult(ResponseDecoder.documents(reply, "results"),
                 ResponseDecoder.document(reply, "analyzeResult").orElseGet(Document::empty));
     }

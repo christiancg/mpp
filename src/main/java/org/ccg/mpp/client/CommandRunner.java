@@ -4,7 +4,7 @@ import java.io.PrintStream;
 import java.util.Iterator;
 
 public record CommandRunner(Connection connection, PrintStream out, boolean printReplies, boolean merging) {
-    private static final String DATABASE_EXISTS = "409-2";
+    private static final String PROJECT_EXISTS = "409-2";
 
     public int run(Iterator<String> lines) {
         var lineNumber = 0;
@@ -43,6 +43,6 @@ public record CommandRunner(Connection connection, PrintStream out, boolean prin
         if (reply.isOk()) {
             return true;
         }
-        return merging && "CREATE_DATABASE".equals(reply.type()) && DATABASE_EXISTS.equals(reply.errorCode());
+        return merging && "CREATE_PROJECT".equals(reply.type()) && PROJECT_EXISTS.equals(reply.errorCode());
     }
 }

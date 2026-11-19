@@ -46,7 +46,7 @@ public class TransactionCustomTypeOverlayTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
     }
 
@@ -65,7 +65,7 @@ public class TransactionCustomTypeOverlayTest {
     }
 
     private SaveRequest saveWithCustomFields(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var document = new JsonObject();
         document.add("_id", new JsonString(id));
         document.add("when", new JsonDateTime(WHEN_VALUE));
@@ -80,7 +80,7 @@ public class TransactionCustomTypeOverlayTest {
         args.add("value", new JsonGeo(WHERE_VALUE));
         args.add("comparator", new JsonString("SMALLER_THAN"));
         args.addProperty("distance", 1000);
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new FilterAggregationStep(
                 new CustomOperator(JsonGeo.OPERATOR_DISTANCE, "where", new JsonGeo(WHERE_VALUE), args))));
         return request;
@@ -93,7 +93,7 @@ public class TransactionCustomTypeOverlayTest {
         try {
             processor.processMessage(saveWithCustomFields("txn-custom-1"), clientId);
 
-            final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             find.set_id("txn-custom-1");
             final var response = processor.processMessage(find, clientId);
 
@@ -114,7 +114,7 @@ public class TransactionCustomTypeOverlayTest {
         try {
             processor.processMessage(saveWithCustomFields("txn-custom-2"), clientId);
 
-            final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setAggregationSteps(List.of(new FilterAggregationStep(new ConjunctionOperator(
                     ConjunctionOperatorType.AND,
                     List.of(new FieldOperator(FieldOperatorType.EQUALS, "when", new JsonDateTime(WHEN_VALUE)))))));
@@ -151,7 +151,7 @@ public class TransactionCustomTypeOverlayTest {
         assertEquals(OperationStatus.OK,
                 processor.processMessage(new CommitTransactionRequest(), clientId).getStatus());
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-custom-4");
         final var response = processor.processMessage(find, newClient());
 

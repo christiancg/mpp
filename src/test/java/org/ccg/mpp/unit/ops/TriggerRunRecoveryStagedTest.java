@@ -50,7 +50,7 @@ public class TriggerRunRecoveryStagedTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         defaultMaxEntrySize = configuration.getMaxEntrySize();
     }
 
@@ -81,30 +81,30 @@ public class TriggerRunRecoveryStagedTest {
     }
 
     private void save(String id, String value) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, value));
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private void delete(String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private long versionOf(String id) throws Exception {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         return primaryKeyIndex.get(Collections.binarySearch(primaryKeyIndex, id)).getVersion();
     }
 
     private static DbEntry entry(String id) {
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document(id, "captured"));
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document(id, "captured"));
     }
 
     private static void stage(EventType type, boolean batchMode, List<DbEntry> entries, Map<String, Long> versions) {
-        TriggerRunLog.recordStaged(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "recalc", type, batchMode, "alice", 0, System.currentTimeMillis(), entries), versions);
+        TriggerRunLog.recordStaged(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "recalc", type, batchMode, "alice", 0, System.currentTimeMillis(), entries), versions);
     }
 
     private void recover() throws Exception {

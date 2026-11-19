@@ -12,8 +12,8 @@ import org.ccg.mpp.data.ProcedureDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
 import org.ccg.mpp.data.admin.AdminPageEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 
@@ -24,84 +24,85 @@ interface AdminCacheDelegate {
         adminCache().loadAdminData();
     }
 
-    default long selectPageForInsert(String dbName, String collName, int entryByteSize) {
-        return adminCache().selectPageForInsert(dbName, collName, entryByteSize);
+    default long selectPageForInsert(String projectName, String collName, int entryByteSize) {
+        return adminCache().selectPageForInsert(projectName, collName, entryByteSize);
     }
 
-    default long[] selectPagesForInsert(String dbName, String collName, int[] entryByteSizes) {
-        return adminCache().selectPagesForInsert(dbName, collName, entryByteSizes);
+    default long[] selectPagesForInsert(String projectName, String collName, int[] entryByteSizes) {
+        return adminCache().selectPagesForInsert(projectName, collName, entryByteSizes);
     }
 
-    default PkIndexEntry getPkIndexAdminDbEntry(String dbName) {
-        return adminCache().getPkIndexAdminDbEntry(dbName);
+    default PkIndexEntry getPkIndexAdminProjectEntry(String projectName) {
+        return adminCache().getPkIndexAdminProjectEntry(projectName);
     }
 
-    default AdminDbEntry getAdminDbEntry(String dbName) {
-        return adminCache().getAdminDbEntry(dbName);
+    default AdminProjectEntry getAdminProjectEntry(String projectName) {
+        return adminCache().getAdminProjectEntry(projectName);
     }
 
-    default Collection<AdminDbEntry> getAllAdminDbEntries() {
-        return adminCache().getAllAdminDbEntries();
+    default Collection<AdminProjectEntry> getAllAdminProjectEntries() {
+        return adminCache().getAllAdminProjectEntries();
     }
 
-    default List<String> getUserDatabaseNames() {
-        return adminCache().getUserDatabaseNames();
+    default List<String> getUserProjectNames() {
+        return adminCache().getUserProjectNames();
     }
 
-    default List<String> getCollectionNamesForDatabase(String dbName) {
-        return adminCache().getCollectionNamesForDatabase(dbName);
+    default List<String> getCollectionNamesForProject(String projectName) {
+        return adminCache().getCollectionNamesForProject(projectName);
     }
 
     default PkIndexEntry getPkIndexAdminCollEntry(String collIdentifier) {
         return adminCache().getPkIndexAdminCollEntry(collIdentifier);
     }
 
-    default AdminCollEntry getAdminCollectionEntry(String dbName, String collName) {
-        return adminCache().getAdminCollectionEntry(dbName, collName);
+    default AdminCollEntry getAdminCollectionEntry(String projectName, String collName) {
+        return adminCache().getAdminCollectionEntry(projectName, collName);
     }
 
-    default List<AdminPageEntry> getAdminPageEntries(String dbName, String collName) {
-        return adminCache().getAdminPageEntries(dbName, collName);
+    default List<AdminPageEntry> getAdminPageEntries(String projectName, String collName) {
+        return adminCache().getAdminPageEntries(projectName, collName);
     }
 
-    default AdminPageEntry getAdminPageEntry(String dbName, String collName, long page) {
-        return adminCache().getAdminPageEntry(dbName, collName, page);
+    default AdminPageEntry getAdminPageEntry(String projectName, String collName, long page) {
+        return adminCache().getAdminPageEntry(projectName, collName, page);
     }
 
-    default void addAdminPageEntries(String dbName, String collName, AdminPageEntry adminPageEntry) {
-        adminCache().addAdminPageEntries(dbName, collName, adminPageEntry);
+    default void addAdminPageEntries(String projectName, String collName, AdminPageEntry adminPageEntry) {
+        adminCache().addAdminPageEntries(projectName, collName, adminPageEntry);
     }
 
-    default void addAdminPageEntries(String dbName, String collName, List<AdminPageEntry> adminPageEntries) {
-        adminCache().addAdminPageEntries(dbName, collName, adminPageEntries);
+    default void addAdminPageEntries(String projectName, String collName, List<AdminPageEntry> adminPageEntries) {
+        adminCache().addAdminPageEntries(projectName, collName, adminPageEntries);
     }
 
-    default void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta) {
-        adminCache().updatePageSizeInMemory(dbName, collName, page, bytesDelta);
+    default void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta) {
+        adminCache().updatePageSizeInMemory(projectName, collName, page, bytesDelta);
     }
 
-    default void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta, int addedEntries) {
-        adminCache().updatePageSizeInMemory(dbName, collName, page, bytesDelta, addedEntries);
+    default void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta,
+            int addedEntries) {
+        adminCache().updatePageSizeInMemory(projectName, collName, page, bytesDelta, addedEntries);
     }
 
-    default void updatePageSizeForUpdateInMemory(String dbName, String collName, long page, long bytesDelta) {
-        adminCache().updatePageSizeForUpdateInMemory(dbName, collName, page, bytesDelta);
+    default void updatePageSizeForUpdateInMemory(String projectName, String collName, long page, long bytesDelta) {
+        adminCache().updatePageSizeForUpdateInMemory(projectName, collName, page, bytesDelta);
     }
 
-    default List<PkIndexEntry> getAdminPagePkIndexes(String dbName, String collName) {
-        return adminCache().getAdminPagePkIndexes(dbName, collName);
+    default List<PkIndexEntry> getAdminPagePkIndexes(String projectName, String collName) {
+        return adminCache().getAdminPagePkIndexes(projectName, collName);
     }
 
-    default void removeAdminPageEntries(String dbName, String collName) {
-        adminCache().removeAdminPageEntries(dbName, collName);
+    default void removeAdminPageEntries(String projectName, String collName) {
+        adminCache().removeAdminPageEntries(projectName, collName);
     }
 
-    default void putAdminDbEntry(AdminDbEntry dbEntry, PkIndexEntry indexEntry) {
-        adminCache().putAdminDbEntry(dbEntry, indexEntry);
+    default void putAdminProjectEntry(AdminProjectEntry dbEntry, PkIndexEntry indexEntry) {
+        adminCache().putAdminProjectEntry(dbEntry, indexEntry);
     }
 
-    default void removeAdminDbEntry(String dbName) {
-        adminCache().removeAdminDbEntry(dbName);
+    default void removeAdminProjectEntry(String projectName) {
+        adminCache().removeAdminProjectEntry(projectName);
     }
 
     default void putAdminCollectionEntry(AdminCollEntry dbEntry, PkIndexEntry indexEntry) {
@@ -112,76 +113,76 @@ interface AdminCacheDelegate {
         adminCache().removeAdminCollEntry(collIdentifier);
     }
 
-    default Set<String> getIndexesForCollection(String dbName, String collName) {
-        return adminCache().getIndexesForCollection(dbName, collName);
+    default Set<String> getIndexesForCollection(String projectName, String collName) {
+        return adminCache().getIndexesForCollection(projectName, collName);
     }
 
-    default JsonObject getCollectionSchema(String dbName, String collName) {
-        return adminCache().getCollectionSchema(dbName, collName);
+    default JsonObject getCollectionSchema(String projectName, String collName) {
+        return adminCache().getCollectionSchema(projectName, collName);
     }
 
-    default void putCollectionSchema(String dbName, String collName, JsonObject schema) {
-        adminCache().putCollectionSchema(dbName, collName, schema);
+    default void putCollectionSchema(String projectName, String collName, JsonObject schema) {
+        adminCache().putCollectionSchema(projectName, collName, schema);
     }
 
-    default void removeCollectionSchema(String dbName, String collName) {
-        adminCache().removeCollectionSchema(dbName, collName);
+    default void removeCollectionSchema(String projectName, String collName) {
+        adminCache().removeCollectionSchema(projectName, collName);
     }
 
-    default void removeCollectionSchemasForDatabase(String dbName) {
-        adminCache().removeCollectionSchemasForDatabase(dbName);
+    default void removeCollectionSchemasForProject(String projectName) {
+        adminCache().removeCollectionSchemasForProject(projectName);
     }
 
-    default JsonObject loadSchemaUncached(String dbName, String collName) {
-        return adminCache().loadSchemaUncached(dbName, collName);
+    default JsonObject loadSchemaUncached(String projectName, String collName) {
+        return adminCache().loadSchemaUncached(projectName, collName);
     }
 
-    default ProcedureDefinition getProcedure(String dbName, String name) {
-        return adminCache().getProcedure(dbName, name);
+    default ProcedureDefinition getProcedure(String projectName, String name) {
+        return adminCache().getProcedure(projectName, name);
     }
 
-    default void putProcedure(String dbName, ProcedureDefinition definition) {
-        adminCache().putProcedure(dbName, definition);
+    default void putProcedure(String projectName, ProcedureDefinition definition) {
+        adminCache().putProcedure(projectName, definition);
     }
 
-    default void removeProcedure(String dbName, String name) {
-        adminCache().removeProcedure(dbName, name);
+    default void removeProcedure(String projectName, String name) {
+        adminCache().removeProcedure(projectName, name);
     }
 
-    default void removeProceduresForDatabase(String dbName) {
-        adminCache().removeProceduresForDatabase(dbName);
+    default void removeProceduresForProject(String projectName) {
+        adminCache().removeProceduresForProject(projectName);
     }
 
-    default List<TriggerDefinition> getTriggersFor(String dbName, String collName) {
-        return adminCache().getTriggersFor(dbName, collName);
+    default List<TriggerDefinition> getTriggersFor(String projectName, String collName) {
+        return adminCache().getTriggersFor(projectName, collName);
     }
 
-    default void putTriggers(String dbName, String collName, List<TriggerDefinition> definitions) {
-        adminCache().putTriggers(dbName, collName, definitions);
+    default void putTriggers(String projectName, String collName, List<TriggerDefinition> definitions) {
+        adminCache().putTriggers(projectName, collName, definitions);
     }
 
-    default void removeTriggers(String dbName, String collName) {
-        adminCache().removeTriggers(dbName, collName);
+    default void removeTriggers(String projectName, String collName) {
+        adminCache().removeTriggers(projectName, collName);
     }
 
     default void removeTriggersMatching(Predicate<String> keyMatches) {
         adminCache().removeTriggersMatching(keyMatches);
     }
 
-    default ScheduleDefinition getSchedule(String dbName, String name) {
-        return adminCache().getSchedule(dbName, name);
+    default ScheduleDefinition getSchedule(String projectName, String name) {
+        return adminCache().getSchedule(projectName, name);
     }
 
-    default void putSchedule(String dbName, ScheduleDefinition definition) {
-        adminCache().putSchedule(dbName, definition);
+    default void putSchedule(String projectName, ScheduleDefinition definition) {
+        adminCache().putSchedule(projectName, definition);
     }
 
-    default void removeSchedule(String dbName, String name) {
-        adminCache().removeSchedule(dbName, name);
+    default void removeSchedule(String projectName, String name) {
+        adminCache().removeSchedule(projectName, name);
     }
 
-    default void removeSchedulesForDatabase(String dbName) {
-        adminCache().removeSchedulesForDatabase(dbName);
+    default void removeSchedulesForProject(String projectName) {
+        adminCache().removeSchedulesForProject(projectName);
     }
 
     default void removeSchedulesMatching(Predicate<String> keyMatches) {

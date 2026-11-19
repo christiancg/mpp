@@ -32,7 +32,7 @@ Groups the documents by a field's value.
 
 ## join
 
-Joins the documents of another collection of the same database whose `remote_field` equals this
+Joins the documents of another collection of the same project whose `remote_field` equals this
 document's `local_field`, as a list under `as_field`.
 
 ## distinct

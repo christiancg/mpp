@@ -12,19 +12,19 @@ final class StorageFixture {
     static final long OLD_VERSION = 1_700_000_000_000L;
     static final long NEW_VERSION = 1_800_000_000_000L;
 
-    final String dbName;
+    final String projectName;
     final String collName;
     final FilePaths paths;
     final PkIndexStore store;
     final WriteIntentJournal journal;
     final WriteIntentRecovery recovery;
 
-    StorageFixture(File root, String dbName, String collName) throws IOException {
-        this.dbName = dbName;
+    StorageFixture(File root, String projectName, String collName) throws IOException {
+        this.projectName = projectName;
         this.collName = collName;
         paths = new FilePaths();
         paths.useDbPath(root.getAbsolutePath());
-        Files.createDirectories(paths.collectionFolder(dbName, collName).toPath());
+        Files.createDirectories(paths.collectionFolder(projectName, collName).toPath());
         store = new PkIndexStore(paths);
         journal = new WriteIntentJournal(paths);
         recovery = new WriteIntentRecovery(paths, store, journal);
@@ -35,7 +35,7 @@ final class StorageFixture {
     }
 
     File page(long page) {
-        return paths.collectionPage(dbName, collName, page);
+        return paths.collectionPage(projectName, collName, page);
     }
 
     void seed(long page, String... ids) throws IOException {
@@ -45,18 +45,18 @@ final class StorageFixture {
             Files.writeString(page(page).toPath(), text, StandardCharsets.UTF_8, StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND);
             PageLengths.forget(page(page));
-            store.appendRows(dbName, collName, List.of(new PkIndexEntry(dbName, collName, id, position,
+            store.appendRows(projectName, collName, List.of(new PkIndexEntry(projectName, collName, id, position,
                     text.getBytes(StandardCharsets.UTF_8).length, page, OLD_VERSION)));
         }
     }
 
     PkIndexEntry indexed(String id) throws IOException {
-        return store.readWholePkIndexFile(dbName, collName).stream().filter(entry -> entry.getValue().equals(id))
+        return store.readWholePkIndexFile(projectName, collName).stream().filter(entry -> entry.getValue().equals(id))
                 .findFirst().orElse(null);
     }
 
     List<PkIndexEntry> indexedRows() throws IOException {
-        return store.readWholePkIndexFile(dbName, collName);
+        return store.readWholePkIndexFile(projectName, collName);
     }
 
     String readAt(PkIndexEntry entry) throws IOException {
@@ -78,6 +78,6 @@ final class StorageFixture {
     }
 
     int openIntents() throws IOException {
-        return journal.openIntents(dbName, collName).size();
+        return journal.openIntents(projectName, collName).size();
     }
 }

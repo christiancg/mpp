@@ -32,7 +32,7 @@ public class ListenManagerTest {
         return (LinkedBlockingQueue<UUID>) TestUtils.getPrivateField(manager, "dirtyQueue", LinkedBlockingQueue.class);
     }
 
-    private void registerDbColl() {
+    private void registerProjectColl() {
         manager.register(UUID.randomUUID(), dirtyRequest("db", "coll"), "hash");
     }
 
@@ -110,13 +110,13 @@ public class ListenManagerTest {
     }
 
     @Test
-    public void endAllForDatabase_removesAllCollectionsInDatabase() {
+    public void endAllForProject_removesAllCollectionsInProject() {
         final var client = UUID.randomUUID();
         final var idA = manager.register(client, dirtyRequest("mydb", "coll1"), "hash");
         final var idB = manager.register(client, dirtyRequest("mydb", "coll2"), "hash");
         final var idC = manager.register(client, dirtyRequest("other", "coll1"), "hash");
 
-        manager.endAllForDatabase("mydb", ListenManager.DATABASE_DROPPED);
+        manager.endAllForProject("mydb", ListenManager.PROJECT_DROPPED);
 
         assertNull(manager.getRegistration(idA));
         assertNull(manager.getRegistration(idB));
@@ -124,8 +124,8 @@ public class ListenManagerTest {
     }
 
     @Test
-    public void endAllForDatabase_emptyDatabase_doesNotThrow() {
-        assertDoesNotThrow(() -> manager.endAllForDatabase("nonexistent", ListenManager.DATABASE_DROPPED));
+    public void endAllForProject_emptyProject_doesNotThrow() {
+        assertDoesNotThrow(() -> manager.endAllForProject("nonexistent", ListenManager.PROJECT_DROPPED));
     }
 
     @Test
@@ -138,7 +138,7 @@ public class ListenManagerTest {
         final var listenId = manager.register(UUID.randomUUID(), dirtyRequest("db", "coll"), "hash");
 
         assertTrue(manager.end(listenId, ListenManager.COLLECTION_DROPPED));
-        assertFalse(manager.end(listenId, ListenManager.DATABASE_DROPPED));
+        assertFalse(manager.end(listenId, ListenManager.PROJECT_DROPPED));
         assertNull(manager.getRegistration(listenId));
     }
 
@@ -165,7 +165,7 @@ public class ListenManagerTest {
 
     @Test
     public void aRootBatchEnqueuesOnlyOnClose() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         final var batch = manager.openBatch(List.of());
         batch.markDirty("db", "coll");
         batch.markDirty("db", "coll");
@@ -178,7 +178,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_closing_a_nested_batch_does_not_flush_its_root() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         try (var root = manager.openBatch(List.of())) {
             root.markDirty("db", "coll");
             final var nested = root.nest(List.of());
@@ -194,7 +194,7 @@ public class ListenManagerTest {
 
     @Test
     public void aNestedBatchMergesIntoItsRoot() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         manager.register(UUID.randomUUID(), dirtyRequest("other", "coll"), "hash");
         try (var root = manager.openBatch(List.of())) {
             root.markDirty("db", "coll");
@@ -212,7 +212,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_batch_opened_within_another_nests_into_it() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         try (var root = manager.openBatch(List.of())) {
             try (var within = manager.openBatch(root, List.of())) {
                 within.markDirty("db", "coll");
@@ -225,7 +225,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_batch_opened_within_the_manager_is_a_root() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         try (var batch = manager.openBatch(manager, List.of())) {
             batch.markDirty("db", "coll");
             assertEquals(0, queue().size());
@@ -236,7 +236,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_closing_a_batch_twice_enqueues_once() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         final var batch = manager.openBatch(List.of());
         batch.markDirty("db", "coll");
         batch.close();
@@ -249,7 +249,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_closed_batch_marks_immediately() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         final var batch = manager.openBatch(List.of());
         final var nested = batch.nest(List.of());
         batch.close();
@@ -261,7 +261,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_nesting_into_a_closed_batch_opens_a_fresh_root() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         final var batch = manager.openBatch(List.of());
         batch.close();
 
@@ -275,7 +275,7 @@ public class ListenManagerTest {
 
     @Test
     public void anImmediateMarkDirtyEnqueuesAtOnce() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         try (var ignored = manager.openBatch(List.of())) {
             manager.markDirty("db", "coll");
 
@@ -285,7 +285,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_burst_of_writes_enqueues_one_run() throws Exception {
-        registerDbColl();
+        registerProjectColl();
 
         for (var i = 0; i < 100; i++) {
             manager.markDirty("db", "coll");
@@ -296,8 +296,8 @@ public class ListenManagerTest {
 
     @Test
     public void test_identical_registrations_share_one_queued_run() throws Exception {
-        registerDbColl();
-        registerDbColl();
+        registerProjectColl();
+        registerProjectColl();
 
         for (var i = 0; i < 50; i++) {
             manager.markDirty("db", "coll");
@@ -325,7 +325,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_write_while_still_queued_does_not_double_enqueue() throws Exception {
-        registerDbColl();
+        registerProjectColl();
 
         manager.markDirty("db", "coll");
         manager.markDirty("db", "coll");
@@ -335,7 +335,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_unrelated_collection_is_not_queued() throws Exception {
-        registerDbColl();
+        registerProjectColl();
 
         manager.markDirty("db", "other");
 
@@ -344,7 +344,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_transactional_commit_notifies_once_with_the_final_state() throws Exception {
-        registerDbColl();
+        registerProjectColl();
 
         try (var batch = manager.openBatch(List.of())) {
             for (var i = 0; i < 5; i++) {
@@ -359,7 +359,7 @@ public class ListenManagerTest {
 
     @Test
     public void test_a_batch_does_not_hold_back_another_thread() throws Exception {
-        registerDbColl();
+        registerProjectColl();
         try (var ignored = manager.openBatch(List.of())) {
             final var writer = new Thread(() -> manager.markDirty("db", "coll"));
             writer.start();

@@ -11,7 +11,7 @@ PORT = int(os.environ.get("ADMISSION_TEST_PORT", "8997"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "admission_test_db"
+PROJECT = "admission_test_project"
 COLL = "docs"
 AUDIT_COLL = "audit"
 TICKS_COLL = "ticks"
@@ -21,7 +21,7 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 CAPACITY = 2
 CALLERS = 6
 PER_USER_CAPACITY = 2
-PER_DATABASE_CAPACITY = 3
+PER_PROJECT_CAPACITY = 3
 SLOW_SCRIPT_MS = 600
 LONG_WAIT_MS = 10_000
 
@@ -33,45 +33,45 @@ SLOW_SCRIPT = f"export default new Promise(r => setTimeout(() => r(1), {SLOW_SCR
 
 
 class Conn(bu.Conn):
-    def run(self, script: str, args=None, db=DB) -> dict:
-        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+    def run(self, script: str, args=None, project=PROJECT) -> dict:
+        payload = {"type": "RUN_SCRIPT", "projectName": project, "script": script}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
 
-    def call(self, name: str, args=None, db=DB) -> dict:
-        payload = {"type": "CALL_PROCEDURE", "databaseName": db, "procedureName": name}
+    def call(self, name: str, args=None, project=PROJECT) -> dict:
+        payload = {"type": "CALL_PROCEDURE", "projectName": project, "procedureName": name}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
 
-    def save_procedure(self, name: str, script: str, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+    def save_procedure(self, name: str, script: str, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "projectName": project, "name": name, "script": script}
         payload.update(extra)
         return self.send(payload)
 
-    def save_trigger(self, name: str, procedure: str, events, coll=COLL, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_TRIGGER", "databaseName": db, "collectionName": coll,
+    def save_trigger(self, name: str, procedure: str, events, coll=COLL, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_TRIGGER", "projectName": project, "collectionName": coll,
                    "name": name, "events": events, "procedureName": procedure}
         payload.update(extra)
         return self.send(payload)
 
-    def save_schedule(self, name: str, procedure: str, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_SCHEDULE", "databaseName": db, "name": name, "procedureName": procedure}
+    def save_schedule(self, name: str, procedure: str, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_SCHEDULE", "projectName": project, "name": name, "procedureName": procedure}
         payload.update(extra)
         return self.send(payload)
 
-    def delete_schedule(self, name: str, db=DB) -> dict:
-        return self.send({"type": "DELETE_SCHEDULE", "databaseName": db, "name": name})
+    def delete_schedule(self, name: str, project=PROJECT) -> dict:
+        return self.send({"type": "DELETE_SCHEDULE", "projectName": project, "name": name})
 
-    def save_doc(self, doc, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": doc})
+    def save_doc(self, doc, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": doc})
 
-    def find(self, doc_id, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id})
+    def find(self, doc_id, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": doc_id})
 
     def script_stats(self) -> dict:
-        response = self.send({"type": "GET_DATABASE_STATS"})
+        response = self.send({"type": "GET_PROJECT_STATS"})
         return response.get("stats", {}).get("scripts", {})
 
 def admin_conn() -> Conn:
@@ -144,9 +144,9 @@ def await_doc(conn: Conn, doc_id: str, coll: str, timeout=30.0):
     return bu.wait_until(stored, timeout, 0.2) or None
 
 
-def write_config(work_dir: str, capacity: int, queue_wait_ms: int, per_user: int = 0, per_database: int = 0):
+def write_config(work_dir: str, capacity: int, queue_wait_ms: int, per_user: int = 0, per_project: int = 0):
     bu.write_config(work_dir, PORT, scriptsEnabled=True, maxConcurrentScripts=capacity,
-                    maxConcurrentScriptsPerUser=per_user, maxConcurrentScriptsPerDatabase=per_database,
+                    maxConcurrentScriptsPerUser=per_user, maxConcurrentScriptsPerProject=per_project,
                     scriptQueueWaitMs=queue_wait_ms, scriptTimeoutMs=TIMEOUT_MS,
                     scriptMaxMemoryBytes=MAX_MEMORY_BYTES, scriptMaxSourceBytes=MAX_SOURCE_BYTES,
                     scriptInstructionBudget=10000000, scriptMaxDepth=200, triggersEnabled=True,
@@ -157,11 +157,11 @@ def write_config(work_dir: str, capacity: int, queue_wait_ms: int, per_user: int
 
 def setup_data(conn: Conn):
     section("Setup")
-    conn.send({"type": "DROP_DATABASE", "databaseName": DB})
-    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    conn.send({"type": "DROP_PROJECT", "projectName": PROJECT})
+    check_status("create project", conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
     for coll in (COLL, AUDIT_COLL, TICKS_COLL):
         check_status(f"create collection {coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("store the slow procedure",
                  conn.save_procedure("slow", f"return await new Promise("
                                              f"r => setTimeout(() => r(7), {SLOW_SCRIPT_MS}));"), "OK")
@@ -184,13 +184,13 @@ def create_tenants(conn: Conn):
         conn.send({"type": "DELETE_USER", "username": username})
         check_status(f"create {username}",
                      conn.send({"type": "CREATE_USER", "username": username, "password": password,
-                                "admin": True, "globalPermissions": [], "databasePermissions": {},
+                                "admin": True, "globalPermissions": [], "projectPermissions": {},
                                 "collectionPermissions": {}}), "OK")
 
 
 def test_burst_is_capped(conn: Conn):
     section(f"A burst of {CALLERS} with capacity {CAPACITY} and no wait")
-    burst = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT})
+    burst = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT})
 
     check("every caller got a response", len(burst.responses) == CALLERS,
           f"expected {CALLERS} responses, got {len(burst.responses)}")
@@ -224,7 +224,7 @@ def test_burst_is_capped(conn: Conn):
 
 def test_call_procedure_is_capped(conn: Conn):
     section("CALL_PROCEDURE is capped by the same pool")
-    burst = fire_burst({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "slow"})
+    burst = fire_burst({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "slow"})
     check("every response is either OK or the capacity rejection", not burst.other,
           f"unexpected responses: {burst.other}")
     check("at most the capacity succeeded", 1 <= len(burst.ok) <= CAPACITY,
@@ -258,7 +258,7 @@ def test_rejection_leaves_the_connection_usable(conn: Conn):
         refused = client.run("return 1;")
         check_code("a caller is refused while the pool is exhausted", refused, "ERROR", "503-6")
         check_status("… non-script operations still work on that connection",
-                     client.send({"type": "LIST_COLLECTIONS", "databaseName": DB}), "OK")
+                     client.send({"type": "LIST_COLLECTIONS", "projectName": PROJECT}), "OK")
         for thread in holders:
             thread.join(120)
         await_available(conn, CAPACITY)
@@ -270,8 +270,8 @@ def test_doomed_requests_do_not_spend_a_permit(conn: Conn):
     before = conn.script_stats()
     check("the pool starts full", before.get("available") == CAPACITY, f"got {before!r}")
 
-    check_code("an unknown database is answered on its own terms",
-               conn.run("return 1;", db="no_such_db"), "NOT_FOUND", "404-4")
+    check_code("an unknown project is answered on its own terms",
+               conn.run("return 1;", project="no_such_project"), "NOT_FOUND", "404-4")
     check_code("an oversized source too", conn.run("x".rjust(MAX_SOURCE_BYTES + 1, "/") + "\nreturn 1;"),
                "ERROR", "400-10")
 
@@ -334,7 +334,7 @@ def test_triggers_are_exempt(conn: Conn):
           stats.get("rejected") == rejected_before,
           f"rejected went from {rejected_before} to {stats.get('rejected')}")
     check_status("remove the trigger",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT,
                             "collectionName": COLL, "name": "auditor"}), "OK")
 
 
@@ -374,7 +374,7 @@ def test_schedules_are_exempt(conn: Conn):
 
 def test_wait_absorbs_the_burst(conn: Conn):
     section(f"The same burst with a {LONG_WAIT_MS}ms wait")
-    burst = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT})
+    burst = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT})
 
     check("nobody was refused", not burst.rejected, f"{len(burst.rejected)} caller(s) got 503-6")
     check("every caller succeeded", len(burst.ok) == CALLERS,
@@ -393,7 +393,7 @@ def test_wait_may_exceed_the_run_timeout():
     section("The wait is not bounded by the run timeout")
     check(f"the configured wait ({LONG_WAIT_MS}ms) exceeds scriptTimeoutMs ({TIMEOUT_MS}ms)",
           LONG_WAIT_MS > TIMEOUT_MS)
-    burst = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT},
+    burst = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT},
                        callers=CAPACITY + 1)
     check("the caller that had to wait still succeeded", len(burst.ok) == CAPACITY + 1,
           f"only {len(burst.ok)} of {CAPACITY + 1} succeeded; rejected={len(burst.rejected)}")
@@ -401,7 +401,7 @@ def test_wait_may_exceed_the_run_timeout():
 
 def test_per_user_cap():
     section("A per-user cap under a generous node-wide cap")
-    one_user = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT},
+    one_user = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT},
                           credentials=[TENANTS[0]])
 
     check("every caller got a response", len(one_user.responses) == CALLERS, f"got {len(one_user.responses)}")
@@ -415,7 +415,7 @@ def test_per_user_cap():
     check(f"no more than {PER_USER_CAPACITY} of that user's runs overlapped",
           0 < one_user.peak_running <= PER_USER_CAPACITY, f"scripts.running peaked at {one_user.peak_running}")
 
-    two_users = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT},
+    two_users = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT},
                            credentials=TENANTS)
     check("two users together exceed one user's ceiling", two_users.peak_running > PER_USER_CAPACITY,
           f"scripts.running peaked at {two_users.peak_running} with two users")
@@ -425,18 +425,18 @@ def test_per_user_cap():
 
 def test_a_tenant_refusal_frees_the_node_permit(conn: Conn):
     section("A per-user refusal does not hold a node-wide permit")
-    fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT}, credentials=[TENANTS[0]])
+    fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT}, credentials=[TENANTS[0]])
     stats = conn.script_stats()
     check("the node-wide permits are all available again",
           await_available(conn, stats.get("capacity")) == stats.get("capacity"),
           f"available={conn.script_stats().get('available')} capacity={stats.get('capacity')}")
     check("the per-user rejections are counted", (stats.get("rejectedPerUser") or 0) > 0, f"got {stats}")
     check("the capacities are reported",
-          stats.get("capacityPerUser") == PER_USER_CAPACITY and "capacityPerDatabase" in stats, f"got {stats}")
+          stats.get("capacityPerUser") == PER_USER_CAPACITY and "capacityPerProject" in stats, f"got {stats}")
 
 
 def schedule_stats(conn: Conn) -> dict:
-    return conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("schedules", {})
+    return conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("schedules", {})
 
 
 def test_triggers_and_schedules_take_their_definers_slice(conn: Conn):
@@ -488,38 +488,38 @@ def test_triggers_and_schedules_take_their_definers_slice(conn: Conn):
           "the tick row never appeared")
     check_status("remove the schedule", conn.delete_schedule("tenant_tick"), "OK")
     check_status("remove the trigger",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                             "name": "tenant_audit"}), "OK")
 
 
-def test_per_database_cap(conn: Conn):
-    section("A per-database cap across two users")
-    rejected_before = conn.script_stats().get("rejectedPerDatabase") or 0
-    burst = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT}, credentials=TENANTS)
+def test_per_project_cap(conn: Conn):
+    section("A per-project cap across two users")
+    rejected_before = conn.script_stats().get("rejectedPerProject") or 0
+    burst = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT}, credentials=TENANTS)
     check("every caller got a response", len(burst.responses) == CALLERS, f"got {len(burst.responses)}")
-    check(f"no more than {PER_DATABASE_CAPACITY} runs in the database overlapped",
-          0 < burst.peak_running <= PER_DATABASE_CAPACITY, f"scripts.running peaked at {burst.peak_running}")
-    check("the database slice refused some of them",
-          (conn.script_stats().get("rejectedPerDatabase") or 0) > rejected_before, f"got {conn.script_stats()}")
+    check(f"no more than {PER_PROJECT_CAPACITY} runs in the project overlapped",
+          0 < burst.peak_running <= PER_PROJECT_CAPACITY, f"scripts.running peaked at {burst.peak_running}")
+    check("the project slice refused some of them",
+          (conn.script_stats().get("rejectedPerProject") or 0) > rejected_before, f"got {conn.script_stats()}")
 
 
 ORDINARY_RUNNERS = [("runner_a", "password123"), ("runner_b", "password123")]
-DB_OWNER = ("db_owner_c", "password123")
+PROJECT_OWNER = ("project_owner_c", "password123")
 
 
 def create_ordinary_runners(conn: Conn):
-    for username, password in ORDINARY_RUNNERS + [DB_OWNER]:
+    for username, password in ORDINARY_RUNNERS + [PROJECT_OWNER]:
         conn.send({"type": "DELETE_USER", "username": username})
         check_status(f"create {username}",
                      conn.send({"type": "CREATE_USER", "username": username, "password": password,
-                                "admin": False, "globalPermissions": [], "databasePermissions": {DB: "READ"},
-                                "collectionPermissions": {}, "scriptPermissions": {DB: "RUN"}}), "OK")
-    check_status("make db_owner_c an owner of the database",
-                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": [DB_OWNER[0]]}), "OK")
+                                "admin": False, "globalPermissions": [], "projectPermissions": {PROJECT: "READ"},
+                                "collectionPermissions": {}, "scriptPermissions": {PROJECT: "RUN"}}), "OK")
+    check_status("make project_owner_c an owner of the project",
+                 conn.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": [PROJECT_OWNER[0]]}), "OK")
 
 
-def test_owner_keeps_a_database_slot_when_users_fill_it(conn: Conn):
-    section(f"The last of {PER_DATABASE_CAPACITY} database slots is kept for owners and admins")
+def test_owner_keeps_a_project_slot_when_users_fill_it(conn: Conn):
+    section(f"The last of {PER_PROJECT_CAPACITY} project slots is kept for owners and admins")
     create_ordinary_runners(conn)
     holders = []
     started = threading.Barrier(len(ORDINARY_RUNNERS) + 1)
@@ -541,17 +541,17 @@ def test_owner_keeps_a_database_slot_when_users_fill_it(conn: Conn):
     with Conn() as runner:
         runner.authenticate(*ORDINARY_RUNNERS[0])
         refused = runner.run("export default 7;")
-        check_code("a third ordinary run is refused at the database slice", refused, "ERROR", "503-6")
-        check("the refusal names the database scope", "database" in (refused.get("message") or ""),
+        check_code("a third ordinary run is refused at the project slice", refused, "ERROR", "503-6")
+        check("the refusal names the project scope", "project" in (refused.get("message") or ""),
               f"got {refused.get('message')!r}")
     with Conn() as owner:
-        owner.authenticate(*DB_OWNER)
-        check_result("the database owner still runs in the reserved slot", owner.run("export default 7;"), 7)
+        owner.authenticate(*PROJECT_OWNER)
+        check_result("the project owner still runs in the reserved slot", owner.run("export default 7;"), 7)
     check_result("so does an admin", conn.run("export default 7;"), 7)
     for thread in holders:
         thread.join(120)
-    check_status("clear the database owners",
-                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": []}), "OK")
+    check_status("clear the project owners",
+                 conn.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": []}), "OK")
 
 
 def test_cap_disabled(conn: Conn):
@@ -559,7 +559,7 @@ def test_cap_disabled(conn: Conn):
     stats_before = conn.script_stats()
     check("stats report no capacity", stats_before.get("capacity") == 0, f"got {stats_before!r}")
 
-    burst = fire_burst({"type": "RUN_SCRIPT", "databaseName": DB, "script": SLOW_SCRIPT})
+    burst = fire_burst({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": SLOW_SCRIPT})
     check("every caller succeeded", len(burst.ok) == CALLERS,
           f"only {len(burst.ok)} of {CALLERS} succeeded; rejected={len(burst.rejected)}; others={burst.other}")
     check("nobody was refused", not burst.rejected)
@@ -576,7 +576,7 @@ def test_cap_disabled(conn: Conn):
 
 def cleanup(conn: Conn):
     section("Cleanup")
-    check_status(f"drop {DB}", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+    check_status(f"drop {PROJECT}", conn.send({"type": "DROP_PROJECT", "projectName": PROJECT}), "OK")
 
 
 def main():
@@ -618,7 +618,7 @@ def main():
         proc = None
 
         write_config(work_dir, capacity=CALLERS * 2, queue_wait_ms=0, per_user=PER_USER_CAPACITY,
-                     per_database=PER_DATABASE_CAPACITY)
+                     per_project=PER_PROJECT_CAPACITY)
         print(f"\n  Restarting server (per-user cap {PER_USER_CAPACITY}) on {HOST}:{PORT} ...")
         proc = bu.start_server(work_dir, log_path)
         with admin_conn() as conn:
@@ -626,8 +626,8 @@ def main():
             test_per_user_cap()
             test_a_tenant_refusal_frees_the_node_permit(conn)
             test_triggers_and_schedules_take_their_definers_slice(conn)
-            test_per_database_cap(conn)
-            test_owner_keeps_a_database_slot_when_users_fill_it(conn)
+            test_per_project_cap(conn)
+            test_owner_keeps_a_project_slot_when_users_fill_it(conn)
 
         bu.stop_server(proc)
         proc = None

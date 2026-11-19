@@ -13,10 +13,10 @@ public class ListenRequestTest {
 
     @Test
     public void constructor_setsTypeAndCoordinates() {
-        final var req = new ListenRequest("myDb", "myColl");
+        final var req = new ListenRequest("myProject", "myColl");
 
         assertEquals(OperationType.LISTEN, req.getType());
-        assertEquals("myDb", req.getDatabaseName());
+        assertEquals("myProject", req.getProjectName());
         assertEquals("myColl", req.getCollectionName());
     }
 

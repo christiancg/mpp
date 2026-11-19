@@ -10,7 +10,7 @@ from base_utils import Conn, check, check_status, section
 
 METRICS_PORT = int(os.environ.get("METRICS_TEST_PORT", "9460"))
 TOKEN = "metrics-T0ken"
-DB = "metrics_db"
+PROJECT = "metrics_project"
 COLL = "items"
 SAVES = 5
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -100,21 +100,21 @@ def test_requests_are_counted_by_operation_status_and_code():
     before = scrape()
     with Conn.authenticated() as c:
         for i in range(SAVES):
-            check_status(f"save {i}", c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+            check_status(f"save {i}", c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                               "object": {"_id": f"m{i}", "n": i}}), "OK")
-        missing = c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "absent"})
+        missing = c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "absent"})
         synced = bu.dig(c.send({"type": "SERVER_INFO"}), "server.node.syncWrites")
     with Conn() as anonymous:
-        refused = anonymous.send({"type": "LIST_DATABASES"})
+        refused = anonymous.send({"type": "LIST_PROJECTS"})
     after = scrape()
     check(f"SAVE/OK grew by {SAVES}", requests(after, "SAVE", "OK") - requests(before, "SAVE", "OK") == SAVES)
     missing_code = missing.get("errorCode", "")
     check("The missing FIND_BY_ID is counted under its status and code",
           requests(after, "FIND_BY_ID", missing.get("status"), missing_code)
           - requests(before, "FIND_BY_ID", missing.get("status"), missing_code) == 1, str(missing))
-    check("The unauthenticated LIST_DATABASES is counted under 401-1",
-          requests(after, "LIST_DATABASES", "UNAUTHENTICATED", "401-1")
-          - requests(before, "LIST_DATABASES", "UNAUTHENTICATED", "401-1") == 1, str(refused))
+    check("The unauthenticated LIST_PROJECTS is counted under 401-1",
+          requests(after, "LIST_PROJECTS", "UNAUTHENTICATED", "401-1")
+          - requests(before, "LIST_PROJECTS", "UNAUTHENTICATED", "401-1") == 1, str(refused))
     durations = value(after, "request_duration_seconds_count", operation="SAVE") - value(
         before, "request_duration_seconds_count", operation="SAVE")
     check(f"The SAVE latency histogram counted {SAVES} more", durations == SAVES, f"delta={durations}")
@@ -139,12 +139,12 @@ def test_the_connection_gauge_follows_open_connections():
           f"baseline={baseline} now={value(scrape(), 'connections')}")
 
 
-def test_the_document_total_matches_database_stats():
-    section("mpp_documents agrees with GET_DATABASE_STATS")
+def test_the_document_total_matches_project_stats():
+    section("mpp_documents agrees with GET_PROJECT_STATS")
 
     def stats_entries():
         with Conn.authenticated() as c:
-            return ((c.send({"type": "GET_DATABASE_STATS"}).get("stats") or {}).get("totals") or {}).get("entryCount")
+            return ((c.send({"type": "GET_PROJECT_STATS"}).get("stats") or {}).get("totals") or {}).get("entryCount")
 
     agreed = bu.wait_until(lambda: stats_entries() == SAVES and value(scrape(), "documents") == SAVES, 15)
     check(f"Both report {SAVES} documents", agreed,
@@ -174,6 +174,8 @@ def test_every_scraped_family_is_documented():
           f"undocumented={sorted(families - documented)}")
     check("The guide names no family the server does not return", documented <= families,
           f"stale={sorted(documented - families)}")
+    check("The stored totals count projects, and no family is named after databases",
+          "projects" in families and not any("database" in family for family in families), f"families={families}")
 
 
 def test_refusals():
@@ -208,14 +210,14 @@ def run_all(write_config, port: int):
     try:
         proc = bu.start_server(work_dir, log_path, port=port)
         with Conn.authenticated() as c:
-            check_status("create the database", c.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
-            check_status("create the collection", c.send({"type": "CREATE_COLLECTION", "databaseName": DB,
+            check_status("create the project", c.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
+            check_status("create the collection", c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                           "collectionName": COLL}), "OK")
         test_a_scrape_is_prometheus_text()
         test_build_info_matches_server_info()
         test_requests_are_counted_by_operation_status_and_code()
         test_the_connection_gauge_follows_open_connections()
-        test_the_document_total_matches_database_stats()
+        test_the_document_total_matches_project_stats()
         test_refusals()
         test_every_scraped_family_is_documented()
     finally:

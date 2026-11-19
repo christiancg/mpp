@@ -18,7 +18,7 @@ public final class SavePatch {
     }
 
     public static BulkSaveRequest bulkSaveOf(SaveRequest request, List<JsonObject> mergedDocuments) {
-        final var bulk = new BulkSaveRequest(request.getDatabaseName(), request.getCollectionName());
+        final var bulk = new BulkSaveRequest(request.getProjectName(), request.getCollectionName());
         bulk.setObjects(mergedDocuments);
         bulk.setTriggerDepth(request.getTriggerDepth());
         bulk.setBackgroundFollowOn(request.isBackgroundFollowOn());

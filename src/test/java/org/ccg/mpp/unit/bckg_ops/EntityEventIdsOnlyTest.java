@@ -32,7 +32,7 @@ public class EntityEventIdsOnlyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -44,18 +44,18 @@ public class EntityEventIdsOnlyTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("payload", new JsonString("some bytes"));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.setPage(page);
         return entry;
     }
 
     private boolean hasPageRow(long number) {
-        final var pages = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pages = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         return pages != null && pages.stream().anyMatch(p -> p.getPage() == number);
     }
 
     private AdminPageEntry page(long number) {
-        final var pages = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pages = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(pages, "the collection has page rows");
         return pages.stream().filter(p -> p.getPage() == number).findFirst()
                 .orElseThrow(() -> new AssertionError("no page row for page " + number));
@@ -84,7 +84,7 @@ public class EntityEventIdsOnlyTest {
     @Test
     public void pageDeltaUsesRecordedPage() throws Exception {
         final var entry = entryOnPage("moved", 3);
-        final var event = new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry);
+        final var event = new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         entry.setPage(7);
 
         EventProcessorHelper.processEvent(event);
@@ -97,14 +97,14 @@ public class EntityEventIdsOnlyTest {
     public void failedRelocationDeltaLandsOnTheOriginalPage() throws Exception {
         final var original = entryOnPage("relocated", 0);
         EventProcessorHelper
-                .processEvent(new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(original), List.of()));
+                .processEvent(new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of(original), List.of()));
         final var before = page(0);
         assertNotNull(before);
         final var countBefore = before.getEntryCount();
-        final var deleted = new EntityEvent(EventType.DELETED, TestGlobals.DB, TestGlobals.COLL, original);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0L, -original.byteSize(), -1);
+        final var deleted = new EntityEvent(EventType.DELETED, TestGlobals.PROJECT, TestGlobals.COLL, original);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0L, -original.byteSize(), -1);
         original.setPage(4);
-        final var restored = new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, original);
+        final var restored = new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, original);
 
         EventProcessorHelper.processEvent(deleted);
         EventProcessorHelper.processEvent(restored);

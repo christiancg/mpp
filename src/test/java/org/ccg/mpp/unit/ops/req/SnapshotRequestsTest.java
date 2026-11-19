@@ -23,14 +23,14 @@ public class SnapshotRequestsTest {
     }
 
     private static String readOf(String extra) {
-        return "{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionName\":\"orders\",\"snapshotId\":\""
+        return "{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"shop\",\"collectionName\":\"orders\",\"snapshotId\":\""
                 + SNAPSHOT_ID + "\"" + extra + "}";
     }
 
     @Test
     public void test_the_three_requests_parse_into_their_classes() {
         final var start = assertInstanceOf(StartSnapshotRequest.class, RequestParser.parseRequest(
-                "{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionNames\":[\"orders\"]}"));
+                "{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\",\"collectionNames\":[\"orders\"]}"));
         assertEquals(OperationType.START_SNAPSHOT, start.getType());
         assertEquals(List.of("orders"), start.getCollectionNames());
 
@@ -42,20 +42,20 @@ public class SnapshotRequestsTest {
         assertEquals(50, read.getLimit());
 
         final var release = assertInstanceOf(ReleaseSnapshotRequest.class, RequestParser.parseRequest(
-                "{\"type\":\"RELEASE_SNAPSHOT\",\"databaseName\":\"shop\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
+                "{\"type\":\"RELEASE_SNAPSHOT\",\"projectName\":\"shop\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
         assertEquals(SNAPSHOT_ID, release.getSnapshotId());
     }
 
     @Test
     public void test_start_validation() {
-        assertTrue(valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\"}"));
+        assertTrue(valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\"}"));
         assertTrue(
-                valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionNames\":[\"a_1\",\"b-2\"]}"));
-        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"admin\"}"));
-        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionNames\":[]}"));
-        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionNames\":[\"a/b\"]}"));
+                valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\",\"collectionNames\":[\"a_1\",\"b-2\"]}"));
+        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"admin\"}"));
+        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\",\"collectionNames\":[]}"));
+        assertFalse(valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\",\"collectionNames\":[\"a/b\"]}"));
         assertFalse(
-                valid("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionNames\":[\"abc\",\"abc\"]}"));
+                valid("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"shop\",\"collectionNames\":[\"abc\",\"abc\"]}"));
     }
 
     @Test
@@ -65,21 +65,21 @@ public class SnapshotRequestsTest {
         assertFalse(valid(readOf(",\"limit\":0")));
         assertFalse(valid(readOf(",\"limit\":100001")));
         assertFalse(valid(readOf(",\"afterId\":\"no spaces\",\"limit\":5")));
-        assertFalse(valid("{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionName\":\"orders\","
+        assertFalse(valid("{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"shop\",\"collectionName\":\"orders\","
                 + "\"snapshotId\":\"not-a-uuid\",\"limit\":5}"));
         assertFalse(valid(
-                "{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"shop\",\"collectionName\":\"orders\",\"limit\":5}"));
-        assertFalse(valid("{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"admin\",\"collectionName\":\"orders\","
+                "{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"shop\",\"collectionName\":\"orders\",\"limit\":5}"));
+        assertFalse(valid("{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"admin\",\"collectionName\":\"orders\","
                 + "\"snapshotId\":\"" + SNAPSHOT_ID + "\",\"limit\":5}"));
     }
 
     @Test
     public void test_release_validation() {
         assertTrue(valid(
-                "{\"type\":\"RELEASE_SNAPSHOT\",\"databaseName\":\"shop\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
-        assertFalse(valid("{\"type\":\"RELEASE_SNAPSHOT\",\"databaseName\":\"shop\"}"));
+                "{\"type\":\"RELEASE_SNAPSHOT\",\"projectName\":\"shop\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
+        assertFalse(valid("{\"type\":\"RELEASE_SNAPSHOT\",\"projectName\":\"shop\"}"));
         assertFalse(
-                valid("{\"type\":\"RELEASE_SNAPSHOT\",\"databaseName\":\"x\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
+                valid("{\"type\":\"RELEASE_SNAPSHOT\",\"projectName\":\"x\",\"snapshotId\":\"" + SNAPSHOT_ID + "\"}"));
         assertNull(new ReleaseSnapshotRequest("shop").getSnapshotId());
     }
 }

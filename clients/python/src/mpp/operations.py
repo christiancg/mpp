@@ -8,18 +8,18 @@ from mpp._catalogue import Operation
 
 __all__ = ["OPERATIONS", "Operation", "OperationDetails", "OperationScope", "operation_details"]
 
-OperationScope = Literal["DATABASE", "COLLECTION", "OPTIONAL_COLLECTION", "NONE"]
+OperationScope = Literal["PROJECT", "COLLECTION", "OPTIONAL_COLLECTION", "NONE"]
 
 _READS = frozenset(
     {
         Operation.FIND_BY_ID,
         Operation.AGGREGATE,
-        Operation.LIST_DATABASES,
+        Operation.LIST_PROJECTS,
         Operation.LIST_COLLECTIONS,
         Operation.GET_SCHEMA,
         Operation.SERVER_INFO,
         Operation.LIST_USERS,
-        Operation.GET_DATABASE_STATS,
+        Operation.GET_PROJECT_STATS,
         Operation.LIST_TRANSACTIONS,
         Operation.LIST_PROCEDURES,
         Operation.LIST_TRIGGERS,

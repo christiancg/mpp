@@ -63,32 +63,33 @@ public class TriggerDispatcherTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, AUDIT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, AUDIT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.DB, AUDIT_COLL));
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, AUDIT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, AUDIT_COLL);
+        AdminOperationHelper
+                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.PROJECT, AUDIT_COLL));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
         createUser(OWNER, new HashMap<>());
         final var writerPerms = new HashMap<String, PermissionLevel>();
         createUser(WRITER, writerPerms);
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put(TestGlobals.DB + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE);
+        collPerms.put(TestGlobals.PROJECT + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE);
         final var change = new org.ccg.mpp.ops.req.ChangePermissionsRequest();
         change.setUsername(WRITER);
         change.setAdmin(false);
         change.setGlobalPermissions(new HashSet<>());
-        change.setDatabasePermissions(new HashMap<>());
+        change.setProjectPermissions(new HashMap<>());
         change.setCollectionPermissions(collPerms);
         UserOperationHelper.processChangePermissions(change, new RestampedRecords());
     }
 
-    private static void createUser(String username, HashMap<String, PermissionLevel> dbPerms) {
+    private static void createUser(String username, HashMap<String, PermissionLevel> projectPerms) {
         final var request = new CreateUserRequest();
         request.setUsername(username);
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(dbPerms);
+        request.setProjectPermissions(projectPerms);
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -116,7 +117,7 @@ public class TriggerDispatcherTest {
     }
 
     private void storeAuditProcedure() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit",
                 "import db from 'db'; import args from 'args';" + "db.save(db.name, '" + AUDIT_COLL
                         + "', { _id: args.id, by: args.actingUser,"
                         + " definer: args.definer, event: args.event }); return 'ok';"),
@@ -124,7 +125,7 @@ public class TriggerDispatcherTest {
     }
 
     private void storeBigResultProcedure() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit",
                 "import db from 'db'; import args from 'args';" + "db.save(db.name, '" + AUDIT_COLL
                         + "', { _id: args.id, by: args.actingUser," + " definer: args.definer, event: args.event });"
                         + " return new Array(5000).fill('0123456789');"),
@@ -132,18 +133,18 @@ public class TriggerDispatcherTest {
     }
 
     private void installTrigger(String definer, boolean enabled, boolean allowCascade) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, allowCascade, enabled, definer, 1L, 1L, 1L, definer)));
     }
 
     private static TriggerEvent event(String id, String actingUser, int depth) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit", false,
                 List.of(entry(id)), actingUser, depth);
     }
 
     private JsonObject auditRow(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, AUDIT_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, AUDIT_COLL);
         request.set_id(id);
         final var response = IocContainer.get(org.ccg.mpp.ops.OperationProcessor.class).processMessage(request);
         if (response instanceof org.ccg.mpp.ops.resp.FindByIdResponse found) {
@@ -196,7 +197,7 @@ public class TriggerDispatcherTest {
         final var deleteRequest = new DeleteUserRequest();
         deleteRequest.setUsername("temporary");
         UserOperationHelper.processDeleteUser(deleteRequest, new RestampedRecords());
-        final var disabled = cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        final var disabled = cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
         assertFalse(disabled.isEnabled(), "deleting the definer disables its trigger");
         assertTrue(disabled.getDisabledReason().contains("no longer exists"), disabled.getDisabledReason());
         TriggerDispatcher.dispatch(event("orphaned", OWNER, 0));
@@ -234,7 +235,7 @@ public class TriggerDispatcherTest {
     public void test_skips_trigger_removed_while_queued() throws Exception {
         storeAuditProcedure();
         installTrigger(OWNER, true, false);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of());
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of());
         TriggerDispatcher.dispatch(event("gone", OWNER, 0));
         assertNull(auditRow("gone"));
     }
@@ -243,15 +244,15 @@ public class TriggerDispatcherTest {
     public void test_skips_when_the_procedure_was_removed_while_queued() throws Exception {
         storeAuditProcedure();
         installTrigger(OWNER, true, false);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, "audit");
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "audit");
         TriggerDispatcher.dispatch(event("no-procedure", OWNER, 0));
         assertNull(auditRow("no-procedure"));
     }
 
     @Test
     public void test_stamps_issued_requests_with_incremented_depth() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit",
                 "import db from 'db'; import args from 'args';" + "db.save(db.name, '" + AUDIT_COLL
                         + "', { _id: args.id, depth: args.depth });" + "return 'ok';"),
                 OWNER);
@@ -265,7 +266,7 @@ public class TriggerDispatcherTest {
     @Test
     public void test_script_failure_is_logged_and_swallowed() throws Exception {
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "audit", "throw new Error('trigger blew up');"), OWNER);
+                new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "throw new Error('trigger blew up');"), OWNER);
         installTrigger(OWNER, true, false);
         final var failedBefore = triggerExecutor.getFailed();
         assertDoesNotThrow(() -> TriggerDispatcher.dispatch(event("boom", OWNER, 0)));
@@ -293,7 +294,7 @@ public class TriggerDispatcherTest {
         TestUtils.setPrivateField(configuration, "triggerMaxAttempts", 3);
         try {
             ProcedureOperationHelper.executeSave(
-                    new SaveProcedureRequest(TestGlobals.DB, "audit", "throw new Error('no record');"), OWNER);
+                    new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "throw new Error('no record');"), OWNER);
             installTrigger(OWNER, true, false);
             final var retriedBefore = triggerExecutor.getRetried();
             assertDoesNotThrow(() -> TriggerDispatcher.dispatch(event("unlogged-boom", OWNER, 0)));
@@ -319,14 +320,14 @@ public class TriggerDispatcherTest {
     public void test_batch_mode_passes_documents() throws Exception {
         ProcedureOperationHelper
                 .executeSave(
-                        new SaveProcedureRequest(TestGlobals.DB, "audit",
+                        new SaveProcedureRequest(TestGlobals.PROJECT, "audit",
                                 "import db from 'db'; import args from 'args';" + "db.save(db.name, '" + AUDIT_COLL
                                         + "', { _id: 'batch', count: args.documents.length });" + "return 'ok';"),
                         OWNER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "audit",
                         TriggerDefinition.MODE_BATCH, false, true, OWNER, 1L, 1L, 1L, OWNER)));
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", true, List.of(entry("a"), entry("b")), OWNER, 0));
         assertEquals(2d,
                 Objects.requireNonNull(auditRow("batch")).get("count").asJsonNumber().getValue().doubleValue());
@@ -334,7 +335,7 @@ public class TriggerDispatcherTest {
 
     @Test
     public void test_trigger_timeout_is_applied() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", "while (true) { }"),
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "while (true) { }"),
                 OWNER);
         installTrigger(OWNER, true, false);
         TestUtils.setPrivateField(configuration, "triggerTimeoutMs", 50L);
@@ -347,16 +348,16 @@ public class TriggerDispatcherTest {
 
     private void storeThrowingProcedure(String message) throws Exception {
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "audit", "throw new Error('" + message + "');"), OWNER);
+                new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "throw new Error('" + message + "');"), OWNER);
     }
 
     private static String recordRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(), List.of(entry(id))));
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "audit", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(), List.of(entry(id))));
     }
 
     private static TriggerEvent lastAttemptEvent(String id, String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit", false,
                 List.of(entry(id)), OWNER, 0, runId, 1);
     }
 
@@ -375,7 +376,7 @@ public class TriggerDispatcherTest {
                     "the unbounded cluster retry is chosen from the response's error code, not from a message the"
                             + " script itself controls");
 
-            IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+            IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
             storeThrowingProcedure("something the trigger itself got wrong");
             final var brokenRun = recordRunFor("broken");
             TriggerDispatcher.dispatch(lastAttemptEvent("broken", brokenRun));
@@ -390,7 +391,7 @@ public class TriggerDispatcherTest {
     }
 
     private static void saveDocument(String id, String value) throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("value", new JsonString(value));
@@ -400,7 +401,7 @@ public class TriggerDispatcherTest {
     }
 
     private static void deleteDocument(String id) throws Exception {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         DeleteOperationHelper.executeDelete(request);
     }
@@ -414,8 +415,8 @@ public class TriggerDispatcherTest {
     @Test
     public void test_a_retried_updated_trigger_sees_the_current_document_not_the_original_snapshot() throws Exception {
         saveDocument("retry-fresh", "A");
-        final var original = new TriggerEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                false, List.of(entry("retry-fresh")), OWNER, 0, "retry-fresh-run", 1);
+        final var original = new TriggerEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", false, List.of(entry("retry-fresh")), OWNER, 0, "retry-fresh-run", 1);
         saveDocument("retry-fresh", "B");
 
         final var retried = invokeRetryOf(original);
@@ -429,8 +430,8 @@ public class TriggerDispatcherTest {
     @Test
     public void test_a_retry_is_skipped_when_the_document_no_longer_exists() throws Exception {
         saveDocument("retry-gone", "A");
-        final var original = new TriggerEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                false, List.of(entry("retry-gone")), OWNER, 0, "retry-gone-run", 1);
+        final var original = new TriggerEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", false, List.of(entry("retry-gone")), OWNER, 0, "retry-gone-run", 1);
         deleteDocument("retry-gone");
 
         final var retried = invokeRetryOf(original);
@@ -443,8 +444,8 @@ public class TriggerDispatcherTest {
     public void test_a_retried_deleted_trigger_still_uses_its_captured_snapshot() throws Exception {
         final var deletedEntry = entry("retry-deleted");
         deletedEntry.getData().add("value", new JsonString("captured"));
-        final var original = new TriggerEvent(EventType.DELETED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                false, List.of(deletedEntry), OWNER, 0, "retry-deleted-run", 1);
+        final var original = new TriggerEvent(EventType.DELETED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", false, List.of(deletedEntry), OWNER, 0, "retry-deleted-run", 1);
 
         final var retried = invokeRetryOf(original);
 
@@ -456,8 +457,8 @@ public class TriggerDispatcherTest {
     public void test_a_batch_retry_proceeds_with_the_surviving_subset() throws Exception {
         saveDocument("retry-batch-a", "A");
         saveDocument("retry-batch-b", "B");
-        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                true, List.of(entry("retry-batch-a"), entry("retry-batch-b")), OWNER, 0, "retry-batch-run", 1);
+        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", true, List.of(entry("retry-batch-a"), entry("retry-batch-b")), OWNER, 0, "retry-batch-run", 1);
         deleteDocument("retry-batch-a");
 
         final var retried = invokeRetryOf(original);

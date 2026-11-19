@@ -55,10 +55,10 @@ public class TriggerExactlyOnceTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, COUNTER_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, COUNTER_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, COUNTER_COLL));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, COUNTER_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, COUNTER_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, COUNTER_COLL));
         TriggerTestSupport.createDefiner(DEFINER);
     }
 
@@ -79,7 +79,7 @@ public class TriggerExactlyOnceTest {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         captured.clear();
-        final var clearCounter = new DeleteRequest(TestGlobals.DB, COUNTER_COLL);
+        final var clearCounter = new DeleteRequest(TestGlobals.PROJECT, COUNTER_COLL);
         clearCounter.set_id("total");
         processor.processMessage(clearCounter);
         triggerExecutor.stop();
@@ -96,7 +96,7 @@ public class TriggerExactlyOnceTest {
     // Both CREATED and UPDATED: a save that carries an _id is an upsert, which the write path reports as an
     // update, so a CREATED-only trigger would never fire for the saves these tests make.
     private void installTrigger(String procedureName) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit",
                         new LinkedHashSet<>(Set.of(EventType.CREATED, EventType.UPDATED)), procedureName,
                         TriggerDefinition.MODE_DOCUMENT, false, true, DEFINER, 1L, 1L, 1L, DEFINER)));
@@ -104,8 +104,8 @@ public class TriggerExactlyOnceTest {
 
     private void installProcedure(String name, String source) throws Exception {
         final var definition = new ProcedureDefinition(name, source, 1L, null, true, 1L, 1L, DEFINER);
-        fs.metadataFiles().writeProcedure(TestGlobals.DB, name, eJson.toJson(definition.toJsonObject()));
-        cache.putProcedure(TestGlobals.DB, definition);
+        fs.metadataFiles().writeProcedure(TestGlobals.PROJECT, name, eJson.toJson(definition.toJsonObject()));
+        cache.putProcedure(TestGlobals.PROJECT, definition);
     }
 
     private static JsonObject document(String id) {
@@ -116,7 +116,7 @@ public class TriggerExactlyOnceTest {
     }
 
     private void save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         processor.processMessage(request);
@@ -138,7 +138,7 @@ public class TriggerExactlyOnceTest {
     }
 
     private long counterValue() throws Exception {
-        final var entries = cache.getEntriesByIds(TestGlobals.DB, COUNTER_COLL, Set.of("total"));
+        final var entries = cache.getEntriesByIds(TestGlobals.PROJECT, COUNTER_COLL, Set.of("total"));
         if (entries.isEmpty()) {
             return 0L;
         }
@@ -250,7 +250,7 @@ public class TriggerExactlyOnceTest {
         assertEquals(TriggerRunStatus.PENDING, statusOf(event.getRunId()));
 
         captured.clear();
-        TriggerDispatcher.dispatch(new TriggerEvent(event.getType(), event.getDbName(), event.getCollName(),
+        TriggerDispatcher.dispatch(new TriggerEvent(event.getType(), event.getProjectName(), event.getCollName(),
                 event.getTriggerName(), event.getProcedureName(), event.isBatchMode(), event.getEntries(),
                 event.getActingUser(), event.getDepth(), event.getRunId(), 2));
 
@@ -284,8 +284,8 @@ public class TriggerExactlyOnceTest {
         final var queued = settleOne();
         assertNotNull(queued);
 
-        final var deep = new TriggerEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, "audit", "noop3", false,
-                List.of(), DEFINER, configuration.getTriggerMaxDepth(), queued.getRunId());
+        final var deep = new TriggerEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "noop3",
+                false, List.of(), DEFINER, configuration.getTriggerMaxDepth(), queued.getRunId());
         TriggerDispatcher.dispatch(deep);
 
         assertTrue(TriggerRunLog.recordIdsFor(queued.getRunId()).isEmpty());

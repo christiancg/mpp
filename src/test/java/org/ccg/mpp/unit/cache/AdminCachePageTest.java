@@ -42,7 +42,7 @@ public class AdminCachePageTest {
         final var cache = org.ccg.mpp.ioc.IocContainer.get(Cache.class);
         final var locks = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
         final var pagesColl = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "lockdb", "lockcoll");
-        locks.lock(Globals.ADMIN_PAGES_DB_NAME, pagesColl);
+        locks.lock(Globals.ADMIN_PAGES_PROJECT_NAME, pagesColl);
         final var finished = new java.util.concurrent.CountDownLatch(1);
         final var worker = new Thread(() -> {
             cache.updatePageSizeInMemory("lockdb", "lockcoll", 0L, 10L);
@@ -53,7 +53,7 @@ public class AdminCachePageTest {
             assertFalse(finished.await(300, java.util.concurrent.TimeUnit.MILLISECONDS),
                     "the in-memory page counter must serialise on the same lock the background page writer holds");
         } finally {
-            locks.release(Globals.ADMIN_PAGES_DB_NAME, pagesColl);
+            locks.release(Globals.ADMIN_PAGES_PROJECT_NAME, pagesColl);
         }
 
         assertTrue(finished.await(5, java.util.concurrent.TimeUnit.SECONDS), "it must proceed once that lock is free");
@@ -63,18 +63,18 @@ public class AdminCachePageTest {
     @Test
     public void test_reposition_after_vacuum_for_collections_map() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        final var before = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, "c1", 0,
-                10, 0);
-        final var after = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, "c2", 10,
-                10, 0);
+        final var before = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, "c1",
+                0, 10, 0);
+        final var after = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, "c2",
+                10, 10, 0);
         final var type = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
         final var map = TestUtils.getPrivateField(cache, "collectionsPkIndex", type);
         map.put("c1", before);
         map.put("c2", after);
 
-        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
-                0, Map.of("c2", new VacuumedPage.Move(10, 0))));
+        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PROJECT_NAME,
+                Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, 0, Map.of("c2", new VacuumedPage.Move(10, 0))));
 
         assertEquals(0, before.getPosition());
         assertEquals(0, after.getPosition(), "a row the vacuum moved takes its new position");
@@ -85,14 +85,14 @@ public class AdminCachePageTest {
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
         final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "db", "coll");
-        final var entry = new PkIndexEntry(Globals.ADMIN_PAGES_DB_NAME, pagesCollName, "p1", 30, 10, 0);
+        final var entry = new PkIndexEntry(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName, "p1", 30, 10, 0);
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         TestUtils.getPrivateField(TestUtils.pageCacheOf(cache), "pagesPkIndexes", type).put(
-                Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_DB_NAME, pagesCollName),
+                Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName),
                 new ArrayList<>(List.of(entry)));
 
-        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_DB_NAME, pagesCollName, 0,
+        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName, 0,
                 Map.of("p1", new VacuumedPage.Move(30, 20))));
 
         assertEquals(20, entry.getPosition());
@@ -101,14 +101,14 @@ public class AdminCachePageTest {
     @Test
     public void test_reposition_after_vacuum_for_unknown_pages_collection_is_noop() {
         AdminCache cache = new AdminCache();
-        assertDoesNotThrow(() -> cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_DB_NAME,
+        assertDoesNotThrow(() -> cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_PROJECT_NAME,
                 String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "no", "coll"), 0, Map.of())));
     }
 
     @Test
     public void test_select_page_for_insert_returns_zero_when_empty() {
         AdminCache cache = new AdminCache();
-        long target = cache.selectPageForInsert("myDb", "myColl", 100);
+        long target = cache.selectPageForInsert("myProject", "myColl", 100);
         assertEquals(0L, target);
     }
 
@@ -116,13 +116,13 @@ public class AdminCachePageTest {
     public void test_select_page_for_insert_first_fit_picks_first_page_with_room()
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        final var p0 = new AdminPageEntry("myDb", "myColl", 0L);
+        final var p0 = new AdminPageEntry("myProject", "myColl", 0L);
         p0.setPageSize(Long.parseLong(System.getProperty("maxPageBytesOverride", "2097150")));
         p0.setEntryCount(10);
-        final var p1 = new AdminPageEntry("myDb", "myColl", 1L);
+        final var p1 = new AdminPageEntry("myProject", "myColl", 1L);
         p1.setPageSize(200L);
         p1.setEntryCount(1);
-        final var p2 = new AdminPageEntry("myDb", "myColl", 2L);
+        final var p2 = new AdminPageEntry("myProject", "myColl", 2L);
         p2.setPageSize(Long.parseLong(System.getProperty("maxPageBytesOverride", "2097100")));
         p2.setEntryCount(5);
 
@@ -133,9 +133,9 @@ public class AdminCachePageTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, List<AdminPageEntry>>>() {
         };
         final var pagesMap = TestUtils.getPrivateField(TestUtils.pageCacheOf(cache), "pages", type);
-        pagesMap.put(Cache.getCollectionIdentifier("myDb", "myColl"), list);
+        pagesMap.put(Cache.getCollectionIdentifier("myProject", "myColl"), list);
 
-        long target = cache.selectPageForInsert("myDb", "myColl", 100);
+        long target = cache.selectPageForInsert("myProject", "myColl", 100);
         assertEquals(1L, target, "Should pick first page with room");
     }
 
@@ -143,10 +143,10 @@ public class AdminCachePageTest {
     public void test_select_page_for_insert_allocates_new_page_when_none_fit()
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        final var p0 = new AdminPageEntry("myDb", "myColl", 0L);
+        final var p0 = new AdminPageEntry("myProject", "myColl", 0L);
         p0.setPageSize(2_097_150L);
         p0.setEntryCount(10);
-        final var p1 = new AdminPageEntry("myDb", "myColl", 1L);
+        final var p1 = new AdminPageEntry("myProject", "myColl", 1L);
         p1.setPageSize(2_097_150L);
         p1.setEntryCount(10);
 
@@ -156,16 +156,16 @@ public class AdminCachePageTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, List<AdminPageEntry>>>() {
         };
         final var pagesMap = TestUtils.getPrivateField(TestUtils.pageCacheOf(cache), "pages", type);
-        pagesMap.put(Cache.getCollectionIdentifier("myDb", "myColl"), list);
+        pagesMap.put(Cache.getCollectionIdentifier("myProject", "myColl"), list);
 
-        long target = cache.selectPageForInsert("myDb", "myColl", 100_000);
+        long target = cache.selectPageForInsert("myProject", "myColl", 100_000);
         assertEquals(2L, target, "Should allocate new page when no existing page has room");
     }
 
     @Test
     public void test_select_page_for_insert_with_pending_bytes() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        final var p0 = new AdminPageEntry("myDb", "myColl", 0L);
+        final var p0 = new AdminPageEntry("myProject", "myColl", 0L);
         p0.setPageSize(1_000_000L);
         p0.setEntryCount(10);
 
@@ -174,25 +174,26 @@ public class AdminCachePageTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, List<AdminPageEntry>>>() {
         };
         final var pagesMap = TestUtils.getPrivateField(TestUtils.pageCacheOf(cache), "pages", type);
-        pagesMap.put(Cache.getCollectionIdentifier("myDb", "myColl"), list);
+        pagesMap.put(Cache.getCollectionIdentifier("myProject", "myColl"), list);
 
-        assertArrayEquals(new long[]{0L, 0L}, cache.selectPagesForInsert("myDb", "myColl", new int[]{500_000, 100_000}),
+        assertArrayEquals(new long[]{0L, 0L},
+                cache.selectPagesForInsert("myProject", "myColl", new int[]{500_000, 100_000}),
                 "Within-batch pending bytes still leave room on page 0");
         assertArrayEquals(new long[]{0L, 0L, 1L, 1L},
-                cache.selectPagesForInsert("myDb", "myColl", new int[]{500_000, 500_000, 500_000, 100_000}),
+                cache.selectPagesForInsert("myProject", "myColl", new int[]{500_000, 500_000, 500_000, 100_000}),
                 "Pending bytes can push selection to a new page");
     }
 
     @Test
     public void test_remove_admin_page_entries_clears_both_maps() {
         AdminCache cache = new AdminCache();
-        cache.addAdminPageEntries("myDb", "myColl", new AdminPageEntry("myDb", "myColl", 0L));
-        cache.getAdminPagePkIndexes("myDb", "myColl")
-                .add(new PkIndexEntry("admin", "pages_myColl", "myDb|myColl|0", 0L, 10L, 0L));
+        cache.addAdminPageEntries("myProject", "myColl", new AdminPageEntry("myProject", "myColl", 0L));
+        cache.getAdminPagePkIndexes("myProject", "myColl")
+                .add(new PkIndexEntry("admin", "pages_myColl", "myProject|myColl|0", 0L, 10L, 0L));
 
-        assertNotNull(cache.getAdminPageEntries("myDb", "myColl"));
-        cache.removeAdminPageEntries("myDb", "myColl");
-        assertNull(cache.getAdminPageEntries("myDb", "myColl"));
+        assertNotNull(cache.getAdminPageEntries("myProject", "myColl"));
+        cache.removeAdminPageEntries("myProject", "myColl");
+        assertNull(cache.getAdminPageEntries("myProject", "myColl"));
     }
 
     @Test
@@ -222,7 +223,7 @@ public class AdminCachePageTest {
     @Test
     public void test_select_page_for_insert_packs_into_pending_only_page() {
         AdminCache cache = new AdminCache();
-        assertArrayEquals(new long[]{0L, 0L}, cache.selectPagesForInsert("myDb", "myColl", new int[]{100, 100}),
+        assertArrayEquals(new long[]{0L, 0L}, cache.selectPagesForInsert("myProject", "myColl", new int[]{100, 100}),
                 "Second insert reuses the pending (not-yet-committed) page 0");
     }
 
@@ -230,7 +231,7 @@ public class AdminCachePageTest {
     public void test_select_page_for_insert_allocates_new_when_pending_only_page_full() {
         AdminCache cache = new AdminCache();
         assertArrayEquals(new long[]{0L, 1L},
-                cache.selectPagesForInsert("myDb", "myColl", new int[]{2_097_100, 100_000}),
+                cache.selectPagesForInsert("myProject", "myColl", new int[]{2_097_100, 100_000}),
                 "Full pending-only page forces a new page allocation");
     }
 
@@ -238,7 +239,7 @@ public class AdminCachePageTest {
     public void test_select_page_for_insert_prefers_lowest_pending_only_page() {
         AdminCache cache = new AdminCache();
         assertArrayEquals(new long[]{0L, 1L, 1L},
-                cache.selectPagesForInsert("myDb", "myColl", new int[]{2_097_150, 100, 100}),
+                cache.selectPagesForInsert("myProject", "myColl", new int[]{2_097_150, 100, 100}),
                 "First pending page with room is chosen in ascending order");
     }
 
@@ -246,13 +247,13 @@ public class AdminCachePageTest {
     public void test_a_user_collection_named_trigger_runs_does_not_move_admin_rows()
             throws NoSuchFieldException, IllegalAccessException {
         final var cache = new AdminCache();
-        final var adminRow = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, "run1",
-                30, 10, 0);
+        final var adminRow = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME,
+                "run1", 30, 10, 0);
         final var type = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
         TestUtils.getPrivateField(cache, "triggerRunsPkIndex", type).put("run1", adminRow);
 
-        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_DB_NAME,
+        cache.repositionAfterVacuum(new VacuumedPage(Globals.ADMIN_PAGES_PROJECT_NAME,
                 String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "trigger", "runs"), 0,
                 Map.of("run1", new VacuumedPage.Move(30, 0))));
 
@@ -265,7 +266,7 @@ public class AdminCachePageTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("payload", "x".repeat(payload));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
@@ -273,17 +274,17 @@ public class AdminCachePageTest {
 
     @Test
     public void test_a_delete_applies_its_page_delta_on_the_write_path() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var processor = IocContainer.get(OperationProcessor.class);
         final var cache = IocContainer.get(Cache.class);
         for (final var id : List.of("a", "b", "c")) {
             assertEquals(OperationStatus.OK, save(processor, id, 40));
         }
-        final var row = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).get(1);
-        final var page = cache.getAdminPageEntry(TestGlobals.DB, TestGlobals.COLL, row.getPage());
+        final var row = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).get(1);
+        final var page = cache.getAdminPageEntry(TestGlobals.PROJECT, TestGlobals.COLL, row.getPage());
         final var sizeBefore = page.getPageSize();
         final var countBefore = page.getEntryCount();
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("b");
 
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
@@ -299,20 +300,20 @@ public class AdminCachePageTest {
         final var shipped = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", 1024L);
         try {
-            TestUtils.createTestDatabaseAndCollection();
+            TestUtils.createTestProjectAndCollection();
             final var processor = IocContainer.get(OperationProcessor.class);
             final var cache = IocContainer.get(Cache.class);
             for (final var id : List.of("a", "b", "c")) {
                 assertEquals(OperationStatus.OK, save(processor, id, 250));
             }
-            final var row = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).getFirst();
-            final var source = cache.getAdminPageEntry(TestGlobals.DB, TestGlobals.COLL, row.getPage());
+            final var row = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
+            final var source = cache.getAdminPageEntry(TestGlobals.PROJECT, TestGlobals.COLL, row.getPage());
             final var sizeBefore = source.getPageSize();
             final var countBefore = source.getEntryCount();
 
             assertEquals(OperationStatus.OK, save(processor, "a", 700));
 
-            final var moved = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).getFirst();
+            final var moved = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
             assertNotEquals(row.getPage(), moved.getPage(), "the grown document must have been relocated");
             assertEquals(sizeBefore - row.getLength(), source.getPageSize());
             assertEquals(countBefore - 1, source.getEntryCount());

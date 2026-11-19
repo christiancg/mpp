@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 public class AnalyzeHelperTest {
 
     private static AggregateRequest request(org.ccg.mpp.ops.req.agg.BaseAggregationStep... steps) {
-        final var req = new AggregateRequest("myDb", "myColl");
+        final var req = new AggregateRequest("myProject", "myColl");
         req.setAnalyze(true);
         req.setAggregationSteps(List.of(steps));
         return req;
@@ -36,15 +36,15 @@ public class AnalyzeHelperTest {
         final var context = new AnalyzeContext();
         context.addScanned(7);
         context.addIndexUsed("status");
-        context.addLock("myDb|myColl");
-        context.addLock("myDb|myColl|status");
+        context.addLock("myProject|myColl");
+        context.addLock("myProject|myColl|status");
 
         final var result = AnalyzeHelper.build(request(filter("status")), context);
 
         assertTrue(result.isIndexUsed());
         assertEquals(List.of("status"), result.getIndexesUsed());
         assertEquals(7, result.getDocumentsScanned());
-        assertTrue(result.getLocksAcquired().contains("myDb|myColl|status"));
+        assertTrue(result.getLocksAcquired().contains("myProject|myColl|status"));
         assertTrue(result.getSuggestions().isEmpty());
     }
 
@@ -107,7 +107,7 @@ public class AnalyzeHelperTest {
 
     @Test
     public void test_build_empty_steps_reports_no_index_without_candidates() {
-        final var req = new AggregateRequest("myDb", "myColl");
+        final var req = new AggregateRequest("myProject", "myColl");
         req.setAnalyze(true);
         req.setAggregationSteps(List.of());
         final var result = AnalyzeHelper.build(req, new AnalyzeContext());
@@ -116,7 +116,7 @@ public class AnalyzeHelperTest {
 
     @Test
     public void test_build_handles_null_steps() {
-        final var req = new AggregateRequest("myDb", "myColl");
+        final var req = new AggregateRequest("myProject", "myColl");
         req.setAnalyze(true);
         final var result = AnalyzeHelper.build(req, new AnalyzeContext());
         assertNotNull(result.getSuggestions());

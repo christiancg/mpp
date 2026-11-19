@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Generic, Protocol, TypeVar
 
 from mpp._internal.client_context import ClientContext
-from mpp._internal.names import collection_name, database_name, document_id
+from mpp._internal.names import collection_name, document_id, project_name
 from mpp._internal.response_decoder import boolean_of, document, documents, number_of, strings, text_of
 from mpp._internal.values_codec import JsonObject
 from mpp.document import Document, DocumentCodec
@@ -54,9 +54,9 @@ def _saved(reply: JsonObject) -> SaveResult:
 
 
 class CollectionOps(Generic[T, R]):
-    def __init__(self, context: ClientContext, database: str, collection: str, codec: DocumentCodec[T, R]) -> None:
+    def __init__(self, context: ClientContext, project: str, collection: str, codec: DocumentCodec[T, R]) -> None:
         self.context = context
-        self.database = database_name(database)
+        self.project = project_name(project)
         self.collection = collection_name(collection)
         self.codec = codec
 
@@ -65,25 +65,25 @@ class CollectionOps(Generic[T, R]):
 
     async def save(self, value: T) -> SaveResult:
         reply = await self.context.channel.send(
-            "SAVE", self.context.encoder.save(self.database, self.collection, self._encode(value))
+            "SAVE", self.context.encoder.save(self.project, self.collection, self._encode(value))
         )
         return _saved(reply)
 
     async def insert(self, value: T) -> SaveResult:
         reply = await self.context.channel.send(
-            "SAVE", self.context.encoder.insert(self.database, self.collection, self._encode(value))
+            "SAVE", self.context.encoder.insert(self.project, self.collection, self._encode(value))
         )
         return _saved(reply)
 
     async def save_all(self, values: Sequence[T]) -> BulkSaveResult:
         encoded = [self._encode(value) for value in values]
         reply = await self.context.channel.send(
-            "BULK_SAVE", self.context.encoder.bulk_save(self.database, self.collection, encoded)
+            "BULK_SAVE", self.context.encoder.bulk_save(self.project, self.collection, encoded)
         )
         return BulkSaveResult(strings(reply.get("inserted")), strings(reply.get("updated")))
 
     async def find_by_id(self, value: str, dirty_read: bool) -> R | None:
-        request = self.context.encoder.find_by_id(self.database, self.collection, document_id(value), dirty_read)
+        request = self.context.encoder.find_by_id(self.project, self.collection, document_id(value), dirty_read)
 
         async def read() -> R | None:
             found = document(await self.context.channel.send("FIND_BY_ID", request), "object")
@@ -95,7 +95,7 @@ class CollectionOps(Generic[T, R]):
         reply = await self.context.channel.send(
             "SAVE",
             self.context.encoder.update_where(
-                self.database, self.collection, condition, self.context.encoder.document(patch)
+                self.project, self.collection, condition, self.context.encoder.document(patch)
             ),
         )
         updated = number_of(reply.get("updatedCount"))
@@ -103,18 +103,18 @@ class CollectionOps(Generic[T, R]):
 
     async def delete(self, value: str) -> None:
         await self.context.channel.send(
-            "DELETE", self.context.encoder.delete(self.database, self.collection, document_id(value))
+            "DELETE", self.context.encoder.delete(self.project, self.collection, document_id(value))
         )
 
     async def delete_where(self, condition: Filter) -> int:
         reply = await self.context.channel.send(
-            "DELETE", self.context.encoder.delete_where(self.database, self.collection, condition)
+            "DELETE", self.context.encoder.delete_where(self.project, self.collection, condition)
         )
         deleted = number_of(reply.get("deletedCount"))
         return 0 if deleted is None else int(deleted)
 
     async def aggregate(self, steps: Sequence[PipelineStep], dirty_read: bool) -> list[Document]:
-        request = self.context.encoder.aggregate(self.database, self.collection, steps, dirty_read, analyze=False)
+        request = self.context.encoder.aggregate(self.project, self.collection, steps, dirty_read, analyze=False)
 
         async def read() -> list[Document]:
             return documents(await self.context.channel.send("AGGREGATE", request), "results")
@@ -124,7 +124,7 @@ class CollectionOps(Generic[T, R]):
     async def analyze(self, steps: Sequence[PipelineStep], dirty_read: bool) -> AnalyzeResult:
         reply = await self.context.channel.send(
             "AGGREGATE",
-            self.context.encoder.aggregate(self.database, self.collection, steps, dirty_read, analyze=True),
+            self.context.encoder.aggregate(self.project, self.collection, steps, dirty_read, analyze=True),
         )
         return AnalyzeResult(tuple(documents(reply, "results")), document(reply, "analyzeResult") or {})
 

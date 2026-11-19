@@ -36,7 +36,7 @@ LONDON = GeoPoint(51.5074, -0.1278)
 
 @pytest.fixture
 async def places(client: AsyncMppClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
-    shop = client.database("types_it")
+    shop = client.project("types_it")
     await shop.create()
     collection = shop.collection("places")
     await collection.create()
@@ -126,7 +126,7 @@ async def test_an_aware_datetime_needs_a_temporal_zone(
     with pytest.raises(MappingError, match="temporal_zone"):
         await places.save({"_id": "z", "at": aware})
     async with await AsyncMppClient.connect(settings_for(server, temporal_zone="America/New_York")) as zoned:
-        stored = zoned.database("types_it").collection("places")
+        stored = zoned.project("types_it").collection("places")
         await stored.save({"_id": "z", "at": aware})
         found = await stored.find_by_id("z")
     assert found is not None

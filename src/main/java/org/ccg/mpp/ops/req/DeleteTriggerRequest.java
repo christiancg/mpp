@@ -9,8 +9,8 @@ public class DeleteTriggerRequest extends OperationRequest {
         super(OperationType.DELETE_TRIGGER, null, null);
     }
 
-    public DeleteTriggerRequest(String databaseName, String collectionName, String name) {
-        super(OperationType.DELETE_TRIGGER, databaseName, collectionName);
+    public DeleteTriggerRequest(String projectName, String collectionName, String name) {
+        super(OperationType.DELETE_TRIGGER, projectName, collectionName);
         this.name = name;
     }
 

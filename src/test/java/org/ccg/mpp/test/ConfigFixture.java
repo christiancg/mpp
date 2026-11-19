@@ -87,7 +87,7 @@ public final class ConfigFixture {
         map.put("scheduleTickMs", "1000");
         map.put("scheduleRefreshMs", "60000");
         map.put("scheduleTimeoutMs", "30000");
-        map.put("scheduleMaxPerDatabase", "100");
+        map.put("scheduleMaxPerProject", "100");
         map.put("scriptTextImportEnabled", "false");
         map.put("scriptProcedureImportEnabled", "true");
         return map;

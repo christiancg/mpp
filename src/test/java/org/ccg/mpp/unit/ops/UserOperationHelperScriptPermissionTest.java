@@ -26,7 +26,7 @@ public class UserOperationHelperScriptPermissionTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -41,7 +41,7 @@ public class UserOperationHelperScriptPermissionTest {
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         return request;
     }
@@ -92,7 +92,7 @@ public class UserOperationHelperScriptPermissionTest {
         promote.setUsername("promoted");
         promote.setAdmin(false);
         promote.setGlobalPermissions(new HashSet<>());
-        promote.setDatabasePermissions(new HashMap<>());
+        promote.setProjectPermissions(new HashMap<>());
         promote.setCollectionPermissions(new HashMap<>());
         final var manage = new HashMap<String, ScriptPermissionLevel>();
         manage.put("mydb", ScriptPermissionLevel.MANAGE);
@@ -105,7 +105,7 @@ public class UserOperationHelperScriptPermissionTest {
         demote.setUsername("promoted");
         demote.setAdmin(false);
         demote.setGlobalPermissions(new HashSet<>());
-        demote.setDatabasePermissions(new HashMap<>());
+        demote.setProjectPermissions(new HashMap<>());
         demote.setCollectionPermissions(new HashMap<>());
         final var none = new HashMap<String, ScriptPermissionLevel>();
         none.put("mydb", ScriptPermissionLevel.NONE);
@@ -116,7 +116,7 @@ public class UserOperationHelperScriptPermissionTest {
     }
 
     @Test
-    public void test_reserved_database_in_script_permissions_is_rejected() {
+    public void test_reserved_project_in_script_permissions_is_rejected() {
         final var parsed = RequestParser
                 .parseRequest("{\"type\":\"CREATE_USER\",\"username\":\"reservedclient\",\"password\":\"password123\","
                         + "\"scriptPermissions\":{\"admin\":\"MANAGE\"}}");

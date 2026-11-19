@@ -43,14 +43,14 @@ public class DeferredWritesListenerTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", taskManager);
         TestUtils.setPrivateStaticField(AdminOperationHelper.class, "fs", fs);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -59,12 +59,12 @@ public class DeferredWritesListenerTest {
     public void aFailedReplayKeepsItsMarksAndQueuesTheRepair() throws Exception {
         final var queued = Mockito.mock(BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", queued);
-        final var rows = List.of(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "partly", 0L, 10L, 1L, 1L));
+        final var rows = List.of(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "partly", 0L, 10L, 1L, 1L));
 
-        final var generation = listener.replaying(TestGlobals.DB, TestGlobals.COLL, rows);
-        listener.notReplayed(TestGlobals.DB, TestGlobals.COLL, rows, generation);
+        final var generation = listener.replaying(TestGlobals.PROJECT, TestGlobals.COLL, rows);
+        listener.notReplayed(TestGlobals.PROJECT, TestGlobals.COLL, rows, generation);
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("partly"),
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("partly"),
                 "redo may have written some of its bytes, so the index work stays outstanding");
         Mockito.verify(queued).submitMaintenance(ArgumentMatchers.any(IndexRepairEvent.class));
     }
@@ -77,10 +77,10 @@ public class DeferredWritesListenerTest {
         final var release = new CountDownLatch(1);
         final var holder = Thread.ofPlatform().start(() -> {
             try {
-                locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+                locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
                 held.countDown();
                 release.await();
-                locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+                locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -94,11 +94,11 @@ public class DeferredWritesListenerTest {
         holder.join(5_000L);
 
         assertTrue(waitedMillis < 2_000L, "the wait is budgeted");
-        Mockito.verify(spy, Mockito.never()).applyDeferredWrites(Globals.ADMIN_DB_NAME,
+        Mockito.verify(spy, Mockito.never()).applyDeferredWrites(Globals.ADMIN_PROJECT_NAME,
                 Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         AdminOperationHelper.applyDeferredTransactionRecords(100L);
-        Mockito.verify(spy).applyDeferredWrites(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
-        assertFalse(locks.isWriteLockedByCurrentThread(Globals.ADMIN_DB_NAME + Globals.COLL_IDENTIFIER_SEPARATOR
+        Mockito.verify(spy).applyDeferredWrites(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+        assertFalse(locks.isWriteLockedByCurrentThread(Globals.ADMIN_PROJECT_NAME + Globals.COLL_IDENTIFIER_SEPARATOR
                 + Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME));
         assertEquals(0, held.getCount());
     }
@@ -106,11 +106,11 @@ public class DeferredWritesListenerTest {
     @Test
     public void staleRowsAreReconciledOnTheCollectionsNextUse() {
         saveOne();
-        final var id = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
-        final var row = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        final var id = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+        final var row = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
         row.setEntryCount(row.getEntryCount() + 1);
 
-        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.DB, TestGlobals.COLL);
+        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(listener.pending(id), "a collection whose rows could not be reconciled waits for its next use");
         listener.apply(id);
 
@@ -121,13 +121,13 @@ public class DeferredWritesListenerTest {
     @Test
     public void aReconcileThatStillFailsStaysPendingForTheNextUse() throws Exception {
         saveOne();
-        final var id = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
-        final var row = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        final var id = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+        final var row = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
         row.setEntryCount(row.getEntryCount() + 1);
         final var failing = Mockito.spy(fs);
-        Mockito.doThrow(new IOException("No space left on device")).when(failing).readWholePkIndexFile(TestGlobals.DB,
-                TestGlobals.COLL);
-        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.DB, TestGlobals.COLL);
+        Mockito.doThrow(new IOException("No space left on device")).when(failing)
+                .readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
+        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "fs", failing);
         try {
             listener.apply(id);
@@ -141,15 +141,15 @@ public class DeferredWritesListenerTest {
     }
 
     @Test
-    public void aReplayLeavesTheRowsDueForTheNextUseInUserDatabasesOnly() {
-        final var rows = List.of(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "replayed", 0L, 10L, 1L, 1L));
-        final var id = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
-        final var adminId = Globals.ADMIN_DB_NAME + Globals.COLL_IDENTIFIER_SEPARATOR
+    public void aReplayLeavesTheRowsDueForTheNextUseInUserProjectsOnly() {
+        final var rows = List.of(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "replayed", 0L, 10L, 1L, 1L));
+        final var id = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+        final var adminId = Globals.ADMIN_PROJECT_NAME + Globals.COLL_IDENTIFIER_SEPARATOR
                 + Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
 
-        listener.replayed(TestGlobals.DB, TestGlobals.COLL, rows,
-                listener.replaying(TestGlobals.DB, TestGlobals.COLL, rows));
-        listener.replayed(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, List.of(), 0L);
+        listener.replayed(TestGlobals.PROJECT, TestGlobals.COLL, rows,
+                listener.replaying(TestGlobals.PROJECT, TestGlobals.COLL, rows));
+        listener.replayed(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, List.of(), 0L);
 
         assertTrue(listener.pending(id), "a replay outside the lock hook leaves the rows to the next use");
         assertFalse(listener.pending(adminId));
@@ -159,27 +159,27 @@ public class DeferredWritesListenerTest {
 
     @Test
     public void aDropForgetsTheStaleRowsOfWhatItDropped() {
-        final var id = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
-        final var sibling = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + "sibling";
-        final var otherDb = "otherDb" + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+        final var id = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+        final var sibling = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + "sibling";
+        final var otherProject = "otherProject" + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
 
-        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.DB, TestGlobals.COLL);
-        DeferredWrites.forgetCollection(TestGlobals.DB, TestGlobals.COLL);
+        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.PROJECT, TestGlobals.COLL);
+        DeferredWrites.forgetCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         assertFalse(listener.pending(id));
 
-        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.DB, TestGlobals.COLL);
-        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.DB, "sibling");
-        DeferredWrites.reconcileRowsOnNextUse("otherDb", TestGlobals.COLL);
-        DeferredWrites.forgetDatabase(TestGlobals.DB);
+        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.PROJECT, TestGlobals.COLL);
+        DeferredWrites.reconcileRowsOnNextUse(TestGlobals.PROJECT, "sibling");
+        DeferredWrites.reconcileRowsOnNextUse("otherProject", TestGlobals.COLL);
+        DeferredWrites.forgetProject(TestGlobals.PROJECT);
         assertFalse(listener.pending(id));
         assertFalse(listener.pending(sibling));
-        assertTrue(listener.pending(otherDb), "only the dropped database's collections are forgotten");
-        DeferredWrites.forgetDatabase("otherDb");
-        assertFalse(listener.pending(otherDb));
+        assertTrue(listener.pending(otherProject), "only the dropped project's collections are forgotten");
+        DeferredWrites.forgetProject("otherProject");
+        assertFalse(listener.pending(otherProject));
     }
 
     private void saveOne() {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.addProperty("_id", "stale");
         request.setObject(object);
@@ -188,7 +188,7 @@ public class DeferredWritesListenerTest {
     }
 
     private int entryCount() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .mapToInt(AdminPageEntry::getEntryCount).sum();
     }
 }

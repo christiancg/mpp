@@ -5,17 +5,17 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class UsageCounter {
     private final AccessKind kind;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String indexKey;
     private final AtomicLong accessCount;
     private final AtomicLong lastAccessMillis;
     private final AtomicBoolean unflushed = new AtomicBoolean();
 
-    public UsageCounter(AccessKind kind, String dbName, String collName, String indexKey, long initialAccessCount,
+    public UsageCounter(AccessKind kind, String projectName, String collName, String indexKey, long initialAccessCount,
             long initialLastAccessMillis) {
         this.kind = kind;
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.indexKey = indexKey == null ? "" : indexKey;
         this.accessCount = new AtomicLong(initialAccessCount);
@@ -39,8 +39,8 @@ public class UsageCounter {
         return kind;
     }
 
-    public String dbName() {
-        return dbName;
+    public String projectName() {
+        return projectName;
     }
 
     public String collName() {

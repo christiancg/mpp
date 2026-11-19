@@ -22,7 +22,7 @@ public class FileSystemWriteIntentTest extends FileSystemTestBase {
     private PkIndexEntry insert(String id, String value) throws Exception {
         final var data = new JsonObject();
         data.addProperty("v", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id(id);
         return fs.insertIntoCollection(entry);
     }
@@ -30,14 +30,14 @@ public class FileSystemWriteIntentTest extends FileSystemTestBase {
     private DbEntry updated(PkIndexEntry existing) {
         final var data = new JsonObject();
         data.addProperty("v", "uno");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id(existing.getValue());
         entry.setPage(existing.getPage());
         return entry;
     }
 
     private static File page0() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + "0"
                 + Globals.DB_FILE_EXTENSION);
     }
@@ -110,7 +110,7 @@ public class FileSystemWriteIntentTest extends FileSystemTestBase {
         assertEquals("uno", fs.getById(relocated).getData().get("v").asJsonString().getValue());
         final var page = Files.readAllBytes(page0().toPath());
         assertEquals(' ', page[(int) first.getPosition()], "the superseded copy is blanked in place");
-        assertEquals(1, fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0).size());
+        assertEquals(1, fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0).size());
     }
 
     @Test

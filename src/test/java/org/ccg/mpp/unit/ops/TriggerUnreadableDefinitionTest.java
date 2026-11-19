@@ -36,24 +36,24 @@ public class TriggerUnreadableDefinitionTest {
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
         TestUtils.setPrivateField(Configuration.getInstance(), "triggerRunLogEnabled", true);
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
     static void tearDown() throws Exception {
-        IocContainer.get(Cache.class).removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(Cache.class).removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
 
     @BeforeEach
     void clear() throws Exception {
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private File triggersFile() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL
                 + File.separator + TestGlobals.COLL + "-triggers.json");
     }
 
@@ -62,8 +62,8 @@ public class TriggerUnreadableDefinitionTest {
         final var array = new org.ccg.mpp.ejson.elements.JsonArray();
         array.add(definition.toJsonObject());
         wrapper.add("triggers", array);
-        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL, eJson.toJson(wrapper));
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().writeTriggers(TestGlobals.PROJECT, TestGlobals.COLL, eJson.toJson(wrapper));
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private static TriggerDefinition definition() {
@@ -72,13 +72,13 @@ public class TriggerUnreadableDefinitionTest {
     }
 
     private static TriggerEvent eventFor(String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "t1", "p", false, List.of(),
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "t1", "p", false, List.of(),
                 "owner", 0, runId);
     }
 
     private static String recordRun() {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "t1", "p",
-                EventType.CREATED, false, "owner", 0, System.currentTimeMillis(), List.of()));
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "t1",
+                "p", EventType.CREATED, false, "owner", 0, System.currentTimeMillis(), List.of()));
     }
 
     @Test
@@ -105,8 +105,8 @@ public class TriggerUnreadableDefinitionTest {
         writeTriggers(definition());
         final var runId = recordRun();
         org.junit.jupiter.api.Assumptions.assumeTrue(runId != null, "the run log must be enabled for this case");
-        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL, "definitely not json");
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().writeTriggers(TestGlobals.PROJECT, TestGlobals.COLL, "definitely not json");
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
 
         TriggerDispatcher.dispatch(eventFor(runId));
 
@@ -117,8 +117,8 @@ public class TriggerUnreadableDefinitionTest {
 
     @Test
     public void test_a_genuinely_deleted_trigger_still_consumes_the_run() throws Exception {
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         final var runId = recordRun();
         org.junit.jupiter.api.Assumptions.assumeTrue(runId != null, "the run log must be enabled for this case");
 
@@ -134,12 +134,12 @@ public class TriggerUnreadableDefinitionTest {
         final var runId = recordRun();
         org.junit.jupiter.api.Assumptions.assumeTrue(runId != null, "the run log must be enabled for this case");
         final var folder = new File(
-                TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + Globals.PROCEDURES_FOLDER);
+                TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + Globals.PROCEDURES_FOLDER);
         if (folder.exists()) {
             TestUtils.deleteFolder(folder);
         }
         Files.writeString(folder.toPath(), "x", StandardCharsets.UTF_8);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         try {
             TriggerDispatcher.dispatch(eventFor(runId));
 
@@ -147,7 +147,7 @@ public class TriggerUnreadableDefinitionTest {
                     "a folder listing that failed read as a deleted procedure, so the run was consumed");
         } finally {
             Files.delete(folder.toPath());
-            cache.removeProceduresForDatabase(TestGlobals.DB);
+            cache.removeProceduresForProject(TestGlobals.PROJECT);
         }
     }
 }

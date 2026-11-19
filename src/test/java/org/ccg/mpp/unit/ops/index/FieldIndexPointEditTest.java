@@ -39,7 +39,7 @@ public class FieldIndexPointEditTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         SCANS.clear();
         support = new FieldIndexBatchSupport();
         final var ids = IntStream.range(0, DOCUMENTS).mapToObj(FieldIndexPointEditTest::idOf).toList();
@@ -68,7 +68,7 @@ public class FieldIndexPointEditTest {
         final var mapType = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var resident = TestUtils.getPrivateField(cache.userCache(), "fieldIndexMap", mapType)
-                .get(Cache.getCollectionIdentifier(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL));
+                .get(Cache.getCollectionIdentifier(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL));
         final var identifier = Cache.getIndexIdentifier(FIELD, Number.class);
         final var counting = new ScanCountingIndex(resident.get(identifier));
         resident.put(identifier, counting);

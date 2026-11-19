@@ -32,7 +32,7 @@ public class SaveConditionValidationTest {
     }
 
     private static SaveRequest save(String id, JsonObject object, BaseOperator condition) {
-        final var request = new SaveRequest("testDb", "testColl");
+        final var request = new SaveRequest("testProject", "testColl");
         request.set_id(id);
         request.setObject(object);
         request.setCondition(condition);

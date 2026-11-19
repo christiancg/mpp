@@ -39,20 +39,20 @@ public class ProcedureCallHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         createUser(ADMIN, true, new HashMap<>());
         final var readOnly = new HashMap<String, PermissionLevel>();
-        readOnly.put(TestGlobals.DB, PermissionLevel.READ);
+        readOnly.put(TestGlobals.PROJECT, PermissionLevel.READ);
         createUser(READER, false, readOnly);
     }
 
-    private static void createUser(String username, boolean admin, HashMap<String, PermissionLevel> dbPerms) {
+    private static void createUser(String username, boolean admin, HashMap<String, PermissionLevel> projectPerms) {
         final var request = new CreateUserRequest();
         request.setUsername(username);
         request.setPassword("password123");
         request.setAdmin(admin);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(dbPerms);
+        request.setProjectPermissions(projectPerms);
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -73,18 +73,18 @@ public class ProcedureCallHelperTest {
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
         TestUtils.setPrivateField(configuration, "scriptMaxMemoryBytes", 67_108_864L);
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         // Deleting the files directly bypasses the handler that would invalidate the compiled cache, and
         // a re-created procedure restarts at version 1 - so the previous test's program would be served.
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     private void store(String name, String script) throws Exception {
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, name, script), ADMIN).getStatus());
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, name, script), ADMIN).getStatus());
     }
 
     private CallProcedureResponse call(String name, String user) {
@@ -92,8 +92,8 @@ public class ProcedureCallHelperTest {
     }
 
     private CallProcedureResponse call(String name, String user, JsonObject args) {
-        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.DB, name, args), user,
-                null);
+        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.PROJECT, name, args),
+                user, null);
         assertInstanceOf(CallProcedureResponse.class, response, response.getMessage());
         return (CallProcedureResponse) response;
     }
@@ -118,7 +118,7 @@ public class ProcedureCallHelperTest {
     public void test_returns_403_when_scripts_disabled() throws Exception {
         store("answer", "return 42;");
         TestUtils.setPrivateField(configuration, "scriptsEnabled", false);
-        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.DB, "answer", null),
+        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.PROJECT, "answer", null),
                 ADMIN, null);
         assertEquals(OperationStatus.FORBIDDEN, response.getStatus());
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), response.getErrorCode());
@@ -127,25 +127,25 @@ public class ProcedureCallHelperTest {
 
     @Test
     public void test_unknown_procedure_is_not_found() {
-        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.DB, "nothing", null),
+        final var response = ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.PROJECT, "nothing", null),
                 ADMIN, null);
         assertEquals(OperationStatus.NOT_FOUND, response.getStatus());
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
-    public void test_unknown_database_is_not_found() {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), ProcedureCallHelper
-                .execute(new CallProcedureRequest("missingDb", "p", null), ADMIN, null).getErrorCode());
+    public void test_unknown_project_is_not_found() {
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), ProcedureCallHelper
+                .execute(new CallProcedureRequest("missingProject", "p", null), ADMIN, null).getErrorCode());
     }
 
     @Test
     public void test_disabled_procedure_is_not_found() throws Exception {
-        final var request = new SaveProcedureRequest(TestGlobals.DB, "off", "return 1;");
+        final var request = new SaveProcedureRequest(TestGlobals.PROJECT, "off", "return 1;");
         request.setEnabled(false);
         ProcedureOperationHelper.executeSave(request, ADMIN);
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), ProcedureCallHelper
-                .execute(new CallProcedureRequest(TestGlobals.DB, "off", null), ADMIN, null).getErrorCode());
+                .execute(new CallProcedureRequest(TestGlobals.PROJECT, "off", null), ADMIN, null).getErrorCode());
     }
 
     @Test

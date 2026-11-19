@@ -35,13 +35,13 @@ public final class IndexRepairPass {
     }
 
     private final IndexRepairEvent event;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final List<String> ids;
 
     private IndexRepairPass(IndexRepairEvent event) {
         this.event = event;
-        this.dbName = event.getDbName();
+        this.projectName = event.getProjectName();
         this.collName = event.getCollName();
         this.ids = new ArrayList<>(new LinkedHashSet<>(event.getIds()));
     }
@@ -71,18 +71,19 @@ public final class IndexRepairPass {
                 repaired.add(field);
             }
             clearPending();
-            logger.info("Repaired the field indexes of " + Cache.getCollectionIdentifier(dbName, collName) + " for "
-                    + ids.size() + " document(s) in " + (System.nanoTime() - started) / 1_000_000L + " ms");
+            logger.info("Repaired the field indexes of " + Cache.getCollectionIdentifier(projectName, collName)
+                    + " for " + ids.size() + " document(s) in " + (System.nanoTime() - started) / 1_000_000L + " ms");
         } catch (IOException e) {
-            logger.warning("Failed to repair the field indexes of " + Cache.getCollectionIdentifier(dbName, collName)
-                    + ": " + e.getMessage() + ". Its documents stay pending, so index-backed reads re-test them;"
+            logger.warning("Failed to repair the field indexes of "
+                    + Cache.getCollectionIdentifier(projectName, collName) + ": " + e.getMessage()
+                    + ". Its documents stay pending, so index-backed reads re-test them;"
                     + " run REINDEX on that collection.");
         }
     }
 
     private List<String> fieldsToRepair(Set<String> repaired) {
         final var fields = new ArrayList<String>();
-        for (final var field : MaintainedIndexes.of(dbName, collName)) {
+        for (final var field : MaintainedIndexes.of(projectName, collName)) {
             if (!repaired.contains(field)) {
                 fields.add(field);
             }
@@ -97,7 +98,7 @@ public final class IndexRepairPass {
         for (var at = start; at < ids.size(); at += Globals.REPAIR_PASS_CHUNK) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Interrupted while repairing the field indexes of "
-                        + Cache.getCollectionIdentifier(dbName, collName));
+                        + Cache.getCollectionIdentifier(projectName, collName));
             }
             final var progress = repairChunk(field,
                     ids.subList(at, Math.min(ids.size(), at + Globals.REPAIR_PASS_CHUNK)), held);
@@ -114,7 +115,7 @@ public final class IndexRepairPass {
 
     private Progress repairChunk(String field, List<String> chunk, HeldTypeLists held)
             throws IOException, InterruptedException {
-        if (!rl.tryLockRead(dbName, collName, configuration.getTransactionLockTimeoutMs())) {
+        if (!rl.tryLockRead(projectName, collName, configuration.getTransactionLockTimeoutMs())) {
             return Progress.BUSY;
         }
         final List<DeferredFold> folds;
@@ -122,34 +123,34 @@ public final class IndexRepairPass {
             if (isStale()) {
                 return Progress.COLLECTION_GONE;
             }
-            if (!MaintainedIndexes.of(dbName, collName).contains(field)) {
+            if (!MaintainedIndexes.of(projectName, collName).contains(field)) {
                 return Progress.FIELD_GONE;
             }
             final var byId = HashMap.<String, DbEntry>newHashMap(chunk.size());
-            for (final var doc : cache.getEntriesByIds(dbName, collName, new HashSet<>(chunk))) {
+            for (final var doc : cache.getEntriesByIds(projectName, collName, new HashSet<>(chunk))) {
                 byId.put(doc.get_id(), doc);
             }
-            folds = FieldMaintenance.maintain(dbName, collName, field, chunk, byId, null, held,
-                    new CanonicalIds(dbName, collName));
+            folds = FieldMaintenance.maintain(projectName, collName, field, chunk, byId, null, held,
+                    new CanonicalIds(projectName, collName));
         } catch (IndexLockBusyException busy) {
             return Progress.BUSY;
         } finally {
-            rl.releaseRead(dbName, collName);
+            rl.releaseRead(projectName, collName);
         }
         FieldIndexFolds.runAfterUnlock(folds, held::folded);
         return Progress.DONE;
     }
 
     private void resubmit(Set<String> repaired, String field, int at) {
-        taskManager.submitMaintenanceFollowOn(new IndexRepairEvent(dbName, collName, event.getIds(),
+        taskManager.submitMaintenanceFollowOn(new IndexRepairEvent(projectName, collName, event.getIds(),
                 event.getIncarnation(), event.getPendingGeneration(), repaired, field, at));
     }
 
     private boolean isStale() {
-        return !CollectionIncarnation.isCurrent(dbName, collName, event.getIncarnation());
+        return !CollectionIncarnation.isCurrent(projectName, collName, event.getIncarnation());
     }
 
     private void clearPending() {
-        pendingIndexWrites.clear(dbName, collName, event.getIds(), event.getPendingGeneration());
+        pendingIndexWrites.clear(projectName, collName, event.getIds(), event.getPendingGeneration());
     }
 }

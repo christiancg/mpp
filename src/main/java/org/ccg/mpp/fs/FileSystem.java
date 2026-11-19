@@ -78,19 +78,15 @@ public class FileSystem {
         SyncedWrites.useForcer(DurableShadow.install(Path.of(paths.dbPath()), shadowRoot));
     }
 
-    public void createAdminDatabase() throws IOException {
-        createDatabaseFolder(Globals.ADMIN_DB_NAME);
+    public void createAdminProject() throws IOException {
+        createProjectFolder(Globals.ADMIN_PROJECT_NAME);
         createAdminPagesFolder();
-        final var adminCollections = List.of(Globals.ADMIN_DATABASES_COLLECTION_NAME,
-                Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, Globals.ADMIN_USERS_COLLECTION_NAME,
-                Globals.ADMIN_COLLECTION_USAGE_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME,
-                Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME);
-        for (final var collName : adminCollections) {
-            createCollectionFile(Globals.ADMIN_DB_NAME, collName);
+        for (final var collName : Globals.ADMIN_COLLECTION_NAMES) {
+            createCollectionFile(Globals.ADMIN_PROJECT_NAME, collName);
         }
-        for (final var collName : adminCollections) {
-            createCollectionFile(Globals.ADMIN_PAGES_DB_NAME,
-                    AdminPageEntry.pagesCollectionName(Globals.ADMIN_DB_NAME, collName));
+        for (final var collName : Globals.ADMIN_COLLECTION_NAMES) {
+            createCollectionFile(Globals.ADMIN_PAGES_PROJECT_NAME,
+                    AdminPageEntry.pagesCollectionName(Globals.ADMIN_PROJECT_NAME, collName));
         }
     }
 
@@ -106,25 +102,25 @@ public class FileSystem {
         }
     }
 
-    public boolean createDatabaseFolder(String dbName) {
-        final var dbFolder = paths.rawDatabaseFolder(dbName);
-        if (!dbFolder.exists()) {
-            FileTreeDeleter.forgetWrittenLengthsUnder(dbFolder);
-            return OwnerOnly.createDirectory(dbFolder.toPath());
+    public boolean createProjectFolder(String projectName) {
+        final var projectFolder = paths.rawProjectFolder(projectName);
+        if (!projectFolder.exists()) {
+            FileTreeDeleter.forgetWrittenLengthsUnder(projectFolder);
+            return OwnerOnly.createDirectory(projectFolder.toPath());
         }
         return true;
     }
 
-    public boolean deleteDatabase(String dbName) {
-        final var dbFolder = paths.rawDatabaseFolder(dbName);
-        final var deleted = isAbsent(dbFolder) || FileTreeDeleter.delete(dbFolder);
-        FileLocks.evictAllUnder(dbFolder);
-        paths.forgetDatabase(dbName);
+    public boolean deleteProject(String projectName) {
+        final var projectFolder = paths.rawProjectFolder(projectName);
+        final var deleted = isAbsent(projectFolder) || FileTreeDeleter.delete(projectFolder);
+        FileLocks.evictAllUnder(projectFolder);
+        paths.forgetProject(projectName);
         return deleted;
     }
 
-    public boolean createCollectionFile(String dbName, String collectionName) throws IOException {
-        final var collectionFile = paths.collectionPage(dbName, collectionName, 0);
+    public boolean createCollectionFile(String projectName, String collectionName) throws IOException {
+        final var collectionFile = paths.collectionPage(projectName, collectionName, 0);
         final var collectionFolder = new File(collectionFile.getParent());
         if (!collectionFolder.exists()) {
             FileTreeDeleter.forgetWrittenLengthsUnder(collectionFolder);
@@ -142,12 +138,12 @@ public class FileSystem {
         }
     }
 
-    public boolean deleteCollectionFiles(String dbName, String collectionName) {
-        final var collectionFile = paths.collectionPage(dbName, collectionName, 0);
+    public boolean deleteCollectionFiles(String projectName, String collectionName) {
+        final var collectionFile = paths.collectionPage(projectName, collectionName, 0);
         final var collectionFolder = new File(collectionFile.getParent());
         final var deleted = isAbsent(collectionFolder) || FileTreeDeleter.delete(collectionFolder);
         FileLocks.evictAllUnder(collectionFolder);
-        paths.forgetCollection(dbName, collectionName);
+        paths.forgetCollection(projectName, collectionName);
         return deleted;
     }
 
@@ -187,25 +183,25 @@ public class FileSystem {
         return tombstones;
     }
 
-    public List<PkIndexEntry> readWholePkIndexFile(String dbName, String collectionName) throws IOException {
-        return pkIndexStore.readWholePkIndexFile(dbName, collectionName);
+    public List<PkIndexEntry> readWholePkIndexFile(String projectName, String collectionName) throws IOException {
+        return pkIndexStore.readWholePkIndexFile(projectName, collectionName);
     }
 
-    public Map<String, PkIndexEntry> pkRowsFor(String dbName, String collName, Collection<String> ids)
+    public Map<String, PkIndexEntry> pkRowsFor(String projectName, String collName, Collection<String> ids)
             throws IOException {
-        return pkIndexStore.rowsFor(dbName, collName, ids);
+        return pkIndexStore.rowsFor(projectName, collName, ids);
     }
 
-    public OptionalLong trustedLiveRows(String dbName, String collName) {
-        return pkIndexStore.trustedLiveRows(dbName, collName);
+    public OptionalLong trustedLiveRows(String projectName, String collName) {
+        return pkIndexStore.trustedLiveRows(projectName, collName);
     }
 
-    public long pkIndexFileBytes(String dbName, String collectionName) {
-        return paths.pkIndexFile(dbName, collectionName).length();
+    public long pkIndexFileBytes(String projectName, String collectionName) {
+        return paths.pkIndexFile(projectName, collectionName).length();
     }
 
-    public long indexFileBytes(String dbName, String collName, String fieldName, String indexTypeLabel) {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, indexTypeLabel);
+    public long indexFileBytes(String projectName, String collName, String fieldName, String indexTypeLabel) {
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, indexTypeLabel);
         return indexFile == null ? 0L : indexFile.length() + FilePaths.logFileOf(indexFile).length();
     }
 
@@ -217,26 +213,27 @@ public class FileSystem {
         return documentPageStore.getByIndexEntries(entries);
     }
 
-    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String dbName, final String collName,
-            final List<T> entries) throws IOException {
-        return bulkInsertIntoCollection(dbName, collName, entries, DbEntry::getPage);
+    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String projectName,
+            final String collName, final List<T> entries) throws IOException {
+        return bulkInsertIntoCollection(projectName, collName, entries, DbEntry::getPage);
     }
 
-    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String dbName, final String collName,
-            final List<T> entries, final Function<? super T, Long> storagePageResolver) throws IOException {
-        return pageAppender.bulkInsert(dbName, collName, entries, storagePageResolver, DbEntry::encodeLine);
+    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String projectName,
+            final String collName, final List<T> entries, final Function<? super T, Long> storagePageResolver)
+            throws IOException {
+        return pageAppender.bulkInsert(projectName, collName, entries, storagePageResolver, DbEntry::encodeLine);
     }
 
-    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String dbName, final String collName,
-            final List<T> entries, final Function<? super T, Long> storagePageResolver,
+    public <T extends DbEntry> List<IndexedDbEntry> bulkInsertIntoCollection(final String projectName,
+            final String collName, final List<T> entries, final Function<? super T, Long> storagePageResolver,
             final Function<? super T, byte[]> encodedLines) throws IOException {
-        return pageAppender.bulkInsert(dbName, collName, entries, storagePageResolver, encodedLines);
+        return pageAppender.bulkInsert(projectName, collName, entries, storagePageResolver, encodedLines);
     }
 
-    public <T extends DbEntry> List<IndexedDbEntry> writeBatch(String dbName, String collName, List<T> inserts,
+    public <T extends DbEntry> List<IndexedDbEntry> writeBatch(String projectName, String collName, List<T> inserts,
             Function<? super T, Long> pageOf, Function<? super T, byte[]> lines, List<PkIndexEntry> deletes)
             throws IOException {
-        return pageAppender.bulkInsertAndDelete(dbName, collName, inserts, pageOf, lines, deletes);
+        return pageAppender.bulkInsertAndDelete(projectName, collName, inserts, pageOf, lines, deletes);
     }
 
     public PkIndexEntry insertIntoCollection(DbEntry entry) throws IOException {
@@ -256,9 +253,9 @@ public class FileSystem {
         recordReplacer.delete(pkIndexEntry, residentRows, occupancy);
     }
 
-    public void vacuumPagesAfterDelete(String dbName, String collName, Collection<Long> pages,
+    public void vacuumPagesAfterDelete(String projectName, String collName, Collection<Long> pages,
             List<PkIndexEntry> residentRows, LongFunction<PageOccupancy> occupancy) {
-        recordReplacer.vacuumAfterDeletes(dbName, collName, pages, residentRows, occupancy);
+        recordReplacer.vacuumAfterDeletes(projectName, collName, pages, residentRows, occupancy);
     }
 
     public PkIndexEntry relocate(DbEntry entry, PkIndexEntry oldRow, long targetPage, byte[] encodedLine,
@@ -278,33 +275,35 @@ public class FileSystem {
 
     private void cutUncommittedAdminCopies() throws IOException {
         for (final var collName : Globals.ADMIN_COLLECTION_NAMES) {
-            cutUncommittedCopiesOf(Globals.ADMIN_DB_NAME, collName);
-            cutUncommittedCopiesOf(Globals.ADMIN_PAGES_DB_NAME,
-                    AdminPageEntry.pagesCollectionName(Globals.ADMIN_DB_NAME, collName));
+            cutUncommittedCopiesOf(Globals.ADMIN_PROJECT_NAME, collName);
+            cutUncommittedCopiesOf(Globals.ADMIN_PAGES_PROJECT_NAME,
+                    AdminPageEntry.pagesCollectionName(Globals.ADMIN_PROJECT_NAME, collName));
         }
     }
 
-    private void cutUncommittedCopiesOf(String dbName, String collName) throws IOException {
-        if (paths.collectionFolder(dbName, collName).isDirectory()) {
-            OrphanedPageRecords.cutUncommittedCopies(paths, pkIndexStore, dbName, collName,
-                    pageFileLengths(dbName, collName).keySet());
+    private void cutUncommittedCopiesOf(String projectName, String collName) throws IOException {
+        if (paths.collectionFolder(projectName, collName).isDirectory()) {
+            OrphanedPageRecords.cutUncommittedCopies(paths, pkIndexStore, projectName, collName,
+                    pageFileLengths(projectName, collName).keySet());
         }
     }
 
-    public List<IndexedDbEntry> bulkUpdateFromCollection(String dbName, String collName, List<IndexedDbEntry> entries)
+    public List<IndexedDbEntry> bulkUpdateFromCollection(String projectName, String collName,
+            List<IndexedDbEntry> entries) throws IOException {
+        return bulkUpdateFromCollection(projectName, collName, entries, null, null);
+    }
+
+    public List<IndexedDbEntry> bulkUpdateFromCollection(String projectName, String collName,
+            List<IndexedDbEntry> entries, List<PkIndexEntry> residentRows,
+            Function<? super IndexedDbEntry, byte[]> encodedLines) throws IOException {
+        return bulkUpdateFromCollection(projectName, collName, entries, residentRows, encodedLines, null);
+    }
+
+    public List<IndexedDbEntry> bulkUpdateFromCollection(String projectName, String collName,
+            List<IndexedDbEntry> entries, List<PkIndexEntry> residentRows,
+            Function<? super IndexedDbEntry, byte[]> encodedLines, LongFunction<PageOccupancy> occupancy)
             throws IOException {
-        return bulkUpdateFromCollection(dbName, collName, entries, null, null);
-    }
-
-    public List<IndexedDbEntry> bulkUpdateFromCollection(String dbName, String collName, List<IndexedDbEntry> entries,
-            List<PkIndexEntry> residentRows, Function<? super IndexedDbEntry, byte[]> encodedLines) throws IOException {
-        return bulkUpdateFromCollection(dbName, collName, entries, residentRows, encodedLines, null);
-    }
-
-    public List<IndexedDbEntry> bulkUpdateFromCollection(String dbName, String collName, List<IndexedDbEntry> entries,
-            List<PkIndexEntry> residentRows, Function<? super IndexedDbEntry, byte[]> encodedLines,
-            LongFunction<PageOccupancy> occupancy) throws IOException {
-        return recordReplacer.bulkReplace(dbName, collName, entries, residentRows, encodedLines, occupancy);
+        return recordReplacer.bulkReplace(projectName, collName, entries, residentRows, encodedLines, occupancy);
     }
 
     public PkIndexEntry updateFromCollection(DbEntry entry, PkIndexEntry pkIndexEntry) throws IOException {
@@ -323,99 +322,99 @@ public class FileSystem {
                 occupancy);
     }
 
-    public void writeIndexFile(String dbName, String collName, String fieldName,
+    public void writeIndexFile(String projectName, String collName, String fieldName,
             Map<Class<?>, List<FieldIndexEntry<?>>> indexEntryMap) {
-        fieldIndexStore.writeIndexFile(dbName, collName, fieldName, indexEntryMap);
+        fieldIndexStore.writeIndexFile(projectName, collName, fieldName, indexEntryMap);
     }
 
-    public void writeHashIndexFile(String dbName, String collName, String fieldName, IndexKind kind,
+    public void writeHashIndexFile(String projectName, String collName, String fieldName, IndexKind kind,
             List<FieldIndexEntry<String>> entries) {
-        fieldIndexStore.writeHashIndexFile(dbName, collName, fieldName, kind, entries);
+        fieldIndexStore.writeHashIndexFile(projectName, collName, fieldName, kind, entries);
     }
 
-    public boolean indexTypeFileExists(String dbName, String collName, String fieldName, String typeLabel) {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, typeLabel);
+    public boolean indexTypeFileExists(String projectName, String collName, String fieldName, String typeLabel) {
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, typeLabel);
         return indexFile != null && (indexFile.exists() || FilePaths.logFileOf(indexFile).exists());
     }
 
-    public PendingFold appendIndexLog(String dbName, String collName, String fieldName, String typeLabel,
+    public PendingFold appendIndexLog(String projectName, String collName, String fieldName, String typeLabel,
             List<IndexLogChange> changes, List<? extends FieldIndexEntry<?>> survivors, boolean refused)
             throws IOException {
-        return fieldIndexStore.appendIndexLog(dbName, collName, fieldName, typeLabel, changes, survivors,
+        return fieldIndexStore.appendIndexLog(projectName, collName, fieldName, typeLabel, changes, survivors,
                 refused ? Globals.REFUSED_INDEX_FOLD_DIVISOR : 1);
     }
 
-    public PendingFold appendIndexLogOnly(String dbName, String collName, String fieldName, String typeLabel,
+    public PendingFold appendIndexLogOnly(String projectName, String collName, String fieldName, String typeLabel,
             List<IndexLogChange> changes, IndexTypeReader foldSource) throws IOException {
-        return fieldIndexStore.appendIndexLogOnly(dbName, collName, fieldName, typeLabel, changes, foldSource);
+        return fieldIndexStore.appendIndexLogOnly(projectName, collName, fieldName, typeLabel, changes, foldSource);
     }
 
     public PendingFold.Outcome fold(PendingFold fold) throws IOException {
         return fieldIndexStore.fold(fold);
     }
 
-    public long indexTypeStamp(String dbName, String collName, String fieldName, String typeLabel) {
-        return fieldIndexStore.stampOf(dbName, collName, fieldName, typeLabel);
+    public long indexTypeStamp(String projectName, String collName, String fieldName, String typeLabel) {
+        return fieldIndexStore.stampOf(projectName, collName, fieldName, typeLabel);
     }
 
-    public boolean dropIndex(String dbName, String collName, String fieldName) {
-        return fieldIndexStore.dropIndex(dbName, collName, fieldName);
+    public boolean dropIndex(String projectName, String collName, String fieldName) {
+        return fieldIndexStore.dropIndex(projectName, collName, fieldName);
     }
 
-    public <T> List<FieldIndexEntry<T>> readWholeFieldIndexFiles(String dbName, String collName, String fieldName,
+    public <T> List<FieldIndexEntry<T>> readWholeFieldIndexFiles(String projectName, String collName, String fieldName,
             Class<T> indexType) throws IOException {
-        return fieldIndexLoader.readWholeFieldIndexFiles(dbName, collName, fieldName, indexType);
+        return fieldIndexLoader.readWholeFieldIndexFiles(projectName, collName, fieldName, indexType);
     }
 
-    public List<FieldIndexEntry<String>> readWholeHashIndexFile(String dbName, String collName, String fieldName,
+    public List<FieldIndexEntry<String>> readWholeHashIndexFile(String projectName, String collName, String fieldName,
             IndexKind kind) throws IOException {
-        return fieldIndexLoader.readWholeHashIndexFile(dbName, collName, fieldName, kind);
+        return fieldIndexLoader.readWholeHashIndexFile(projectName, collName, fieldName, kind);
     }
 
-    public Map<String, DbEntry> readWholeCollectionPage(String dbName, String collectionName, long page)
+    public Map<String, DbEntry> readWholeCollectionPage(String projectName, String collectionName, long page)
             throws IOException {
-        return documentPageStore.readWholeCollectionPage(dbName, collectionName, page);
+        return documentPageStore.readWholeCollectionPage(projectName, collectionName, page);
     }
 
-    public Stream<Map<String, DbEntry>> streamPages(String dbName, String collName) throws IOException {
-        return documentPageStore.streamPages(dbName, collName);
+    public Stream<Map<String, DbEntry>> streamPages(String projectName, String collName) throws IOException {
+        return documentPageStore.streamPages(projectName, collName);
     }
 
-    public Stream<DbEntry> streamEntries(String dbName, String collName) throws IOException {
-        return documentPageStore.streamEntries(dbName, collName);
+    public Stream<DbEntry> streamEntries(String projectName, String collName) throws IOException {
+        return documentPageStore.streamEntries(projectName, collName);
     }
 
-    public Map<Long, Long> pageFileLengths(String dbName, String collName) throws IOException {
-        return documentPageStore.pageFileLengths(dbName, collName);
+    public Map<Long, Long> pageFileLengths(String projectName, String collName) throws IOException {
+        return documentPageStore.pageFileLengths(projectName, collName);
     }
 
-    public long pageFileLength(String dbName, String collName, long page) {
-        return PageLengths.lengthOf(paths.collectionPage(dbName, collName, page));
+    public long pageFileLength(String projectName, String collName, long page) {
+        return PageLengths.lengthOf(paths.collectionPage(projectName, collName, page));
     }
 
-    public LongUnaryOperator pageFileLengthsOf(String dbName, String collName) {
-        return PageLengths.of(paths, dbName, collName);
+    public LongUnaryOperator pageFileLengthsOf(String projectName, String collName) {
+        return PageLengths.of(paths, projectName, collName);
     }
 
-    public void healTornPageTails(String dbName, String collName) throws IOException {
-        healTornPageTails(pkRowsSession(dbName, collName));
+    public void healTornPageTails(String projectName, String collName) throws IOException {
+        healTornPageTails(pkRowsSession(projectName, collName));
     }
 
-    public PkRowsSession pkRowsSession(String dbName, String collName) {
-        return new PkRowsSession(pkIndexStore, dbName, collName);
+    public PkRowsSession pkRowsSession(String projectName, String collName) {
+        return new PkRowsSession(pkIndexStore, projectName, collName);
     }
 
-    public long highestPkVersion(String dbName, String collName) throws IOException {
-        return pkIndexStore.highestVersion(dbName, collName);
+    public long highestPkVersion(String projectName, String collName) throws IOException {
+        return pkIndexStore.highestVersion(projectName, collName);
     }
 
     public void healTornPageTails(PkRowsSession session) throws IOException {
-        TornPageTail.healAll(paths, session.dbName(), session.collName(),
-                pageFileLengths(session.dbName(), session.collName()).keySet(), session::rows);
+        TornPageTail.healAll(paths, session.projectName(), session.collName(),
+                pageFileLengths(session.projectName(), session.collName()).keySet(), session::rows);
     }
 
     public List<PkIndexEntry> retireDanglingPkEntries(PkRowsSession session) throws IOException {
-        return OrphanedPageRecords.retireDangling(session, pageFileLengths(session.dbName(), session.collName()));
+        return OrphanedPageRecords.retireDangling(session, pageFileLengths(session.projectName(), session.collName()));
     }
 
     public void checkpointWriteAheadLogs(long deadline) {
@@ -434,64 +433,66 @@ public class FileSystem {
         walCheckpoints.requested(collectionLocks);
     }
 
-    public void openWriteGroup(String dbName, String collName) throws IOException {
-        writeAheadLog.openGroup(dbName, collName);
+    public void openWriteGroup(String projectName, String collName) throws IOException {
+        writeAheadLog.openGroup(projectName, collName);
     }
 
-    public boolean reopenWriteGroupIfEnded(String dbName, String collName) throws IOException {
-        if (writeAheadLog.openGroupOf(dbName, collName) != null) {
+    public boolean reopenWriteGroupIfEnded(String projectName, String collName) throws IOException {
+        if (writeAheadLog.openGroupOf(projectName, collName) != null) {
             return false;
         }
-        writeAheadLog.openGroup(dbName, collName);
+        writeAheadLog.openGroup(projectName, collName);
         return true;
     }
 
-    public boolean forceWriteGroup(String dbName, String collName) throws IOException {
-        final var deleteTombstones = tombstones.startGroupForce(dbName, collName);
-        return tombstones.forcedBeside(deleteTombstones, writeAheadLog.forceGroup(dbName, collName), dbName, collName);
+    public boolean forceWriteGroup(String projectName, String collName) throws IOException {
+        final var deleteTombstones = tombstones.startGroupForce(projectName, collName);
+        return tombstones.forcedBeside(deleteTombstones, writeAheadLog.forceGroup(projectName, collName), projectName,
+                collName);
     }
 
-    public boolean forceGroupTombstones(String dbName, String collName) {
-        return tombstones.forcedBeside(tombstones.startGroupForce(dbName, collName), true, dbName, collName);
+    public boolean forceGroupTombstones(String projectName, String collName) {
+        return tombstones.forcedBeside(tombstones.startGroupForce(projectName, collName), true, projectName, collName);
     }
 
-    public boolean settleWriteGroup(String dbName, String collName) throws IOException {
+    public boolean settleWriteGroup(String projectName, String collName) throws IOException {
         try {
-            return writeAheadLog.closeGroup(dbName, collName);
+            return writeAheadLog.closeGroup(projectName, collName);
         } finally {
-            DeferredApplies.flagIfUnapplied(paths, dbName, collName);
+            DeferredApplies.flagIfUnapplied(paths, projectName, collName);
         }
     }
 
-    public boolean applyDeferredWrites(String dbName, String collName) throws IOException {
-        final var replayed = writeAheadLog.requireApplied(dbName, collName);
-        return writeIntentRecovery.recoverBehindAVacuum(dbName, collName) || replayed;
+    public boolean applyDeferredWrites(String projectName, String collName) throws IOException {
+        final var replayed = writeAheadLog.requireApplied(projectName, collName);
+        return writeIntentRecovery.recoverBehindAVacuum(projectName, collName) || replayed;
     }
 
     public void onDeferredApply(DeferredApplyListener listener) {
         DeferredApplies.listenWith(listener);
     }
 
-    public PkRebuild planPkRebuild(String dbName, String collName) throws IOException {
-        writeAheadLog.checkpoint(dbName, collName);
-        if (pkIndexStore.readRecognisedPkIndex(dbName, collName).isEmpty()) {
-            writeIntentRecovery.recoverPagesOf(dbName, collName);
+    public PkRebuild planPkRebuild(String projectName, String collName) throws IOException {
+        writeAheadLog.checkpoint(projectName, collName);
+        if (pkIndexStore.readRecognisedPkIndex(projectName, collName).isEmpty()) {
+            writeIntentRecovery.recoverPagesOf(projectName, collName);
         } else {
-            PkIndexRebuild.refuseStaleWriteIntents(writeIntentRecovery, dbName, collName);
+            PkIndexRebuild.refuseStaleWriteIntents(writeIntentRecovery, projectName, collName);
         }
-        return PkIndexRebuild.plan(paths, pkIndexStore, dbName, collName, pageFileLengths(dbName, collName).keySet());
+        return PkIndexRebuild.plan(paths, pkIndexStore, projectName, collName,
+                pageFileLengths(projectName, collName).keySet());
     }
 
-    public void applyPkRebuild(String dbName, String collName, PkRebuild rebuild) throws IOException {
-        PkIndexRebuild.apply(pkIndexStore, dbName, collName, rebuild);
+    public void applyPkRebuild(String projectName, String collName, PkRebuild rebuild) throws IOException {
+        PkIndexRebuild.apply(pkIndexStore, projectName, collName, rebuild);
     }
 
     public List<DbEntry> adoptOrphanedRecords(PkRowsSession session) throws IOException {
         return OrphanedPageRecords.adoptAll(paths, session,
-                pageFileLengths(session.dbName(), session.collName()).keySet());
+                pageFileLengths(session.projectName(), session.collName()).keySet());
     }
 
-    public long pageFileCount(String dbName, String collName) throws IOException {
-        return documentPageStore.pageFileCount(dbName, collName);
+    public long pageFileCount(String projectName, String collName) throws IOException {
+        return documentPageStore.pageFileCount(projectName, collName);
     }
 }

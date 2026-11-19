@@ -47,7 +47,7 @@ public class DefinitionOwnershipTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(user(DEFINER, false));
         AdminOperationHelper.saveUserEntry(user(OTHER, false));
         AdminOperationHelper.saveUserEntry(user(ADMIN, true));
@@ -71,31 +71,31 @@ public class DefinitionOwnershipTest {
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        if (cache.getProcedure(TestGlobals.DB, PROCEDURE) == null) {
-            ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, PROCEDURE, "return 1;"),
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        if (cache.getProcedure(TestGlobals.PROJECT, PROCEDURE) == null) {
+            ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, PROCEDURE, "return 1;"),
                     DEFINER);
         }
     }
 
     private static SaveTriggerRequest trigger() {
-        return new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE);
+        return new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE);
     }
 
     private static SaveScheduleRequest schedule(long timeoutMs) {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, "nightly", PROCEDURE);
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, "nightly", PROCEDURE);
         request.setIntervalMs(60_000L);
         request.setTimeoutMs(timeoutMs);
         return request;
     }
 
     private String triggerDefiner() {
-        return cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst().getDefiner();
+        return cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().getDefiner();
     }
 
     @Test
@@ -105,7 +105,7 @@ public class DefinitionOwnershipTest {
                 TriggerOperationHelper.executeSave(trigger(), OTHER).getErrorCode());
         assertEquals(ErrorCode.DEFINITION_OWNED_BY_OTHER_DEFINER.getCode(),
                 TriggerOperationHelper
-                        .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit"), OTHER)
+                        .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit"), OTHER)
                         .getErrorCode());
         assertEquals(DEFINER, triggerDefiner());
     }
@@ -116,8 +116,10 @@ public class DefinitionOwnershipTest {
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(trigger(), DEFINER).getStatus());
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(trigger(), ADMIN).getStatus());
         assertEquals(ADMIN, triggerDefiner());
-        assertEquals(OperationStatus.OK, TriggerOperationHelper
-                .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit"), ADMIN).getStatus());
+        assertEquals(OperationStatus.OK,
+                TriggerOperationHelper
+                        .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit"), ADMIN)
+                        .getStatus());
     }
 
     @Test
@@ -126,17 +128,17 @@ public class DefinitionOwnershipTest {
         assertEquals(ErrorCode.DEFINITION_OWNED_BY_OTHER_DEFINER.getCode(),
                 ScheduleOperationHelper.executeSave(schedule(0L), OTHER).getErrorCode());
         assertEquals(ErrorCode.DEFINITION_OWNED_BY_OTHER_DEFINER.getCode(), ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "nightly"), OTHER).getErrorCode());
-        assertEquals(DEFINER, cache.getSchedule(TestGlobals.DB, "nightly").getDefiner());
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly"), OTHER).getErrorCode());
+        assertEquals(DEFINER, cache.getSchedule(TestGlobals.PROJECT, "nightly").getDefiner());
     }
 
     @Test
     public void test_the_definer_may_delete_its_own_schedule() throws Exception {
         ScheduleOperationHelper.executeSave(schedule(0L), DEFINER);
-        assertNotNull(cache.getSchedule(TestGlobals.DB, "nightly"));
+        assertNotNull(cache.getSchedule(TestGlobals.PROJECT, "nightly"));
         assertEquals(OperationStatus.OK, ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "nightly"), DEFINER).getStatus());
-        assertNull(cache.getSchedule(TestGlobals.DB, "nightly"));
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly"), DEFINER).getStatus());
+        assertNull(cache.getSchedule(TestGlobals.PROJECT, "nightly"));
     }
 
     @Test
@@ -148,19 +150,18 @@ public class DefinitionOwnershipTest {
     }
 
     @Test
-    public void test_a_database_owner_may_delete_another_users_trigger_and_schedule() throws Exception {
+    public void test_a_project_owner_may_delete_another_users_trigger_and_schedule() throws Exception {
         TriggerOperationHelper.executeSave(trigger(), DEFINER);
         ScheduleOperationHelper.executeSave(schedule(0L), DEFINER);
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OTHER));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OTHER));
         try {
-            assertEquals(OperationStatus.OK,
-                    TriggerOperationHelper
-                            .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit"), OTHER)
-                            .getStatus());
+            assertEquals(OperationStatus.OK, TriggerOperationHelper
+                    .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit"), OTHER)
+                    .getStatus());
             assertEquals(OperationStatus.OK, ScheduleOperationHelper
-                    .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "nightly"), OTHER).getStatus());
+                    .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly"), OTHER).getStatus());
         } finally {
-            AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of());
+            AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of());
         }
     }
 
@@ -168,9 +169,9 @@ public class DefinitionOwnershipTest {
     public void test_an_admin_may_replace_and_delete_another_users_schedule() throws Exception {
         ScheduleOperationHelper.executeSave(schedule(0L), DEFINER);
         assertEquals(OperationStatus.OK, ScheduleOperationHelper.executeSave(schedule(0L), ADMIN).getStatus());
-        assertEquals(ADMIN, cache.getSchedule(TestGlobals.DB, "nightly").getDefiner());
+        assertEquals(ADMIN, cache.getSchedule(TestGlobals.PROJECT, "nightly").getDefiner());
         assertEquals(OperationStatus.OK, ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "nightly"), ADMIN).getStatus());
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly"), ADMIN).getStatus());
     }
 
     @Test

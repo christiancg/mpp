@@ -85,7 +85,7 @@ afterEach(async () => {
 
 describe("listens", () => {
     test("delivers the initial result decoded, then pushes in order", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const { handler, updates } = recorder();
         const subscription = await orders.listen(orders.query().filter(field("status").eq("pending")), handler);
         expect(server?.requestsOfType("LISTEN")[0]?.aggregationSteps).toHaveLength(1);
@@ -115,7 +115,7 @@ describe("listens", () => {
                 session.send(listenReply(request, listenId));
             })
         )
-            .database("shop")
+            .project("shop")
             .collection("orders");
         const { handler, events } = recorder();
         await orders.listen(handler);
@@ -124,7 +124,7 @@ describe("listens", () => {
     });
 
     test("an async handler finishes before the next update starts", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const seen: string[] = [];
         const subscription = await orders.listen({
             onUpdate: async (update) => {
@@ -146,7 +146,7 @@ describe("listens", () => {
                 session.send(listens === 2 ? error(request, "ERROR", "400-25") : listenReply(request, listenId));
             })
         )
-            .database("shop")
+            .project("shop")
             .collection("orders");
         const first = await orders.listen(recorder().handler);
         const second = await orders.listen(recorder().handler);
@@ -160,14 +160,14 @@ describe("listens", () => {
                 session.send(error(request, "ERROR", "400-19"));
             })
         )
-            .database("shop")
+            .project("shop")
             .collection("orders");
         await expect(orders.listen(recorder().handler)).rejects.toThrow(/400-19/);
         await expect(orders.listen(recorder().handler)).rejects.toBeInstanceOf(MppError);
     });
 
     test("an ended listen calls onEnded and sends no STOP_LISTEN on close", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const { handler, events } = recorder();
         const subscription = await orders.listen(handler);
         server?.sessions.at(-1)?.send({
@@ -184,7 +184,7 @@ describe("listens", () => {
     });
 
     test("a throwing handler reports to onError and keeps the subscription", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const errors: unknown[] = [];
         const subscription = await orders.listen({
             onUpdate: (update) => {
@@ -204,7 +204,7 @@ describe("listens", () => {
     });
 
     test("a throwing onEnded reports to onError", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const errors: unknown[] = [];
         const subscription = await orders.listen({
             onUpdate: () => undefined,
@@ -221,7 +221,7 @@ describe("listens", () => {
     });
 
     test("a lost connection ends every subscription on it with onError", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         const failures: unknown[] = [];
         const subscription = await orders.listen({
             onUpdate: () => undefined,
@@ -240,7 +240,7 @@ describe("listens", () => {
 
     test("disposing the client closes listen connections", async () => {
         const started = await start();
-        const orders = started.database("shop").collection("orders");
+        const orders = started.project("shop").collection("orders");
         const { handler, events } = recorder();
         const subscription = await orders.listen(handler);
         await started[Symbol.asyncDispose]();
@@ -250,7 +250,7 @@ describe("listens", () => {
     });
 
     test("listen needs a handler", async () => {
-        const orders = (await start()).database("shop").collection("orders");
+        const orders = (await start()).project("shop").collection("orders");
         await expect(
             orders.listen(orders.query(), undefined as unknown as ListenHandler<Stored<Document>>),
         ).rejects.toThrow(/listen needs a handler/);

@@ -21,24 +21,23 @@ public final class FieldMaintenance {
     private FieldMaintenance() {
     }
 
-    public static List<DeferredFold> maintain(String dbName, String collName, String fieldName, Collection<String> ids,
-            Map<String, DbEntry> byId, Map<String, List<IndexedValue>> priors, CanonicalIds canonicalIds)
-            throws IOException, InterruptedException {
-        return maintain(dbName, collName, fieldName, ids, byId, priors, null, canonicalIds);
+    public static List<DeferredFold> maintain(String projectName, String collName, String fieldName,
+            Collection<String> ids, Map<String, DbEntry> byId, Map<String, List<IndexedValue>> priors,
+            CanonicalIds canonicalIds) throws IOException, InterruptedException {
+        return maintain(projectName, collName, fieldName, ids, byId, priors, null, canonicalIds);
     }
 
-    static List<DeferredFold> maintain(String dbName, String collName, String fieldName, Collection<String> ids,
+    static List<DeferredFold> maintain(String projectName, String collName, String fieldName, Collection<String> ids,
             Map<String, DbEntry> byId, Map<String, List<IndexedValue>> priors, HeldTypeLists held,
             CanonicalIds canonicalIds) throws IOException, InterruptedException {
         final var budget = configuration.getTransactionLockTimeoutMs();
-        if (!rl.tryLockIndex(dbName, collName, fieldName, budget)) {
-            throw new IndexLockBusyException(
-                    Cache.getCollectionIdentifier(dbName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + fieldName,
-                    budget);
+        if (!rl.tryLockIndex(projectName, collName, fieldName, budget)) {
+            throw new IndexLockBusyException(Cache.getCollectionIdentifier(projectName, collName)
+                    + Globals.COLL_IDENTIFIER_SEPARATOR + fieldName, budget);
         }
         var flushed = false;
         try {
-            final var batch = FieldIndexBatch.open(dbName, collName, fieldName, ids, priors, held, canonicalIds);
+            final var batch = FieldIndexBatch.open(projectName, collName, fieldName, ids, priors, held, canonicalIds);
             final var path = FieldPath.of(fieldName);
             for (var id : ids) {
                 final var doc = byId.get(id);
@@ -52,12 +51,12 @@ public final class FieldMaintenance {
             return folds;
         } finally {
             if (!flushed) {
-                cache.evictFieldIndexAllTypes(dbName, collName, fieldName);
+                cache.evictFieldIndexAllTypes(projectName, collName, fieldName);
                 if (held != null) {
                     held.clear();
                 }
             }
-            rl.releaseIndex(dbName, collName, fieldName);
+            rl.releaseIndex(projectName, collName, fieldName);
         }
     }
 }

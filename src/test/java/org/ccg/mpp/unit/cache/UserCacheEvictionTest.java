@@ -38,10 +38,10 @@ public class UserCacheEvictionTest {
     @Test
     public void evict_entry_from_populated_collection() {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
         String pk = "testPk";
-        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
 
         Map<String, DbEntry> collection = new HashMap<>();
         collection.put(pk, new DbEntry());
@@ -50,7 +50,7 @@ public class UserCacheEvictionTest {
 
         collectionMap.put(collectionIdentifier, collection);
 
-        cache.evictEntry(dbName, collName, pk);
+        cache.evictEntry(projectName, collName, pk);
 
         assertFalse(collectionMap.get(collectionIdentifier).containsKey(pk));
     }
@@ -58,25 +58,25 @@ public class UserCacheEvictionTest {
     @Test
     public void evict_entry_from_empty_collection_map() {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
         String pk = "testPk";
 
-        cache.evictEntry(dbName, collName, pk);
+        cache.evictEntry(projectName, collName, pk);
 
         final var collectionMap = CacheResidents.documentsByCollection(cache);
 
-        assertNull(collectionMap.get(Cache.getCollectionIdentifier(dbName, collName)));
+        assertNull(collectionMap.get(Cache.getCollectionIdentifier(projectName, collName)));
     }
 
     @Test
-    public void test_evict_database_success() throws NoSuchFieldException, IllegalAccessException {
+    public void test_evict_project_success() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collectionName = "myCollection";
-        String collId = Cache.getCollectionIdentifier(dbName, collectionName);
+        String collId = Cache.getCollectionIdentifier(projectName, collectionName);
 
-        PkIndexEntry pkIndexEntry = new PkIndexEntry(dbName, collectionName, "123", 0, 100, 0);
+        PkIndexEntry pkIndexEntry = new PkIndexEntry(projectName, collectionName, "123", 0, 100, 0);
         DbEntry dbEntry = new DbEntry();
 
         final var typePk = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
@@ -87,7 +87,7 @@ public class UserCacheEvictionTest {
         pkIndexMap.put(collId, List.of(pkIndexEntry));
         collectionMap.put(collId, Map.of("key", dbEntry));
 
-        cache.evictDatabase(dbName);
+        cache.evictProject(projectName);
 
         assertTrue(pkIndexMap.isEmpty());
         assertTrue(collectionMap.isEmpty());
@@ -95,13 +95,13 @@ public class UserCacheEvictionTest {
 
     // Empty db name is invalid (< 3 chars per constraints); verify it still evicts only its own entries.
     @Test
-    public void test_evict_database_empty_string() throws NoSuchFieldException, IllegalAccessException {
+    public void test_evict_project_empty_string() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "";
+        String projectName = "";
         String collectionName = "someColl";
-        String collId = Cache.getCollectionIdentifier(dbName, collectionName);
+        String collId = Cache.getCollectionIdentifier(projectName, collectionName);
 
-        PkIndexEntry pkIndexEntry = new PkIndexEntry(dbName, collectionName, "123", 0, 100, 0);
+        PkIndexEntry pkIndexEntry = new PkIndexEntry(projectName, collectionName, "123", 0, 100, 0);
         DbEntry dbEntry = new DbEntry();
 
         final var typePk = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
@@ -112,7 +112,7 @@ public class UserCacheEvictionTest {
         pkIndexMap.put(collId, List.of(pkIndexEntry));
         collectionMap.put(collId, Map.of("key", dbEntry));
 
-        cache.evictDatabase(dbName);
+        cache.evictProject(projectName);
 
         assertTrue(pkIndexMap.isEmpty());
         assertTrue(collectionMap.isEmpty());
@@ -121,9 +121,9 @@ public class UserCacheEvictionTest {
     @Test
     public void test_evict_collection_removes_from_pkIndexMap() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        String collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
 
         List<PkIndexEntry> pkIndexEntries = new ArrayList<>();
 
@@ -133,7 +133,7 @@ public class UserCacheEvictionTest {
 
         pkIndexMap.put(collIdentifier, pkIndexEntries);
 
-        cache.evictCollection(dbName, collName);
+        cache.evictCollection(projectName, collName);
 
         assertFalse(pkIndexMap.containsKey(collIdentifier));
     }
@@ -142,11 +142,11 @@ public class UserCacheEvictionTest {
     public void test_evict_collection_with_non_existent_collection()
             throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "nonExistentDb";
+        String projectName = "nonExistentProject";
         String collName = "nonExistentColl";
-        String collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
 
-        cache.evictCollection(dbName, collName);
+        cache.evictCollection(projectName, collName);
 
         final var typePk = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
@@ -160,42 +160,42 @@ public class UserCacheEvictionTest {
     @Test
     public void test_evict_collection_also_clears_fieldIndexMap() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        String collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         String indexIdentifier = Cache.getIndexIdentifier("myField", String.class);
 
         Map<String, List<FieldIndexEntry<?>>> innerMap = new ConcurrentHashMap<>();
-        innerMap.put(indexIdentifier, List.of(new FieldIndexEntry<>(dbName, collName, "val", Set.of("id1"))));
+        innerMap.put(indexIdentifier, List.of(new FieldIndexEntry<>(projectName, collName, "val", Set.of("id1"))));
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         TestUtils.getPrivateField(cache, "fieldIndexMap", type).put(collIdentifier, innerMap);
 
-        cache.evictCollection(dbName, collName);
+        cache.evictCollection(projectName, collName);
 
         assertFalse(TestUtils.getPrivateField(cache, "fieldIndexMap", type).containsKey(collIdentifier),
                 "evictCollection must remove the collection's field index entries");
     }
 
     @Test
-    public void test_evict_database_also_clears_fieldIndexMap() throws NoSuchFieldException, IllegalAccessException {
+    public void test_evict_project_also_clears_fieldIndexMap() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
-        String siblingDb = "testDbSibling";
-        String collId1 = Cache.getCollectionIdentifier(dbName, "coll1");
-        String collId2 = Cache.getCollectionIdentifier(dbName, "coll2");
-        String siblingId = Cache.getCollectionIdentifier(siblingDb, "coll3");
+        String projectName = "testProject";
+        String siblingProject = "testProjectSibling";
+        String collId1 = Cache.getCollectionIdentifier(projectName, "coll1");
+        String collId2 = Cache.getCollectionIdentifier(projectName, "coll2");
+        String siblingId = Cache.getCollectionIdentifier(siblingProject, "coll3");
         String indexId = Cache.getIndexIdentifier("f", String.class);
 
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         Map<String, List<FieldIndexEntry<?>>> inner1 = new ConcurrentHashMap<>();
-        inner1.put(indexId, List.of(new FieldIndexEntry<>(dbName, "coll1", "v", Set.of("id1"))));
+        inner1.put(indexId, List.of(new FieldIndexEntry<>(projectName, "coll1", "v", Set.of("id1"))));
         Map<String, List<FieldIndexEntry<?>>> inner2 = new ConcurrentHashMap<>();
-        inner2.put(indexId, List.of(new FieldIndexEntry<>(dbName, "coll2", "v", Set.of("id2"))));
+        inner2.put(indexId, List.of(new FieldIndexEntry<>(projectName, "coll2", "v", Set.of("id2"))));
         Map<String, List<FieldIndexEntry<?>>> inner3 = new ConcurrentHashMap<>();
-        inner3.put(indexId, List.of(new FieldIndexEntry<>(siblingDb, "coll3", "v", Set.of("id3"))));
+        inner3.put(indexId, List.of(new FieldIndexEntry<>(siblingProject, "coll3", "v", Set.of("id3"))));
         fieldIndexMap.put(collId1, inner1);
         fieldIndexMap.put(collId2, inner2);
         fieldIndexMap.put(siblingId, inner3);
@@ -204,7 +204,7 @@ public class UserCacheEvictionTest {
         collectionMap.put(collId1, new ConcurrentHashMap<>());
         collectionMap.put(collId2, new ConcurrentHashMap<>());
 
-        cache.evictDatabase(dbName);
+        cache.evictProject(projectName);
 
         final var remaining = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         assertFalse(remaining.containsKey(collId1), "coll1 field index must be evicted");
@@ -218,13 +218,13 @@ public class UserCacheEvictionTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", type);
-        pkIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"),
-                List.of(new PkIndexEntry("db1", "c1", "id1", 0, 1, 0)));
-        pkIndexMap.put(Cache.getCollectionIdentifier("db1", "c2"),
-                List.of(new PkIndexEntry("db1", "c2", "id1", 0, 1, 0)));
-        cache.evictPkIndex("db1", "c1");
-        assertFalse(pkIndexMap.containsKey(Cache.getCollectionIdentifier("db1", "c1")));
-        assertTrue(pkIndexMap.containsKey(Cache.getCollectionIdentifier("db1", "c2")));
+        pkIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"),
+                List.of(new PkIndexEntry("project1", "c1", "id1", 0, 1, 0)));
+        pkIndexMap.put(Cache.getCollectionIdentifier("project1", "c2"),
+                List.of(new PkIndexEntry("project1", "c2", "id1", 0, 1, 0)));
+        cache.evictPkIndex("project1", "c1");
+        assertFalse(pkIndexMap.containsKey(Cache.getCollectionIdentifier("project1", "c1")));
+        assertTrue(pkIndexMap.containsKey(Cache.getCollectionIdentifier("project1", "c2")));
     }
 
     @Test
@@ -234,10 +234,10 @@ public class UserCacheEvictionTest {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         final Map<String, List<FieldIndexEntry<?>>> indexes = new ConcurrentHashMap<>();
-        indexes.put("field|String", List.of(new FieldIndexEntry<>("db1", "c1", "v", Set.of("id1"))));
-        indexes.put("other|String", List.of(new FieldIndexEntry<>("db1", "c1", "v", Set.of("id1"))));
-        fieldIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"), indexes);
-        cache.evictFieldIndex("db1", "c1", "field|String");
+        indexes.put("field|String", List.of(new FieldIndexEntry<>("project1", "c1", "v", Set.of("id1"))));
+        indexes.put("other|String", List.of(new FieldIndexEntry<>("project1", "c1", "v", Set.of("id1"))));
+        fieldIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"), indexes);
+        cache.evictFieldIndex("project1", "c1", "field|String");
         assertFalse(indexes.containsKey("field|String"));
         assertTrue(indexes.containsKey("other|String"));
     }
@@ -249,10 +249,10 @@ public class UserCacheEvictionTest {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         final Map<String, List<FieldIndexEntry<?>>> indexes = new ConcurrentHashMap<>();
-        indexes.put("field|String", List.of(new FieldIndexEntry<>("db1", "c1", "v", Set.of("id1"))));
-        fieldIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"), indexes);
-        cache.evictFieldIndex("db1", "c1", "field|String");
-        assertFalse(fieldIndexMap.containsKey(Cache.getCollectionIdentifier("db1", "c1")));
+        indexes.put("field|String", List.of(new FieldIndexEntry<>("project1", "c1", "v", Set.of("id1"))));
+        fieldIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"), indexes);
+        cache.evictFieldIndex("project1", "c1", "field|String");
+        assertFalse(fieldIndexMap.containsKey(Cache.getCollectionIdentifier("project1", "c1")));
     }
 
     @Test
@@ -262,17 +262,16 @@ public class UserCacheEvictionTest {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", pkType);
         final var collectionMap = CacheResidents.documentsByCollection(cache);
-        pkIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"),
-                List.of(new PkIndexEntry("db1", "c1", "id1", 0, 1, 0)));
-        collectionMap.put(Cache.getCollectionIdentifier("db1", "c1"), new ConcurrentHashMap<>());
-        cache.evictCollectionDocuments("db1", "c1");
-        assertTrue(pkIndexMap.containsKey(Cache.getCollectionIdentifier("db1", "c1")));
-        assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("db1", "c1")));
+        pkIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"),
+                List.of(new PkIndexEntry("project1", "c1", "id1", 0, 1, 0)));
+        collectionMap.put(Cache.getCollectionIdentifier("project1", "c1"), new ConcurrentHashMap<>());
+        cache.evictCollectionDocuments("project1", "c1");
+        assertTrue(pkIndexMap.containsKey(Cache.getCollectionIdentifier("project1", "c1")));
+        assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("project1", "c1")));
     }
 
     @Test
-    public void test_evictDatabase_does_not_evict_sibling_database()
-            throws NoSuchFieldException, IllegalAccessException {
+    public void test_evictProject_does_not_evict_sibling_project() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
         final var collIdFoo = Cache.getCollectionIdentifier("foo", "coll1");
         final var collIdFoobar = Cache.getCollectionIdentifier("foobar", "coll2");
@@ -287,7 +286,7 @@ public class UserCacheEvictionTest {
         collectionMap.put(collIdFoo, new ConcurrentHashMap<>());
         collectionMap.put(collIdFoobar, new ConcurrentHashMap<>());
 
-        cache.evictDatabase("foo");
+        cache.evictProject("foo");
 
         assertFalse(pkIndexMap.containsKey(collIdFoo), "foo|coll1 should have been evicted");
         assertFalse(collectionMap.containsKey(collIdFoo), "foo|coll1 should have been evicted");
@@ -296,42 +295,42 @@ public class UserCacheEvictionTest {
     }
 
     @Test
-    public void test_evict_database_removes_a_pk_index_with_no_cached_documents()
+    public void test_evict_project_removes_a_pk_index_with_no_cached_documents()
             throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        final var collId = Cache.getCollectionIdentifier("testDb", "coll1");
+        final var collId = Cache.getCollectionIdentifier("testProject", "coll1");
         final var typePk = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", typePk);
-        pkIndexMap.put(collId, List.of(new PkIndexEntry("testDb", "coll1", "1", 0, 10, 0)));
+        pkIndexMap.put(collId, List.of(new PkIndexEntry("testProject", "coll1", "1", 0, 10, 0)));
 
-        cache.evictDatabase("testDb");
+        cache.evictProject("testProject");
 
         assertFalse(pkIndexMap.containsKey(collId), "a pk index with no cached documents must still be evicted");
     }
 
     @Test
-    public void test_evict_database_removes_a_field_index_with_no_cached_documents()
+    public void test_evict_project_removes_a_field_index_with_no_cached_documents()
             throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        final var collId = Cache.getCollectionIdentifier("testDb", "coll1");
+        final var collId = Cache.getCollectionIdentifier("testProject", "coll1");
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         Map<String, List<FieldIndexEntry<?>>> inner = new ConcurrentHashMap<>();
         inner.put(Cache.getIndexIdentifier("f", String.class),
-                List.of(new FieldIndexEntry<>("testDb", "coll1", "v", Set.of("id1"))));
+                List.of(new FieldIndexEntry<>("testProject", "coll1", "v", Set.of("id1"))));
         fieldIndexMap.put(collId, inner);
 
-        cache.evictDatabase("testDb");
+        cache.evictProject("testProject");
 
         assertFalse(fieldIndexMap.containsKey(collId), "a field index with no cached documents must still be evicted");
     }
 
     @Test
-    public void test_evict_database_after_document_only_eviction() throws NoSuchFieldException, IllegalAccessException {
+    public void test_evict_project_after_document_only_eviction() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        final var collId = Cache.getCollectionIdentifier("testDb", "coll1");
+        final var collId = Cache.getCollectionIdentifier("testProject", "coll1");
         final var typePk = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", typePk);
@@ -339,12 +338,12 @@ public class UserCacheEvictionTest {
         final var typeField = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", typeField);
-        pkIndexMap.put(collId, List.of(new PkIndexEntry("testDb", "coll1", "1", 0, 10, 0)));
-        CacheResidents.residentDocument(cache, collId, DbEntry.fromJsonObject("testDb", "coll1", documentD1()));
+        pkIndexMap.put(collId, List.of(new PkIndexEntry("testProject", "coll1", "1", 0, 10, 0)));
+        CacheResidents.residentDocument(cache, collId, DbEntry.fromJsonObject("testProject", "coll1", documentD1()));
         fieldIndexMap.put(collId, new ConcurrentHashMap<>());
 
-        cache.evictCollectionDocuments("testDb", "coll1");
-        cache.evictDatabase("testDb");
+        cache.evictCollectionDocuments("testProject", "coll1");
+        cache.evictProject("testProject");
 
         assertFalse(pkIndexMap.containsKey(collId));
         assertFalse(collectionMap.containsKey(collId));

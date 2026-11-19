@@ -41,7 +41,7 @@ public class RecoveredDeleteIndexCleanupTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(PageOccupancyReconciler.class, "taskManager",
                 BackgroundTaskManager.class);
         stubTaskManager = new BackgroundTaskManager();
@@ -51,7 +51,7 @@ public class RecoveredDeleteIndexCleanupTest {
     @AfterEach
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -60,27 +60,27 @@ public class RecoveredDeleteIndexCleanupTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty(FIELD, "value-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         assertNotNull(SaveOperationHelper.executeSave(request));
     }
 
     private PkIndexEntry deleteBehindTheIndexesBack(String id) throws Exception {
-        final var row = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var row = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(entry -> entry.getValue().equals(id)).findFirst().orElseThrow();
         fs.deleteFromCollection(row.detachedCopy());
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         return row;
     }
 
     private void indexTheField() throws Exception {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
     }
 
     private Set<String> indexedIds() throws Exception {
-        return fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class).stream()
+        return fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class).stream()
                 .flatMap(entry -> entry.getIds().stream()).collect(Collectors.toSet());
     }
 
@@ -92,7 +92,7 @@ public class RecoveredDeleteIndexCleanupTest {
 
         PageOccupancyReconciler.scheduleIndexCleanupFor(List.of(row));
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(GONE),
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(GONE),
                 "an index-backed read must stop answering the deleted id before the worker removes it");
         final var repairs = QueuedRepairs.of(stubTaskManager);
         assertEquals(1, repairs.size());
@@ -116,8 +116,8 @@ public class RecoveredDeleteIndexCleanupTest {
 
     @Test
     public void test_an_admin_collection_delete_is_skipped() throws Exception {
-        final var adminRow = new PkIndexEntry(Globals.ADMIN_DB_NAME, "users", "someone", 0, 10, 0);
-        final var pageRow = new PkIndexEntry(Globals.ADMIN_PAGES_DB_NAME, "admin_users", "row", 0, 10, 0);
+        final var adminRow = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, "users", "someone", 0, 10, 0);
+        final var pageRow = new PkIndexEntry(Globals.ADMIN_PAGES_PROJECT_NAME, "admin_users", "row", 0, 10, 0);
 
         PageOccupancyReconciler.scheduleIndexCleanupFor(List.of(adminRow, pageRow));
 
@@ -126,12 +126,12 @@ public class RecoveredDeleteIndexCleanupTest {
 
     @Test
     public void test_a_delete_in_an_unregistered_collection_is_skipped() throws Exception {
-        final var row = new PkIndexEntry(TestGlobals.DB, "droppedcoll", GONE, 0, 10, 0);
+        final var row = new PkIndexEntry(TestGlobals.PROJECT, "droppedcoll", GONE, 0, 10, 0);
 
         PageOccupancyReconciler.scheduleIndexCleanupFor(List.of(row));
 
         assertTrue(QueuedRepairs.of(stubTaskManager).isEmpty());
-        assertFalse(pendingIndexWrites.idsFor(TestGlobals.DB, "droppedcoll").contains(GONE));
+        assertFalse(pendingIndexWrites.idsFor(TestGlobals.PROJECT, "droppedcoll").contains(GONE));
     }
 
     @Test

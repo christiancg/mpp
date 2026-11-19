@@ -23,7 +23,7 @@ final class InsertOnlyGuard {
         if (id == null) {
             return null;
         }
-        final var rows = cache.pkRowsForWriter(request.getDatabaseName(), request.getCollectionName(), List.of(id));
+        final var rows = cache.pkRowsForWriter(request.getProjectName(), request.getCollectionName(), List.of(id));
         return rows.row(id) == null
                 ? null
                 : new OperationResponse(OperationType.SAVE, ErrorCode.DOCUMENT_ALREADY_EXISTS);

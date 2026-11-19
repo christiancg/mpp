@@ -166,10 +166,10 @@ public class SnapshotReadTest {
         try {
             seed(5);
             final var snapshotId = support.start();
-            final var pagesBefore = support.fs.pageFileCount(SnapshotTestSupport.DB, SnapshotTestSupport.COLL);
+            final var pagesBefore = support.fs.pageFileCount(SnapshotTestSupport.PROJECT, SnapshotTestSupport.COLL);
             support.save("d0", "x".repeat(2000));
 
-            assertTrue(support.fs.pageFileCount(SnapshotTestSupport.DB, SnapshotTestSupport.COLL) > pagesBefore);
+            assertTrue(support.fs.pageFileCount(SnapshotTestSupport.PROJECT, SnapshotTestSupport.COLL) > pagesBefore);
             assertEquals(List.of("d0=0", "d1=1", "d2=2", "d3=3", "d4=4"), readAll(snapshotId, 2));
         } finally {
             TestUtils.setPrivateField(Configuration.getInstance(), "maxPageSize",

@@ -25,25 +25,25 @@ final class CacheFitWarnings {
         this.clock = clock;
     }
 
-    void pkIndexRefused(String dbName, String collName, long bytes, long maxBytes, long footprintBytes) {
+    void pkIndexRefused(String projectName, String collName, long bytes, long maxBytes, long footprintBytes) {
         if (bytes > maxBytes) {
-            pkIndexOutgrows(dbName, collName, bytes, maxBytes);
-        } else if (claimCrowdedOut(Cache.getCollectionIdentifier(dbName, collName))) {
-            logger.warning("No room in maxMemory for the primary-key index of " + dbName + "|" + collName
+            pkIndexOutgrows(projectName, collName, bytes, maxBytes);
+        } else if (claimCrowdedOut(Cache.getCollectionIdentifier(projectName, collName))) {
+            logger.warning("No room in maxMemory for the primary-key index of " + projectName + "|" + collName
                     + ": it needs about " + bytes + " bytes and " + free(maxBytes, footprintBytes)
                     + " are free (maxMemory " + maxBytes + "), so keyed reads and writes scan pk.idx for the ids"
                     + " they name until other cached structures leave room.");
         }
     }
 
-    void fieldIndexRefused(String dbName, String collName, String indexKey, long bytes, long maxBytes,
+    void fieldIndexRefused(String projectName, String collName, String indexKey, long bytes, long maxBytes,
             long footprintBytes) {
         if (bytes > maxBytes) {
-            fieldIndexOutgrows(dbName, collName, indexKey, bytes, maxBytes);
+            fieldIndexOutgrows(projectName, collName, indexKey, bytes, maxBytes);
         } else if (claimCrowdedOut(
-                Cache.getCollectionIdentifier(dbName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + indexKey)) {
-            logger.warning("No room in maxMemory for the field index " + indexKey + " of " + dbName + "|" + collName
-                    + ": it needs about " + bytes + " bytes and " + free(maxBytes, footprintBytes)
+                Cache.getCollectionIdentifier(projectName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + indexKey)) {
+            logger.warning("No room in maxMemory for the field index " + indexKey + " of " + projectName + "|"
+                    + collName + ": it needs about " + bytes + " bytes and " + free(maxBytes, footprintBytes)
                     + " are free (maxMemory " + maxBytes + "), so it is not cached while other indexes and documents"
                     + " hold the budget, and every read of it loads it from disk.");
         }
@@ -62,20 +62,22 @@ final class CacheFitWarnings {
         return last == null ? crowdedOutAt.putIfAbsent(key, now) == null : crowdedOutAt.replace(key, last, now);
     }
 
-    void pkIndexOutgrows(String dbName, String collName, long bytes, long maxBytes) {
-        if (bytes > maxBytes && warned.add(Cache.getCollectionIdentifier(dbName, collName))) {
-            logger.warning("The primary-key index of " + dbName + "|" + collName + " needs about " + bytes
+    void pkIndexOutgrows(String projectName, String collName, long bytes, long maxBytes) {
+        if (bytes > maxBytes && warned.add(Cache.getCollectionIdentifier(projectName, collName))) {
+            logger.warning("The primary-key index of " + projectName + "|" + collName + " needs about " + bytes
                     + " bytes of cache, more than maxMemory (" + maxBytes + "), so it is never cached: keyed reads"
                     + " and writes scan pk.idx for the ids they name. Raise maxMemory above " + bytes
                     + " to keep it resident.");
         }
     }
 
-    void fieldIndexOutgrows(String dbName, String collName, String indexKey, long bytes, long maxBytes) {
-        final var key = Cache.getCollectionIdentifier(dbName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + indexKey;
+    void fieldIndexOutgrows(String projectName, String collName, String indexKey, long bytes, long maxBytes) {
+        final var key = Cache.getCollectionIdentifier(projectName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR
+                + indexKey;
         if (bytes > maxBytes && warned.add(key)) {
-            logger.warning("The field index " + indexKey + " of " + dbName + "|" + collName + " needs about " + bytes
-                    + " bytes of cache, more than maxMemory (" + maxBytes + "), so it is never cached: every read"
+            logger.warning("The field index " + indexKey + " of " + projectName + "|" + collName + " needs about "
+                    + bytes + " bytes of cache, more than maxMemory (" + maxBytes
+                    + "), so it is never cached: every read"
                     + " of it loads it from disk and writes append to its log. Raise maxMemory above " + bytes
                     + " to keep it resident.");
         }

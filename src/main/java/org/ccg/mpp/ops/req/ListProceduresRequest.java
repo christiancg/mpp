@@ -9,8 +9,8 @@ public class ListProceduresRequest extends OperationRequest {
         super(OperationType.LIST_PROCEDURES, null, null);
     }
 
-    public ListProceduresRequest(String databaseName) {
-        super(OperationType.LIST_PROCEDURES, databaseName, null);
+    public ListProceduresRequest(String projectName) {
+        super(OperationType.LIST_PROCEDURES, projectName, null);
     }
 
     public boolean isIncludeSource() {

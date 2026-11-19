@@ -21,19 +21,19 @@ public class FileSystemTrustedLiveRowsTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty(Globals.PK_FIELD, id);
         data.addProperty("v", value);
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
     }
 
     private void assertTrustedEqualsFolded(String after) throws IOException {
-        final var trusted = fs.trustedLiveRows(TestGlobals.DB, TestGlobals.COLL);
+        final var trusted = fs.trustedLiveRows(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(trusted.isPresent(), "the live-row count is known after " + after);
-        assertEquals(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).size(), trusted.getAsLong(), after);
+        assertEquals(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).size(), trusted.getAsLong(), after);
     }
 
     @Test
     public void test_a_missing_index_holds_no_rows() {
-        fs.deleteCollectionFiles(TestGlobals.DB, TestGlobals.COLL);
-        assertEquals(0L, fs.trustedLiveRows(TestGlobals.DB, TestGlobals.COLL).orElseThrow());
+        fs.deleteCollectionFiles(TestGlobals.PROJECT, TestGlobals.COLL);
+        assertEquals(0L, fs.trustedLiveRows(TestGlobals.PROJECT, TestGlobals.COLL).orElseThrow());
     }
 
     @Test
@@ -59,16 +59,17 @@ public class FileSystemTrustedLiveRowsTest extends FileSystemTestBase {
         for (var i = 0; i < 5; i++) {
             bulk.add(document("bulk-" + i, "d"));
         }
-        final var inserted = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, bulk);
+        final var inserted = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, bulk);
         assertTrustedEqualsFolded("a bulk insert");
 
         inserted.forEach(entry -> entry.getData().addProperty("v", "e"));
-        fs.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, inserted.subList(0, 2));
+        fs.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, inserted.subList(0, 2));
         assertTrustedEqualsFolded("a bulk update");
 
-        final var current = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
-        fs.writeBatch(TestGlobals.DB, TestGlobals.COLL, List.of(document("batch-0", "f"), document("batch-1", "f")),
-                DbEntry::getPage, DbEntry::encodeLine, List.of(current.getLast()));
+        final var current = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.writeBatch(TestGlobals.PROJECT, TestGlobals.COLL,
+                List.of(document("batch-0", "f"), document("batch-1", "f")), DbEntry::getPage, DbEntry::encodeLine,
+                List.of(current.getLast()));
         assertTrustedEqualsFolded("a batch of inserts and a delete");
     }
 
@@ -86,13 +87,13 @@ public class FileSystemTrustedLiveRowsTest extends FileSystemTestBase {
     @Test
     public void test_the_count_after_an_own_append_is_known_without_a_stat() throws IOException {
         fs.insertIntoCollection(document("a", "0"));
-        fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         fs.insertIntoCollection(document("b", "0"));
         Files.setLastModifiedTime(
-                Path.of(TestGlobals.PATH, TestGlobals.DB, TestGlobals.COLL, TestGlobals.COLL + "-pk.idx"),
+                Path.of(TestGlobals.PATH, TestGlobals.PROJECT, TestGlobals.COLL, TestGlobals.COLL + "-pk.idx"),
                 FileTime.fromMillis(0L));
 
-        assertEquals(2L, fs.trustedLiveRows(TestGlobals.DB, TestGlobals.COLL).orElseThrow(),
+        assertEquals(2L, fs.trustedLiveRows(TestGlobals.PROJECT, TestGlobals.COLL).orElseThrow(),
                 "the store's own append is exact, so no attribute read can void it");
     }
 
@@ -101,7 +102,8 @@ public class FileSystemTrustedLiveRowsTest extends FileSystemTestBase {
         fs.insertIntoCollection(document("a", "0"));
         fs.insertIntoCollection(document("b", "0"));
 
-        fs.applyPkRebuild(TestGlobals.DB, TestGlobals.COLL, fs.planPkRebuild(TestGlobals.DB, TestGlobals.COLL));
+        fs.applyPkRebuild(TestGlobals.PROJECT, TestGlobals.COLL,
+                fs.planPkRebuild(TestGlobals.PROJECT, TestGlobals.COLL));
         assertTrustedEqualsFolded("a primary-key rebuild");
 
         fs.insertIntoCollection(document("c", "0"));

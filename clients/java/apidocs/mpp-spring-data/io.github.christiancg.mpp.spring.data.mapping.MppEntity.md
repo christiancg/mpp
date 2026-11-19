@@ -1,5 +1,5 @@
 Marks a class stored in MPP and names where. Optional: an unannotated class is stored in the
-collection named after the class (`Order` becomes `order`) in the default database.
+collection named after the class (`Order` becomes `order`) in the default project.
 
 ```java
 @MppEntity(collection = "orders")
@@ -11,6 +11,6 @@ public record Order(@Id String orderId, String status, double total) {
 
 @return the collection, or empty for the uncapitalised class name
 
-## database()
+## project()
 
-@return the database, or empty for the default database (`mpp.database`)
+@return the project, or empty for the default project (`mpp.project`)

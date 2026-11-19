@@ -31,7 +31,7 @@ public class MessageProcessorServerInfoTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -77,7 +77,7 @@ public class MessageProcessorServerInfoTest {
 
     @Test
     public void test_answers_shutting_down_while_other_operations_are_refused() throws Exception {
-        final var replies = run(SERVER_INFO + "\n{\"type\":\"LIST_DATABASES\"}", () -> true);
+        final var replies = run(SERVER_INFO + "\n{\"type\":\"LIST_PROJECTS\"}", () -> true);
 
         assertEquals("SHUTTING_DOWN", text(serverOf(replies.get(0)), "state"));
         assertEquals("503-13", text(replies.get(1), "errorCode"));

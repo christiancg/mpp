@@ -74,17 +74,17 @@ public class AllocationBudgetTest {
     private static final double LISTEN_HASH_BUDGET_RATIO = 1.39;
     private static final long UNORDERED_HASH_BUDGET_PER_DOC = 96;
     private static final String COLD_SCAN = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"FILTER","operator":{"fieldOperatorType":"SMALLER_THAN","field":"qty","value":1}},
             {"type":"COUNT"}]}""";
 
     private static final String INDEXED_FILTER_LIMIT = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"FILTER","operator":{"fieldOperatorType":"EQUALS","field":"cat","value":"c3"}},
             {"type":"LIMIT","limit":5}]}""";
 
     private static final String INDEXED_LOOKUP = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"FILTER","operator":{"fieldOperatorType":"EQUALS","field":"%s","value":"c3"}}]}""";
 
     private static final com.sun.management.ThreadMXBean THREADS = (com.sun.management.ThreadMXBean) ManagementFactory
@@ -96,14 +96,14 @@ public class AllocationBudgetTest {
     @BeforeAll
     static void loadFixture() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (var start = 0; start < DOCS; start += BULK) {
             bulkSave(start);
         }
         for (final var field : List.of("cat", "email")) {
-            IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
+            IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
         }
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("cat", "email"));
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("cat", "email"));
     }
 
     @AfterAll
@@ -140,7 +140,7 @@ public class AllocationBudgetTest {
         for (var i = start; i < start + BULK; i++) {
             objects.add(document(i, i % 97));
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return request;
     }
@@ -150,16 +150,16 @@ public class AllocationBudgetTest {
     }
 
     private static void holdingTheCollection(ThrowingAction action) throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             action.run();
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     private static void saveUpdate(int i) throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("d" + i);
         request.setObject(document(i, 1 + i % 5));
         holdingTheCollection(() -> SaveOperationHelper.executeSave(request));
@@ -211,7 +211,7 @@ public class AllocationBudgetTest {
             for (var i = round * BULK; i < (round + 1) * BULK; i++) {
                 objects.add(document(i, 100 + round));
             }
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(objects);
             cheapest = Math.min(cheapest,
                     allocatedBy(() -> holdingTheCollection(() -> SaveOperationHelper.executeBulkSave(request))));
@@ -224,10 +224,10 @@ public class AllocationBudgetTest {
     @Test
     void coldScanAllocatesUnderBudgetPerDoc() throws Exception {
         final var request = (AggregateRequest) RequestParser
-                .parseRequest(COLD_SCAN.formatted(TestGlobals.DB, TestGlobals.COLL));
-        final var documents = cache.pkIndexSize(TestGlobals.DB, TestGlobals.COLL);
+                .parseRequest(COLD_SCAN.formatted(TestGlobals.PROJECT, TestGlobals.COLL));
+        final var documents = cache.pkIndexSize(TestGlobals.PROJECT, TestGlobals.COLL);
         final var perDoc = cheapestOf(() -> {
-            cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+            cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
             AggregationOperationHelper.processAggregation(request);
         }) / documents;
         assertTrue(perDoc <= COLD_SCAN_BUDGET_PER_DOC,
@@ -237,13 +237,13 @@ public class AllocationBudgetTest {
     @Test
     void lockedColdScanAllocatesUnderBudgetPerDoc() throws Exception {
         final var request = (AggregateRequest) RequestParser
-                .parseRequest(COLD_SCAN.formatted(TestGlobals.DB, TestGlobals.COLL));
-        final var documents = cache.pkIndexSize(TestGlobals.DB, TestGlobals.COLL);
+                .parseRequest(COLD_SCAN.formatted(TestGlobals.PROJECT, TestGlobals.COLL));
+        final var documents = cache.pkIndexSize(TestGlobals.PROJECT, TestGlobals.COLL);
         final var perDoc = cheapestOf(() -> {
-            cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+            cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
             holdingTheCollectionRead(() -> AggregationOperationHelper.processAggregation(request));
         }) / documents;
-        assertEquals(documents, cache.userCache().getCachedCollection(TestGlobals.DB, TestGlobals.COLL).size(),
+        assertEquals(documents, cache.userCache().getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL).size(),
                 "a complete locked scan within the budget admits the collection it read");
         assertTrue(perDoc <= LOCKED_COLD_SCAN_BUDGET_PER_DOC,
                 report("one document of a locked cold scan", perDoc, LOCKED_COLD_SCAN_BUDGET_PER_DOC));
@@ -252,8 +252,8 @@ public class AllocationBudgetTest {
     @Test
     void indexedFilterLimitAllocatesUnderBudget() throws Exception {
         final var request = (AggregateRequest) RequestParser
-                .parseRequest(INDEXED_FILTER_LIMIT.formatted(TestGlobals.DB, TestGlobals.COLL));
-        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, TestGlobals.COLL);
+                .parseRequest(INDEXED_FILTER_LIMIT.formatted(TestGlobals.PROJECT, TestGlobals.COLL));
+        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         holdingTheCollectionRead(() -> AggregationOperationHelper.processAggregation(request));
         final var measured = cheapestOf(
                 () -> holdingTheCollectionRead(() -> AggregationOperationHelper.processAggregation(request)));
@@ -262,20 +262,20 @@ public class AllocationBudgetTest {
     }
 
     private static void holdingTheCollectionRead(ThrowingAction action) throws Exception {
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
             action.run();
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     @Test
     void dirtyFindByIdAllocatesUnderBudget() throws Exception {
-        holdingTheCollectionRead(() -> cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL));
+        holdingTheCollectionRead(() -> cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL));
         final int[] next = {0};
         final var measured = cheapestOf(() -> {
-            final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.set_id("d" + next[0]++ * 41 % DOCS);
             request.setDirtyRead(true);
             assertInstanceOf(FindByIdResponse.class, ReadPathHelper.processFindByIdOperation(request, null));
@@ -286,27 +286,27 @@ public class AllocationBudgetTest {
 
     @Test
     void backgroundBatchOfOneAllocatesUnderBudget() throws Exception {
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
             for (final var field : List.of("cat", "email")) {
                 AggregationOperationHelper.processAggregation((AggregateRequest) RequestParser
-                        .parseRequest(INDEXED_LOOKUP.formatted(TestGlobals.DB, TestGlobals.COLL, field)));
+                        .parseRequest(INDEXED_LOOKUP.formatted(TestGlobals.PROJECT, TestGlobals.COLL, field)));
             }
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         final int[] next = {0};
-        final var measured = cheapestOf(
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("d" + next[0]++ * 53)));
+        final var measured = cheapestOf(() -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL,
+                List.of("d" + next[0]++ * 53)));
         assertTrue(measured <= BATCH_OF_ONE_BUDGET,
                 report("a background batch of one id", measured, BATCH_OF_ONE_BUDGET));
     }
 
     @Test
     void writePathPageBookingOfOneEventAllocatesUnderBudget() throws Exception {
-        final var incarnation = CollectionIncarnation.current(TestGlobals.DB, TestGlobals.COLL);
+        final var incarnation = CollectionIncarnation.current(TestGlobals.PROJECT, TestGlobals.COLL);
         final var updated = List.of(new EntityRef("d1", 0L, 600L, 590L));
-        final var measured = cheapestOf(() -> AdminPageHelper.bookWritePathPages(TestGlobals.DB, TestGlobals.COLL,
+        final var measured = cheapestOf(() -> AdminPageHelper.bookWritePathPages(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(), updated, incarnation));
         assertTrue(measured <= WRITE_PATH_PAGE_BOOKING_BUDGET,
                 report("the page booking of one event", measured, WRITE_PATH_PAGE_BOOKING_BUDGET));
@@ -315,14 +315,14 @@ public class AllocationBudgetTest {
     @Test
     void indexedIdLookupAllocatesUnderBudget() throws Exception {
         final var operator = new FieldOperator(FieldOperatorType.EQUALS, "cat", new JsonString("c3"));
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
             final var measured = cheapestOf(
-                    () -> cache.getIdsFromIndex(TestGlobals.DB, TestGlobals.COLL, "cat", operator, "c3"));
+                    () -> cache.getIdsFromIndex(TestGlobals.PROJECT, TestGlobals.COLL, "cat", operator, "c3"));
             assertTrue(measured <= INDEXED_ID_LOOKUP_BUDGET,
                     report("an indexed lookup of 500 ids", measured, INDEXED_ID_LOOKUP_BUDGET));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -332,21 +332,21 @@ public class AllocationBudgetTest {
                 new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "cat", new JsonString("c3"))),
                 new CountAggregationStep());
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        final var stillPending = pending.idsFor(TestGlobals.DB, TestGlobals.COLL);
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        final var stillPending = pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
-            final var counted = CountOperatorHelper.tryIndexOnlyCount(steps, TestGlobals.DB, TestGlobals.COLL,
+            final var counted = CountOperatorHelper.tryIndexOnlyCount(steps, TestGlobals.PROJECT, TestGlobals.COLL,
                     PipelineContext.withoutScripts());
             assertNotNull(counted, "an EQUALS on an indexed field is counted from the index");
             assertEquals(DOCS / 20, counted.result().get("count").asJsonNumber().asInteger());
-            final var measured = cheapestOf(() -> CountOperatorHelper.tryIndexOnlyCount(steps, TestGlobals.DB,
+            final var measured = cheapestOf(() -> CountOperatorHelper.tryIndexOnlyCount(steps, TestGlobals.PROJECT,
                     TestGlobals.COLL, PipelineContext.withoutScripts()));
             assertTrue(measured <= EQUALS_INDEX_COUNT_BUDGET,
                     report("an index-only COUNT of a 500-id EQUALS", measured, EQUALS_INDEX_COUNT_BUDGET));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
-            pending.mark(TestGlobals.DB, TestGlobals.COLL, stillPending);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
+            pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, stillPending);
         }
     }
 
@@ -371,7 +371,7 @@ public class AllocationBudgetTest {
         }
         final var data = new JsonObject();
         data.add("rows", rows);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("large");
         final var size = entry.encodeLine().length;
         assertTrue(size > 1_000_000, String.valueOf(size));
@@ -408,7 +408,7 @@ public class AllocationBudgetTest {
 
     @Test
     void parsingASaveRequestStaysSmall() throws Exception {
-        final var line = "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var line = "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":" + new EJson().toJson(document(1, 1)) + "}";
         final var measured = cheapestOf(() -> RequestParser.parseRequest(line));
         assertTrue(measured <= SAVE_REQUEST_PARSE_BUDGET,
@@ -421,7 +421,7 @@ public class AllocationBudgetTest {
             final int[] next = {0};
             final var measured = cheapestOf(() -> {
                 final var i = next[0]++ * 41 % DOCS;
-                final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+                final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
                 request.set_id("d" + i);
                 request.setObject(document(i, 7));
                 assertEquals(OperationStatus.OK,
@@ -434,13 +434,13 @@ public class AllocationBudgetTest {
     @Test
     void indexedFilterLimitInTransactionAllocatesUnderBudget() throws Exception {
         inTransaction(transaction -> {
-            final var buffered = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var buffered = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             buffered.set_id("d3");
             buffered.setObject(document(3, 9));
             assertEquals(OperationStatus.OK, TransactionOperationHelper.bufferSave(buffered, transaction).getStatus());
             final var request = (AggregateRequest) RequestParser
-                    .parseRequest(INDEXED_FILTER_LIMIT.formatted(TestGlobals.DB, TestGlobals.COLL));
-            IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, TestGlobals.COLL);
+                    .parseRequest(INDEXED_FILTER_LIMIT.formatted(TestGlobals.PROJECT, TestGlobals.COLL));
+            IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
             ReadPathHelper.processAggregateOperation(request, transaction);
             final var measured = cheapestOf(() -> assertEquals(OperationStatus.OK,
                     ReadPathHelper.processAggregateOperation(request, transaction).getStatus()));

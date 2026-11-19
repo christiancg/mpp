@@ -78,7 +78,7 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
         final var dtxId = UUID.randomUUID().toString();
         preparedSave(dtxId, 0, document("deletedLater", "mine"));
         markPrepared(dtxId);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "deletedLater", clock.next());
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "deletedLater", clock.next());
 
         commitPrepared(dtxId);
 
@@ -89,7 +89,7 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
     public void test_an_id_deleted_before_the_prepare_is_recreated() throws Exception {
         clustered(true);
         final var dtxId = UUID.randomUUID().toString();
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "deletedEarlier", clock.next());
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "deletedEarlier", clock.next());
         preparedSave(dtxId, 0, document("deletedEarlier", "mine"));
         markPrepared(dtxId);
 
@@ -109,7 +109,7 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
         preparedSave(dtxId, 1, document("ownDelete", "mine"));
         markPrepared(dtxId);
         applyPrefix(List.of(delete.get_id()), 1);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "ownDelete", delete.versionAt(0));
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "ownDelete", delete.versionAt(0));
 
         commitPrepared(dtxId);
 
@@ -122,7 +122,7 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
         final var dtxId = UUID.randomUUID().toString();
         preparedSave(dtxId, 0, document("unreadableTombstones", "mine"));
         markPrepared(dtxId);
-        final var tombstones = new File(TestUtils.getDbPath(fs), TestGlobals.DB + File.separator + TestGlobals.COLL
+        final var tombstones = new File(TestUtils.getDbPath(fs), TestGlobals.PROJECT + File.separator + TestGlobals.COLL
                 + File.separator + TestGlobals.COLL + "-tombstones.idx");
         Files.deleteIfExists(tombstones.toPath());
         assertTrue(tombstones.mkdirs(), "a directory in place of the tombstone file makes its read fail");
@@ -141,7 +141,7 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
         final var dtxId = UUID.randomUUID().toString();
         preparedSave(dtxId, 0, document("retried", "v"));
         final var late = new AdminTransactionEntry(dtxId, "client", 1, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, LATE_COLL, document("late", "v"));
+                TestGlobals.PROJECT, LATE_COLL, document("late", "v"));
         AdminOperationHelper.saveTransactionOp(late);
         markPrepared(dtxId);
 
@@ -149,8 +149,8 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
                 () -> TransactionRecovery.resolveFromDurable(dtxId, true, 1000L));
         assertTrue(locks.isWriteLockedByCurrentThread(collId), "the failed attempt keeps its lock by design");
 
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, LATE_COLL));
-        fs.createCollectionFile(TestGlobals.DB, LATE_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, LATE_COLL));
+        fs.createCollectionFile(TestGlobals.PROJECT, LATE_COLL);
         TransactionRecovery.resolveFromDurable(dtxId, true, 1000L);
 
         assertFalse(Tx2pcLog.isPrepared(dtxId));
@@ -158,9 +158,9 @@ public class VersionedPreparedReplayTest extends VersionedReplaySupport {
                 "a retry on the same thread must not leave the earlier attempt's hold behind");
         final var otherThread = new boolean[1];
         final var probe = Thread.ofPlatform().start(() -> {
-            otherThread[0] = locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL);
+            otherThread[0] = locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             if (otherThread[0]) {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join();

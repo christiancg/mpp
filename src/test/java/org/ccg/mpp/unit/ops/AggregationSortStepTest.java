@@ -31,7 +31,7 @@ public class AggregationSortStepTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -47,10 +47,10 @@ public class AggregationSortStepTest {
             obj.addProperty("score", s);
         else if (fieldValue instanceof Number n)
             obj.addProperty("score", n);
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     @Test
@@ -60,7 +60,7 @@ public class AggregationSortStepTest {
         insertEntry(cache, "s2", 10);
         insertEntry(cache, "s3", 20);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("score", true)));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -78,7 +78,7 @@ public class AggregationSortStepTest {
         insertEntry(cache, "sd2", 10);
         insertEntry(cache, "sd3", 20);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("score", false)));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -93,14 +93,14 @@ public class AggregationSortStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex(Cache cache, String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(field));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(field));
     }
 
     @Test
@@ -111,7 +111,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "s3", "score", new JsonNumber(20));
         enableIndex(cache, "score");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("score", true)));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -129,7 +129,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "s3", "score", new JsonNumber(20));
         enableIndex(cache, "score");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("score", false)));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -147,7 +147,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "s3", "score", new JsonNumber(20));
         enableIndex(cache, "score");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.GREATER_THAN, "score", new JsonNumber(10))),
@@ -170,7 +170,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "o1", "meta", obj);
         enableIndex(cache, "meta");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("meta", true)));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -190,7 +190,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "v5", "score", new JsonNumber(40));
         enableIndex(cache, "score");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("score", true), new LimitAggregationStep(3)));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -210,7 +210,7 @@ public class AggregationSortStepTest {
         addDoc(cache, "w5", "score", new JsonNumber(40));
         enableIndex(cache, "score");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("score", false), new LimitAggregationStep(2)));
         final var result = AggregationOperationHelper.processAggregation(req);
 

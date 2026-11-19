@@ -25,7 +25,7 @@ public class SaveTopLevelIdTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -37,7 +37,7 @@ public class SaveTopLevelIdTest {
     private SaveRequest withTopLevelIdOnly(String id, String name) {
         final var object = new JsonObject();
         object.addProperty("name", name);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         return request;
@@ -47,14 +47,14 @@ public class SaveTopLevelIdTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("name", name);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         processor.processMessage(request);
     }
 
     private FindByIdResponse findById(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return (FindByIdResponse) processor.processMessage(request);
     }
@@ -98,7 +98,7 @@ public class SaveTopLevelIdTest {
         final var object = new JsonObject();
         object.addProperty("_id", "inside");
         object.addProperty("name", "x");
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id("outside");
 
@@ -111,7 +111,7 @@ public class SaveTopLevelIdTest {
         final var object = new JsonObject();
         object.addProperty("_id", "only-in-object");
         object.addProperty("name", "first");
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         processor.processMessage(request);
 

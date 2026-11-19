@@ -11,11 +11,11 @@ import org.junit.jupiter.api.Test;
 
 public class AdminRecordNamesTest {
     @Test
-    public void databaseKeys() {
-        assertTrue(AdminRecordNames.accepts(AdminRecordKey.database("shop")));
-        assertFalse(AdminRecordNames.accepts(AdminRecordKey.database("../peer_escape_marker")));
-        assertFalse(AdminRecordNames.accepts(AdminRecordKey.database("admin")));
-        assertFalse(AdminRecordNames.accepts(new AdminRecordKey(Kind.DATABASE, "shop", "other")));
+    public void projectKeys() {
+        assertTrue(AdminRecordNames.accepts(AdminRecordKey.project("shop")));
+        assertFalse(AdminRecordNames.accepts(AdminRecordKey.project("../peer_escape_marker")));
+        assertFalse(AdminRecordNames.accepts(AdminRecordKey.project("admin")));
+        assertFalse(AdminRecordNames.accepts(new AdminRecordKey(Kind.PROJECT, "shop", "other")));
     }
 
     @Test
@@ -62,7 +62,7 @@ public class AdminRecordNamesTest {
     }
 
     @Test
-    public void rejectsAUserKeyWithADatabaseSegment() {
+    public void rejectsAUserKeyWithAProjectSegment() {
         assertNull(AdminRecordNames.parse("user|shop|alice"));
         assertFalse(AdminRecordNames.accepts(new AdminRecordKey(Kind.USER, "shop", "alice")));
     }
@@ -74,9 +74,9 @@ public class AdminRecordNamesTest {
 
     @Test
     public void rejectsAKeyThatDoesNotRoundTrip() {
-        assertNull(AdminRecordNames.parse("DATABASE|shop|shop"));
+        assertNull(AdminRecordNames.parse("PROJECT|shop|shop"));
         assertNull(AdminRecordNames.parse("unknown|shop|shop"));
-        assertNull(AdminRecordNames.parse("database|shop"));
+        assertNull(AdminRecordNames.parse("project|shop"));
         assertNull(AdminRecordNames.parse(null));
     }
 

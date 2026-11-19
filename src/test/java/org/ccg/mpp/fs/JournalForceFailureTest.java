@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 @RequiresDirectorySync
 public class JournalForceFailureTest {
-    private static final String DB = "journalDb";
+    private static final String PROJECT = "journalProject";
     private static final String COLL = "journal-coll";
 
     @TempDir
@@ -33,7 +33,7 @@ public class JournalForceFailureTest {
     public void setUp() throws Exception {
         paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(paths.collectionFolder(DB, COLL).mkdirs());
+        assertTrue(paths.collectionFolder(PROJECT, COLL).mkdirs());
         recorder = RecordingForcer.install(true);
     }
 
@@ -51,7 +51,7 @@ public class JournalForceFailureTest {
 
     @Test
     public void aTombstoneFileWhoseForceFailedIsRewrittenBeforeTheNextAppend() throws Exception {
-        final var file = paths.tombstoneFile(DB, COLL);
+        final var file = paths.tombstoneFile(PROJECT, COLL);
         TombstoneStore.appendResident(file, List.of("a"), List.of(1L), true);
         recorder.failingFor(Globals.TOMBSTONE_FILE_NAME + ".idx");
         assertThrows(IOException.class, () -> TombstoneStore.appendResident(file, List.of("b"), List.of(2L), true));
@@ -70,23 +70,23 @@ public class JournalForceFailureTest {
     @Test
     public void anIntentLogWhoseForceFailedIsRewrittenBeforeTheNextIntent() throws Exception {
         final var journal = new WriteIntentJournal(paths);
-        final var held = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var held = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
         recorder.failingFor(Globals.INTENT_LOG_EXTENSION);
-        assertThrows(IOException.class, () -> journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(2))));
+        assertThrows(IOException.class, () -> journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(2))));
         recorder.failingFor(null);
-        final var log = paths.intentLog(DB, COLL);
+        final var log = paths.intentLog(PROJECT, COLL);
         final var failedInode = inodeOf(log);
 
-        final var next = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(3)));
+        final var next = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(3)));
 
         assertNotEquals(failedInode, inodeOf(log), "the next intent never re-forces the inode whose force failed");
         assertFalse(ForceFailures.hasFailed(log.toPath()));
-        assertEquals(List.of(held, next), journal.openIntents(DB, COLL));
+        assertEquals(List.of(held, next), journal.openIntents(PROJECT, COLL));
     }
 
     @Test
     public void aRetractAfterAFailedForceRenewsTheInodeFirst() throws Exception {
-        final var file = paths.tombstoneFile(DB, COLL);
+        final var file = paths.tombstoneFile(PROJECT, COLL);
         TombstoneStore.appendResident(file, List.of("a", "a"), List.of(1L, 4L), true);
         recorder.failingFor(Globals.TOMBSTONE_FILE_NAME + ".idx");
         assertThrows(IOException.class, () -> TombstoneStore.appendResident(file, List.of("b"), List.of(2L), true));

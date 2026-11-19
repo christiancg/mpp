@@ -57,10 +57,10 @@ public class TriggerAdmissionWaitTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OUTPUT_COLL));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OUTPUT_COLL));
         TriggerTestSupport.createDefiner(OWNER);
     }
 
@@ -82,17 +82,18 @@ public class TriggerAdmissionWaitTest {
         TestUtils.setPrivateField(configuration, "triggerTimeoutMs", 5_000L);
         TestUtils.setPrivateField(configuration, "triggerMaxDepth", 3);
         TestUtils.setPrivateField(configuration, "triggerRetryBackoffMs", 20L);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : IocContainer.get(FileSystem.class).metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            IocContainer.get(FileSystem.class).metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : IocContainer.get(FileSystem.class).metadataFiles()
+                .listProcedureNames(TestGlobals.PROJECT)) {
+            IocContainer.get(FileSystem.class).metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "job",
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "job",
                 "import db from 'db'; import args from 'args'; db.save(db.name, '" + OUTPUT_COLL
                         + "', { _id: args.id, ok: true }); return 'ok';"),
                 OWNER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "job",
                         TriggerDefinition.MODE_DOCUMENT, false, true, OWNER, 1L, 1L, 1L, OWNER)));
     }
@@ -106,19 +107,20 @@ public class TriggerAdmissionWaitTest {
     private static TriggerEvent event(String id) {
         final var data = new JsonObject();
         data.addProperty(Globals.PK_FIELD, id);
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "job", false,
-                List.of(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data)), OWNER, 0);
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "job", false,
+                List.of(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data)), OWNER, 0);
     }
 
     private boolean written(String id) throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, OUTPUT_COLL, Set.of(id)).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, OUTPUT_COLL, Set.of(id)).isEmpty();
     }
 
     @Test
     public void test_a_trigger_refused_a_slice_waits_and_runs_once_a_permit_closes() throws Exception {
         admission.reconfigure(0, DEADLINE_MS, 1, 0);
         final var retriedBefore = triggerExecutor.getRetried();
-        final var held = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquireSlices(OWNER, TestGlobals.DB));
+        final var held = assertInstanceOf(ScriptAdmission.Permit.class,
+                admission.acquireSlices(OWNER, TestGlobals.PROJECT));
         final var dispatcher = Thread.ofPlatform().start(() -> TriggerDispatcher.dispatch(event("waited-for")));
         assertTrue(Await.parked(dispatcher, Thread.State.TIMED_WAITING, DEADLINE_MS),
                 "the trigger never waited for the slice");
@@ -138,7 +140,7 @@ public class TriggerAdmissionWaitTest {
         triggerExecutor.start(retried::add);
         final var original = event("timed-out");
         try (var ignored = assertInstanceOf(ScriptAdmission.Permit.class,
-                admission.acquireSlices(OWNER, TestGlobals.DB))) {
+                admission.acquireSlices(OWNER, TestGlobals.PROJECT))) {
             final var start = System.nanoTime();
             TriggerDispatcher.dispatch(original);
             assertTrue((System.nanoTime() - start) / 1_000_000L >= 40L, "the dispatcher did not wait for a slice");
@@ -155,7 +157,7 @@ public class TriggerAdmissionWaitTest {
     public void test_admission_deferrals_are_logged_through_a_rate_limiter() throws Exception {
         admission.reconfigure(0, 0L, 1, 0);
         try (var ignored = assertInstanceOf(ScriptAdmission.Permit.class,
-                admission.acquireSlices(OWNER, TestGlobals.DB))) {
+                admission.acquireSlices(OWNER, TestGlobals.PROJECT))) {
             for (var i = 0; i < 100; i++) {
                 TriggerDispatcher.dispatch(event("deferred-" + i));
             }
@@ -172,7 +174,7 @@ public class TriggerAdmissionWaitTest {
         admission.reconfigure(0, DEADLINE_MS, 4, 0);
         final var retriedBefore = triggerExecutor.getRetried();
         triggerExecutor.start(TriggerDispatcher::dispatch);
-        final var stored = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var stored = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         stored.setObjects(burstIds().stream().map(id -> {
             final var object = new JsonObject();
             object.addProperty(Globals.PK_FIELD, id);
@@ -196,7 +198,7 @@ public class TriggerAdmissionWaitTest {
 
     private int landed(Set<String> ids) {
         try {
-            return cache.getEntriesByIds(TestGlobals.DB, OUTPUT_COLL, ids).size();
+            return cache.getEntriesByIds(TestGlobals.PROJECT, OUTPUT_COLL, ids).size();
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }

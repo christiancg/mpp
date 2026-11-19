@@ -28,14 +28,14 @@ public class SnapshotRegistryTest {
     }
 
     @Test
-    public void test_only_a_database_with_an_open_snapshot_is_watched() {
-        assertFalse(support.registry.watches(SnapshotTestSupport.DB));
+    public void test_only_a_project_with_an_open_snapshot_is_watched() {
+        assertFalse(support.registry.watches(SnapshotTestSupport.PROJECT));
         final var snapshotId = support.start();
 
-        assertTrue(support.registry.watches(SnapshotTestSupport.DB));
+        assertTrue(support.registry.watches(SnapshotTestSupport.PROJECT));
         assertFalse(support.registry.watches("elsewhere"));
         support.release(support.client, snapshotId);
-        assertFalse(support.registry.watches(SnapshotTestSupport.DB));
+        assertFalse(support.registry.watches(SnapshotTestSupport.PROJECT));
     }
 
     @Test
@@ -43,7 +43,7 @@ public class SnapshotRegistryTest {
         final var snapshotId = support.start();
         final var copy = new RetiredCopies.RetiredCopy("d0", 0L, 0L, 10L);
 
-        support.registry.retiring(SnapshotTestSupport.DB, SnapshotTestSupport.COLL, List.of(copy), List.of(),
+        support.registry.retiring(SnapshotTestSupport.PROJECT, SnapshotTestSupport.COLL, List.of(copy), List.of(),
                 ignored -> {
                     throw new IOException("disk full");
                 });
@@ -51,13 +51,13 @@ public class SnapshotRegistryTest {
         final var read = support.read(support.client, snapshotId, SnapshotTestSupport.COLL, null, 5);
         assertEquals(ErrorCode.SNAPSHOT_ABORTED.getCode(), read.getErrorCode());
         assertTrue(read.getMessage().contains("disk full"), read.getMessage());
-        assertFalse(support.registry.watches(SnapshotTestSupport.DB));
+        assertFalse(support.registry.watches(SnapshotTestSupport.PROJECT));
     }
 
     @Test
     public void test_a_collection_outside_the_snapshot_is_never_imaged() {
         final var snapshotId = support.start();
-        support.registry.retiring(SnapshotTestSupport.DB, "notCaptured",
+        support.registry.retiring(SnapshotTestSupport.PROJECT, "notCaptured",
                 List.of(new RetiredCopies.RetiredCopy("x", 0L, 0L, 1L), new RetiredCopies.RetiredCopy("y", 0L, 0L, 1L)),
                 List.of(), ignored -> {
                     throw new IOException("must not be read");
@@ -68,7 +68,7 @@ public class SnapshotRegistryTest {
     }
 
     @Test
-    public void test_two_snapshots_of_one_database_keep_their_own_versions() {
+    public void test_two_snapshots_of_one_project_keep_their_own_versions() {
         support.save("d0", 0);
         final var first = support.start();
         support.save("d0", 1);
@@ -80,10 +80,10 @@ public class SnapshotRegistryTest {
     }
 
     @Test
-    public void test_dropping_the_database_aborts_its_snapshots() {
+    public void test_dropping_the_project_aborts_its_snapshots() {
         final var snapshotId = support.start();
 
-        support.registry.abortDatabase(SnapshotTestSupport.DB, "its database was dropped");
+        support.registry.abortProject(SnapshotTestSupport.PROJECT, "its project was dropped");
 
         assertEquals(ErrorCode.SNAPSHOT_ABORTED.getCode(),
                 support.read(support.client, snapshotId, SnapshotTestSupport.COLL, null, 5).getErrorCode());

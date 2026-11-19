@@ -9,7 +9,7 @@ import org.ccg.mpp.ejson.elements.JsonString;
 
 public final class Requests {
     public static final String TYPE = "type";
-    public static final String DATABASE = "databaseName";
+    public static final String PROJECT = "projectName";
     public static final String COLLECTION = "collectionName";
     public static final String NAME = "name";
     public static final String PROCEDURE_NAME = "procedureName";
@@ -38,20 +38,20 @@ public final class Requests {
         return typed("SERVER_INFO");
     }
 
-    public static JsonObject listDatabases() {
-        return typed("LIST_DATABASES");
+    public static JsonObject listProjects() {
+        return typed("LIST_PROJECTS");
     }
 
-    public static JsonObject listCollections(String database) {
-        return onDatabase("LIST_COLLECTIONS", database);
+    public static JsonObject listCollections(String project) {
+        return onProject("LIST_COLLECTIONS", project);
     }
 
     public static JsonObject stats() {
-        return typed("GET_DATABASE_STATS");
+        return typed("GET_PROJECT_STATS");
     }
 
-    public static JsonObject startSnapshot(String database, List<String> collections) {
-        final var request = onDatabase("START_SNAPSHOT", database);
+    public static JsonObject startSnapshot(String project, List<String> collections) {
+        final var request = onProject("START_SNAPSHOT", project);
         final var names = new JsonArray();
         for (final var collection : collections) {
             names.add(new JsonString(collection));
@@ -60,9 +60,9 @@ public final class Requests {
         return request;
     }
 
-    public static JsonObject readSnapshot(String database, String collection, String snapshotId, String afterId,
+    public static JsonObject readSnapshot(String project, String collection, String snapshotId, String afterId,
             int limit) {
-        final var request = onCollection("READ_SNAPSHOT", database, collection);
+        final var request = onCollection("READ_SNAPSHOT", project, collection);
         request.add(SNAPSHOT_ID, new JsonString(snapshotId));
         if (afterId != null) {
             request.add(AFTER_ID, new JsonString(afterId));
@@ -71,54 +71,54 @@ public final class Requests {
         return request;
     }
 
-    public static JsonObject releaseSnapshot(String database, String snapshotId) {
-        final var request = onDatabase("RELEASE_SNAPSHOT", database);
+    public static JsonObject releaseSnapshot(String project, String snapshotId) {
+        final var request = onProject("RELEASE_SNAPSHOT", project);
         request.add(SNAPSHOT_ID, new JsonString(snapshotId));
         return request;
     }
 
-    public static JsonObject getSchema(String database, String collection) {
-        return onCollection("GET_SCHEMA", database, collection);
+    public static JsonObject getSchema(String project, String collection) {
+        return onCollection("GET_SCHEMA", project, collection);
     }
 
-    public static JsonObject listProcedures(String database, boolean includeSource) {
-        final var request = onDatabase("LIST_PROCEDURES", database);
+    public static JsonObject listProcedures(String project, boolean includeSource) {
+        final var request = onProject("LIST_PROCEDURES", project);
         request.add("includeSource", JsonBoolean.of(includeSource));
         return request;
     }
 
-    public static JsonObject listTriggers(String database) {
-        return onDatabase("LIST_TRIGGERS", database);
+    public static JsonObject listTriggers(String project) {
+        return onProject("LIST_TRIGGERS", project);
     }
 
-    public static JsonObject listSchedules(String database, boolean includeArgs) {
-        final var request = onDatabase("LIST_SCHEDULES", database);
+    public static JsonObject listSchedules(String project, boolean includeArgs) {
+        final var request = onProject("LIST_SCHEDULES", project);
         request.add("includeArgs", JsonBoolean.of(includeArgs));
         return request;
     }
 
-    public static JsonObject createDatabase(String database) {
-        return onDatabase("CREATE_DATABASE", database);
+    public static JsonObject createProject(String project) {
+        return onProject("CREATE_PROJECT", project);
     }
 
-    public static JsonObject createCollection(String database, String collection) {
-        return onCollection("CREATE_COLLECTION", database, collection);
+    public static JsonObject createCollection(String project, String collection) {
+        return onCollection("CREATE_COLLECTION", project, collection);
     }
 
-    public static JsonObject bulkSave(String database, String collection, JsonArray documents) {
-        final var request = onCollection("BULK_SAVE", database, collection);
+    public static JsonObject bulkSave(String project, String collection, JsonArray documents) {
+        final var request = onCollection("BULK_SAVE", project, collection);
         request.add("objects", documents);
         return request;
     }
 
-    public static JsonObject saveSchema(String database, String collection, JsonObject schema) {
-        final var request = onCollection("SAVE_SCHEMA", database, collection);
+    public static JsonObject saveSchema(String project, String collection, JsonObject schema) {
+        final var request = onCollection("SAVE_SCHEMA", project, collection);
         request.add("schema", schema);
         return request;
     }
 
-    public static JsonObject createIndexes(String database, String collection, List<String> fields) {
-        final var request = onCollection("CREATE_INDEX", database, collection);
+    public static JsonObject createIndexes(String project, String collection, List<String> fields) {
+        final var request = onCollection("CREATE_INDEX", project, collection);
         final var names = new JsonArray();
         for (final var field : fields) {
             names.add(new JsonString(field));
@@ -127,8 +127,8 @@ public final class Requests {
         return request;
     }
 
-    public static JsonObject saveProcedureFrom(String database, JsonObject listed) {
-        final var request = onDatabase("SAVE_PROCEDURE", database);
+    public static JsonObject saveProcedureFrom(String project, JsonObject listed) {
+        final var request = onProject("SAVE_PROCEDURE", project);
         copy(listed, request, NAME);
         if (listed.has("source")) {
             request.add("script", listed.get("source"));
@@ -137,14 +137,14 @@ public final class Requests {
         return request;
     }
 
-    public static JsonObject saveTriggerFrom(String database, JsonObject listed) {
-        final var request = onDatabase("SAVE_TRIGGER", database);
+    public static JsonObject saveTriggerFrom(String project, JsonObject listed) {
+        final var request = onProject("SAVE_TRIGGER", project);
         copy(listed, request, COLLECTION, NAME, "events", PROCEDURE_NAME, "mode", "timing", "allowCascade", "enabled");
         return request;
     }
 
-    public static JsonObject saveScheduleFrom(String database, JsonObject listed) {
-        final var request = onDatabase("SAVE_SCHEDULE", database);
+    public static JsonObject saveScheduleFrom(String project, JsonObject listed) {
+        final var request = onProject("SAVE_SCHEDULE", project);
         copy(listed, request, NAME, PROCEDURE_NAME);
         final var cron = listed.get(CRON);
         if (cron != null && cron.isJsonString() && !cron.asJsonString().getValue().isBlank()) {
@@ -171,14 +171,14 @@ public final class Requests {
         return request;
     }
 
-    private static JsonObject onDatabase(String type, String database) {
+    private static JsonObject onProject(String type, String project) {
         final var request = typed(type);
-        request.add(DATABASE, new JsonString(database));
+        request.add(PROJECT, new JsonString(project));
         return request;
     }
 
-    private static JsonObject onCollection(String type, String database, String collection) {
-        final var request = onDatabase(type, database);
+    private static JsonObject onCollection(String type, String project, String collection) {
+        final var request = onProject(type, project);
         request.add(COLLECTION, new JsonString(collection));
         return request;
     }

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 public class CacheSizeEstimatorTest {
     private static final HeapLayout LAYOUT = new HeapLayout(8, 12, 4);
-    private static final String DB = "estimatorDb";
+    private static final String PROJECT = "estimatorProject";
     private static final String COLL = "estimatorColl";
     private static final String TYPICAL_ID = "x".repeat(36);
     private static final long OLD_FLAT_FIELD_ENTRY_BYTES = 64L;
@@ -30,7 +30,7 @@ public class CacheSizeEstimatorTest {
 
     private static DbEntry entry(String id, JsonObject data) {
         data.addProperty("_id", id);
-        return DbEntry.fromJsonObject(DB, COLL, data);
+        return DbEntry.fromJsonObject(PROJECT, COLL, data);
     }
 
     private static DbEntry entryWith(String id, String key, String value) {
@@ -111,8 +111,8 @@ public class CacheSizeEstimatorTest {
 
     @Test
     public void test_pk_index_size_uses_id_lengths() {
-        final var shortId = new PkIndexEntry(DB, COLL, "abc", 0, 10, 0);
-        final var longId = new PkIndexEntry(DB, COLL, "a".repeat(20), 10, 10, 0);
+        final var shortId = new PkIndexEntry(PROJECT, COLL, "abc", 0, 10, 0);
+        final var longId = new PkIndexEntry(PROJECT, COLL, "a".repeat(20), 10, 10, 0);
         final var perEntry = LAYOUT.referenceBytes() + LAYOUT.shallowSize(PkIndexEntry.class);
         final var expected = perEntry + LAYOUT.stringSize("abc") + perEntry + LAYOUT.stringSize("a".repeat(20));
 
@@ -125,7 +125,7 @@ public class CacheSizeEstimatorTest {
     public void test_pk_bytes_per_entry_times_count() {
         final var entries = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < 4; i++) {
-            entries.add(new PkIndexEntry(DB, COLL, "id-" + i, i * 10L, 10, 0));
+            entries.add(new PkIndexEntry(PROJECT, COLL, "id-" + i, i * 10L, 10, 0));
         }
         final var perEntry = CacheSizeEstimator.pkIndexBytesPerEntry(entries, LAYOUT);
         assertEquals(LAYOUT.referenceBytes() + LAYOUT.shallowSize(PkIndexEntry.class) + LAYOUT.stringSize("id-0"),
@@ -147,8 +147,9 @@ public class CacheSizeEstimatorTest {
         final var ids = new IdSet();
         ids.add("a1");
         ids.add("b2");
-        final List<FieldIndexEntry<?>> entries = List.of(new FieldIndexEntry<>(DB, COLL, "red", ids),
-                new FieldIndexEntry<>(DB, COLL, 42.0, Set.of("c3")), new FieldIndexEntry<>(DB, COLL, true, null));
+        final List<FieldIndexEntry<?>> entries = List.of(new FieldIndexEntry<>(PROJECT, COLL, "red", ids),
+                new FieldIndexEntry<>(PROJECT, COLL, 42.0, Set.of("c3")),
+                new FieldIndexEntry<>(PROJECT, COLL, true, null));
         final var idCost = LAYOUT.stringSize("a1");
         final var red = fieldEntryOverhead() + LAYOUT.stringSize("red") + LAYOUT.referenceArraySize(2) + 2 * idCost;
         final var number = fieldEntryOverhead() + LAYOUT.shallowSize(Double.class) + LAYOUT.referenceArraySize(1)
@@ -217,7 +218,7 @@ public class CacheSizeEstimatorTest {
             for (var i = 0; i < count; i++) {
                 ids.add("id-" + i);
             }
-            final var entry = new FieldIndexEntry<Object>(DB, COLL, "shared value", ids);
+            final var entry = new FieldIndexEntry<Object>(PROJECT, COLL, "shared value", ids);
             var pieces = CacheSizeEstimator.fieldEntryShellSize(entry.getValue(), ids.size());
             for (final var id : ids) {
                 pieces += CacheSizeEstimator.fieldIndexIdSize(id);
@@ -259,8 +260,8 @@ public class CacheSizeEstimatorTest {
         final var siblingData = parsed("{\"_id\":\"mix2\",\"estimatorMixName\":\"b\",\"estimatorMixCount\":2}");
         assertNotNull(shapedData.shape());
         assertSame(shapedData.shape(), siblingData.shape());
-        final var shaped = DbEntry.fromJsonObject(DB, COLL, shapedData);
-        final var owned = DbEntry.fromJsonObject(DB, COLL, ownedCopyOf(shapedData));
+        final var shaped = DbEntry.fromJsonObject(PROJECT, COLL, shapedData);
+        final var owned = DbEntry.fromJsonObject(PROJECT, COLL, ownedCopyOf(shapedData));
         final var entryBytes = LAYOUT.shallowSize(DbEntry.class);
 
         for (final var dbEntry : List.of(shaped, owned)) {
@@ -274,7 +275,7 @@ public class CacheSizeEstimatorTest {
         }
 
         shapedData.shape().pin();
-        final var pinned = DbEntry.fromJsonObject(DB, COLL, siblingData);
+        final var pinned = DbEntry.fromJsonObject(PROJECT, COLL, siblingData);
         assertTrue(CacheSizeEstimator.estimateEntry(pinned, LAYOUT) < CacheSizeEstimator.estimateEntry(owned, LAYOUT),
                 "a pinned shape is not charged to the document");
     }

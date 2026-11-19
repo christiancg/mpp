@@ -69,16 +69,16 @@ class Stats:
 
 
 class Divergence:
-    def __init__(self, oracle: str, db: str, coll: str, label: str, left, right):
+    def __init__(self, oracle: str, project: str, coll: str, label: str, left, right):
         self.oracle = oracle
-        self.db = db
+        self.project = project
         self.coll = coll
         self.label = label
         self.left = left
         self.right = right
 
     def describe(self) -> str:
-        return (f"{self.oracle} on {self.db}|{self.coll} :: {self.label}\n"
+        return (f"{self.oracle} on {self.project}|{self.coll} :: {self.label}\n"
                 f"           left={_render(self.left)}\n"
                 f"           right={_render(self.right)}")
 
@@ -130,8 +130,8 @@ def filter_step(field: str, operator: str, operand) -> dict:
             "operator": {"fieldOperatorType": operator, "field": field, "value": operand}}
 
 
-def aggregate(executor, db: str, coll: str, steps: list) -> dict:
-    return executor.request({"type": "AGGREGATE", "databaseName": db,
+def aggregate(executor, project: str, coll: str, steps: list) -> dict:
+    return executor.request({"type": "AGGREGATE", "projectName": project,
                              "collectionName": coll, "aggregationSteps": steps})
 
 
@@ -246,9 +246,9 @@ def map_queries(rng, fields: list) -> list:
 
 def join_queries(fields: list, partners: list) -> list:
     queries = []
-    for db, coll in partners:
+    for project, coll in partners:
         for field in fields:
-            queries.append(Query(f"JOIN {db}|{coll} on {field}",
+            queries.append(Query(f"JOIN {project}|{coll} on {field}",
                                  [{"type": "JOIN", "joinCollection": coll, "localField": field,
                                    "remoteField": field, "asField": "joined"}],
                                  False, RESHAPING_QUERY))
@@ -337,11 +337,11 @@ def queryable_fields(indexed: list) -> list:
 def build_matrices(outcome, rng, operands_per_operator: int = 2) -> dict:
     matrices = {}
     live = outcome.live()
-    for db, coll in live:
-        fields = queryable_fields(outcome.indexed_fields(db, coll))
-        partners = [other for other in live if other != (db, coll) and other[0] == db]
-        matrices[(db, coll)] = (queries_for(rng, fields, operands_per_operator)
-                                + join_queries(fields, partners))
+    for project, coll in live:
+        fields = queryable_fields(outcome.indexed_fields(project, coll))
+        partners = [other for other in live if other != (project, coll) and other[0] == project]
+        matrices[(project, coll)] = (queries_for(rng, fields, operands_per_operator)
+                                     + join_queries(fields, partners))
     return matrices
 
 
@@ -351,63 +351,64 @@ def is_join(query) -> bool:
 
 def index_vs_scan(executor, matrices: dict, stats: Stats) -> list:
     divergences = []
-    for (db, coll), queries in sorted(matrices.items()):
+    for (project, coll), queries in sorted(matrices.items()):
         stats.bump("indexed_collections")
         for query in queries:
             if query.kind == REDUCE_QUERY or is_join(query):
                 continue
             stats.bump("index_vs_scan_queries")
-            indexed = answer_of(aggregate(executor, db, coll, query.steps), query.ordered)
-            scanned = answer_of(aggregate(executor, db, coll, forced_scan(query.steps)),
+            indexed = answer_of(aggregate(executor, project, coll, query.steps), query.ordered)
+            scanned = answer_of(aggregate(executor, project, coll, forced_scan(query.steps)),
                                 query.ordered)
             if indexed != scanned:
                 divergences.append(
-                    Divergence("index-vs-scan", db, coll, query.label, indexed, scanned))
+                    Divergence("index-vs-scan", project, coll, query.label, indexed, scanned))
     return divergences
 
 
 def join_vs_scan(executor, matrices: dict, outcome, stats: Stats) -> list:
     joins = []
-    for (db, coll), queries in sorted(matrices.items()):
+    for (project, coll), queries in sorted(matrices.items()):
         for query in queries:
             step = query.steps[0] if is_join(query) else None
-            if step and step["remoteField"] in outcome.indexed_fields(db, step["joinCollection"]):
-                joins.append((db, coll, query, step["joinCollection"], step["remoteField"]))
-    indexed = [answer_of(aggregate(executor, db, coll, query.steps), query.ordered)
-               for db, coll, query, _partner, _field in joins]
+            if step and step["remoteField"] in outcome.indexed_fields(project, step["joinCollection"]):
+                joins.append((project, coll, query, step["joinCollection"], step["remoteField"]))
+    indexed = [answer_of(aggregate(executor, project, coll, query.steps), query.ordered)
+               for project, coll, query, _partner, _field in joins]
     divergences = []
-    for db, partner, field in sorted({(db, partner, field) for db, _coll, _query, partner, field in joins}):
-        response = executor.request({"type": "DROP_INDEX", "databaseName": db, "collectionName": partner,
+    for project, partner, field in sorted({(project, partner, field)
+                                           for project, _coll, _query, partner, field in joins}):
+        response = executor.request({"type": "DROP_INDEX", "projectName": project, "collectionName": partner,
                                      "fieldName": field})
         if not accepted(response):
-            divergences.append(Divergence("join-vs-scan", db, partner, f"DROP_INDEX {field} for the scan baseline",
+            divergences.append(Divergence("join-vs-scan", project, partner, f"DROP_INDEX {field} for the scan baseline",
                                           "OK", response.get("errorCode") or response.get("status")))
     if divergences:
         return divergences
-    for (db, coll, query, _partner, _field), indexed_answer in zip(joins, indexed):
+    for (project, coll, query, _partner, _field), indexed_answer in zip(joins, indexed):
         stats.bump("join_vs_scan_queries")
-        scanned = answer_of(aggregate(executor, db, coll, query.steps), query.ordered)
+        scanned = answer_of(aggregate(executor, project, coll, query.steps), query.ordered)
         if indexed_answer != scanned:
-            divergences.append(Divergence("join-vs-scan", db, coll, query.label, indexed_answer, scanned))
+            divergences.append(Divergence("join-vs-scan", project, coll, query.label, indexed_answer, scanned))
     return divergences
 
 
 def count_vs_rows(executor, matrices: dict, stats: Stats) -> list:
     divergences = []
-    for (db, coll), queries in sorted(matrices.items()):
+    for (project, coll), queries in sorted(matrices.items()):
         for query in queries:
             if query.kind != FILTER_QUERY:
                 continue
             stats.bump("count_vs_rows_queries")
-            counted = count_of(aggregate(executor, db, coll,
+            counted = count_of(aggregate(executor, project, coll,
                                          query.steps + [{"type": "COUNT"}]))
-            response = aggregate(executor, db, coll, query.steps)
+            response = aggregate(executor, project, coll, query.steps)
             rows = rows_of(response)
             listed = len(rows) if rows is not None else (
                 "ERROR", response.get("errorCode") or response.get("status"))
             if counted != listed:
                 divergences.append(
-                    Divergence("count-vs-rows", db, coll, query.label, counted, listed))
+                    Divergence("count-vs-rows", project, coll, query.label, counted, listed))
     return divergences
 
 
@@ -424,39 +425,39 @@ def _scalar_not_equals(query):
 
 def not_equals_vs_not_in(executor, matrices: dict, stats: Stats) -> list:
     divergences = []
-    for (db, coll), queries in sorted(matrices.items()):
+    for (project, coll), queries in sorted(matrices.items()):
         for query in queries:
             operator = _scalar_not_equals(query)
             if operator is None:
                 continue
             stats.bump("not_equals_vs_not_in_queries")
-            not_equals = answer_of(aggregate(executor, db, coll, query.steps))
-            not_in = answer_of(aggregate(executor, db, coll, [
+            not_equals = answer_of(aggregate(executor, project, coll, query.steps))
+            not_in = answer_of(aggregate(executor, project, coll, [
                 filter_step(operator["field"], "NOT_IN", [operator["value"]])]))
             if not_equals != not_in:
                 divergences.append(
-                    Divergence("not-equals-vs-not-in", db, coll, query.label, not_equals, not_in))
+                    Divergence("not-equals-vs-not-in", project, coll, query.label, not_equals, not_in))
     return divergences
 
 
 def trailing_dot_refused(executor, matrices: dict, stats: Stats) -> list:
     divergences = []
-    for (db, coll), _queries in sorted(matrices.items()):
+    for (project, coll), _queries in sorted(matrices.items()):
         for alias in PRIMARY_KEY_ALIASES:
             stats.bump("trailing_dot_refused_queries")
-            response = aggregate(executor, db, coll, [filter_step(alias, "EQUALS", TRAILING_DOT_PROBE)])
+            response = aggregate(executor, project, coll, [filter_step(alias, "EQUALS", TRAILING_DOT_PROBE)])
             if response.get("errorCode") != TRAILING_DOT_REFUSAL_CODE:
-                divergences.append(Divergence("trailing-dot-refused", db, coll, f"FILTER {alias}",
+                divergences.append(Divergence("trailing-dot-refused", project, coll, f"FILTER {alias}",
                                               TRAILING_DOT_REFUSAL_CODE, answer_of(response)))
     return divergences
 
 
 def snapshot(executor, matrices: dict) -> dict:
     taken = {}
-    for (db, coll), queries in sorted(matrices.items()):
+    for (project, coll), queries in sorted(matrices.items()):
         for query in queries:
-            taken[(db, coll, query.label)] = answer_of(
-                aggregate(executor, db, coll, query.steps), query.ordered)
+            taken[(project, coll, query.label)] = answer_of(
+                aggregate(executor, project, coll, query.steps), query.ordered)
     return taken
 
 
@@ -469,7 +470,7 @@ def warm_vs_cold(executor, matrices: dict, stats: Stats) -> list:
         stats.bump("warm_vs_cold_queries")
         cold_answer = cold.get(key)
         if warm_answer != cold_answer:
-            db, coll, label = key
+            project, coll, label = key
             divergences.append(
-                Divergence("warm-vs-cold", db, coll, label, warm_answer, cold_answer))
+                Divergence("warm-vs-cold", project, coll, label, warm_answer, cold_answer))
     return divergences

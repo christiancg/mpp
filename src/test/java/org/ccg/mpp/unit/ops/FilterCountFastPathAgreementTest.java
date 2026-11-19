@@ -196,7 +196,7 @@ public class FilterCountFastPathAgreementTest extends FilterResolutionSupport {
     }
 
     private static FastCount fastCountOf(BaseAggregationStep... steps) throws IOException {
-        return CountOperatorHelper.tryIndexOnlyCount(List.of(steps), TestGlobals.DB, TestGlobals.COLL,
+        return CountOperatorHelper.tryIndexOnlyCount(List.of(steps), TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts());
     }
 
@@ -247,7 +247,7 @@ public class FilterCountFastPathAgreementTest extends FilterResolutionSupport {
     @Test
     public void test_a_throwing_map_script_fails_the_count_with_or_without_an_index() throws Exception {
         seed();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(indexedFilter(), map(null, new ScriptMidOperator(THROWING_SCRIPT)),
                 new CountAggregationStep()));
 
@@ -270,11 +270,11 @@ public class FilterCountFastPathAgreementTest extends FilterResolutionSupport {
 
         insert("c", FIELD, new JsonNumber(9));
         final var pending = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class);
-        pending.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("c"));
+        pending.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("c"));
         try {
             assertCountMatchesRows(queries);
         } finally {
-            pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -292,22 +292,22 @@ public class FilterCountFastPathAgreementTest extends FilterResolutionSupport {
         assertEquals(0, countOf(filter(FieldOperatorType.EQUALS, FIELD, new JsonString("zzz"))));
 
         final var locks = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class).stream()
+            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class).stream()
                     .filter(entry -> "Alpha".equals(entry.getValue())).findFirst().orElseThrow().getIds().add("b");
             assertEquals(3L, fastCountOf(alpha, new CountAggregationStep()).result().get("count").asJsonNumber()
                     .getValue().longValue(), "the EQUALS count sums the run's id sets instead of building one");
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         final var pending = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class);
-        pending.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("b"));
+        pending.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("b"));
         try {
             assertEquals(2, countOf(alpha), "a pending id sends the count down the set path that corrects it");
         } finally {
-            pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 

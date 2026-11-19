@@ -22,38 +22,38 @@ public final class PrimaryKeyIndexResolver {
     private PrimaryKeyIndexResolver() {
     }
 
-    public static Set<String> resolve(FieldOperator operator, String dbName, String collName, ReadObserver observer)
-            throws IOException {
+    public static Set<String> resolve(FieldOperator operator, String projectName, String collName,
+            ReadObserver observer) throws IOException {
         final var operand = operator.getValue();
         final var resolved = switch (operator.getFieldOperatorType()) {
-            case EQUALS -> idsAmong(Collections.singletonList(operand), dbName, collName);
+            case EQUALS -> idsAmong(Collections.singletonList(operand), projectName, collName);
             case NOT_EQUALS -> isNotPlainString(operand)
                     ? null
-                    : complementOf(idsAmong(List.of(operand), dbName, collName), dbName, collName);
-            case IN -> idsIn(operand, dbName, collName);
-            case NOT_IN -> complementOf(idsIn(operand, dbName, collName), dbName, collName);
-            case CONTAINS -> idsContaining(operand, dbName, collName);
+                    : complementOf(idsAmong(List.of(operand), projectName, collName), projectName, collName);
+            case IN -> idsIn(operand, projectName, collName);
+            case NOT_IN -> complementOf(idsIn(operand, projectName, collName), projectName, collName);
+            case CONTAINS -> idsContaining(operand, projectName, collName);
             case GREATER_THAN, GREATER_THAN_EQUALS, SMALLER_THAN, SMALLER_THAN_EQUALS -> null;
         };
         if (resolved != null) {
-            observer.indexUsed(Globals.PK_FIELD, Cache.getCollectionIdentifier(dbName, collName));
+            observer.indexUsed(Globals.PK_FIELD, Cache.getCollectionIdentifier(projectName, collName));
         }
         return resolved;
     }
 
-    public static Set<String> existingIds(Collection<JsonBaseElement> candidates, String dbName, String collName,
+    public static Set<String> existingIds(Collection<JsonBaseElement> candidates, String projectName, String collName,
             ReadObserver observer) throws IOException {
-        observer.indexUsed(Globals.PK_FIELD, Cache.getCollectionIdentifier(dbName, collName));
-        return idsAmong(candidates, dbName, collName);
+        observer.indexUsed(Globals.PK_FIELD, Cache.getCollectionIdentifier(projectName, collName));
+        return idsAmong(candidates, projectName, collName);
     }
 
-    private static Set<String> idsIn(JsonBaseElement operand, String dbName, String collName) throws IOException {
-        return operand instanceof JsonArray operands ? idsAmong(operands.asList(), dbName, collName) : Set.of();
+    private static Set<String> idsIn(JsonBaseElement operand, String projectName, String collName) throws IOException {
+        return operand instanceof JsonArray operands ? idsAmong(operands.asList(), projectName, collName) : Set.of();
     }
 
-    private static Set<String> idsAmong(Collection<JsonBaseElement> candidates, String dbName, String collName)
+    private static Set<String> idsAmong(Collection<JsonBaseElement> candidates, String projectName, String collName)
             throws IOException {
-        final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        final var pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         final var matched = new HashSet<String>();
         for (final var candidate : candidates) {
             if (isNotPlainString(candidate)) {
@@ -67,14 +67,14 @@ public final class PrimaryKeyIndexResolver {
         return matched;
     }
 
-    private static Set<String> idsContaining(JsonBaseElement operand, String dbName, String collName)
+    private static Set<String> idsContaining(JsonBaseElement operand, String projectName, String collName)
             throws IOException {
         if (isNotPlainString(operand)) {
             return Set.of();
         }
         final var needle = operand.asJsonString().getValue();
         final var matched = new HashSet<String>();
-        for (final var entry : cache.getPkIndexAndLoadIfNecessary(dbName, collName)) {
+        for (final var entry : cache.getPkIndexAndLoadIfNecessary(projectName, collName)) {
             if (entry.getValue().contains(needle)) {
                 matched.add(entry.getValue());
             }
@@ -82,8 +82,9 @@ public final class PrimaryKeyIndexResolver {
         return matched;
     }
 
-    private static Set<String> complementOf(Set<String> matched, String dbName, String collName) throws IOException {
-        final List<PkIndexEntry> pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+    private static Set<String> complementOf(Set<String> matched, String projectName, String collName)
+            throws IOException {
+        final List<PkIndexEntry> pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         final var complement = new HashSet<String>();
         for (final var entry : pkIndex) {
             if (!matched.contains(entry.getValue())) {

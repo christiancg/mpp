@@ -330,8 +330,8 @@ public final class Configuration {
         return intValue(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER);
     }
 
-    public int getMaxConcurrentScriptsPerDatabase() {
-        return intValue(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_DATABASE);
+    public int getMaxConcurrentScriptsPerProject() {
+        return intValue(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT);
     }
 
     public boolean isScriptRunHistoryEnabled() {
@@ -473,8 +473,8 @@ public final class Configuration {
         return longValue(ConfigKey.SCHEDULE_TIMEOUT_MS);
     }
 
-    public int getScheduleMaxPerDatabase() {
-        return intValue(ConfigKey.SCHEDULE_MAX_PER_DATABASE);
+    public int getScheduleMaxPerProject() {
+        return intValue(ConfigKey.SCHEDULE_MAX_PER_PROJECT);
     }
 
     public int getSchemaValidationBudget() {

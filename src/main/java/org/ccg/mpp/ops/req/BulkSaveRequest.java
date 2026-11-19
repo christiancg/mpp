@@ -8,8 +8,8 @@ public class BulkSaveRequest extends OperationRequest {
     public List<JsonObject> objects;
     private transient boolean backgroundFollowOn;
 
-    public BulkSaveRequest(String databaseName, String collectionName) {
-        super(OperationType.BULK_SAVE, databaseName, collectionName);
+    public BulkSaveRequest(String projectName, String collectionName) {
+        super(OperationType.BULK_SAVE, projectName, collectionName);
     }
 
     public List<JsonObject> getObjects() {

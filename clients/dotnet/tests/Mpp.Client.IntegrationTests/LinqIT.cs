@@ -18,7 +18,7 @@ public sealed class LinqIT(LinqIT.Server fixture) : IClassFixture<LinqIT.Server>
     private static readonly string[] NewOrPaid = ["new", "paid"];
     private static readonly string[] OnlyNew = ["new"];
 
-    private Collection<Item> Items => fixture.Client.Database("linq_it").Collection<Item>("orders");
+    private Collection<Item> Items => fixture.Client.Project("linq_it").Collection<Item>("orders");
 
     private IQueryable<Item> Linq => Items.AsQueryable();
 
@@ -83,7 +83,7 @@ public sealed class LinqIT(LinqIT.Server fixture) : IClassFixture<LinqIT.Server>
         var counts = await Linq.GroupBy(o => o.Status).OrderBy(g => g.Key).Select(g => new { g.Key, Count = g.Count() }).ToListAsync();
         Assert.Equal([("new", 7), ("paid", 13)], counts.Select(c => (c.Key!, c.Count)));
         Assert.Equal(["new", "paid"], (await Linq.Select(o => o.Status).Distinct().ToListAsync()).Order());
-        var customers = fixture.Client.Database("linq_it").Collection<Customer>("customers").AsQueryable();
+        var customers = fixture.Client.Project("linq_it").Collection<Customer>("customers").AsQueryable();
         var joined = await Linq.Where(o => o.Id == "o-03")
             .GroupJoin(customers, o => o.CustomerId, c => c.Id, (o, customer) => new { o.Id, customer.Single().City })
             .ToListAsync();
@@ -93,7 +93,7 @@ public sealed class LinqIT(LinqIT.Server fixture) : IClassFixture<LinqIT.Server>
     [Fact]
     public async Task NearestRanksTheClosestVectors()
     {
-        var vectors = fixture.Client.Database("linq_it").Collection<Item>("vectors");
+        var vectors = fixture.Client.Project("linq_it").Collection<Item>("vectors");
         var nearest = await vectors.AsQueryable().Nearest(o => o.Embedding, Vector.Of(1, 0), 2, exact: true).ToListAsync();
         Assert.Equal(["v-1", "v-2"], nearest.Select(o => o.Id).Order());
         var fluent = await vectors.Query().Filter(Nearest("embedding", Vector.Of(1, 0), 2).Exact()).ToListAsync();
@@ -125,7 +125,7 @@ public sealed class LinqIT(LinqIT.Server fixture) : IClassFixture<LinqIT.Server>
         protected override async Task SeedAsync()
         {
             await Seed.QueryDataAsync(Client, "linq_it");
-            var vectors = Client.Database("linq_it").Collection<Item>("vectors");
+            var vectors = Client.Project("linq_it").Collection<Item>("vectors");
             await vectors.CreateAsync();
             await vectors.SaveAllAsync([
                 new Item { Id = "v-1", Embedding = Vector.Of(1, 0) },

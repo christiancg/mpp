@@ -74,70 +74,70 @@ public class AntiEntropyService implements MembershipListener {
         sweep.schedule();
     }
 
-    private void lockReadOrSkip(String dbName, String collName) throws InterruptedException {
+    private void lockReadOrSkip(String projectName, String collName) throws InterruptedException {
         final var waitMillis = clusterConfig.replicationAckTimeoutMs();
-        if (!locks.tryLockRead(dbName, collName, waitMillis)) {
-            throw new CollectionBusyException(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName, waitMillis);
+        if (!locks.tryLockRead(projectName, collName, waitMillis)) {
+            throw new CollectionBusyException(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName, waitMillis);
         }
     }
 
     private void reconcileAllCollections() {
-        for (final var dbName : cache.getUserDatabaseNames()) {
-            for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
+        for (final var projectName : cache.getUserProjectNames()) {
+            for (final var collName : cache.getCollectionNamesForProject(projectName)) {
                 if (Thread.currentThread().isInterrupted()) {
                     return;
                 }
                 try {
-                    reconcile(dbName, collName);
+                    reconcile(projectName, collName);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return;
                 } catch (Exception e) {
-                    logger.warning(
-                            "Anti-entropy reconciliation of " + dbName + "|" + collName + " failed: " + e.getMessage());
+                    logger.warning("Anti-entropy reconciliation of " + projectName + "|" + collName + " failed: "
+                            + e.getMessage());
                 }
             }
         }
     }
 
-    public AntiEntropyPayload buildDigest(String dbName, String collName) throws Exception {
-        return buildDigest(dbName, collName, null, 0L);
+    public AntiEntropyPayload buildDigest(String projectName, String collName) throws Exception {
+        return buildDigest(projectName, collName, null, 0L);
     }
 
-    private AntiEntropyPayload staleIncarnationAnswer(String dbName, String collName, long local, long peer) {
-        logger.warning("Refusing to describe " + dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName
+    private AntiEntropyPayload staleIncarnationAnswer(String projectName, String collName, long local, long peer) {
+        logger.warning("Refusing to describe " + projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName
                 + " to a peer: its documents belong to incarnation " + local + " and the peer asked for incarnation "
                 + peer);
-        final var payload = new AntiEntropyPayload(dbName, collName);
+        final var payload = new AntiEntropyPayload(projectName, collName);
         payload.setIncarnationValue(local);
         payload.setStaleIncarnation(true);
         return payload;
     }
 
-    public AntiEntropyPayload buildDigest(String dbName, String collName, String peerSummary, long peerIncarnation)
+    public AntiEntropyPayload buildDigest(String projectName, String collName, String peerSummary, long peerIncarnation)
             throws Exception {
-        final var query = new AntiEntropyPayload(dbName, collName);
+        final var query = new AntiEntropyPayload(projectName, collName);
         query.setSummary(peerSummary);
         query.setIncarnationValue(peerIncarnation);
         return buildDigest(query);
     }
 
     public AntiEntropyPayload buildDigest(AntiEntropyPayload query) throws Exception {
-        final var dbName = query.getDbName();
+        final var projectName = query.getProjectName();
         final var collName = query.getCollName();
-        final var incarnation = CollectionIncarnation.current(dbName, collName);
+        final var incarnation = CollectionIncarnation.current(projectName, collName);
         if (!CollectionIncarnation.sameLife(incarnation, query.incarnationValue())) {
-            return staleIncarnationAnswer(dbName, collName, incarnation, query.incarnationValue());
+            return staleIncarnationAnswer(projectName, collName, incarnation, query.incarnationValue());
         }
-        final var payload = new AntiEntropyPayload(dbName, collName);
+        final var payload = new AntiEntropyPayload(projectName, collName);
         payload.setIncarnationValue(incarnation);
         payload.setNodeId(selfNodeId());
         final var requested = query.getBucketCount();
         final var bucketCount = requested == 0 ? DigestHash.MIN_BUCKETS : requested;
-        lockReadOrSkip(dbName, collName);
+        lockReadOrSkip(projectName, collName);
         try {
-            final var live = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
-            final var tombstones = fs.tombstones().view(dbName, collName);
+            final var live = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
+            final var tombstones = fs.tombstones().view(projectName, collName);
             final var digest = LocalDigest.of(live, tombstones, bucketCount);
             payload.setSummary(digest.summary());
             if (query.getBuckets() != null) {
@@ -153,7 +153,7 @@ public class AntiEntropyService implements MembershipListener {
                 payload.setBucketSummaries(digest.bucketSummaries());
             }
         } finally {
-            locks.releaseRead(dbName, collName);
+            locks.releaseRead(projectName, collName);
         }
         return payload;
     }
@@ -162,54 +162,54 @@ public class AntiEntropyService implements MembershipListener {
         return LocalDigest.ofEntries(entries, DigestHash.MIN_BUCKETS).summary();
     }
 
-    public AntiEntropyPayload buildPull(String dbName, String collName, List<String> ids) throws Exception {
-        return buildPull(dbName, collName, ids, 0L);
+    public AntiEntropyPayload buildPull(String projectName, String collName, List<String> ids) throws Exception {
+        return buildPull(projectName, collName, ids, 0L);
     }
 
-    public AntiEntropyPayload buildPull(String dbName, String collName, List<String> ids, long peerIncarnation)
+    public AntiEntropyPayload buildPull(String projectName, String collName, List<String> ids, long peerIncarnation)
             throws Exception {
-        final var incarnation = CollectionIncarnation.current(dbName, collName);
+        final var incarnation = CollectionIncarnation.current(projectName, collName);
         if (!CollectionIncarnation.sameLife(incarnation, peerIncarnation)) {
-            return staleIncarnationAnswer(dbName, collName, incarnation, peerIncarnation);
+            return staleIncarnationAnswer(projectName, collName, incarnation, peerIncarnation);
         }
-        final var payload = new AntiEntropyPayload(dbName, collName);
+        final var payload = new AntiEntropyPayload(projectName, collName);
         payload.setIncarnationValue(incarnation);
         final var documents = new ArrayList<JsonObject>();
         final var versions = new ArrayList<String>();
-        lockReadOrSkip(dbName, collName);
+        lockReadOrSkip(projectName, collName);
         try {
-            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
             for (final var id : ids) {
                 final var position = Collections.binarySearch(pkIndex, id);
                 if (position >= 0) {
                     final var indexEntry = pkIndex.get(position).detachedCopy();
-                    documents.add(cache.getById(dbName, collName, indexEntry).getData());
+                    documents.add(cache.getById(projectName, collName, indexEntry).getData());
                     versions.add(Long.toString(indexEntry.getVersion()));
                 }
             }
         } finally {
-            locks.releaseRead(dbName, collName);
+            locks.releaseRead(projectName, collName);
         }
         payload.setDocuments(documents);
         payload.setVersions(versions);
         return payload;
     }
 
-    void reconcile(String dbName, String collName) throws Exception {
+    void reconcile(String projectName, String collName) throws Exception {
         final LocalDigest local;
         final int bucketCount;
         final long selfIncarnation;
-        lockReadOrSkip(dbName, collName);
+        lockReadOrSkip(projectName, collName);
         try {
-            final var live = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
-            final var tombstones = fs.tombstones().view(dbName, collName);
+            final var live = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
+            final var tombstones = fs.tombstones().view(projectName, collName);
             bucketCount = DigestHash.bucketCountFor((long) live.size() + tombstones.size());
             local = LocalDigest.of(live, tombstones, bucketCount);
-            selfIncarnation = CollectionIncarnation.current(dbName, collName);
+            selfIncarnation = CollectionIncarnation.current(projectName, collName);
         } finally {
-            locks.releaseRead(dbName, collName);
+            locks.releaseRead(projectName, collName);
         }
-        faultInjector.at(FaultPoint.ANTI_ENTROPY_SNAPSHOTTED, Cache.getCollectionIdentifier(dbName, collName));
+        faultInjector.at(FaultPoint.ANTI_ENTROPY_SNAPSHOTTED, Cache.getCollectionIdentifier(projectName, collName));
 
         final var self = membershipService.getSelf();
         final var peers = membershipService.membershipView().peers(self);
@@ -219,7 +219,7 @@ public class AntiEntropyService implements MembershipListener {
         for (final var member : peers) {
             final var answer = member.isAdminSyncing()
                     ? null
-                    : exchange(member.address(), dbName, collName, local, bucketCount, selfIncarnation);
+                    : exchange(member.address(), projectName, collName, local, bucketCount, selfIncarnation);
             if (answer == null) {
                 everyPeerAnswered = false;
             } else if (!answer.buckets().isEmpty()) {
@@ -227,12 +227,12 @@ public class AntiEntropyService implements MembershipListener {
                 differing.addAll(answer.buckets());
             }
         }
-        noteConvergence(Cache.getCollectionIdentifier(dbName, collName), differing.isEmpty() && everyPeerAnswered);
+        noteConvergence(Cache.getCollectionIdentifier(projectName, collName), differing.isEmpty() && everyPeerAnswered);
         if (!differing.isEmpty() && !Thread.currentThread().isInterrupted()) {
-            repair(dbName, collName, bucketCount, differing, answers, selfIncarnation);
+            repair(projectName, collName, bucketCount, differing, answers, selfIncarnation);
         }
         if (!Thread.currentThread().isInterrupted()) {
-            garbageCollectTombstones(dbName, collName, everyPeerAnswered && !peers.isEmpty());
+            garbageCollectTombstones(projectName, collName, everyPeerAnswered && !peers.isEmpty());
         }
     }
 
@@ -244,9 +244,10 @@ public class AntiEntropyService implements MembershipListener {
         }
     }
 
-    private PeerAnswer exchange(NodeAddress address, String dbName, String collName, LocalDigest local, int bucketCount,
-            long incarnation) {
-        final var response = requestDigest(address, dbName, collName, local.summary(), bucketCount, null, incarnation);
+    private PeerAnswer exchange(NodeAddress address, String projectName, String collName, LocalDigest local,
+            int bucketCount, long incarnation) {
+        final var response = requestDigest(address, projectName, collName, local.summary(), bucketCount, null,
+                incarnation);
         if (staleOrMissing(response, incarnation)) {
             return null;
         }
@@ -268,7 +269,7 @@ public class AntiEntropyService implements MembershipListener {
         if (buckets.isEmpty()) {
             return new PeerAnswer(address, response.getNodeId(), List.of(), buckets);
         }
-        final var entries = requestDigest(address, dbName, collName, null, bucketCount, new ArrayList<>(buckets),
+        final var entries = requestDigest(address, projectName, collName, null, bucketCount, new ArrayList<>(buckets),
                 incarnation);
         if (staleOrMissing(entries, incarnation) || entries.getDigest() == null) {
             return null;
@@ -281,17 +282,17 @@ public class AntiEntropyService implements MembershipListener {
                 || !CollectionIncarnation.sameLife(incarnation, response.incarnationValue());
     }
 
-    private void repair(String dbName, String collName, int bucketCount, Set<Integer> differing,
+    private void repair(String projectName, String collName, int bucketCount, Set<Integer> differing,
             List<PeerAnswer> answers, long selfIncarnation) throws Exception {
         final var localLive = new HashMap<String, LocalEntry>();
         final var localTombstones = new HashMap<String, Long>();
-        lockReadOrSkip(dbName, collName);
+        lockReadOrSkip(projectName, collName);
         try {
-            if (CollectionIncarnation.current(dbName, collName) != selfIncarnation) {
+            if (CollectionIncarnation.current(projectName, collName) != selfIncarnation) {
                 return;
             }
-            final var live = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
-            for (final var entry : LocalDigest.entries(live, fs.tombstones().view(dbName, collName), bucketCount,
+            final var live = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
+            for (final var entry : LocalDigest.entries(live, fs.tombstones().view(projectName, collName), bucketCount,
                     differing)) {
                 if (entry.isDeleted()) {
                     localTombstones.put(entry.getId(), entry.versionValue());
@@ -300,7 +301,7 @@ public class AntiEntropyService implements MembershipListener {
                 }
             }
         } finally {
-            locks.releaseRead(dbName, collName);
+            locks.releaseRead(projectName, collName);
         }
         final var selfNodeId = selfNodeId();
         final var best = new HashMap<String, Best>();
@@ -334,48 +335,50 @@ public class AntiEntropyService implements MembershipListener {
                 }
             }
         }
-        applyDeletes(dbName, collName, deleteIds, deleteVersions, selfIncarnation);
+        applyDeletes(projectName, collName, deleteIds, deleteVersions, selfIncarnation);
         for (final var pull : pullByPeer.entrySet()) {
             final var ids = pull.getValue();
             for (var from = 0; from < ids.size() && !Thread.currentThread().isInterrupted(); from += PULL_BATCH_SIZE) {
                 final var batch = new ArrayList<>(ids.subList(from, Math.min(ids.size(), from + PULL_BATCH_SIZE)));
-                pullAndApply(pull.getKey(), dbName, collName, batch, selfIncarnation);
+                pullAndApply(pull.getKey(), projectName, collName, batch, selfIncarnation);
             }
         }
     }
 
-    private void applyDeletes(String dbName, String collName, List<String> deleteIds, List<String> deleteVersions,
+    private void applyDeletes(String projectName, String collName, List<String> deleteIds, List<String> deleteVersions,
             long selfIncarnation) {
         for (var from = 0; from < deleteIds.size()
                 && !Thread.currentThread().isInterrupted(); from += PULL_BATCH_SIZE) {
             final var to = Math.min(deleteIds.size(), from + PULL_BATCH_SIZE);
-            final var deletes = new ReplicationPayload(dbName, collName, ReplicationOp.DELETE, null,
+            final var deletes = new ReplicationPayload(projectName, collName, ReplicationOp.DELETE, null,
                     new ArrayList<>(deleteIds.subList(from, to)), new ArrayList<>(deleteVersions.subList(from, to)));
             deletes.setIncarnationValue(selfIncarnation);
             ReplicatedApplyHelper.apply(deletes, clusterConfig.replicationAckTimeoutMs());
         }
     }
 
-    private void pullAndApply(NodeAddress peer, String dbName, String collName, List<String> ids, long incarnation) {
-        final var response = requestPull(peer, dbName, collName, ids, incarnation);
+    private void pullAndApply(NodeAddress peer, String projectName, String collName, List<String> ids,
+            long incarnation) {
+        final var response = requestPull(peer, projectName, collName, ids, incarnation);
         if (Thread.currentThread().isInterrupted()) {
             return;
         }
         if (response != null && response.getDocuments() != null && !response.getDocuments().isEmpty()) {
-            final var upserts = new ReplicationPayload(dbName, collName, ReplicationOp.UPSERT, response.getDocuments(),
-                    null, response.getVersions());
+            final var upserts = new ReplicationPayload(projectName, collName, ReplicationOp.UPSERT,
+                    response.getDocuments(), null, response.getVersions());
             upserts.setIncarnationValue(incarnation);
             ReplicatedApplyHelper.apply(upserts, clusterConfig.replicationAckTimeoutMs());
         }
     }
 
-    private void garbageCollectTombstones(String dbName, String collName, boolean everyPeerAnswered)
+    private void garbageCollectTombstones(String projectName, String collName, boolean everyPeerAnswered)
             throws IOException {
         final var retention = clusterConfig.tombstoneRetentionMs();
         if (retention <= 0 || !everyPeerAnswered) {
             return;
         }
-        fs.tombstones().compactIfDue(dbName, collName, HybridClock.pack(System.currentTimeMillis() - retention, 0));
+        fs.tombstones().compactIfDue(projectName, collName,
+                HybridClock.pack(System.currentTimeMillis() - retention, 0));
     }
 
     private void merge(Map<String, Best> best, String id, long version, boolean deleted, NodeAddress source,
@@ -414,10 +417,10 @@ public class AntiEntropyService implements MembershipListener {
         return nodeId.compareTo(currentNodeId) > 0;
     }
 
-    private AntiEntropyPayload requestDigest(NodeAddress address, String dbName, String collName, String summary,
+    private AntiEntropyPayload requestDigest(NodeAddress address, String projectName, String collName, String summary,
             int bucketCount, List<Integer> buckets, long incarnation) {
         final var message = message(ClusterMessageType.DIGEST);
-        final var query = new AntiEntropyPayload(dbName, collName);
+        final var query = new AntiEntropyPayload(projectName, collName);
         query.setSummary(summary);
         query.setBucketCount(bucketCount);
         query.setBuckets(buckets);
@@ -427,10 +430,10 @@ public class AntiEntropyService implements MembershipListener {
         return response == null ? null : response.getAntiEntropy();
     }
 
-    private AntiEntropyPayload requestPull(NodeAddress address, String dbName, String collName, List<String> ids,
+    private AntiEntropyPayload requestPull(NodeAddress address, String projectName, String collName, List<String> ids,
             long incarnation) {
         final var message = message(ClusterMessageType.PULL);
-        final var payload = new AntiEntropyPayload(dbName, collName);
+        final var payload = new AntiEntropyPayload(projectName, collName);
         payload.setIds(ids);
         payload.setIncarnationValue(incarnation);
         message.setAntiEntropy(payload);

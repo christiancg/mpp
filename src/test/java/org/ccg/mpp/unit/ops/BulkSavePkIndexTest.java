@@ -28,7 +28,7 @@ public class BulkSavePkIndexTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -45,7 +45,7 @@ public class BulkSavePkIndexTest {
             document.addProperty("n", number);
             objects.add(document);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return request;
     }
@@ -53,17 +53,17 @@ public class BulkSavePkIndexTest {
     @Test
     public void test_batches_past_the_point_edit_limit_keep_the_pk_index_sorted_and_complete() throws Exception {
         for (var number = 0; number < BATCHES; number++) {
-            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
                 SaveOperationHelper.executeBulkSave(batch(number));
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }
 
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var index = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            final var index = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
             final var ids = new HashSet<String>();
             String previous = null;
             for (final var row : index) {
@@ -75,7 +75,7 @@ public class BulkSavePkIndexTest {
             assertEquals(BATCHES * BATCH_SIZE, index.size());
             assertEquals(BATCHES * BATCH_SIZE, ids.size());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 }

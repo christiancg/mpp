@@ -12,7 +12,7 @@ import org.ccg.mpp.ejson.elements.JsonString;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.builtins.NativeDepth;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
@@ -29,7 +29,7 @@ public class DbTransactionProgramTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
     }
 
@@ -45,29 +45,30 @@ public class DbTransactionProgramTest {
 
     private static ScriptResult run(String source, ResourceLimits limits) {
         return new SimpleJs().run(source,
-                new SimpleHostBindings(new JsonObject(), new EnforcingDatabaseAccess(ADMIN, null), null, limits));
+                new SimpleHostBindings(new JsonObject(), new EnforcingProjectAccess(ADMIN, null), null, limits));
     }
 
     private static JsonObject read(String id) {
-        return new EnforcingDatabaseAccess(ADMIN, null).findById(TestGlobals.DB, TestGlobals.COLL, id);
+        return new EnforcingProjectAccess(ADMIN, null).findById(TestGlobals.PROJECT, TestGlobals.COLL, id);
     }
 
     private static void seed(String id, String value) {
         final var document = new JsonObject();
         document.add("_id", new JsonString(id));
         document.add("value", new JsonString(value));
-        new EnforcingDatabaseAccess(ADMIN, null).save(TestGlobals.DB, TestGlobals.COLL, document);
+        new EnforcingProjectAccess(ADMIN, null).save(TestGlobals.PROJECT, TestGlobals.COLL, document);
     }
 
     private static void assertCollectionLockFree() {
         final var locks = IocContainer.get(ResourceLocking.class);
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL), "the collection write lock is still held");
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL),
+                "the collection write lock is still held");
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private static String script(String body) {
-        return "import db from 'db';\nconst DB = '" + TestGlobals.DB + "';\nconst C = '" + TestGlobals.COLL + "';\n"
-                + body;
+        return "import db from 'db';\nconst PROJECT = '" + TestGlobals.PROJECT + "';\nconst C = '" + TestGlobals.COLL
+                + "';\n" + body;
     }
 
     @Test
@@ -76,10 +77,10 @@ public class DbTransactionProgramTest {
         seed("prog-b", "two");
         final var result = run(script("""
                 return db.transaction(() => {
-                    const a = db.findById(DB, C, 'prog-a');
-                    const b = db.findById(DB, C, 'prog-b');
-                    db.save(DB, C, { _id: 'prog-a', value: a.value + '+' + b.value });
-                    db.save(DB, C, { _id: 'prog-b', value: 'done' });
+                    const a = db.findById(PROJECT, C, 'prog-a');
+                    const b = db.findById(PROJECT, C, 'prog-b');
+                    db.save(PROJECT, C, { _id: 'prog-a', value: a.value + '+' + b.value });
+                    db.save(PROJECT, C, { _id: 'prog-b', value: 'done' });
                     return 'ok';
                 });
                 """));
@@ -94,7 +95,7 @@ public class DbTransactionProgramTest {
     public void test_throwing_callback_leaves_no_partial_write() {
         final var result = run(script("""
                 db.transaction(() => {
-                    db.save(DB, C, { _id: 'prog-partial', value: 'x' });
+                    db.save(PROJECT, C, { _id: 'prog-partial', value: 'x' });
                     throw new Error('boom');
                 });
                 """));
@@ -109,7 +110,7 @@ public class DbTransactionProgramTest {
     public void test_instruction_budget_exceeded_inside_the_callback_rolls_back() {
         final var result = run(script("""
                 db.transaction(() => {
-                    db.save(DB, C, { _id: 'prog-aborted', value: 'x' });
+                    db.save(PROJECT, C, { _id: 'prog-aborted', value: 'x' });
                     while (true) { }
                 });
                 """), new ResourceLimits(50_000, -1, -1, false));
@@ -122,7 +123,7 @@ public class DbTransactionProgramTest {
     @Test
     public void test_bulk_save_inside_a_transaction() {
         final var result = run(script("""
-                return db.transaction(() => db.bulkSave(DB, C, [
+                return db.transaction(() => db.bulkSave(PROJECT, C, [
                     { _id: 'prog-bulk-1', value: 'a' },
                     { _id: 'prog-bulk-2', value: 'b' }
                 ]).inserted.length);
@@ -137,10 +138,10 @@ public class DbTransactionProgramTest {
     @Test
     public void test_custom_type_round_trips_through_a_script() {
         final var result = run(script("""
-                db.save(DB, C, { _id: 'prog-geo', at: new Geo(41.5, -3.25), v: new Vector([1, 2, 3]) });
-                const stored = db.findById(DB, C, 'prog-geo');
-                db.save(DB, C, { _id: 'prog-geo', at: new Geo(stored.at.lat + 1, stored.at.lng), v: stored.v });
-                return String(db.findById(DB, C, 'prog-geo').at);
+                db.save(PROJECT, C, { _id: 'prog-geo', at: new Geo(41.5, -3.25), v: new Vector([1, 2, 3]) });
+                const stored = db.findById(PROJECT, C, 'prog-geo');
+                db.save(PROJECT, C, { _id: 'prog-geo', at: new Geo(stored.at.lat + 1, stored.at.lng), v: stored.v });
+                return String(db.findById(PROJECT, C, 'prog-geo').at);
                 """));
         assertFalse(result.isError(), () -> result.getErrorName() + ": " + result.getErrorMessage());
         assertEquals("#geo(42.5,-3.25)", result.getValue().asJsonString().getValue());
@@ -152,8 +153,8 @@ public class DbTransactionProgramTest {
     @Test
     public void test_nested_custom_type_in_a_saved_document() {
         final var result = run(script("""
-                db.save(DB, C, { _id: 'prog-nested', route: { stops: [new Geo(1, 2), new Geo(3, 4)] } });
-                return String(db.findById(DB, C, 'prog-nested').route.stops[1]);
+                db.save(PROJECT, C, { _id: 'prog-nested', route: { stops: [new Geo(1, 2), new Geo(3, 4)] } });
+                return String(db.findById(PROJECT, C, 'prog-nested').route.stops[1]);
                 """));
         assertFalse(result.isError(), () -> result.getErrorName() + ": " + result.getErrorMessage());
         assertEquals("#geo(3.0,4.0)", result.getValue().asJsonString().getValue());
@@ -166,17 +167,17 @@ public class DbTransactionProgramTest {
         final var second = new java.util.concurrent.atomic.AtomicReference<ScriptResult>();
         final var firstHoldsLock = new java.util.concurrent.CountDownLatch(1);
         final var secondFinished = new java.util.concurrent.CountDownLatch(1);
-        final var access = new EnforcingDatabaseAccess(ADMIN, null);
+        final var access = new EnforcingProjectAccess(ADMIN, null);
         access.beginTransaction();
         try {
             final var document = new JsonObject();
             document.add("_id", new JsonString("prog-contended"));
             document.add("value", new JsonString("first"));
-            access.save(TestGlobals.DB, TestGlobals.COLL, document);
+            access.save(TestGlobals.PROJECT, TestGlobals.COLL, document);
             firstHoldsLock.countDown();
             final var contender = new Thread(() -> {
                 second.set(run(script("""
-                        db.transaction(() => db.save(DB, C, { _id: 'prog-contender', value: 'second' }));
+                        db.transaction(() => db.save(PROJECT, C, { _id: 'prog-contender', value: 'second' }));
                         """)));
                 secondFinished.countDown();
             });
@@ -197,9 +198,9 @@ public class DbTransactionProgramTest {
         seed("deep-2", "b");
         final var result = run(script("""
                 const attempts = [
-                    () => db.save(DB, C, { _id: 'deep-save', value: 'x' }),
-                    () => db.bulkSave(DB, C, [{ _id: 'deep-1', value: 'c' }, { _id: 'deep-2', value: 'd' }]),
-                    () => db.transaction(() => db.save(DB, C, { _id: 'deep-tx', value: 'x' }))
+                    () => db.save(PROJECT, C, { _id: 'deep-save', value: 'x' }),
+                    () => db.bulkSave(PROJECT, C, [{ _id: 'deep-1', value: 'c' }, { _id: 'deep-2', value: 'd' }]),
+                    () => db.transaction(() => db.save(PROJECT, C, { _id: 'deep-tx', value: 'x' }))
                 ];
                 function nest(n, attempt) {
                     if (n === 0) {
@@ -224,7 +225,7 @@ public class DbTransactionProgramTest {
     public void dbCallsWithHeadroomLeftStillRun() {
         final var result = run(script("""
                 function nest(n) {
-                    return n === 0 ? db.save(DB, C, { _id: 'shallow', value: 'x' })._id
+                    return n === 0 ? db.save(PROJECT, C, { _id: 'shallow', value: 'x' })._id
                         : [0].map(() => nest(n - 1))[0];
                 }
                 return nest(%d);
@@ -238,11 +239,11 @@ public class DbTransactionProgramTest {
     @Test
     public void test_geo_and_vector_operators_match_script_written_documents() {
         final var result = run(script("""
-                db.bulkSave(DB, C, [
+                db.bulkSave(PROJECT, C, [
                     { _id: 'op-close', location: new Geo(40.001, -74.001), embedding: new Vector([1, 0, 0]) },
                     { _id: 'op-far', location: new Geo(10, 10), embedding: new Vector([0, 0, 1]) }
                 ]);
-                const near = db.aggregate(DB, C, [{
+                const near = db.aggregate(PROJECT, C, [{
                     type: 'FILTER',
                     operator: {
                         customOperatorName: 'distance',
@@ -252,7 +253,7 @@ public class DbTransactionProgramTest {
                         distance: 1000
                     }
                 }]);
-                const inside = db.aggregate(DB, C, [{
+                const inside = db.aggregate(PROJECT, C, [{
                     type: 'FILTER',
                     operator: {
                         customOperatorName: 'within',
@@ -261,7 +262,7 @@ public class DbTransactionProgramTest {
                         polygon: [new Geo(39, -75), new Geo(41, -75), new Geo(41, -73), new Geo(39, -73)]
                     }
                 }]);
-                const closest = db.aggregate(DB, C, [{
+                const closest = db.aggregate(PROJECT, C, [{
                     type: 'FILTER',
                     operator: {
                         customOperatorName: 'nearest',

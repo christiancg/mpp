@@ -30,44 +30,45 @@ def test_a_drip_reader_is_closed_and_frees_the_response_budget(log_path: str, ag
                      "OK")
 
 
-def transactional_save(conn: Conn, db: str, coll: str, doc_id: str) -> dict:
-    return conn.send({"type": "SAVE", "databaseName": db, "collectionName": coll,
+def transactional_save(conn: Conn, project: str, coll: str, doc_id: str) -> dict:
+    return conn.send({"type": "SAVE", "projectName": project, "collectionName": coll,
                       "object": {"_id": doc_id, "blob": "t" * TRANSACTION_DOC_CHARS}})
 
 
-def holder_with_buffered_documents(db: str, coll: str, prefix: str) -> Conn:
+def holder_with_buffered_documents(project: str, coll: str, prefix: str) -> Conn:
     holder = Conn.authenticated()
     check_status(f"START_TRANSACTION for {prefix}", holder.send({"type": "START_TRANSACTION"}), "OK")
     for i in range(TRANSACTION_DOCS_PER_HOLDER):
-        check_status(f"{prefix} buffers document {i}", transactional_save(holder, db, coll, f"{prefix}-{i}"), "OK")
+        check_status(f"{prefix} buffers document {i}", transactional_save(holder, project, coll, f"{prefix}-{i}"), "OK")
     return holder
 
 
-def test_buffered_transactions_share_one_budget(db: str, coll: str):
+def test_buffered_transactions_share_one_budget(project: str, coll: str):
     section(f"Open transactions share transactionTotalMaxBytes={TRANSACTION_POOL}")
     other = f"{coll}_second"
     with Conn.authenticated() as admin:
         check_status("CREATE_COLLECTION for the second holder",
-                     admin.send({"type": "CREATE_COLLECTION", "databaseName": db, "collectionName": other}), "OK")
-    first = holder_with_buffered_documents(db, coll, "pool-first")
+                     admin.send({"type": "CREATE_COLLECTION", "projectName": project, "collectionName": other}), "OK")
+    first = holder_with_buffered_documents(project, coll, "pool-first")
     second = Conn.authenticated()
     try:
         check_status("START_TRANSACTION for the second holder", second.send({"type": "START_TRANSACTION"}), "OK")
-        check_code("Its SAVE past the shared budget -> 503-21", transactional_save(second, db, other, "pool-second"),
+        check_code("Its SAVE past the shared budget -> 503-21",
+                   transactional_save(second, project, other, "pool-second"),
                    "ERROR", "503-21")
         check_status("The first holder commits what it buffered", first.send({"type": "COMMIT_TRANSACTION"}), "OK")
         check_status("The second holder's retry buffers once the first ended",
-                     transactional_save(second, db, other, "pool-second"), "OK")
+                     transactional_save(second, project, other, "pool-second"), "OK")
         check_status("The second holder commits", second.send({"type": "COMMIT_TRANSACTION"}), "OK")
         check_status("The retried document is durable", second.send(
-            {"type": "FIND_BY_ID", "databaseName": db, "collectionName": other, "_id": "pool-second"}), "OK")
+            {"type": "FIND_BY_ID", "projectName": project, "collectionName": other, "_id": "pool-second"}), "OK")
     finally:
         first.close()
         second.close()
-    departing = holder_with_buffered_documents(db, coll, "pool-departing")
+    departing = holder_with_buffered_documents(project, coll, "pool-departing")
     departing.close()
     time.sleep(1.0)
-    after = holder_with_buffered_documents(db, coll, "pool-after")
+    after = holder_with_buffered_documents(project, coll, "pool-after")
     try:
         check_status("A disconnect gave its bytes back, so a new holder buffers as much",
                      after.send({"type": "ROLLBACK_TRANSACTION"}), "OK")

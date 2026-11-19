@@ -15,23 +15,24 @@ import org.ccg.mpp.ioc.IocContainer;
 final class WritePathPageBooking {
     private static final Cache cache = IocContainer.get(Cache.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final Set<Long> existing = new LinkedHashSet<>();
     private final Map<Long, AdminPageEntry> missing = new LinkedHashMap<>();
 
-    private WritePathPageBooking(String dbName, String collName) {
-        this.dbName = dbName;
+    private WritePathPageBooking(String projectName, String collName) {
+        this.projectName = projectName;
         this.collName = collName;
     }
 
-    static void book(String dbName, String collName, List<EntityRef> created, List<EntityRef> others,
+    static void book(String projectName, String collName, List<EntityRef> created, List<EntityRef> others,
             long incarnation) {
-        final var booking = new WritePathPageBooking(dbName, collName);
+        final var booking = new WritePathPageBooking(projectName, collName);
         booking.created(created);
         booking.others(others);
-        cache.addAdminPageEntries(dbName, collName, new ArrayList<>(booking.missing.values()));
-        PageRowWriteBack.touched(dbName, collName, incarnation, booking.touchedPages(), System.currentTimeMillis());
+        cache.addAdminPageEntries(projectName, collName, new ArrayList<>(booking.missing.values()));
+        PageRowWriteBack.touched(projectName, collName, incarnation, booking.touchedPages(),
+                System.currentTimeMillis());
     }
 
     private void created(List<EntityRef> refs) {
@@ -40,7 +41,8 @@ final class WritePathPageBooking {
             if (!seen.add(ref.id()) || isKnownRow(ref.page())) {
                 continue;
             }
-            final var row = missing.computeIfAbsent(ref.page(), page -> new AdminPageEntry(dbName, collName, page));
+            final var row = missing.computeIfAbsent(ref.page(),
+                    page -> new AdminPageEntry(projectName, collName, page));
             row.setEntryCount(row.getEntryCount() + 1);
             row.setPageSize(row.getPageSize() + ref.byteSize());
         }
@@ -56,7 +58,7 @@ final class WritePathPageBooking {
         if (existing.contains(page)) {
             return true;
         }
-        if (missing.containsKey(page) || cache.getAdminPageEntry(dbName, collName, page) == null) {
+        if (missing.containsKey(page) || cache.getAdminPageEntry(projectName, collName, page) == null) {
             return false;
         }
         existing.add(page);

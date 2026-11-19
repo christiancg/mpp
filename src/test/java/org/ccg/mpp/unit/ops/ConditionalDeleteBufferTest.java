@@ -49,9 +49,9 @@ public class ConditionalDeleteBufferTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(WRITER, "h", false, Set.of(), new HashMap<>(),
-                new HashMap<>(Map.of(TestGlobals.DB + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE))));
+                new HashMap<>(Map.of(TestGlobals.PROJECT + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE))));
         for (var i = 0; i < 6; i++) {
             assertEquals(OperationStatus.OK,
                     processor.processMessage(RequestParser.parseRequest(save("c" + i, i))).getStatus());
@@ -75,18 +75,18 @@ public class ConditionalDeleteBufferTest {
     }
 
     private static String save(String id, int n) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + n + "}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + n + "}}";
     }
 
     private static String deleteWhereNBelow(int bound) {
-        return "{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"condition\":{\"fieldOperatorType\":\"SMALLER_THAN\",\"field\":\"n\","
                 + "\"value\":" + bound + "}}";
     }
 
     private static String deleteFirstSeeded() {
-        return "{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"_id\":\"c0\"}";
     }
 
@@ -96,7 +96,7 @@ public class ConditionalDeleteBufferTest {
 
     private Set<String> committedIds() {
         final var response = processor.processMessage(
-                RequestParser.parseRequest("{\"type\":\"AGGREGATE\"," + "\"databaseName\":\"" + TestGlobals.DB
+                RequestParser.parseRequest("{\"type\":\"AGGREGATE\"," + "\"projectName\":\"" + TestGlobals.PROJECT
                         + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":[]}"));
         final var ids = new TreeSet<String>();
         if (response instanceof AggregateResponse aggregate) {
@@ -169,9 +169,9 @@ public class ConditionalDeleteBufferTest {
     @Test
     public void test_a_hook_rejection_buffers_nothing() throws Exception {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "guard",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "guard",
                 "export default (d) => { if (d.n === 2) { throw new Error('keep'); } };"), WRITER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("guard", new LinkedHashSet<>(Set.of(EventType.DELETED)), "guard",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, WRITER, 1L, 1L,
                         1L, WRITER)));

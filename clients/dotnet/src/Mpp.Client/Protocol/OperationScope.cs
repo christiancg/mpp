@@ -2,7 +2,7 @@ namespace Mpp.Client.Protocol;
 
 public enum OperationScope
 {
-    Database,
+    Project,
     Collection,
     OptionalCollection,
     None,

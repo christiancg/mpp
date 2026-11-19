@@ -32,7 +32,7 @@ public class ProgrammaticDocumentNullFieldTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
     }
 
@@ -83,10 +83,10 @@ public class ProgrammaticDocumentNullFieldTest {
 
     @Test
     public void test_create_index_over_a_cached_null_valued_field_does_not_throw() throws IOException {
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, rowWithNullField("r3"));
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, rowWithNullField("r3"));
         entry.set_id("r3");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
 
-        assertDoesNotThrow(() -> IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        assertDoesNotThrow(() -> IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 }

@@ -33,7 +33,7 @@ public class FilterConjunctionOperatorTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -80,22 +80,22 @@ public class FilterConjunctionOperatorTest {
         final var cache = IocContainer.get(Cache.class);
         for (var obj : List.of(matchA, matchB, matchC)) {
             var entry = new org.ccg.mpp.data.DbEntry();
-            entry.setDatabaseName(TestGlobals.DB);
+            entry.setProjectName(TestGlobals.PROJECT);
             entry.setCollectionName(TestGlobals.COLL);
             entry.set_id(obj.get(Globals.PK_FIELD).asJsonString().getValue());
             entry.setData(obj);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "a", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a", 0, 100, 0));
 
         ConjunctionOperator norOp = new ConjunctionOperator(ConjunctionOperatorType.NOR,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "name", new JsonString("Alice")),
                         new FieldOperator(FieldOperatorType.EQUALS, "name", new JsonString("Bob"))));
 
-        List<JsonObject> result = FilterOperatorHelper.processOperator(norOp, null, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(norOp, null, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals("Charlie", result.getFirst().get("name").asJsonString().getValue());
@@ -115,22 +115,22 @@ public class FilterConjunctionOperatorTest {
         final var cache = IocContainer.get(Cache.class);
         for (var obj : List.of(obj1, obj2)) {
             var entry = new org.ccg.mpp.data.DbEntry();
-            entry.setDatabaseName(TestGlobals.DB);
+            entry.setProjectName(TestGlobals.PROJECT);
             entry.setCollectionName(TestGlobals.COLL);
             entry.set_id(obj.get(Globals.PK_FIELD).asJsonString().getValue());
             entry.setData(obj);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0));
 
         ConjunctionOperator nandOp = new ConjunctionOperator(ConjunctionOperatorType.NAND,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "x", new JsonNumber(10)),
                         new FieldOperator(FieldOperatorType.EQUALS, "y", new JsonNumber(20))));
 
-        List<JsonObject> result = FilterOperatorHelper.processOperator(nandOp, null, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(nandOp, null, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals("2", result.getFirst().get(Globals.PK_FIELD).asJsonString().getValue());
@@ -150,22 +150,22 @@ public class FilterConjunctionOperatorTest {
         final var cache = IocContainer.get(Cache.class);
         for (var obj : List.of(obj1, obj2)) {
             var entry = new org.ccg.mpp.data.DbEntry();
-            entry.setDatabaseName(TestGlobals.DB);
+            entry.setProjectName(TestGlobals.PROJECT);
             entry.setCollectionName(TestGlobals.COLL);
             entry.set_id(obj.get(Globals.PK_FIELD).asJsonString().getValue());
             entry.setData(obj);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0));
 
         ConjunctionOperator xorOp = new ConjunctionOperator(ConjunctionOperatorType.XOR,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "a", JsonBoolean.of(true)),
                         new FieldOperator(FieldOperatorType.EQUALS, "b", JsonBoolean.of(true))));
 
-        List<JsonObject> result = FilterOperatorHelper.processOperator(xorOp, null, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(xorOp, null, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals("1", result.getFirst().get(Globals.PK_FIELD).asJsonString().getValue());
@@ -223,13 +223,13 @@ public class FilterConjunctionOperatorTest {
         DbEntry entry = new DbEntry();
         entry.set_id("nested1");
         entry.setData(obj);
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         final var cache = IocContainer.get(Cache.class);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "nested1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "nested1", 0, 100, 0));
 
         FieldOperator opA = new FieldOperator(FieldOperatorType.EQUALS, "a", new JsonString("x"));
         FieldOperator opB = new FieldOperator(FieldOperatorType.EQUALS, "b", new JsonString("y"));
@@ -237,8 +237,8 @@ public class FilterConjunctionOperatorTest {
         ConjunctionOperator outer = new ConjunctionOperator(ConjunctionOperatorType.AND, List.of(inner));
 
         // Pass null stream so each sub-operator loads from cache independently
-        List<JsonObject> result = FilterOperatorHelper.processOperator(outer, null, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(outer, null, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
     }
@@ -347,7 +347,7 @@ public class FilterConjunctionOperatorTest {
                         new FieldOperator(FieldOperatorType.EQUALS, "score", new JsonNumber(10))));
 
         List<JsonObject> result = FilterOperatorHelper
-                .processOperator(andOp, Stream.of(matching, other), TestGlobals.DB, TestGlobals.COLL).toList();
+                .processOperator(andOp, Stream.of(matching, other), TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals("books", result.getFirst().get("category").asJsonString().getValue());
@@ -364,14 +364,14 @@ public class FilterConjunctionOperatorTest {
                 new ConjunctionOperator(ConjunctionOperatorType.XOR,
                         List.of(booksOperator,
                                 new FieldOperator(FieldOperatorType.EQUALS, "score", new JsonNumber(20)))),
-                Stream.of(books, music), TestGlobals.DB, TestGlobals.COLL).toList();
+                Stream.of(books, music), TestGlobals.PROJECT, TestGlobals.COLL).toList();
         List<JsonObject> nor = FilterOperatorHelper
                 .processOperator(new ConjunctionOperator(ConjunctionOperatorType.NOR, List.of(booksOperator)),
-                        Stream.of(books, music), TestGlobals.DB, TestGlobals.COLL)
+                        Stream.of(books, music), TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
         List<JsonObject> nand = FilterOperatorHelper.processOperator(
                 new ConjunctionOperator(ConjunctionOperatorType.NAND, List.of(booksOperator, scoreOperator)),
-                Stream.of(books, music), TestGlobals.DB, TestGlobals.COLL).toList();
+                Stream.of(books, music), TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(2, xor.size());
         assertEquals(1, nor.size());
@@ -390,11 +390,11 @@ public class FilterConjunctionOperatorTest {
 
         List<JsonObject> and = FilterOperatorHelper
                 .processOperator(new ConjunctionOperator(ConjunctionOperatorType.AND, operators),
-                        Stream.of(first, duplicate), TestGlobals.DB, TestGlobals.COLL)
+                        Stream.of(first, duplicate), TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
         List<JsonObject> or = FilterOperatorHelper
                 .processOperator(new ConjunctionOperator(ConjunctionOperatorType.OR, operators),
-                        Stream.of(first, duplicate), TestGlobals.DB, TestGlobals.COLL)
+                        Stream.of(first, duplicate), TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
 
         assertEquals(2, and.size());

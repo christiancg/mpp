@@ -29,7 +29,7 @@ public final class StartupWarnings {
             ConfigKey.TRANSACTION_MAX_AGE_MS, ConfigKey.MAX_LISTENS_PER_CONNECTION, ConfigKey.MAX_LISTENS,
             ConfigKey.MAX_LISTENS_PER_USER, ConfigKey.MAX_FILTER_OPERANDS, ConfigKey.AGGREGATE_TIMEOUT_MS,
             ConfigKey.MAX_CONCURRENT_SCRIPTS, ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER,
-            ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_DATABASE);
+            ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT);
     private static final String LOCALHOST = "localhost";
     private static final List<ConfigKey> SIZE_LIMITS_OFF_AT_ZERO = List.of(ConfigKey.MAX_MEMORY);
 
@@ -242,12 +242,12 @@ public final class StartupWarnings {
         }
         final var maxBytes = config.getMaxMemoryBytes();
         final var rowBytes = CacheSizeEstimator.minimumPkEntryBytes();
-        for (final var dbName : cache.getUserDatabaseNames()) {
-            for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
-                final var pkBytes = documentCount(dbName, collName) * rowBytes;
+        for (final var projectName : cache.getUserProjectNames()) {
+            for (final var collName : cache.getCollectionNamesForProject(projectName)) {
+                final var pkBytes = documentCount(projectName, collName) * rowBytes;
                 if (pkBytes > maxBytes) {
-                    logger.warning("The primary-key index of " + dbName + "|" + collName + " needs at least " + pkBytes
-                            + " bytes of cache, more than maxMemory (" + maxBytes + "), so it is never"
+                    logger.warning("The primary-key index of " + projectName + "|" + collName + " needs at least "
+                            + pkBytes + " bytes of cache, more than maxMemory (" + maxBytes + "), so it is never"
                             + " cached: keyed reads and writes scan pk.idx for the ids they name. Raise maxMemory"
                             + " above " + pkBytes + ".");
                 }
@@ -255,8 +255,8 @@ public final class StartupWarnings {
         }
     }
 
-    private static long documentCount(String dbName, String collName) {
-        final var pages = cache.getAdminPageEntries(dbName, collName);
+    private static long documentCount(String projectName, String collName) {
+        final var pages = cache.getAdminPageEntries(projectName, collName);
         var documents = 0L;
         if (pages != null) {
             for (final var page : pages) {
@@ -274,11 +274,11 @@ public final class StartupWarnings {
         }
     }
 
-    public static void warnIfDatabaseSharesTheClusterFolder() {
-        for (final var dbName : OnDiskNameRegistry.registeredDatabasesInTheClusterFolder()) {
-            logger.warning("Database '" + dbName + "' is stored in the folder this node keeps its cluster state in"
+    public static void warnIfProjectSharesTheClusterFolder() {
+        for (final var projectName : OnDiskNameRegistry.registeredProjectsInTheClusterFolder()) {
+            logger.warning("Project '" + projectName + "' is stored in the folder this node keeps its cluster state in"
                     + " (node id and admin tombstones). Writes to it are refused because the name is reserved; copy"
-                    + " its data out with AGGREGATE into another database before enabling clustering.");
+                    + " its data out with AGGREGATE into another project before enabling clustering.");
         }
     }
 

@@ -28,23 +28,23 @@ public class AdminTransactionEntryTest {
 
     @Test
     public void test_constructor_sets_fields_and_id() {
-        final var entry = new AdminTransactionEntry("txn-1", "client-1", 2, AdminTransactionEntry.OP_TYPE_SAVE, "myDb",
-                "myColl", payload("alice"));
+        final var entry = new AdminTransactionEntry("txn-1", "client-1", 2, AdminTransactionEntry.OP_TYPE_SAVE,
+                "myProject", "myColl", payload("alice"));
         assertEquals(AdminTransactionEntry.buildId("txn-1", 2), entry.get_id());
         assertEquals("txn-1", entry.getTransactionId());
         assertEquals(2, entry.getSeq());
         assertEquals(AdminTransactionEntry.OP_TYPE_SAVE, entry.getOpType());
-        assertEquals("myDb", entry.getTargetDb());
+        assertEquals("myProject", entry.getTargetProject());
         assertEquals("myColl", entry.getTargetColl());
         assertEquals("alice", entry.getPayload().get("name").asJsonString().getValue());
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, entry.getCollectionName());
     }
 
     @Test
     public void test_from_json_object_round_trip() {
         final var original = new AdminTransactionEntry("txn-2", "client-2", 5, AdminTransactionEntry.OP_TYPE_DELETE,
-                "db2", "coll2", payload("bob"));
+                "project2", "coll2", payload("bob"));
         // The persisted record carries its _id in the data (added when read back from the collection).
         original.getData().add(Globals.PK_FIELD, new JsonString(original.get_id()));
         final var restored = AdminTransactionEntry.fromJsonObject(original.getData());
@@ -52,7 +52,7 @@ public class AdminTransactionEntryTest {
         assertEquals(original.getTransactionId(), restored.getTransactionId());
         assertEquals(original.getSeq(), restored.getSeq());
         assertEquals(original.getOpType(), restored.getOpType());
-        assertEquals(original.getTargetDb(), restored.getTargetDb());
+        assertEquals(original.getTargetProject(), restored.getTargetProject());
         assertEquals(original.getTargetColl(), restored.getTargetColl());
         assertEquals(original, restored);
         assertEquals(original.hashCode(), restored.hashCode());

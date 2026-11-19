@@ -27,8 +27,8 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
 
     private void shadowSchedule() throws Exception {
         shadow(AdminRecordStaleInstallTest.schedule(NAME, clock.next()), clock.next());
-        registry.reload(TestGlobals.DB);
-        assertNotNull(registry.get(TestGlobals.DB, NAME));
+        registry.reload(TestGlobals.PROJECT);
+        assertNotNull(registry.get(TestGlobals.PROJECT, NAME));
     }
 
     @Test
@@ -37,17 +37,17 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
 
         assertTrue(AdminRecordMerge.removeShadowed());
 
-        assertNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
-        assertNull(registry.get(TestGlobals.DB, NAME));
+        assertNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
+        assertNull(registry.get(TestGlobals.PROJECT, NAME));
     }
 
     @Test
     public void test_a_shadowed_collection_is_quarantined() throws Exception {
-        shadow(collection(TestGlobals.DB, "zombie_coll", clock.next()), clock.next());
+        shadow(collection(TestGlobals.PROJECT, "zombie_coll", clock.next()), clock.next());
 
         assertTrue(AdminRecordMerge.removeShadowed());
 
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "zombie_coll"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "zombie_coll"));
     }
 
     @Test
@@ -66,7 +66,7 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
 
         assertTrue(AdminRecordMerge.removeShadowed());
 
-        assertNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
+        assertNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
     }
 
     @Test
@@ -76,7 +76,7 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
 
         assertFalse(AdminRecordMerge.removeShadowed());
 
-        assertNotNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
+        assertNotNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
     }
 
     @Test
@@ -85,7 +85,7 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
         final var locks = IocContainer.get(ResourceLocking.class);
         Thread.ofVirtual().start(() -> {
             try {
-                locks.lock(TestGlobals.DB, Globals.SCHEDULES_FOLDER);
+                locks.lock(TestGlobals.PROJECT, Globals.SCHEDULES_FOLDER);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -94,13 +94,13 @@ public class AdminRecordShadowHealTest extends AdminRecordTestBase {
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 50L);
         try {
             assertFalse(AdminRecordMerge.removeShadowed());
-            assertNotNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
+            assertNotNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
         } finally {
             TestUtils.setPrivateField(config, "replicationAckTimeoutMs", origTimeout);
             TestUtils.releaseAllLocks();
         }
 
         assertTrue(AdminRecordMerge.removeShadowed());
-        assertNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
+        assertNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
     }
 }

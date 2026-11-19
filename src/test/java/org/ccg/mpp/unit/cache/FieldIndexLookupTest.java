@@ -44,17 +44,17 @@ public class FieldIndexLookupTest {
     }
 
     private static FieldIndexEntry<Object> entry(Object value) {
-        return new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, value, new HashSet<>(Set.of("a")));
+        return new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, value, new HashSet<>(Set.of("a")));
     }
 
     private FieldIndexLookup admitted(FieldIndexLookup lookup) throws InterruptedException {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            userCache.admitFieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD, lookup);
+            userCache.admitFieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, lookup);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
-        return userCache.fieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        return userCache.fieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
     }
 
     private static FieldIndexLookup.Located placed(FieldIndexLookup lookup, String id) {
@@ -113,8 +113,8 @@ public class FieldIndexLookupTest {
     public void theLookupIsAdmittedOnlyUnderTheCollectionLock() throws Exception {
         final var lookup = new FieldIndexLookup();
 
-        userCache.admitFieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD, lookup);
-        assertNull(userCache.fieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        userCache.admitFieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, lookup);
+        assertNull(userCache.fieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
 
         assertSame(lookup, admitted(lookup));
     }
@@ -131,17 +131,17 @@ public class FieldIndexLookupTest {
         assertEquals(AccessKind.FIELD_INDEX, listed.getFirst().kind());
         assertEquals(CacheSizeEstimator.estimateFieldIndexLookupSize(1), listed.getFirst().estimatedSizeBytes());
 
-        userCache.evictFieldIndex(TestGlobals.DB, TestGlobals.COLL, listed.getFirst().indexKey());
-        assertNull(userCache.fieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        userCache.evictFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, listed.getFirst().indexKey());
+        assertNull(userCache.fieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 
     @Test
-    public void evictingTheDatabaseEvictsItsLookups() throws Exception {
+    public void evictingTheProjectEvictsItsLookups() throws Exception {
         admitted(new FieldIndexLookup());
 
-        userCache.evictDatabase(TestGlobals.DB);
+        userCache.evictProject(TestGlobals.PROJECT);
 
-        assertNull(userCache.fieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        assertNull(userCache.fieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 
     @Test

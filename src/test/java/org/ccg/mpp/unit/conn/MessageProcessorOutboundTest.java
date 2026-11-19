@@ -28,7 +28,7 @@ public class MessageProcessorOutboundTest {
     private static final String ADMIN = "outbound_admin";
     private static final Pattern LISTEN_ID = Pattern.compile("\"listenId\":\"([0-9a-f-]{36})\"");
     private static final int PIPELINED_REQUESTS = 60;
-    private static final String LARGE_AGGREGATE = "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String LARGE_AGGREGATE = "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":[]}";
     private final Configuration config = Configuration.getInstance();
     private ScriptedConnection connection;
@@ -36,7 +36,7 @@ public class MessageProcessorOutboundTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         TestUtils.setPrivateField(config, "transactionIdleTimeoutMs", 300L);
         TestUtils.setPrivateField(config, "clientOutboundQueueMaxBytes", "1Kb");
@@ -45,7 +45,7 @@ public class MessageProcessorOutboundTest {
         assertTrue(connection
                 .exchange("{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN + "\",\"password\":\"password123\"}")
                 .contains("\"OK\""));
-        assertTrue(connection.exchange("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        assertTrue(connection.exchange("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"bulky\",\"blob\":\""
                 + "b".repeat(Globals.INLINE_FRAME_MAX_BYTES) + "\"}}").contains("\"OK\""));
     }
@@ -68,9 +68,9 @@ public class MessageProcessorOutboundTest {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var free = new AtomicBoolean();
         final var probe = Thread.ofPlatform().start(() -> {
-            free.set(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            free.set(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
             if (free.get()) {
-                locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join(5000);
@@ -96,9 +96,11 @@ public class MessageProcessorOutboundTest {
 
     private void openTransactionWithOneWrite() throws InterruptedException {
         assertTrue(connection.exchange("{\"type\":\"START_TRANSACTION\"}").contains("\"OK\""));
-        assertTrue(connection.exchange("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
-                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"held\"}}")
-                .contains("\"OK\""));
+        assertTrue(
+                connection
+                        .exchange("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
+                                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"held\"}}")
+                        .contains("\"OK\""));
         assertFalse(collectionIsWritable());
     }
 
@@ -131,15 +133,15 @@ public class MessageProcessorOutboundTest {
     public void test_a_pipelining_client_keeps_the_connection_thread_free_to_reap() throws Exception {
         openTransactionWithOneWrite();
         connection.stallResponses();
-        connection.send("{\"type\":\"LIST_DATABASES\"}\n{\"type\":\"LIST_DATABASES\"}");
+        connection.send("{\"type\":\"LIST_PROJECTS\"}\n{\"type\":\"LIST_PROJECTS\"}");
         assertTrue(connection.awaitBlockedWriter());
 
         assertTrue(eventually(MessageProcessorOutboundTest::collectionIsWritable),
                 "a burst of requests marks the connection as pipelining, so a drainer writes its small responses");
         assertTrue(outbound().isOpen());
         connection.resumeResponses();
-        assertTrue(connection.response().contains("LIST_DATABASES"));
-        assertTrue(connection.response().contains("LIST_DATABASES"));
+        assertTrue(connection.response().contains("LIST_PROJECTS"));
+        assertTrue(connection.response().contains("LIST_PROJECTS"));
     }
 
     @Test
@@ -148,7 +150,7 @@ public class MessageProcessorOutboundTest {
         TestUtils.setPrivateField(config, "clientWriteStallTimeoutMs", 1000L);
         openTransactionWithOneWrite();
         connection.stallResponses();
-        connection.send("{\"type\":\"LIST_DATABASES\"}");
+        connection.send("{\"type\":\"LIST_PROJECTS\"}");
         assertTrue(connection.awaitBlockedWriter());
 
         Thread.sleep(600);
@@ -175,7 +177,7 @@ public class MessageProcessorOutboundTest {
 
     @Test
     public void test_an_overflowing_outbound_queue_ends_listens_and_closes_the_connection() throws Exception {
-        final var listenResponse = connection.exchange("{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB
+        final var listenResponse = connection.exchange("{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":[]}");
         final var matcher = LISTEN_ID.matcher(listenResponse);
         assertTrue(matcher.find(), listenResponse);

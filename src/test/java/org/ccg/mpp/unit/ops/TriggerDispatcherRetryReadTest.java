@@ -48,7 +48,7 @@ public class TriggerDispatcherRetryReadTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
@@ -57,12 +57,13 @@ public class TriggerDispatcherRetryReadTest {
         TestUtils.setPrivateField(configuration, "triggerRetryBackoffMs", 60_000L);
         TestUtils.setPrivateField(configuration, "triggerRetryMaxBackoffMs", 60_000L);
         TriggerTestSupport.createDefiner(OWNER);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", "return 'ok';"), OWNER);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "return 'ok';"),
+                OWNER);
         installTrigger();
     }
 
     private void installTrigger() {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.UPDATED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, false, true, OWNER, 1L, 1L, 1L, OWNER)));
     }
@@ -75,7 +76,7 @@ public class TriggerDispatcherRetryReadTest {
     }
 
     private static void saveDocument(String id, String value) throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("value", new JsonString(value));
@@ -85,19 +86,19 @@ public class TriggerDispatcherRetryReadTest {
     }
 
     private static void deleteTheGoneDocument() throws Exception {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("gone");
         DeleteOperationHelper.executeDelete(request);
     }
 
     private static String pendingRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.UPDATED, false, OWNER, 0, System.currentTimeMillis(),
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "audit", EventType.UPDATED, false, OWNER, 0, System.currentTimeMillis(),
                 List.of(entry(id, "captured"))));
     }
 
     private static TriggerEvent firstAttempt(String id, String runId, EventType type) {
-        return new TriggerEvent(type, TestGlobals.DB, TestGlobals.COLL, "audit", "audit", false,
+        return new TriggerEvent(type, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit", false,
                 List.of(entry(id, "captured")), OWNER, 0, runId, 1);
     }
 
@@ -108,8 +109,8 @@ public class TriggerDispatcherRetryReadTest {
     }
 
     private void makeThePagesUnreadable() throws Exception {
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
-        final var folder = new File(TestUtils.getDbPath(fs), TestGlobals.DB + File.separator + TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var folder = new File(TestUtils.getDbPath(fs), TestGlobals.PROJECT + File.separator + TestGlobals.COLL);
         final var pages = folder.listFiles((_, name) -> name.endsWith(".dat"));
         assertNotNull(pages);
         assertTrue(pages.length > 0, "the fixture needs a page file to break");

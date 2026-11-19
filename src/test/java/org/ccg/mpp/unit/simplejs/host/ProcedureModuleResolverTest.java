@@ -27,7 +27,7 @@ public class ProcedureModuleResolverTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -42,20 +42,20 @@ public class ProcedureModuleResolverTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
     }
 
     private static void save(String name, String source, boolean enabled) throws Exception {
-        final var request = new SaveProcedureRequest(TestGlobals.DB, name, source);
+        final var request = new SaveProcedureRequest(TestGlobals.PROJECT, name, source);
         request.setEnabled(enabled);
         ProcedureOperationHelper.executeSave(request, ACTOR);
     }
 
     private static ProcedureModuleResolver resolver() {
-        return new ProcedureModuleResolver(TestGlobals.DB);
+        return new ProcedureModuleResolver(TestGlobals.PROJECT);
     }
 
     @Test
@@ -64,7 +64,7 @@ public class ProcedureModuleResolverTest {
         final var resolved = resolver().resolve("procedures/lib", "main");
         assertNotNull(resolved);
         assertEquals(SOURCE, resolved.source());
-        assertTrue(resolved.moduleId().contains(TestGlobals.DB), resolved.moduleId());
+        assertTrue(resolved.moduleId().contains(TestGlobals.PROJECT), resolved.moduleId());
         assertTrue(resolved.moduleId().contains("lib"), resolved.moduleId());
         assertTrue(resolved.moduleId().endsWith("|1"), resolved.moduleId());
     }
@@ -120,9 +120,9 @@ public class ProcedureModuleResolverTest {
     }
 
     @Test
-    void returnsNullForAnotherDatabase() throws Exception {
+    void returnsNullForAnotherProject() throws Exception {
         save("lib", SOURCE, true);
-        assertNull(new ProcedureModuleResolver("otherDb").resolve("procedures/lib", "main"));
+        assertNull(new ProcedureModuleResolver("otherProject").resolve("procedures/lib", "main"));
     }
 
     @Test

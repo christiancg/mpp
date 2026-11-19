@@ -52,8 +52,8 @@ public class PageRowWriteBackTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIncarnation(INCARNATION);
+        TestUtils.createTestProjectAndCollection();
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIncarnation(INCARNATION);
         recorder = RecordingForcer.install(PlatformSupport.directorySync());
     }
 
@@ -69,44 +69,44 @@ public class PageRowWriteBackTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("payload", new JsonString("some bytes"));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, collName, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, object);
         entry.set_id(id);
         entry.setPage(page);
         return entry;
     }
 
     private static void created(String collName, String id, long page) throws Exception {
-        EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, collName,
-                entryOnPage(collName, id, page), CollectionIncarnation.current(TestGlobals.DB, collName)));
+        EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, collName,
+                entryOnPage(collName, id, page), CollectionIncarnation.current(TestGlobals.PROJECT, collName)));
     }
 
     private static void deleteFirstOnPageZero() throws Exception {
         final var entry = entryOnPage(TestGlobals.COLL, "a", 0);
-        IocContainer.get(Cache.class).updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, -entry.byteSize(),
-                -1);
-        EventProcessorHelper.processEvent(new EntityEvent(EventType.DELETED, TestGlobals.DB, TestGlobals.COLL, entry,
-                CollectionIncarnation.current(TestGlobals.DB, TestGlobals.COLL)));
+        IocContainer.get(Cache.class).updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0,
+                -entry.byteSize(), -1);
+        EventProcessorHelper.processEvent(new EntityEvent(EventType.DELETED, TestGlobals.PROJECT, TestGlobals.COLL,
+                entry, CollectionIncarnation.current(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     private Map<Long, Integer> rowsOnDisk(String collName) throws IOException {
-        final var pagesCollection = AdminPageEntry.pagesCollectionName(TestGlobals.DB, collName);
-        final var prefix = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + collName
+        final var pagesCollection = AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, collName);
+        final var prefix = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + collName
                 + Globals.COLL_IDENTIFIER_SEPARATOR;
-        try (var rows = fs.streamEntries(Globals.ADMIN_PAGES_DB_NAME, pagesCollection)) {
+        try (var rows = fs.streamEntries(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollection)) {
             return rows.filter(row -> row.get_id().startsWith(prefix))
-                    .map(row -> AdminPageEntry.fromJsonObject(TestGlobals.DB, collName, row.getData()))
+                    .map(row -> AdminPageEntry.fromJsonObject(TestGlobals.PROJECT, collName, row.getData()))
                     .collect(Collectors.toMap(AdminPageEntry::getPage, AdminPageEntry::getEntryCount,
                             (_, latest) -> latest, TreeMap::new));
         }
     }
 
     private Map<Long, Integer> rowsInMemory() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().collect(Collectors
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream().collect(Collectors
                 .toMap(AdminPageEntry::getPage, AdminPageEntry::getEntryCount, (_, latest) -> latest, TreeMap::new));
     }
 
-    private boolean pageRowsForced(String dbName, String collName) {
-        final var log = AdminPageEntry.pagesCollectionName(dbName, collName) + Globals.WAL_EXTENSION;
+    private boolean pageRowsForced(String projectName, String collName) {
+        final var log = AdminPageEntry.pagesCollectionName(projectName, collName) + Globals.WAL_EXTENSION;
         return recorder.forcedNames().contains(log);
     }
 
@@ -116,7 +116,7 @@ public class PageRowWriteBackTest {
 
         created(TestGlobals.COLL, "a", 0);
 
-        assertFalse(pageRowsForced(TestGlobals.DB, TestGlobals.COLL), recorder.forcedNames().toString());
+        assertFalse(pageRowsForced(TestGlobals.PROJECT, TestGlobals.COLL), recorder.forcedNames().toString());
         assertEquals(Map.of(0L, 1), rowsInMemory());
         assertEquals(Map.of(), rowsOnDisk(TestGlobals.COLL));
     }
@@ -138,7 +138,7 @@ public class PageRowWriteBackTest {
 
         recorder.clear();
         PageRowWriteBack.flushDue(now + 2 * Globals.PAGE_ROWS_WRITE_BACK_MS);
-        assertFalse(pageRowsForced(TestGlobals.DB, TestGlobals.COLL), "a flushed collection is clean");
+        assertFalse(pageRowsForced(TestGlobals.PROJECT, TestGlobals.COLL), "a flushed collection is clean");
     }
 
     @Test
@@ -151,7 +151,7 @@ public class PageRowWriteBackTest {
         final var others = List.of(EntityRef.of(entryOnPage(TestGlobals.COLL, "u1", 1)),
                 EntityRef.of(entryOnPage(TestGlobals.COLL, "u2", 5)));
 
-        AdminPageHelper.bookWritePathPages(TestGlobals.DB, TestGlobals.COLL, created, others, INCARNATION);
+        AdminPageHelper.bookWritePathPages(TestGlobals.PROJECT, TestGlobals.COLL, created, others, INCARNATION);
         PageRowWriteBack.flushAll();
 
         assertEquals(Map.of(0L, 2, 1L, 1), rowsInMemory(),
@@ -160,8 +160,8 @@ public class PageRowWriteBackTest {
     }
 
     private static long[] rowFileDeadAndLive() throws IOException {
-        final var folder = Path.of(TestGlobals.PATH, Globals.ADMIN_DB_NAME, Globals.ADMIN_PAGES_FOLDER,
-                AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL));
+        final var folder = Path.of(TestGlobals.PATH, Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PAGES_FOLDER,
+                AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL));
         var total = 0L;
         var live = 0L;
         try (var files = Files.list(folder)) {
@@ -192,9 +192,10 @@ public class PageRowWriteBackTest {
         var live = 0L;
         for (var round = 0; round < 200; round++) {
             for (var page = 0; page < pages; page++) {
-                cache.updatePageSizeForUpdateInMemory(TestGlobals.DB, TestGlobals.COLL, page, round % 2 == 0 ? 1 : -1);
+                cache.updatePageSizeForUpdateInMemory(TestGlobals.PROJECT, TestGlobals.COLL, page,
+                        round % 2 == 0 ? 1 : -1);
             }
-            AdminPageHelper.bookWritePathPages(TestGlobals.DB, TestGlobals.COLL, List.of(), refs, INCARNATION);
+            AdminPageHelper.bookWritePathPages(TestGlobals.PROJECT, TestGlobals.COLL, List.of(), refs, INCARNATION);
             PageRowWriteBack.flushAll();
             final var deadAndLive = rowFileDeadAndLive();
             worst = Math.max(worst, deadAndLive[0]);
@@ -259,7 +260,7 @@ public class PageRowWriteBackTest {
     @Test
     public void test_a_recreated_collection_does_not_inherit_dirty_rows() throws Exception {
         created(TestGlobals.COLL, "a", 0);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIncarnation(INCARNATION + 1);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIncarnation(INCARNATION + 1);
 
         PageRowWriteBack.flushAll();
 
@@ -270,11 +271,11 @@ public class PageRowWriteBackTest {
     public void test_a_dropped_collections_rows_are_discarded() throws Exception {
         created(TestGlobals.COLL, "a", 0);
 
-        AdminPageHelper.deletePageCollections(TestGlobals.DB, TestGlobals.COLL);
+        AdminPageHelper.deletePageCollections(TestGlobals.PROJECT, TestGlobals.COLL);
         recorder.clear();
         PageRowWriteBack.flushAll();
 
-        assertFalse(pageRowsForced(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(pageRowsForced(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -282,7 +283,7 @@ public class PageRowWriteBackTest {
     public void test_a_failed_write_back_is_retried_by_the_next_flush() throws Exception {
         created(TestGlobals.COLL, "a", 0);
         recorder.failingFor(
-                AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL) + Globals.WAL_EXTENSION);
+                AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL) + Globals.WAL_EXTENSION);
 
         PageRowWriteBack.flushAll();
         assertEquals(Map.of(), rowsOnDisk(TestGlobals.COLL), "the forced write failed and was taken back");
@@ -298,13 +299,13 @@ public class PageRowWriteBackTest {
         PageRowWriteBack.flushAll();
         recorder.clear();
 
-        AdminPageHelper.recordLandedDelta(Globals.ADMIN_DATABASES_COLLECTION_NAME, EventType.CREATED,
-                List.of(entryOnPage(Globals.ADMIN_DATABASES_COLLECTION_NAME, "landed", 0)));
+        AdminPageHelper.recordLandedDelta(Globals.ADMIN_PROJECTS_COLLECTION_NAME, EventType.CREATED,
+                List.of(entryOnPage(Globals.ADMIN_PROJECTS_COLLECTION_NAME, "landed", 0)));
 
-        assertFalse(pageRowsForced(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME),
+        assertFalse(pageRowsForced(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME),
                 recorder.forcedNames().toString());
         PageRowWriteBack.flushAll();
-        assertTrue(pageRowsForced(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME),
+        assertTrue(pageRowsForced(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME),
                 recorder.forcedNames().toString());
     }
 
@@ -351,7 +352,7 @@ public class PageRowWriteBackTest {
     public void test_a_retry_keeps_pages_touched_while_the_write_back_was_failing() throws Exception {
         created(TestGlobals.COLL, "a", 0);
         recorder.failingFor(
-                AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL) + Globals.WAL_EXTENSION);
+                AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL) + Globals.WAL_EXTENSION);
         PageRowWriteBack.flushAll();
         created(TestGlobals.COLL, "b", 1);
 

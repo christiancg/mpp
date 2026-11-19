@@ -36,12 +36,12 @@ public class FileSystemDropTest {
     }
 
     @Test
-    public void test_dropping_a_database_whose_folder_is_a_dangling_link_removes_the_link(@TempDir Path tmp)
+    public void test_dropping_a_project_whose_folder_is_a_dangling_link_removes_the_link(@TempDir Path tmp)
             throws Exception {
         final var fs = fileSystemRootedAt(tmp.resolve("db"));
         final var link = Files.createSymbolicLink(tmp.resolve("db").resolve("shop"), tmp.resolve("gone"));
 
-        assertTrue(fs.deleteDatabase("shop"));
+        assertTrue(fs.deleteProject("shop"));
         assertFalse(Files.exists(link, LinkOption.NOFOLLOW_LINKS));
     }
 
@@ -58,7 +58,7 @@ public class FileSystemDropTest {
     }
 
     @Test
-    public void test_dropping_a_missing_database_is_still_a_no_op(@TempDir Path tmp) throws Exception {
-        assertTrue(fileSystemRootedAt(tmp.resolve("db")).deleteDatabase("absent"));
+    public void test_dropping_a_missing_project_is_still_a_no_op(@TempDir Path tmp) throws Exception {
+        assertTrue(fileSystemRootedAt(tmp.resolve("db")).deleteProject("absent"));
     }
 }

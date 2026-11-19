@@ -34,7 +34,7 @@ public class PrimaryKeyIndexResolverTest extends FilterResolutionSupport {
     }
 
     private Set<String> resolve(FieldOperatorType type, JsonBaseElement operand) throws IOException {
-        return PrimaryKeyIndexResolver.resolve(new FieldOperator(type, Globals.PK_FIELD, operand), TestGlobals.DB,
+        return PrimaryKeyIndexResolver.resolve(new FieldOperator(type, Globals.PK_FIELD, operand), TestGlobals.PROJECT,
                 TestGlobals.COLL, ReadObserver.NONE);
     }
 

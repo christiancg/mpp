@@ -6,19 +6,19 @@ import type { TriggerDefinition, TriggerEvent, TriggerInfo, TriggerSaved, Trigge
 
 export class Triggers {
     readonly #context: ClientContext;
-    readonly #database: string;
+    readonly #project: string;
     readonly #collection: string;
 
-    constructor(context: ClientContext, database: string, collection: string) {
+    constructor(context: ClientContext, project: string, collection: string) {
         this.#context = context;
-        this.#database = database;
+        this.#project = project;
         this.#collection = collection;
     }
 
     async save(definition: TriggerDefinition): Promise<TriggerSaved> {
         const reply = await this.#context.channel.send(
             "SAVE_TRIGGER",
-            this.#context.scripts.saveTrigger(this.#database, this.#collection, definition),
+            this.#context.scripts.saveTrigger(this.#project, this.#collection, definition),
         );
         return { version: numberOf(reply.version) ?? 0, definer: textOf(reply.definer) ?? "" };
     }
@@ -26,14 +26,14 @@ export class Triggers {
     async delete(name: string): Promise<void> {
         await this.#context.channel.send(
             "DELETE_TRIGGER",
-            this.#context.scripts.deleteTrigger(this.#database, this.#collection, name),
+            this.#context.scripts.deleteTrigger(this.#project, this.#collection, name),
         );
     }
 
     async list(): Promise<TriggerInfo[]> {
         const reply = await this.#context.channel.send(
             "LIST_TRIGGERS",
-            this.#context.scripts.listTriggers(this.#database, this.#collection),
+            this.#context.scripts.listTriggers(this.#project, this.#collection),
         );
         return documents(reply, "triggers").map(trigger);
     }
@@ -41,7 +41,7 @@ export class Triggers {
     async test(name: string, event: TriggerEvent, sample: Document): Promise<TriggerTestResult> {
         const reply = await this.#context.channel.send(
             "TEST_TRIGGER",
-            this.#context.scripts.testTrigger(this.#database, this.#collection, name, event, sample),
+            this.#context.scripts.testTrigger(this.#project, this.#collection, name, event, sample),
         );
         return {
             decision: textOf(reply.decision) ?? "",

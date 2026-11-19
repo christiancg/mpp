@@ -14,24 +14,24 @@ public final class FolderQuarantine {
         return file.isDirectory() && !file.getName().contains(Globals.QUARANTINE_INFIX);
     }
 
-    public boolean moveCollectionAside(String dbName, String collectionName, long incarnation) {
-        final var collectionFolder = paths.collectionFolder(dbName, collectionName);
+    public boolean moveCollectionAside(String projectName, String collectionName, long incarnation) {
+        final var collectionFolder = paths.collectionFolder(projectName, collectionName);
         if (!collectionFolder.exists()) {
             return false;
         }
         return moveAside(collectionFolder, collectionName + Globals.QUARANTINE_INFIX + incarnation + "-");
     }
 
-    public boolean moveDatabaseAside(String dbName) {
-        final var dbFolder = paths.rawDatabaseFolder(dbName);
-        if (!dbFolder.exists()) {
+    public boolean moveProjectAside(String projectName) {
+        final var projectFolder = paths.rawProjectFolder(projectName);
+        if (!projectFolder.exists()) {
             return false;
         }
-        return moveAside(dbFolder, dbName + Globals.QUARANTINE_INFIX);
+        return moveAside(projectFolder, projectName + Globals.QUARANTINE_INFIX);
     }
 
-    public boolean holdsLeftoverCollection(String dbName, String collectionName) {
-        final var files = paths.collectionFolder(dbName, collectionName).listFiles();
+    public boolean holdsLeftoverCollection(String projectName, String collectionName) {
+        final var files = paths.collectionFolder(projectName, collectionName).listFiles();
         if (files == null) {
             return false;
         }
@@ -43,8 +43,8 @@ public final class FolderQuarantine {
         return false;
     }
 
-    public boolean holdsLeftoverDatabase(String dbName) {
-        final var files = paths.rawDatabaseFolder(dbName).listFiles();
+    public boolean holdsLeftoverProject(String projectName) {
+        final var files = paths.rawProjectFolder(projectName).listFiles();
         return files != null && files.length > 0;
     }
 

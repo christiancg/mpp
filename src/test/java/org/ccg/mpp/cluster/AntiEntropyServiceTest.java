@@ -30,15 +30,15 @@ import org.junit.jupiter.api.Test;
 public class AntiEntropyServiceTest extends AntiEntropyTestBase {
 
     private long versionOf() throws Exception {
-        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(e -> e.getValue().equals("a")).findFirst().orElseThrow().getVersion();
     }
 
     @Test
     public void test_build_digest_includes_live_docs_and_tombstones() throws Exception {
         seed();
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "gone", 555L);
-        final var digest = service.buildDigest(TestGlobals.DB, TestGlobals.COLL).getDigest();
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "gone", 555L);
+        final var digest = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL).getDigest();
         final var live = digest.stream().filter(e -> e.getId().equals("a")).findFirst().orElseThrow();
         assertFalse(live.isDeleted());
         final var tombstone = digest.stream().filter(e -> e.getId().equals("gone")).findFirst().orElseThrow();
@@ -51,10 +51,10 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
     public void test_summary_matches_between_owner_and_replica_after_a_write() throws Exception {
         seed();
         for (var logical = 1; logical <= 8; logical++) {
-            fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "gone-" + logical,
+            fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "gone-" + logical,
                     HybridClock.pack(System.currentTimeMillis(), logical));
         }
-        final var owner = service.buildDigest(TestGlobals.DB, TestGlobals.COLL);
+        final var owner = service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var asReceived = eJson.fromJson(eJson.toJson(owner), AntiEntropyPayload.class);
 
@@ -64,7 +64,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
     @Test
     public void test_the_summary_reconcile_sends_matches_the_digest_it_would_build() throws Exception {
         seed();
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "gone",
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "gone",
                 HybridClock.pack(System.currentTimeMillis(), 1));
         final var sentSummary = new AtomicReference<String>();
         final var pool = mock(PeerConnectionPool.class);
@@ -73,16 +73,16 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
             sentSummary.compareAndSet(null, message.getAntiEntropy().getSummary());
             final var response = new ClusterMessage();
             response.setType(ClusterMessageType.DIGEST_ACK);
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             payload.setSummaryMatch(true);
             response.setAntiEntropy(payload);
             return response;
         });
         injectPeer(pool);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertEquals(service.buildDigest(TestGlobals.DB, TestGlobals.COLL).getSummary(), sentSummary.get(),
+        assertEquals(service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL).getSummary(), sentSummary.get(),
                 "a converged peer answers summaryMatch only when the summary reconcile sends is built exactly"
                         + " as buildDigest builds its own, document length included");
     }
@@ -93,7 +93,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
                 final var object = new JsonObject();
                 object.addProperty("_id", "w" + i);
                 object.addProperty("v", i);
-                final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+                final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
                 request.setObject(object);
                 request.set_id("w" + i);
                 processor.processMessage(request);
@@ -111,7 +111,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         try {
             for (var i = 0; i < 200; i++) {
                 try {
-                    service.buildDigest(TestGlobals.DB, TestGlobals.COLL);
+                    service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL);
                 } catch (Throwable t) {
                     failure.compareAndSet(null, t);
                     break;
@@ -129,7 +129,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
     @Test
     public void test_build_pull_returns_documents_and_versions() throws Exception {
         seed();
-        final var pull = service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a", "missing"));
+        final var pull = service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a", "missing"));
         assertEquals(1, pull.getDocuments().size());
         assertEquals(1, pull.getVersions().size());
     }
@@ -143,7 +143,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(invocation -> {
             final ClusterMessage message = invocation.getArgument(1);
             final var response = new ClusterMessage();
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             if (message.getType() == ClusterMessageType.DIGEST) {
                 response.setType(ClusterMessageType.DIGEST_ACK);
                 payload.setDigest(List.of(new DigestEntry("a", 1000L, false)));
@@ -157,7 +157,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         });
         injectPeer(pool);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(hasLive(SEEDED_ID));
         assertEquals(1000L, versionOf());
@@ -171,17 +171,17 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(_ -> {
             final var response = new ClusterMessage();
             response.setType(ClusterMessageType.DIGEST_ACK);
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             payload.setDigest(List.of(new DigestEntry("a", tombstoneVersion, true)));
             response.setAntiEntropy(payload);
             return response;
         });
         injectPeer(pool);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertFalse(hasLive(SEEDED_ID));
-        assertEquals(tombstoneVersion, fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).get("a"));
+        assertEquals(tombstoneVersion, fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).get("a"));
     }
 
     private void injectTombstoneDigest(List<String> ids, long version) throws Exception {
@@ -189,7 +189,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(_ -> {
             final var response = new ClusterMessage();
             response.setType(ClusterMessageType.DIGEST_ACK);
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             payload.setDigest(ids.stream().map(id -> new DigestEntry(id, version, true)).toList());
             response.setAntiEntropy(payload);
             return response;
@@ -202,9 +202,9 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         final var version = HybridClock.pack(System.currentTimeMillis(), 0);
         injectTombstoneDigest(List.of("lost"), version);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertEquals(version, fs.tombstones().versionOf(TestGlobals.DB, TestGlobals.COLL, "lost"),
+        assertEquals(version, fs.tombstones().versionOf(TestGlobals.PROJECT, TestGlobals.COLL, "lost"),
                 "a node that kept the delete but lost its unforced tombstone takes it back from the peer");
     }
 
@@ -217,9 +217,9 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         }
         injectTombstoneDigest(ids, version);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertEquals(ids.size(), fs.tombstones().view(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(ids.size(), fs.tombstones().view(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 
     @Test
@@ -233,7 +233,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
             when(pool.request(any(), any(), anyLong())).thenAnswer(_ -> {
                 final var response = new ClusterMessage();
                 response.setType(ClusterMessageType.DIGEST_ACK);
-                response.setAntiEntropy(new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL));
+                response.setAntiEntropy(new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL));
                 response.getAntiEntropy().setDigest(List.of());
                 return response;
             });
@@ -268,14 +268,14 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(_ -> {
             final var response = new ClusterMessage();
             response.setType(ClusterMessageType.DIGEST_ACK);
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             payload.setDigest(List.of(new DigestEntry("a", 1L, false)));
             response.setAntiEntropy(payload);
             return response;
         });
         injectPeer(pool);
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(hasLive(SEEDED_ID));
         assertEquals(localVersion, versionOf());
@@ -287,7 +287,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
             when(pool.request(any(), any(), anyLong())).thenAnswer(_ -> {
                 final var response = new ClusterMessage();
                 response.setType(ClusterMessageType.DIGEST_ACK);
-                final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+                final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
                 payload.setDigest(List.of());
                 response.setAntiEntropy(payload);
                 return response;
@@ -337,14 +337,14 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         final var originalRetention = config.getTombstoneRetentionMs();
         TestUtils.setPrivateField(config, "tombstoneRetentionMs", 1L);
         try {
-            fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "old", HybridClock.pack(1L, 0));
+            fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "old", HybridClock.pack(1L, 0));
             final var pool = mock(PeerConnectionPool.class);
             when(pool.request(any(), any(), anyLong())).thenThrow(new java.io.IOException("unreachable"));
             injectPeer(pool);
 
-            service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+            service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-            assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).containsKey("old"),
+            assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("old"),
                     "a tombstone must survive a round no peer answered: collecting it while partitioned is"
                             + " exactly when a peer still holding the document resurrects it");
         } finally {
@@ -359,16 +359,16 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         final var originalRetention = config.getTombstoneRetentionMs();
         TestUtils.setPrivateField(config, "tombstoneRetentionMs", 1L);
         try {
-            fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "lonely", HybridClock.pack(1L, 0));
+            fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "lonely", HybridClock.pack(1L, 0));
             final var self = node("self", 5000);
             final var membership = mock(MembershipService.class);
             when(membership.getSelf()).thenReturn(self);
             when(membership.membershipView()).thenReturn(new MembershipView(List.of(self)));
             TestUtils.setPrivateField(service, "membershipService", membership);
 
-            service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+            service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-            assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).containsKey("lonely"),
+            assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("lonely"),
                     "a node that can see nobody may itself be the partitioned side");
         } finally {
             TestUtils.setPrivateField(config, "tombstoneRetentionMs", originalRetention);
@@ -380,19 +380,19 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         final var retention = Configuration.getInstance().getTombstoneRetentionMs();
         final var expired = HybridClock.pack(System.currentTimeMillis() - (2L * retention), 0);
         final var recent = HybridClock.pack(System.currentTimeMillis(), 0);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "old", expired);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "recent", recent);
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "old", expired);
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "recent", recent);
         injectPeer(emptyDigestPool());
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNull(tombstones.get("old"));
         assertEquals(recent, tombstones.get("recent"));
     }
 
     private String peerValueOf() {
-        final var request = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("a");
         final var response = processor.processMessage(request);
         if (response instanceof org.ccg.mpp.ops.resp.FindByIdResponse found && found.getObject() != null) {
@@ -409,7 +409,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(invocation -> {
             final ClusterMessage message = invocation.getArgument(1);
             final var response = new ClusterMessage();
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             if (message.getType() == ClusterMessageType.DIGEST) {
                 response.setType(ClusterMessageType.DIGEST_ACK);
                 payload.setNodeId(peerNodeId);
@@ -430,7 +430,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         seed();
         injectPeer(peerAtEqualVersion("zeta", versionOf()));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals("9", peerValueOf(),
                 "a winner that wins only on the node-id tie-break is still a winner and must be pulled");
@@ -441,7 +441,7 @@ public class AntiEntropyServiceTest extends AntiEntropyTestBase {
         seed();
         injectPeer(peerAtEqualVersion("aaa", versionOf()));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals("1", peerValueOf(),
                 "the same total order run from the other side keeps this node's copy, so the two agree");

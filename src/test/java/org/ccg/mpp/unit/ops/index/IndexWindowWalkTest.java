@@ -46,9 +46,9 @@ public class IndexWindowWalkTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(FIELD);
         entry.setIndexes(indexes);
@@ -75,7 +75,7 @@ public class IndexWindowWalkTest {
     }
 
     private IndexWindowWalk open(FieldOperator operator, int firstPage) throws Exception {
-        return IndexWindowWalk.open(operator, TestGlobals.DB, TestGlobals.COLL, firstPage, ReadObserver.NONE);
+        return IndexWindowWalk.open(operator, TestGlobals.PROJECT, TestGlobals.COLL, firstPage, ReadObserver.NONE);
     }
 
     private static List<String> take(IndexWindowWalk walk, int count) {
@@ -105,7 +105,7 @@ public class IndexWindowWalkTest {
     public void test_a_walk_resumes_after_a_concurrent_batch_without_repeating_or_losing_an_id() throws Exception {
         seed(300, 1);
         seed(20, 2);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var walk = open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 4);
             assertNotNull(walk);
@@ -127,7 +127,7 @@ public class IndexWindowWalkTest {
             assertEquals(emitted.size(), Set.copyOf(emitted).size(), "no id is emitted twice");
             assertTrue(emitted.containsAll(stillMatching), "every id still matching is emitted");
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -136,7 +136,7 @@ public class IndexWindowWalkTest {
         seed(40, 1);
         seed(30, 2);
         seed(5, 0);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var walk = open(operator(FieldOperatorType.GREATER_THAN_EQUALS, new JsonNumber(1)), 3);
             final var emitted = new ArrayList<>(take(walk, 3));
@@ -150,18 +150,18 @@ public class IndexWindowWalkTest {
             assertTrue(emitted.containsAll(idsOf("n2-", 30)));
             assertTrue(emitted.stream().noneMatch(id -> id.startsWith("n0-")));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     @Test
     public void test_a_list_that_is_not_resident_is_walked_in_one_page() throws Exception {
         seed(50, 3);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         final var configuration = Configuration.getInstance();
         final long original = configuration.getMaxMemoryBytes();
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", 1L);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var walk = open(operator(FieldOperatorType.SMALLER_THAN_EQUALS, new JsonNumber(3)), 2);
 
@@ -169,7 +169,7 @@ public class IndexWindowWalkTest {
             assertEquals(50, TestUtils.getPrivateField(walk, "page", List.class).size());
             assertEquals(idsOf("n3-", 50), new TreeSet<>(take(walk, Integer.MAX_VALUE)));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(configuration, "maxMemoryBytes", original);
         }
     }
@@ -184,7 +184,7 @@ public class IndexWindowWalkTest {
         operands.add(new JsonNumber(1));
         operands.add(new JsonNumber(1.0));
         operands.add(new JsonNumber(7));
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var emitted = take(open(operator(FieldOperatorType.IN, operands), 3), Integer.MAX_VALUE);
 
@@ -193,7 +193,7 @@ public class IndexWindowWalkTest {
             assertEquals(20, emitted.size());
             assertEquals(expected, new TreeSet<>(emitted));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -201,8 +201,8 @@ public class IndexWindowWalkTest {
     public void test_a_pending_id_comes_first_and_only_once() throws Exception {
         seed(10, 1);
         support.put("n1-3", new JsonNumber(1));
-        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL, "n1-3");
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL, "n1-3");
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var emitted = take(open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 2), Integer.MAX_VALUE);
 
@@ -210,8 +210,8 @@ public class IndexWindowWalkTest {
             assertEquals(idsOf("n1-", 10), new TreeSet<>(emitted));
             assertEquals(10, emitted.size());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
-            IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
+            IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -222,7 +222,7 @@ public class IndexWindowWalkTest {
         mixed.add(new JsonNumber(1));
         mixed.add(new JsonString("1"));
         assertNull(open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 2), "no collection lock");
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             assertNull(open(operator(FieldOperatorType.NOT_EQUALS, new JsonNumber(1)), 2));
             assertNull(open(operator(FieldOperatorType.IN, mixed), 2));
@@ -231,16 +231,16 @@ public class IndexWindowWalkTest {
             assertNull(open(operator(FieldOperatorType.EQUALS, new JsonString("absent type")), 2));
             assertNull(open(operator(FieldOperatorType.CONTAINS, new JsonString("a")), 2));
             assertNull(IndexWindowWalk.open(new FieldOperator(FieldOperatorType.EQUALS, "unindexed", new JsonNumber(1)),
-                    TestGlobals.DB, TestGlobals.COLL, 2, ReadObserver.NONE));
+                    TestGlobals.PROJECT, TestGlobals.COLL, 2, ReadObserver.NONE));
             assertNotNull(open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 2));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     private void loseTheIndex() {
-        fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
     }
 
     @Test
@@ -248,8 +248,8 @@ public class IndexWindowWalkTest {
         seed(40, 1);
         final var pending = IocContainer.get(PendingIndexWrites.class);
         final var ids = new ArrayList<>(idsOf("n1-", 40));
-        ids.forEach(id -> pending.mark(TestGlobals.DB, TestGlobals.COLL, id));
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        ids.forEach(id -> pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, id));
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var walk = open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 2);
             assertNotNull(walk);
@@ -258,24 +258,23 @@ public class IndexWindowWalkTest {
                 support.put(id, new JsonString("moved"));
             }
             support.applyBatch(FIELD, ids);
-            assertFalse(
-                    fs.indexTypeFileExists(TestGlobals.DB, TestGlobals.COLL, FIELD, IndexKind.fileLabel(Number.class)),
-                    "the emptied type's files are gone");
+            assertFalse(fs.indexTypeFileExists(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                    IndexKind.fileLabel(Number.class)), "the emptied type's files are gone");
 
             emitted.addAll(take(walk, Integer.MAX_VALUE));
 
             assertEquals(idsOf("n1-", 40), new TreeSet<>(emitted), "every pending id was emitted, once");
             assertEquals(40, emitted.size());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
-            pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
+            pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     @Test
     public void test_an_index_lost_in_the_middle_of_a_window_walk_fails_the_walk() throws Exception {
         seed(300, 1);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var walk = open(operator(FieldOperatorType.EQUALS, new JsonNumber(1)), 4);
             assertEquals(4, take(walk, 4).size());
@@ -283,7 +282,7 @@ public class IndexWindowWalkTest {
 
             assertThrows(UncheckedIOException.class, () -> take(walk, Integer.MAX_VALUE));
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -292,9 +291,10 @@ public class IndexWindowWalkTest {
         seed(300, 1);
         final var bounds = RangeBounds.fromLeaves(FIELD,
                 List.of(operator(FieldOperatorType.GREATER_THAN_EQUALS, new JsonNumber(0))));
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var walk = RangeIdWalk.open(TestGlobals.DB, TestGlobals.COLL, bounds, true, 4, ReadObserver.NONE);
+            final var walk = RangeIdWalk.open(TestGlobals.PROJECT, TestGlobals.COLL, bounds, true, 4,
+                    ReadObserver.NONE);
             assertNotNull(walk);
             for (var i = 0; i < 4; i++) {
                 walk.next();
@@ -307,7 +307,7 @@ public class IndexWindowWalkTest {
                 }
             });
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 }

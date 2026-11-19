@@ -17,8 +17,8 @@ public class ConnectionLimitsIT extends ServerIT {
 
     @Test
     public void test_an_oversized_request_closes_its_connection_and_the_pool_recovers() {
-        client.database("limits_it").create();
-        final var notes = client.database("limits_it").collection("notes");
+        client.project("limits_it").create();
+        final var notes = client.project("limits_it").collection("notes");
         notes.create();
         final var error = assertThrows(ServerClosedConnectionException.class,
                 () -> notes.save(Document.of("_id", "big", "text", "x".repeat(200 * 1024))));

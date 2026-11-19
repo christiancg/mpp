@@ -273,9 +273,9 @@ internal sealed class QueryModelBuilder(MppQueryProvider provider)
         {
             throw TranslationFailure.For(call, "the inner source has operators; the server joins a whole collection");
         }
-        return inner.Provider.Root.Database == provider.Root.Database
+        return inner.Provider.Root.Project == provider.Root.Project
             ? inner.Provider.Root
-            : throw TranslationFailure.For(call, "the inner collection belongs to another database; the server joins within one database");
+            : throw TranslationFailure.For(call, "the inner collection belongs to another project; the server joins within one project");
     }
 
     private void Nearest(MethodCallExpression call)

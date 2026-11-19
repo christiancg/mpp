@@ -14,13 +14,14 @@ public final class PeerNames {
     private PeerNames() {
     }
 
-    public static boolean collection(String dbName, String collName) {
-        return NameValidations.isName(dbName) && NameValidations.isName(collName)
-                && !NameValidations.isReservedDbName(dbName);
+    public static boolean collection(String projectName, String collName) {
+        return NameValidations.isName(projectName) && NameValidations.isName(collName)
+                && !NameValidations.isReservedProjectName(projectName);
     }
 
     public static boolean payload(ReplicationPayload payload) {
-        if (payload == null || payload.getOp() == null || !collection(payload.getDbName(), payload.getCollName())) {
+        if (payload == null || payload.getOp() == null
+                || !collection(payload.getProjectName(), payload.getCollName())) {
             return false;
         }
         return payload.getOp() == ReplicationOp.UPSERT ? documents(payload.getDocuments()) : ids(payload.getIds());
@@ -39,7 +40,7 @@ public final class PeerNames {
     }
 
     public static boolean antiEntropy(AntiEntropyPayload payload) {
-        return payload != null && collection(payload.getDbName(), payload.getCollName()) && buckets(payload);
+        return payload != null && collection(payload.getProjectName(), payload.getCollName()) && buckets(payload);
     }
 
     private static boolean buckets(AntiEntropyPayload payload) {

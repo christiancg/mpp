@@ -48,7 +48,7 @@ import org.mockito.ArgumentCaptor;
 
 @RequiresDirectorySync
 public class GroupCommitClusterTest {
-    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private final MembershipService membershipService = IocContainer.get(MembershipService.class);
     private final OwnershipManager ownership = IocContainer.get(OwnershipManager.class);
     private final ClusterCoordinator coordinator = IocContainer.get(ClusterCoordinator.class);
@@ -70,7 +70,7 @@ public class GroupCommitClusterTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalEnabled = config.isClusterEnabled();
         originalExpected = config.getClusterExpectedSize();
         originalHalt = TestUtils.getPrivateField(faultInjector, "halt", IntConsumer.class);
@@ -207,7 +207,7 @@ public class GroupCommitClusterTest {
 
         final var deleting = ErrorCode.ERROR_DELETING.getCode();
         assertEquals(List.of(deleting, deleting), codes(responses));
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertFalse(tombstones.containsKey("seed"), String.valueOf(tombstones));
         assertFalse(tombstones.containsKey("other"));
         assertEquals("v0", fixture.valueOf("seed"));
@@ -228,7 +228,7 @@ public class GroupCommitClusterTest {
 
         final var deleting = ErrorCode.ERROR_DELETING.getCode();
         assertEquals(List.of(deleting, deleting), codes(responses));
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertFalse(tombstones.containsKey("seed"), String.valueOf(tombstones));
         assertFalse(tombstones.containsKey("other"));
         assertEquals("v0", fixture.valueOf("seed"));
@@ -250,7 +250,7 @@ public class GroupCommitClusterTest {
                 codes(responses),
                 "the delete's rewrite ended its group, so the delete is durable but its tombstone was never forced");
         assertNull(fixture.valueOf("seed"), "the durable delete stays applied");
-        assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).containsKey("seed"),
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("seed"),
                 "a durable delete keeps its tombstone");
         final var payload = ArgumentCaptor.forClass(ReplicationPayload.class);
         verify(replicator).broadcast(payload.capture());
@@ -274,24 +274,24 @@ public class GroupCommitClusterTest {
     @Test
     public void test_replicate_group_edge_outcomes() throws Exception {
         assertEquals(ReplicationOutcome.QUORUM_MET,
-                coordinator.replicateGroup(TestGlobals.DB, TestGlobals.COLL, List.of("absent"), Map.of()),
+                coordinator.replicateGroup(TestGlobals.PROJECT, TestGlobals.COLL, List.of("absent"), Map.of()),
                 "nothing left to ship needs no acks");
         verify(replicator, never()).broadcast(any());
         final var nullVersion = new HashMap<String, Long>();
         nullVersion.put("seed", null);
         assertEquals(ReplicationOutcome.QUORUM_MET,
-                coordinator.replicateGroup(TestGlobals.DB, TestGlobals.COLL, List.of(), nullVersion));
+                coordinator.replicateGroup(TestGlobals.PROJECT, TestGlobals.COLL, List.of(), nullVersion));
         final var payload = ArgumentCaptor.forClass(ReplicationPayload.class);
         verify(replicator).broadcast(payload.capture());
         assertTrue(Long.parseLong(payload.getValue().getVersions().getFirst()) > 0L, "a missing version is minted");
         when(replicator.broadcast(any())).thenThrow(new IllegalStateException("peer pool closed"));
         assertEquals(ReplicationOutcome.TIMEOUT,
-                coordinator.replicateGroup(TestGlobals.DB, TestGlobals.COLL, List.of("seed"), Map.of()));
+                coordinator.replicateGroup(TestGlobals.PROJECT, TestGlobals.COLL, List.of("seed"), Map.of()));
         loseOwnership();
         assertEquals(ReplicationOutcome.NOT_OWNER,
-                coordinator.replicateGroup(TestGlobals.DB, TestGlobals.COLL, List.of("seed"), Map.of()));
+                coordinator.replicateGroup(TestGlobals.PROJECT, TestGlobals.COLL, List.of("seed"), Map.of()));
         TestUtils.setPrivateField(config, "clusterEnabled", false);
         assertEquals(ReplicationOutcome.NOT_CLUSTERED,
-                coordinator.replicateGroup(TestGlobals.DB, TestGlobals.COLL, List.of("seed"), Map.of()));
+                coordinator.replicateGroup(TestGlobals.PROJECT, TestGlobals.COLL, List.of("seed"), Map.of()));
     }
 }

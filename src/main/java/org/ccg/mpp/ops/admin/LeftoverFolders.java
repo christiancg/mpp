@@ -19,26 +19,27 @@ public final class LeftoverFolders {
     private LeftoverFolders() {
     }
 
-    public static boolean moveAsideUnregisteredCollection(String dbName, String collName) {
-        if (cache.getAdminCollectionEntry(dbName, collName) != null
-                || !fs.folderQuarantine().holdsLeftoverCollection(dbName, collName)) {
+    public static boolean moveAsideUnregisteredCollection(String projectName, String collName) {
+        if (cache.getAdminCollectionEntry(projectName, collName) != null
+                || !fs.folderQuarantine().holdsLeftoverCollection(projectName, collName)) {
             return true;
         }
-        final var moved = fs.folderQuarantine().moveCollectionAside(dbName, collName, 0);
-        DroppedCollections.forgetCollection(dbName, collName);
-        logOutcome("collection " + dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName, moved);
+        final var moved = fs.folderQuarantine().moveCollectionAside(projectName, collName, 0);
+        DroppedCollections.forgetCollection(projectName, collName);
+        logOutcome("collection " + projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName, moved);
         return moved;
     }
 
-    public static boolean leftoverDatabaseStays(String dbName) {
-        if (cache.getAdminDbEntry(dbName) != null || !fs.folderQuarantine().holdsLeftoverDatabase(dbName)) {
+    public static boolean leftoverProjectStays(String projectName) {
+        if (cache.getAdminProjectEntry(projectName) != null
+                || !fs.folderQuarantine().holdsLeftoverProject(projectName)) {
             return false;
         }
-        final var moved = fs.folderQuarantine().moveDatabaseAside(dbName);
-        DroppedCollections.forgetDatabase(dbName);
-        compiledProcedures.invalidateDatabase(dbName);
-        scheduleRegistry.removeDatabase(dbName);
-        logOutcome("database " + dbName, moved);
+        final var moved = fs.folderQuarantine().moveProjectAside(projectName);
+        DroppedCollections.forgetProject(projectName);
+        compiledProcedures.invalidateProject(projectName);
+        scheduleRegistry.removeProject(projectName);
+        logOutcome("project " + projectName, moved);
         return !moved;
     }
 

@@ -39,7 +39,7 @@ public class SaveVacuumTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "maxPageSize", MAX_PAGE_SIZE);
     }
 
@@ -59,33 +59,33 @@ public class SaveVacuumTest {
     }
 
     private void save(String id, String marker) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, marker));
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private String markerOf(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         final var response = assertInstanceOf(FindByIdResponse.class, processor.processMessage(request));
         return response.getObject().get("marker").asJsonString().getValue();
     }
 
     private static File[] pageFiles() {
-        final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
         return folder.listFiles((_, name) -> name.endsWith(Globals.DB_FILE_EXTENSION));
     }
 
     private void assertTheCacheAgreesWithTheFiles() throws Exception {
-        final var onDisk = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var onDisk = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .map(PkIndexEntry::toFileEntry).sorted().toList();
-        final var resident = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var resident = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .map(PkIndexEntry::toFileEntry).sorted().toList();
         assertEquals(onDisk, resident, "every vacuum must reach the resident pk rows");
-        for (final var page : cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL)) {
-            final var live = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        for (final var page : cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL)) {
+            final var live = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                     .filter(row -> row.getPage() == page.getPage()).mapToLong(PkIndexEntry::getLength).sum();
             assertEquals(live, page.getPageSize(), "page " + page.getPage() + " occupancy is its live bytes");
         }
@@ -114,7 +114,7 @@ public class SaveVacuumTest {
             save("d" + i, "v0");
         }
         for (var round = 1; round <= UPDATES / DOCUMENTS; round++) {
-            final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             final var objects = new java.util.ArrayList<JsonObject>();
             for (var i = 0; i < DOCUMENTS; i += 2) {
                 objects.add(document("d" + i, "bulk" + round));

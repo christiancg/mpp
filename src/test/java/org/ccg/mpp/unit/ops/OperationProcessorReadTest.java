@@ -47,7 +47,7 @@ public class OperationProcessorReadTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -58,7 +58,7 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_process_message_returns_correct_response_type() {
-        SaveRequest saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        SaveRequest saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         saveRequest.setObject(new JsonObject());
 
         OperationResponse response = processor.processMessage(saveRequest);
@@ -70,7 +70,7 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_find_by_id_in_an_unregistered_collection_is_collection_not_found() {
-        FindByIdRequest request = new FindByIdRequest("nonexistentDb", "nonexistentColl");
+        FindByIdRequest request = new FindByIdRequest("nonexistentProject", "nonexistentColl");
         request.set_id("123");
 
         OperationResponse response = processor.processMessage(request);
@@ -82,13 +82,13 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_find_by_id_operation_success() {
-        SaveRequest saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        SaveRequest saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         var obj = new JsonObject();
         obj.add("_id", new JsonString("123"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        FindByIdRequest request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        FindByIdRequest request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("123");
 
         FindByIdResponse response = (FindByIdResponse) processor.processMessage(request);
@@ -99,14 +99,14 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_process_aggregation_request() {
-        SaveRequest saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        SaveRequest saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         var obj = new JsonObject();
         obj.add("_id", new JsonString("123"));
         obj.add("searchMe", new JsonString("test"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        AggregateRequest aggregateRequest = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "searchMe", new JsonString("test")))));
 
@@ -121,15 +121,15 @@ public class OperationProcessorReadTest {
     @Test
     public void test_aggregation_without_analyze_has_no_analyzeResult() {
         final var coll = "analyzeOffColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("status", new JsonString("active"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")))));
 
@@ -142,15 +142,15 @@ public class OperationProcessorReadTest {
     @Test
     public void test_aggregation_with_analyze_returns_analyzeResult() {
         final var coll = "analyzeOnColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("status", new JsonString("active"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAnalyze(true);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")))));
@@ -162,21 +162,21 @@ public class OperationProcessorReadTest {
         final var analyzeResult = response.getAnalyzeResult();
         assertNotNull(analyzeResult);
         assertTrue(analyzeResult.getDocumentsScanned() > 0);
-        assertTrue(analyzeResult.getLocksAcquired().contains(Cache.getCollectionIdentifier(TestGlobals.DB, coll)));
+        assertTrue(analyzeResult.getLocksAcquired().contains(Cache.getCollectionIdentifier(TestGlobals.PROJECT, coll)));
     }
 
     @Test
     public void test_aggregation_with_analyze_suggests_moving_filter() {
         final var coll = "analyzeMoveFilterColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("status", new JsonString("active"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAnalyze(true);
         aggregateRequest.setAggregationSteps(List.of(new SortAggregationStep("status", true), new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")))));
@@ -190,15 +190,15 @@ public class OperationProcessorReadTest {
     @Test
     public void test_aggregation_with_analyze_empty_results_still_has_analyzeResult() {
         final var coll = "analyzeEmptyColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("status", new JsonString("active"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAnalyze(true);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("nope")))));
@@ -215,11 +215,11 @@ public class OperationProcessorReadTest {
     @Test
     public void test_aggregate_element_match_object_and_array() {
         final var coll = "elementMatchColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
 
         for (var spec : List.of(new String[]{"em1", "obj", "1"}, new String[]{"em2", "obj", "1"},
                 new String[]{"em3", "obj", "2"}, new String[]{"em4", "arr", "x"})) {
-            final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+            final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
             final var obj = new JsonObject();
             obj.add(Globals.PK_FIELD, new JsonString(spec[0]));
             if ("obj".equals(spec[1])) {
@@ -235,11 +235,11 @@ public class OperationProcessorReadTest {
             assertEquals(OperationStatus.OK, processor.processMessage(saveRequest).getStatus());
         }
 
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "payload"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "payload"));
 
         final var objQuery = new JsonObject();
         objQuery.addProperty("n", 1);
-        final var objAgg = new AggregateRequest(TestGlobals.DB, coll);
+        final var objAgg = new AggregateRequest(TestGlobals.PROJECT, coll);
         objAgg.setAggregationSteps(
                 List.of(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "payload", objQuery))));
         final var objResp = (AggregateResponse) processor.processMessage(objAgg);
@@ -248,14 +248,14 @@ public class OperationProcessorReadTest {
 
         final var arrQuery = new JsonArray();
         arrQuery.add(new JsonString("x"));
-        final var arrAgg = new AggregateRequest(TestGlobals.DB, coll);
+        final var arrAgg = new AggregateRequest(TestGlobals.PROJECT, coll);
         arrAgg.setAggregationSteps(
                 List.of(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "payload", arrQuery))));
         final var arrResp = (AggregateResponse) processor.processMessage(arrAgg);
         assertEquals(OperationStatus.OK, arrResp.getStatus());
         assertEquals(1, arrResp.getResults().size());
 
-        processor.processMessage(new DropCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, coll));
     }
 
     @Test
@@ -271,7 +271,7 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_aggregate_returns_not_found_when_no_results() {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "nobody", new JsonString("nope")))));
 
@@ -283,46 +283,46 @@ public class OperationProcessorReadTest {
 
     @Test
     public void test_find_by_id_releases_read_lock() {
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("lock-id-1"));
         save.setObject(obj);
         processor.processMessage(save);
 
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("lock-id-1");
         final var response = (FindByIdResponse) processor.processMessage(request);
         assertEquals(OperationStatus.OK, response.getStatus());
 
         final var locks = IocContainer.get(ResourceLocking.class);
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL),
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL),
                 "read lock must be released after FIND_BY_ID completes");
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
     public void test_normal_read_blocks_until_write_released() throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("missing");
         final var done = new CountDownLatch(1);
         final var worker = new Thread(() -> {
             processor.processMessage(request);
             done.countDown();
         });
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         boolean releasedWrite = false;
         try {
             worker.start();
             assertFalse(done.await(300, TimeUnit.MILLISECONDS),
                     "a locking read must block while a writer holds the collection");
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             releasedWrite = true;
             assertTrue(done.await(2, TimeUnit.SECONDS),
                     "the read must proceed once the writer releases the collection");
         } finally {
             if (!releasedWrite) {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }
     }
@@ -346,9 +346,9 @@ public class OperationProcessorReadTest {
                 BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", new BackgroundTaskManager());
         try {
-            processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, collName));
+            processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, collName));
 
-            final var keepSave = new SaveRequest(TestGlobals.DB, collName);
+            final var keepSave = new SaveRequest(TestGlobals.PROJECT, collName);
             final var keepObj = new JsonObject();
             keepObj.add(Globals.PK_FIELD, new JsonString("keep"));
             keepObj.add("v", new JsonString("k".repeat(280)));
@@ -356,7 +356,7 @@ public class OperationProcessorReadTest {
             keepSave.set_id("keep");
             processor.processMessage(keepSave);
 
-            final var aSave = new SaveRequest(TestGlobals.DB, collName);
+            final var aSave = new SaveRequest(TestGlobals.PROJECT, collName);
             final var aObj = new JsonObject();
             aObj.add(Globals.PK_FIELD, new JsonString("a"));
             aObj.add("v", new JsonString("small"));
@@ -366,7 +366,7 @@ public class OperationProcessorReadTest {
 
             final var pending = IocContainer.get(PendingIndexWrites.class);
 
-            final var growSave = new SaveRequest(TestGlobals.DB, collName);
+            final var growSave = new SaveRequest(TestGlobals.PROJECT, collName);
             final var grown = new JsonObject();
             grown.add(Globals.PK_FIELD, new JsonString("a"));
             grown.add("v", new JsonString("x".repeat(1780)));
@@ -374,13 +374,13 @@ public class OperationProcessorReadTest {
             growSave.set_id("a");
             processor.processMessage(growSave);
 
-            assertTrue(pending.idsFor(TestGlobals.DB, collName).contains("a"),
+            assertTrue(pending.idsFor(TestGlobals.PROJECT, collName).contains("a"),
                     "id must remain pending after relocation so both events are covered");
         } finally {
             TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", originalTaskManager);
             TestUtils.setPrivateField(config, "maxPageSize", originalMaxPage);
             TestUtils.setPrivateField(config, "maxEntrySize", originalMaxEntry);
-            processor.processMessage(new DropCollectionRequest(TestGlobals.DB, collName));
+            processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, collName));
         }
     }
 }

@@ -9,19 +9,19 @@ import org.junit.jupiter.api.Test;
 public class CreateCollectionRequestTest {
     @Test
     public void test_constructor_sets_create_collection_type() {
-        CreateCollectionRequest request = new CreateCollectionRequest("testDb", "testCollection");
+        CreateCollectionRequest request = new CreateCollectionRequest("testProject", "testCollection");
 
         assertEquals(OperationType.CREATE_COLLECTION, request.getType());
-        assertEquals("testDb", request.getDatabaseName());
+        assertEquals("testProject", request.getProjectName());
         assertEquals("testCollection", request.getCollectionName());
     }
 
     @Test
-    public void test_constructor_accepts_empty_database_name() {
+    public void test_constructor_accepts_empty_project_name() {
         CreateCollectionRequest request = new CreateCollectionRequest("", "testCollection");
 
         assertEquals(OperationType.CREATE_COLLECTION, request.getType());
-        assertEquals("", request.getDatabaseName());
+        assertEquals("", request.getProjectName());
         assertEquals("testCollection", request.getCollectionName());
     }
 }

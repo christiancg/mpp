@@ -16,7 +16,7 @@ public class DbEntryByteSizeTest {
         final var data = new JsonObject();
         data.addProperty("field", value);
         final var entry = new DbEntry();
-        entry.setDatabaseName("db");
+        entry.setProjectName("db");
         entry.setCollectionName("coll");
         entry.set_id("id1");
         entry.setData(data);

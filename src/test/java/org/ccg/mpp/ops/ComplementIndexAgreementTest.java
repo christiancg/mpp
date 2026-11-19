@@ -48,9 +48,9 @@ public class ComplementIndexAgreementTest {
     @BeforeAll
     static void seed() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var doc = new JsonObject();
@@ -66,14 +66,14 @@ public class ComplementIndexAgreementTest {
             doc.add("word", new JsonString((i % 2 == 0 ? "Word" : "word") + i % 6));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
         for (final var field : FIELDS) {
             assertEquals(OperationStatus.OK,
-                    processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, field)).getStatus());
+                    processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, field)).getStatus());
         }
-        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, COLL);
+        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, COLL);
     }
 
     @AfterEach
@@ -90,7 +90,7 @@ public class ComplementIndexAgreementTest {
     }
 
     private static AggregateAnalyzeResponse run(List<BaseAggregationStep> steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(steps);
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -146,7 +146,7 @@ public class ComplementIndexAgreementTest {
         TestUtils.setPrivateField(configuration, "indexScanFallbackPercent", 100);
         assertIndexMatchesScan("resident");
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
-        cache.evictCollection(TestGlobals.DB, COLL);
+        cache.evictCollection(TestGlobals.PROJECT, COLL);
         assertIndexMatchesScan("from the index file");
         TestUtils.setPrivateField(configuration, "indexScanFallbackPercent",
                 ConfigKey.INDEX_SCAN_FALLBACK_PERCENT.defaultValue());
@@ -156,7 +156,7 @@ public class ComplementIndexAgreementTest {
     @Test
     public void aSelectiveComplementIsServedFromTheIndexFile() throws Exception {
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
-        cache.evictCollection(TestGlobals.DB, COLL);
+        cache.evictCollection(TestGlobals.PROJECT, COLL);
         final var many = new JsonArray();
         for (var i = 0; i < 9; i++) {
             many.add(new JsonNumber(i));

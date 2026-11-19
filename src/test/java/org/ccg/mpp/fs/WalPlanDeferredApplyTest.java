@@ -19,10 +19,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalPlanDeferredApplyTest {
-    private static final String DB = "deferDb";
+    private static final String PROJECT = "deferProject";
     private static final String COLL = "deferColl";
     private static final String WAL = COLL + ".wal";
-    private static final String ID = DB + "|" + COLL;
+    private static final String ID = PROJECT + "|" + COLL;
 
     @TempDir
     File tmp;
@@ -34,25 +34,25 @@ public class WalPlanDeferredApplyTest {
 
     private final DeferredApplyListener recording = new DeferredApplyListener() {
         @Override
-        public long replaying(String dbName, String collName, List<PkIndexEntry> rows) {
+        public long replaying(String projectName, String collName, List<PkIndexEntry> rows) {
             events.add("replaying " + idsOf(rows));
             return 7L;
         }
 
         @Override
-        public void replayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
+        public void replayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
             events.add("replayed " + idsOf(rows) + " " + generation);
         }
 
         @Override
-        public void notReplayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
+        public void notReplayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
             events.add("not replayed " + generation);
         }
     };
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         recorder = RecordingForcer.install(true);
         installed = TestUtils.getPrivateStaticField(DeferredApplies.class, "listener", DeferredApplyListener.class);
@@ -63,7 +63,7 @@ public class WalPlanDeferredApplyTest {
     public void tearDown() throws Exception {
         assertTrue(rf.fx.page(0).setWritable(true));
         DeferredApplies.listenWith(installed);
-        DeferredApplies.clear(DB, COLL);
+        DeferredApplies.clear(PROJECT, COLL);
         recorder.close();
     }
 
@@ -106,7 +106,7 @@ public class WalPlanDeferredApplyTest {
         assertThrows(IOException.class, () -> rf.replace("b", "new-b", 0, PagePlacement.APPEND));
         freeTheDisk();
 
-        assertTrue(new WriteAheadLog(rf.fx.paths).requireApplied(DB, COLL));
+        assertTrue(new WriteAheadLog(rf.fx.paths).requireApplied(PROJECT, COLL));
 
         assertEquals(2, events.size(), events.toString());
         assertTrue(events.get(0).startsWith("replaying ") && events.get(0).contains("b"), events.toString());
@@ -138,7 +138,7 @@ public class WalPlanDeferredApplyTest {
         assertThrows(IOException.class, () -> rf.replace("b", "new-b", 0, PagePlacement.APPEND));
         recorder.refusingWhen((_, _) -> false);
 
-        assertThrows(IOException.class, () -> new WriteAheadLog(rf.fx.paths).requireApplied(DB, COLL));
+        assertThrows(IOException.class, () -> new WriteAheadLog(rf.fx.paths).requireApplied(PROJECT, COLL));
 
         assertEquals("not replayed 7", events.getLast());
         assertTrue(DeferredApplies.pending(ID));

@@ -33,9 +33,9 @@ public class ServerMainClockSeedTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, UNREADABLE_COLL));
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, UNREADABLE_COLL);
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, UNREADABLE_COLL));
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, UNREADABLE_COLL);
         origEnabled = config.isClusterEnabled();
         TestUtils.setPrivateField(config, "clusterEnabled", true);
         TestUtils.setPrivateField(hybridClock, "last", new AtomicLong(0));
@@ -50,16 +50,16 @@ public class ServerMainClockSeedTest {
     }
 
     private static File pkIndexFile(String collName) {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + collName
-                + Globals.FILE_SEPARATOR + collName + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.PK_INDEX_FILE_NAME
-                + Globals.INDEX_FILE_EXTENSION);
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
+                + collName + Globals.FILE_SEPARATOR + collName + Globals.INDEX_FILE_NAME_SEPARATOR
+                + Globals.PK_INDEX_FILE_NAME + Globals.INDEX_FILE_EXTENSION);
     }
 
     @Test
     public void test_one_unreadable_pk_index_does_not_leave_the_whole_clock_unseeded() throws Exception {
         final var planted = HybridClock.pack(System.currentTimeMillis() + 864_000_000L, 5);
         Files.writeString(pkIndexFile(TestGlobals.COLL).toPath(),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n",
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n",
                 StandardCharsets.UTF_8);
         Files.writeString(pkIndexFile(UNREADABLE_COLL).toPath(), "a|0|20|0|0\n", StandardCharsets.UTF_8);
         final var seed = ServerMain.class.getDeclaredMethod("seedHybridClock");
@@ -81,7 +81,7 @@ public class ServerMainClockSeedTest {
         TestUtils.setPrivateField(config, "clusterEnabled", false);
         final var planted = HybridClock.pack(System.currentTimeMillis() + 864_000_000L, 3);
         Files.writeString(pkIndexFile(TestGlobals.COLL).toPath(),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n",
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n",
                 StandardCharsets.UTF_8);
         Files.writeString(pkIndexFile(UNREADABLE_COLL).toPath(), "", StandardCharsets.UTF_8);
 
@@ -96,9 +96,9 @@ public class ServerMainClockSeedTest {
         final var planted = HybridClock.pack(System.currentTimeMillis() + 864_000_000L, 4);
         final var torn = HybridClock.pack(System.currentTimeMillis() + 900_000_000L, 1);
         Files.writeString(pkIndexFile(TestGlobals.COLL).toPath(),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n"
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a", 0, 10, 0, planted).toFileEntry() + "\n"
                         + "not a pk row\n" + PkIndexEntry.toDeleteRow("b") + "\n"
-                        + new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "c", 0, 10, 0, torn).toFileEntry(),
+                        + new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "c", 0, 10, 0, torn).toFileEntry(),
                 StandardCharsets.UTF_8);
         Files.writeString(pkIndexFile(UNREADABLE_COLL).toPath(), "unrecognised\n", StandardCharsets.UTF_8);
 
@@ -113,7 +113,7 @@ public class ServerMainClockSeedTest {
         Files.writeString(pkIndexFile(UNREADABLE_COLL).toPath(), "", StandardCharsets.UTF_8);
         final var planted = HybridClock.pack(System.currentTimeMillis() + 864_000_000L, 9);
         final var op = new AdminTransactionEntry("seed-tx", "client", 0, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, TestGlobals.COLL, new JsonObject());
+                TestGlobals.PROJECT, TestGlobals.COLL, new JsonObject());
         op.setVersions(List.of(planted));
         AdminOperationHelper.saveTransactionOp(op);
         try {

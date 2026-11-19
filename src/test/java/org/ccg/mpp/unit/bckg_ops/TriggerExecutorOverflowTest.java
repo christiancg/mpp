@@ -30,7 +30,7 @@ public class TriggerExecutorOverflowTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -56,7 +56,7 @@ public class TriggerExecutorOverflowTest {
         final var data = new JsonObject();
         data.add("_id", new JsonString(id));
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id(id);
         dbEntry.setData(data);
@@ -64,8 +64,9 @@ public class TriggerExecutorOverflowTest {
     }
 
     private static String recordRun(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "recalc", EventType.CREATED, false, "alice", 0, System.currentTimeMillis(), List.of(entry(id))));
+        return TriggerRunLog
+                .record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc",
+                        EventType.CREATED, false, "alice", 0, System.currentTimeMillis(), List.of(entry(id))));
     }
 
     private static AdminTriggerRunEntry firstChunk(String runId) throws Exception {
@@ -85,7 +86,7 @@ public class TriggerExecutorOverflowTest {
     }
 
     private static TriggerEvent eventFor(String id, String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "recalc", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc", false,
                 List.of(entry(id)), "alice", 0, runId, 1);
     }
 

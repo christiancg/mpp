@@ -12,7 +12,7 @@ public class CacheableResourceTest {
     public void test_record_accessors() {
         final var r = new CacheableResource(AccessKind.FIELD_INDEX, "db", "coll", "field", 1024L);
         assertEquals(AccessKind.FIELD_INDEX, r.kind());
-        assertEquals("db", r.dbName());
+        assertEquals("db", r.projectName());
         assertEquals("coll", r.collName());
         assertEquals("field", r.indexKey());
         assertEquals(1024L, r.estimatedSizeBytes());

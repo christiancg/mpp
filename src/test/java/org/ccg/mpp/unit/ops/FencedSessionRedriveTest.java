@@ -42,7 +42,7 @@ public class FencedSessionRedriveTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         DeferredWrites.install();
         assertEquals(OperationStatus.OK, processor.processMessage(save("seed")).getStatus());
         session = clientTracker.registerTxSession(SESSION, "redriver", null);
@@ -74,14 +74,14 @@ public class FencedSessionRedriveTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("value", new JsonString("v"));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         return request;
     }
 
     private static void writablePages(boolean writable) {
-        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.DB + "/" + TestGlobals.COLL)
+        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.PROJECT + "/" + TestGlobals.COLL)
                 .listFiles((_, name) -> name.endsWith(".dat"));
         for (final var page : files == null ? new File[0] : files) {
             assertTrue(page.setWritable(writable));
@@ -94,7 +94,7 @@ public class FencedSessionRedriveTest {
 
         assertTrue(TwoPhaseParticipant.redriveOnLiveSession(txId, WAIT_MS));
 
-        assertFalse(cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of("fenced-doc")).isEmpty());
+        assertFalse(cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of("fenced-doc")).isEmpty());
         assertNull(clientTracker.txSession(SESSION), "a finished session is removed");
         assertEquals(OperationStatus.OK, processor.processMessage(save("after")).getStatus(),
                 "the session thread released the collection lock");

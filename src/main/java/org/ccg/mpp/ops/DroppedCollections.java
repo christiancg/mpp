@@ -30,35 +30,35 @@ public final class DroppedCollections {
     private DroppedCollections() {
     }
 
-    public static void forgetCollection(String dbName, String collName) {
-        cache.evictCollection(dbName, collName);
-        cache.forgetScanRefusal(dbName, collName);
-        pendingIndexWrites.clearCollection(dbName, collName);
-        GroupCommit.forget(dbName, collName);
-        memoryManagement.forgetUsage(dbName, collName);
-        SchemaValidationHelper.forgetCollection(dbName, collName);
-        listenManager.forgetCollection(dbName, collName);
-        DeferredWrites.forgetCollection(dbName, collName);
-        IdleIndexFolds.forgetCollection(dbName, collName);
-        snapshots.abortCollection(dbName, collName, "its collection " + collName + " was dropped");
-        deleteUsageRows(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName,
-                () -> AdminUsageHelper.deleteUsageOfCollection(dbName, collName));
+    public static void forgetCollection(String projectName, String collName) {
+        cache.evictCollection(projectName, collName);
+        cache.forgetScanRefusal(projectName, collName);
+        pendingIndexWrites.clearCollection(projectName, collName);
+        GroupCommit.forget(projectName, collName);
+        memoryManagement.forgetUsage(projectName, collName);
+        SchemaValidationHelper.forgetCollection(projectName, collName);
+        listenManager.forgetCollection(projectName, collName);
+        DeferredWrites.forgetCollection(projectName, collName);
+        IdleIndexFolds.forgetCollection(projectName, collName);
+        snapshots.abortCollection(projectName, collName, "its collection " + collName + " was dropped");
+        deleteUsageRows(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName,
+                () -> AdminUsageHelper.deleteUsageOfCollection(projectName, collName));
     }
 
-    public static void forgetDatabase(String dbName) {
-        locks.removeCollectionLock(dbName, Globals.PROCEDURES_FOLDER);
-        cache.evictDatabase(dbName);
-        cache.forgetScanRefusals(dbName);
-        pendingIndexWrites.clearDatabase(dbName);
-        GroupCommit.forgetDatabase(dbName);
-        memoryManagement.forgetDatabaseUsage(dbName);
-        SchemaValidationHelper.forgetDatabase(dbName);
-        listenManager.forgetDatabase(dbName);
-        DeferredWrites.forgetDatabase(dbName);
-        IdleIndexFolds.forgetDatabase(dbName);
-        snapshots.abortDatabase(dbName, "its database was dropped");
-        TriggerDeadLetterCap.forgetDatabase(dbName);
-        deleteUsageRows(dbName, () -> AdminUsageHelper.deleteUsageOfDatabase(dbName));
+    public static void forgetProject(String projectName) {
+        locks.removeCollectionLock(projectName, Globals.PROCEDURES_FOLDER);
+        cache.evictProject(projectName);
+        cache.forgetScanRefusals(projectName);
+        pendingIndexWrites.clearProject(projectName);
+        GroupCommit.forgetProject(projectName);
+        memoryManagement.forgetProjectUsage(projectName);
+        SchemaValidationHelper.forgetProject(projectName);
+        listenManager.forgetProject(projectName);
+        DeferredWrites.forgetProject(projectName);
+        IdleIndexFolds.forgetProject(projectName);
+        snapshots.abortProject(projectName, "its project was dropped");
+        TriggerDeadLetterCap.forgetProject(projectName);
+        deleteUsageRows(projectName, () -> AdminUsageHelper.deleteUsageOfProject(projectName));
     }
 
     private static void deleteUsageRows(String name, UsageRowDelete delete) {

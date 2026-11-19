@@ -28,13 +28,13 @@ import org.junit.jupiter.api.Test;
 
 public class AuthorizationCheckerTriggerAccessTest {
     private static final String OWNER = "dbowner";
-    private static final String COLL_KEY = TestGlobals.DB + "|" + TestGlobals.COLL;
+    private static final String COLL_KEY = TestGlobals.PROJECT + "|" + TestGlobals.COLL;
 
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
     }
 
     @AfterAll
@@ -43,23 +43,23 @@ public class AuthorizationCheckerTriggerAccessTest {
         TestUtils.standardTearDown();
     }
 
-    private static AdminUserEntry manager(PermissionLevel dbLevel, PermissionLevel collLevel) {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        if (dbLevel != null) {
-            dbPerms.put(TestGlobals.DB, dbLevel);
+    private static AdminUserEntry manager(PermissionLevel projectLevel, PermissionLevel collLevel) {
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        if (projectLevel != null) {
+            projectPerms.put(TestGlobals.PROJECT, projectLevel);
         }
         final var collPerms = new HashMap<String, PermissionLevel>();
         if (collLevel != null) {
             collPerms.put(COLL_KEY, collLevel);
         }
-        return new AdminUserEntry("manager", "hash", false, new HashSet<>(), dbPerms, collPerms,
-                new HashMap<>(Map.of(TestGlobals.DB, ScriptPermissionLevel.MANAGE)));
+        return new AdminUserEntry("manager", "hash", false, new HashSet<>(), projectPerms, collPerms,
+                new HashMap<>(Map.of(TestGlobals.PROJECT, ScriptPermissionLevel.MANAGE)));
     }
 
     private static List<OperationRequest> triggerRequests() {
-        return List.of(new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("CREATED"), "p"),
-                new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t"),
-                new TestTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", "CREATED", new JsonObject()));
+        return List.of(new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of("CREATED"), "p"),
+                new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t"),
+                new TestTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", "CREATED", new JsonObject()));
     }
 
     private static void assertTriggerAccess(boolean allowed, AdminUserEntry user) {
@@ -74,22 +74,22 @@ public class AuthorizationCheckerTriggerAccessTest {
     }
 
     @Test
-    public void test_manage_with_database_read_may_not_manage_triggers() {
+    public void test_manage_with_project_read_may_not_manage_triggers() {
         assertTriggerAccess(false, manager(PermissionLevel.READ, null));
     }
 
     @Test
-    public void test_manage_with_database_read_write_may_manage_triggers() {
+    public void test_manage_with_project_read_write_may_manage_triggers() {
         assertTriggerAccess(true, manager(PermissionLevel.READ_WRITE, null));
     }
 
     @Test
-    public void test_a_collection_read_write_entry_suffices_without_a_database_grant() {
+    public void test_a_collection_read_write_entry_suffices_without_a_project_grant() {
         assertTriggerAccess(true, manager(null, PermissionLevel.READ_WRITE));
     }
 
     @Test
-    public void test_a_collection_read_entry_narrows_a_database_read_write_grant() {
+    public void test_a_collection_read_entry_narrows_a_project_read_write_grant() {
         assertTriggerAccess(false, manager(PermissionLevel.READ_WRITE, PermissionLevel.READ));
     }
 
@@ -102,20 +102,20 @@ public class AuthorizationCheckerTriggerAccessTest {
     }
 
     @Test
-    public void test_a_blank_collection_falls_back_to_the_database_grant() {
-        final var blank = new SaveTriggerRequest(TestGlobals.DB, "", "t", List.of("CREATED"), "p");
+    public void test_a_blank_collection_falls_back_to_the_project_grant() {
+        final var blank = new SaveTriggerRequest(TestGlobals.PROJECT, "", "t", List.of("CREATED"), "p");
         assertFalse(AuthorizationChecker.check(blank, manager(null, PermissionLevel.READ_WRITE)).isAllowed());
         assertTrue(AuthorizationChecker.check(blank, manager(PermissionLevel.READ_WRITE, null)).isAllowed());
     }
 
     @Test
     public void test_procedure_and_schedule_operations_ignore_data_grants() {
-        final var schedule = new SaveScheduleRequest(TestGlobals.DB, "sch", "p");
+        final var schedule = new SaveScheduleRequest(TestGlobals.PROJECT, "sch", "p");
         schedule.setIntervalMs(1000L);
         final var scriptsOnly = manager(null, null);
-        for (final var request : List.of(new SaveProcedureRequest(TestGlobals.DB, "p", "return 1;"),
-                new DeleteProcedureRequest(TestGlobals.DB, "p"), schedule,
-                new DeleteScheduleRequest(TestGlobals.DB, "sch"))) {
+        for (final var request : List.of(new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 1;"),
+                new DeleteProcedureRequest(TestGlobals.PROJECT, "p"), schedule,
+                new DeleteScheduleRequest(TestGlobals.PROJECT, "sch"))) {
             assertTrue(AuthorizationChecker.check(request, scriptsOnly).isAllowed(), request.getType().name());
         }
     }

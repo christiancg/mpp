@@ -14,8 +14,8 @@ public final class TransactionCollection<T> {
         this.ops = ops;
     }
 
-    public String databaseName() {
-        return ops.database();
+    public String projectName() {
+        return ops.project();
     }
 
     public String name() {

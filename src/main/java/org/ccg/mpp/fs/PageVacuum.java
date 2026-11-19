@@ -43,21 +43,21 @@ final class PageVacuum {
         this.listener = vacuumListener;
     }
 
-    VacuumedPage vacuumIfNeeded(String dbName, String collName, long pageNumber, long appendedBytes,
+    VacuumedPage vacuumIfNeeded(String projectName, String collName, long pageNumber, long appendedBytes,
             PagePlacement placement, List<PkIndexEntry> residentRows) throws IOException {
-        return vacuumIfNeeded(dbName, collName, pageNumber, appendedBytes, placement, residentRows, null);
+        return vacuumIfNeeded(projectName, collName, pageNumber, appendedBytes, placement, residentRows, null);
     }
 
-    VacuumedPage vacuumIfNeeded(String dbName, String collName, long pageNumber, long appendedBytes,
+    VacuumedPage vacuumIfNeeded(String projectName, String collName, long pageNumber, long appendedBytes,
             PagePlacement placement, List<PkIndexEntry> residentRows, LongFunction<PageOccupancy> occupancy)
             throws IOException {
         if (placement == PagePlacement.APPEND) {
             return null;
         }
-        final var page = paths.collectionPage(dbName, collName, pageNumber);
+        final var page = paths.collectionPage(projectName, collName, pageNumber);
         final var fileLength = PageLengths.lengthOf(page);
         final var maxPageSize = configuration.getMaxPageSize();
-        final var compact = compactsBelowTheCap(dbName, residentRows);
+        final var compact = compactsBelowTheCap(projectName, residentRows);
         final var skippedUpTo = compact ? PagePlacement.compactFloor(maxPageSize) : maxPageSize;
         if (placement == null && fileLength + appendedBytes <= skippedUpTo) {
             return null;
@@ -69,26 +69,26 @@ final class PageVacuum {
                 return null;
             }
             if (placement == null && compact && fileLength + appendedBytes <= maxPageSize) {
-                return compactUnlessRefused(dbName, collName, pageNumber,
-                        () -> vacuumAfterWrite(dbName, collName, pageNumber, residentRows, known, WrittenRows.NONE));
+                return compactUnlessRefused(projectName, collName, pageNumber, () -> vacuumAfterWrite(projectName,
+                        collName, pageNumber, residentRows, known, WrittenRows.NONE));
             }
-            return vacuumAfterWrite(dbName, collName, pageNumber, residentRows, known, WrittenRows.NONE);
+            return vacuumAfterWrite(projectName, collName, pageNumber, residentRows, known, WrittenRows.NONE);
         }
-        final var pageRows = PageRows.of(pkIndexStore, residentRows, dbName, collName, pageNumber);
+        final var pageRows = PageRows.of(pkIndexStore, residentRows, projectName, collName, pageNumber);
         if (placement == null && stayPlacement(compact, PageRows.liveBytes(pageRows), fileLength, appendedBytes,
                 maxPageSize) != PagePlacement.VACUUM_THEN_APPEND) {
             return null;
         }
         if (placement == null && compact && fileLength + appendedBytes <= maxPageSize) {
-            return compactUnlessRefused(dbName, collName, pageNumber,
-                    () -> vacuum(dbName, collName, pageNumber, pageRows));
+            return compactUnlessRefused(projectName, collName, pageNumber,
+                    () -> vacuum(projectName, collName, pageNumber, pageRows));
         }
-        return vacuum(dbName, collName, pageNumber, pageRows);
+        return vacuum(projectName, collName, pageNumber, pageRows);
     }
 
-    private static boolean compactsBelowTheCap(String dbName, List<PkIndexEntry> residentRows) {
-        return residentRows != null
-                && (Globals.ADMIN_DB_NAME.equals(dbName) || Globals.ADMIN_PAGES_DB_NAME.equals(dbName));
+    private static boolean compactsBelowTheCap(String projectName, List<PkIndexEntry> residentRows) {
+        return residentRows != null && (Globals.ADMIN_PROJECT_NAME.equals(projectName)
+                || Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName));
     }
 
     private static PagePlacement stayPlacement(boolean compact, long liveBytes, long fileLength, long appendedBytes,
@@ -102,36 +102,36 @@ final class PageVacuum {
         VacuumedPage run() throws IOException;
     }
 
-    private VacuumedPage compactUnlessRefused(String dbName, String collName, long pageNumber, Compaction compaction)
-            throws IOException {
+    private VacuumedPage compactUnlessRefused(String projectName, String collName, long pageNumber,
+            Compaction compaction) throws IOException {
         try {
             return compaction.run();
         } catch (VacuumRefusedException refused) {
-            logger.warning("Left " + dbName + "|" + collName + " page " + pageNumber + " uncompacted: "
+            logger.warning("Left " + projectName + "|" + collName + " page " + pageNumber + " uncompacted: "
                     + refused.getMessage());
             return null;
         }
     }
 
-    VacuumedPage vacuum(String dbName, String collName, long pageNumber, List<PkIndexEntry> pageRows)
+    VacuumedPage vacuum(String projectName, String collName, long pageNumber, List<PkIndexEntry> pageRows)
             throws IOException {
-        final var page = paths.collectionPage(dbName, collName, pageNumber);
-        return rewrite(dbName, collName, pageNumber, lines -> {
+        final var page = paths.collectionPage(projectName, collName, pageNumber);
+        return rewrite(projectName, collName, pageNumber, lines -> {
             requireEveryLineNamed(page, lines, pageRows);
             return pageRows;
         }, WrittenRows.NONE);
     }
 
-    VacuumedPage vacuumAfterWrite(String dbName, String collName, long pageNumber, List<PkIndexEntry> residentRows,
+    VacuumedPage vacuumAfterWrite(String projectName, String collName, long pageNumber, List<PkIndexEntry> residentRows,
             PageOccupancy after, WrittenRows written) throws IOException {
-        final var page = paths.collectionPage(dbName, collName, pageNumber);
-        return rewrite(dbName, collName, pageNumber, lines -> {
-            final var rows = PageRows.forLines(pkIndexStore, residentRows, dbName, collName, lines);
+        final var page = paths.collectionPage(projectName, collName, pageNumber);
+        return rewrite(projectName, collName, pageNumber, lines -> {
+            final var rows = PageRows.forLines(pkIndexStore, residentRows, projectName, collName, lines);
             final var found = lines.isEmpty() ? null : rowsOfLines(lines, rows, pageNumber, after, written);
             if (found != null) {
                 return found;
             }
-            final var pageRows = written.rowsOn(pkIndexStore, residentRows, dbName, collName, pageNumber);
+            final var pageRows = written.rowsOn(pkIndexStore, residentRows, projectName, collName, pageNumber);
             requireEveryLineNamed(page, lines, pageRows);
             return pageRows;
         }, written);
@@ -159,17 +159,17 @@ final class PageVacuum {
         return rows;
     }
 
-    private VacuumedPage rewrite(String dbName, String collName, long pageNumber, RowsOfLines verified,
+    private VacuumedPage rewrite(String projectName, String collName, long pageNumber, RowsOfLines verified,
             WrittenRows written) throws IOException {
-        final var page = paths.collectionPage(dbName, collName, pageNumber);
-        barrier.settle(dbName, collName);
+        final var page = paths.collectionPage(projectName, collName, pageNumber);
+        barrier.settle(projectName, collName);
         final var bytes = Files.readAllBytes(page.toPath());
         final var lines = PageLines.verifiedRecordsOf(bytes, 0L);
         final var pageRows = verified.rowsOf(lines);
         if (lines.isEmpty() && pageRows.isEmpty()) {
-            final var begun = barrier.begin(dbName, collName, pageNumber, bytes.length);
+            final var begun = barrier.begin(projectName, collName, pageNumber, bytes.length);
             try {
-                faultInjector.at(FaultPoint.WAL_REWRITE_BEGUN, dbName, collName);
+                faultInjector.at(FaultPoint.WAL_REWRITE_BEGUN, projectName, collName);
                 truncateEmptied(page);
             } finally {
                 barrier.renamed(begun);
@@ -177,17 +177,17 @@ final class PageVacuum {
             return truncated(begun);
         }
         final var alongside = new ForceGroup();
-        final var intent = journal.begin(dbName, collName, List.of(new WriteIntent.Vacuum(pageNumber)), alongside);
-        final var temp = paths.vacuumFile(dbName, collName, pageNumber);
+        final var intent = journal.begin(projectName, collName, List.of(new WriteIntent.Vacuum(pageNumber)), alongside);
+        final var temp = paths.vacuumFile(projectName, collName, pageNumber);
         final var moves = new LinkedHashMap<String, VacuumedPage.Move>();
         final long lengthAfter;
         final WalRewriteBarrier.Begun begun;
         try {
             lengthAfter = writeLiveRecords(temp, bytes, lines, moves);
             alongside.add(temp.toPath());
-            begun = barrier.begin(dbName, collName, pageNumber, bytes.length, alongside);
+            begun = barrier.begin(projectName, collName, pageNumber, bytes.length, alongside);
             try {
-                faultInjector.at(FaultPoint.WAL_REWRITE_BEGUN, dbName, collName);
+                faultInjector.at(FaultPoint.WAL_REWRITE_BEGUN, projectName, collName);
                 FileLocks.moveIntoPlaceUnsynced(temp.toPath(), page.toPath());
                 PageLengths.cut(page, lengthAfter);
             } finally {
@@ -199,19 +199,19 @@ final class PageVacuum {
             throw e;
         }
         final var landed = barrier.landed(begun, page.toPath().toAbsolutePath().getParent());
-        faultInjector.at(FaultPoint.PAGE_VACUUM_RENAMED, dbName, collName);
-        final var vacuumed = new VacuumedPage(dbName, collName, pageNumber, moves);
+        faultInjector.at(FaultPoint.PAGE_VACUUM_RENAMED, projectName, collName);
+        final var vacuumed = new VacuumedPage(projectName, collName, pageNumber, moves);
         listener.accept(vacuumed);
         written.reposition(vacuumed);
-        final var moved = movedRows(dbName, collName, pageNumber, pageRows, moves);
+        final var moved = movedRows(projectName, collName, pageNumber, pageRows, moves);
         try {
             if (landed) {
                 barrier.end(begun, lengthAfter, moved.isEmpty());
             }
-            pkIndexStore.appendReplacements(dbName, collName, moved);
+            pkIndexStore.appendReplacements(projectName, collName, moved);
         } catch (IOException e) {
-            pkIndexStore.markBehindAVacuum(dbName, collName);
-            DeferredApplies.flag(dbName, collName);
+            pkIndexStore.markBehindAVacuum(projectName, collName);
+            DeferredApplies.flag(projectName, collName);
             logger.error("Vacuumed " + page.getName() + " but could not record where its records moved; its intent is"
                     + " kept and the next startup re-derives the rows from the page", e);
             throw e;
@@ -227,7 +227,7 @@ final class PageVacuum {
     }
 
     private VacuumedPage truncated(WalRewriteBarrier.Begun begun) throws IOException {
-        final var vacuumed = new VacuumedPage(begun.dbName(), begun.collName(), begun.page(), Map.of());
+        final var vacuumed = new VacuumedPage(begun.projectName(), begun.collName(), begun.page(), Map.of());
         listener.accept(vacuumed);
         barrier.end(begun, 0L, true);
         return vacuumed;
@@ -276,14 +276,14 @@ final class PageVacuum {
         }
     }
 
-    private static List<PkIndexEntry> movedRows(String dbName, String collName, long pageNumber,
+    private static List<PkIndexEntry> movedRows(String projectName, String collName, long pageNumber,
             List<PkIndexEntry> pageRows, LinkedHashMap<String, VacuumedPage.Move> moves) {
         final var moved = new ArrayList<PkIndexEntry>(moves.size());
         for (final var row : pageRows) {
             final var move = moves.get(row.getValue());
             if (move != null) {
-                moved.add(new PkIndexEntry(dbName, collName, row.getValue(), move.to(), row.getLength(), pageNumber,
-                        row.getVersion()));
+                moved.add(new PkIndexEntry(projectName, collName, row.getValue(), move.to(), row.getLength(),
+                        pageNumber, row.getVersion()));
             }
         }
         return moved;

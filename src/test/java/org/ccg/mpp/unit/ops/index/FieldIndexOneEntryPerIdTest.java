@@ -57,7 +57,7 @@ public class FieldIndexOneEntryPerIdTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
     }
 
@@ -112,15 +112,15 @@ public class FieldIndexOneEntryPerIdTest {
 
     private void applyToMovingIdInOneBatch(JsonBaseElement... values) throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         try {
-            final var batch = FieldIndexBatch.open(TestGlobals.DB, TestGlobals.COLL, FIELD, List.of(MOVING_ID));
+            final var batch = FieldIndexBatch.open(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, List.of(MOVING_ID));
             for (final var value : values) {
                 batch.apply(MOVING_ID, value);
             }
             batch.flush();
         } finally {
-            locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+            locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         }
     }
 
@@ -152,7 +152,7 @@ public class FieldIndexOneEntryPerIdTest {
             if (i % 2 == 0) {
                 support.admitEveryType(FIELD);
             } else {
-                cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
             }
             support.put("x", values[i]);
 
@@ -212,14 +212,14 @@ public class FieldIndexOneEntryPerIdTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.add(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         return entry;
     }
 
     private void registerIndex() throws Exception {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(FIELD);
         entry.setIndexes(indexes);
@@ -237,7 +237,7 @@ public class FieldIndexOneEntryPerIdTest {
         support.applyBatch(FIELD, List.of("r0", "r3", "r6", "r9", "r12", "r15", "r18"));
         assertTrue(FieldIndexBatchSupport.indexFile(FIELD, "Number").exists());
         assertTrue(FieldIndexBatchSupport.logFile(FIELD, "Number").exists());
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
         support.admitEveryType(FIELD);
 
@@ -262,28 +262,28 @@ public class FieldIndexOneEntryPerIdTest {
         TestUtils.setPrivateStaticField(Class.forName(SLOT_CLASS), "fs", spied);
         doThrow(new IOException("disk full")).when(spied).appendIndexLog(anyString(), anyString(), anyString(),
                 eq("String"), any(), any(), anyBoolean());
-        final var generation = pending.mark(TestGlobals.DB, TestGlobals.COLL, "f1");
+        final var generation = pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "f1");
         try {
             assertThrows(IOException.class,
-                    () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("f1")));
+                    () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("f1")));
             assertNotNull(duplicateOnDisk(), "the Number log landed before the String one failed");
             assertNull(duplicateResident(), "the failed batch evicted every type");
 
-            final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+            final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                     ReadObserver.NONE);
 
             assertNotNull(entries, "the reconciled entries cover both documents");
             assertNull(duplicateIn(List.of(entries)), "reconciling the pending id leaves it in one entry");
             assertEquals(2, entries.stream().mapToInt(entry -> entry.getIds().size()).sum());
-            assertNull(IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD, (_, _) -> 0, 10,
+            assertNull(IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, (_, _) -> 0, 10,
                     ReadObserver.NONE), "the sorted-ids path declines while an id is pending");
 
             TestUtils.setPrivateStaticField(Class.forName(SLOT_CLASS), "fs", realFs);
-            IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("f1"));
+            IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("f1"));
 
             assertOneEntryPerId("after the retried batch");
         } finally {
-            pending.clear(TestGlobals.DB, TestGlobals.COLL, "f1", generation);
+            pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "f1", generation);
         }
     }
 
@@ -294,7 +294,7 @@ public class FieldIndexOneEntryPerIdTest {
             if (batch % 20 == 0) {
                 support.admitEveryType(FIELD);
             } else if (batch % 37 == 0) {
-                cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
             }
             final var size = batch % 10 == 0 ? 150 : 1 + random.nextInt(12);
             final var ids = FieldIndexBatchSupport.randomIds(random, size, 200);

@@ -11,7 +11,7 @@ import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.conn.ClientTracker;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.data.auth.PasswordHasher;
 import org.ccg.mpp.ioc.IocContainer;
@@ -40,11 +40,11 @@ public class UserOperationHelper {
     private static final VerifiedPasswords verifiedPasswords = IocContainer.get(VerifiedPasswords.class);
     private static final Configuration configuration = Configuration.getInstance();
 
-    public static Map<String, List<String>> ownedDatabasesByUser(Collection<AdminDbEntry> databases) {
+    public static Map<String, List<String>> ownedProjectsByUser(Collection<AdminProjectEntry> projects) {
         final var ownedByUser = new HashMap<String, List<String>>();
-        for (final var database : databases) {
-            for (final var owner : database.getOwners()) {
-                ownedByUser.computeIfAbsent(owner, _ -> new ArrayList<>()).add(database.get_id());
+        for (final var project : projects) {
+            for (final var owner : project.getOwners()) {
+                ownedByUser.computeIfAbsent(owner, _ -> new ArrayList<>()).add(project.get_id());
             }
         }
         return ownedByUser;
@@ -121,7 +121,7 @@ public class UserOperationHelper {
                         return new OperationResponse(OperationType.CREATE_USER, ErrorCode.USER_ALREADY_EXISTS);
                     }
                     AdminOperationHelper.saveUserEntry(new AdminUserEntry(username, passwordHash, request.getAdmin(),
-                            request.getGlobalPermissions(), request.getDatabasePermissions(),
+                            request.getGlobalPermissions(), request.getProjectPermissions(),
                             request.getCollectionPermissions(), request.getScriptPermissions()));
                     return OperationResponse.ok(OperationType.CREATE_USER, "User created successfully");
                 }));
@@ -151,10 +151,10 @@ public class UserOperationHelper {
 
     public static OperationResponse processListUsers(ListUsersRequest request) {
         final var lockSet = List
-                .of(Cache.getCollectionIdentifier(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
+                .of(Cache.getCollectionIdentifier(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
         return OperationLocks.withReadLocks(request.isDirtyRead(), lockSet, OperationType.LIST_USERS,
                 ErrorCode.ERROR_LISTING_USERS, () -> {
-                    final var ownedByUser = ownedDatabasesByUser(cache.getAllAdminDbEntries());
+                    final var ownedByUser = ownedProjectsByUser(cache.getAllAdminProjectEntries());
                     final var userStream = cache.getAllAdminUserEntries().stream()
                             .map(user -> user.toResponseJson(ownedByUser.getOrDefault(user.get_id(), List.of())));
                     final var results = AggregationOperationHelper.processStepsOnStream(request.getAggregationSteps(),
@@ -202,7 +202,7 @@ public class UserOperationHelper {
             return new OperationResponse(OperationType.SET_PASSWORD, ErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(current.get_id(), newHash, current.isAdmin(),
-                current.getGlobalPermissions(), current.getDatabasePermissions(), current.getCollectionPermissions(),
+                current.getGlobalPermissions(), current.getProjectPermissions(), current.getCollectionPermissions(),
                 current.getScriptPermissions()));
         clientTracker.deauthenticateUserExcept(username, keepClientId);
         return OperationResponse.ok(OperationType.SET_PASSWORD, "Password changed successfully");
@@ -235,7 +235,7 @@ public class UserOperationHelper {
                                 ErrorCode.CANNOT_DEMOTE_LAST_ADMIN);
                     }
                     AdminOperationHelper.saveUserEntry(new AdminUserEntry(username, user.getPasswordHash(),
-                            isBecomingAdmin, request.getGlobalPermissions(), request.getDatabasePermissions(),
+                            isBecomingAdmin, request.getGlobalPermissions(), request.getProjectPermissions(),
                             request.getCollectionPermissions(), request.getScriptPermissions()));
                     return OperationResponse.ok(OperationType.CHANGE_PERMISSIONS, "Permissions changed successfully");
                 }));

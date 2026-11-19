@@ -45,7 +45,7 @@ public class ScriptAdmissionE2ETest {
     @BeforeAll
     static void startServer() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         TestUtils.createAdmin(ADMIN);
         port = freePort();
@@ -112,7 +112,8 @@ public class ScriptAdmissionE2ETest {
     }
 
     private static String runScript(String script) {
-        return "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB + "\",\"script\":\"" + script + "\"}";
+        return "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"script\":\"" + script
+                + "\"}";
     }
 
     private static List<String> burst(String request) throws Exception {
@@ -195,12 +196,13 @@ public class ScriptAdmissionE2ETest {
 
     @Test
     public void test_call_procedure_is_capped_over_the_wire() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "e2eslow", "return 7;"), ADMIN);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "e2eslow", "return 7;"),
+                ADMIN);
         admission.reconfigure(1, 0L);
         assertTrue(admission.tryAcquire());
         try (var client = new Client()) {
             client.authenticate();
-            final var response = client.send("{\"type\":\"CALL_PROCEDURE\",\"databaseName\":\"" + TestGlobals.DB
+            final var response = client.send("{\"type\":\"CALL_PROCEDURE\",\"projectName\":\"" + TestGlobals.PROJECT
                     + "\",\"procedureName\":\"e2eslow\"}");
             assertTrue(response.contains("\"type\":\"CALL_PROCEDURE\""), response);
             assertTrue(response.contains("\"errorCode\":\"" + ErrorCode.SCRIPT_CONCURRENCY_LIMIT.getCode() + "\""),
@@ -233,7 +235,7 @@ public class ScriptAdmissionE2ETest {
         okAnd(burst(runScript(SLOW_SCRIPT)), rejected);
         try (var client = new Client()) {
             client.authenticate();
-            final var stats = client.send("{\"type\":\"GET_DATABASE_STATS\"}");
+            final var stats = client.send("{\"type\":\"GET_PROJECT_STATS\"}");
             assertTrue(stats.contains("\"capacity\":2"), stats);
             assertTrue(stats.contains("\"available\":2"), stats);
             assertTrue(stats.contains("\"rejected\":" + rejected.size()), stats);

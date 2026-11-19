@@ -32,16 +32,16 @@ public final class DeferredWrites implements DeferredApplyHook, DeferredApplyLis
         ResourceLocking.useDeferredApplyHook(installed);
     }
 
-    public static void reconcileRowsOnNextUse(String dbName, String collName) {
-        staleRows.add(Cache.getCollectionIdentifier(dbName, collName));
+    public static void reconcileRowsOnNextUse(String projectName, String collName) {
+        staleRows.add(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public static void forgetCollection(String dbName, String collName) {
-        staleRows.remove(Cache.getCollectionIdentifier(dbName, collName));
+    public static void forgetCollection(String projectName, String collName) {
+        staleRows.remove(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public static void forgetDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public static void forgetProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         staleRows.removeIf(lockName -> lockName.startsWith(prefix));
     }
 
@@ -56,65 +56,66 @@ public final class DeferredWrites implements DeferredApplyHook, DeferredApplyLis
         if (separator <= 0 || lockName.indexOf(Globals.COLL_IDENTIFIER_SEPARATOR, separator + 1) >= 0) {
             return;
         }
-        final var dbName = lockName.substring(0, separator);
+        final var projectName = lockName.substring(0, separator);
         final var collName = lockName.substring(separator + 1);
         final boolean applied;
         try {
-            applied = fs.applyDeferredWrites(dbName, collName);
+            applied = fs.applyDeferredWrites(projectName, collName);
         } catch (IOException e) {
             logger.warning("Could not apply the logged writes of " + lockName + " before using the collection; the"
                     + " next use retries: " + e.getMessage());
             return;
         }
         final var rowsWereStale = staleRows.remove(lockName);
-        if ((applied || rowsWereStale) && !Globals.ADMIN_PAGES_DB_NAME.equals(dbName)) {
-            reconcilePageRows(dbName, collName);
+        if ((applied || rowsWereStale) && !Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName)) {
+            reconcilePageRows(projectName, collName);
         }
     }
 
-    private static void reconcilePageRows(String dbName, String collName) {
+    private static void reconcilePageRows(String projectName, String collName) {
         try {
-            PageOccupancyReconciler.reconcileRows(dbName, collName);
+            PageOccupancyReconciler.reconcileRows(projectName, collName);
         } catch (InterruptedException e) {
-            reconcileRowsOnNextUse(dbName, collName);
+            reconcileRowsOnNextUse(projectName, collName);
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            reconcileRowsOnNextUse(dbName, collName);
-            logger.warning("Could not reconcile the page rows of " + Cache.getCollectionIdentifier(dbName, collName)
-                    + "; its next use retries: " + e.getMessage());
+            reconcileRowsOnNextUse(projectName, collName);
+            logger.warning(
+                    "Could not reconcile the page rows of " + Cache.getCollectionIdentifier(projectName, collName)
+                            + "; its next use retries: " + e.getMessage());
         }
     }
 
     @Override
-    public long replaying(String dbName, String collName, List<PkIndexEntry> rows) {
-        return isUserDatabase(dbName) ? pendingIndexWrites.mark(dbName, collName, idsOf(rows)) : 0L;
+    public long replaying(String projectName, String collName, List<PkIndexEntry> rows) {
+        return isUserProject(projectName) ? pendingIndexWrites.mark(projectName, collName, idsOf(rows)) : 0L;
     }
 
     @Override
-    public void replayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
-        if (!isUserDatabase(dbName)) {
-            AdminReplayedRows.publish(dbName, collName, rows);
+    public void replayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
+        if (!isUserProject(projectName)) {
+            AdminReplayedRows.publish(projectName, collName, rows);
             return;
         }
-        reconcileRowsOnNextUse(dbName, collName);
-        repairAfterRedo(dbName, collName, rows, generation);
+        reconcileRowsOnNextUse(projectName, collName);
+        repairAfterRedo(projectName, collName, rows, generation);
     }
 
     @Override
-    public void notReplayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
-        if (isUserDatabase(dbName)) {
-            repairAfterRedo(dbName, collName, rows, generation);
+    public void notReplayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
+        if (isUserProject(projectName)) {
+            repairAfterRedo(projectName, collName, rows, generation);
         }
     }
 
-    private static void repairAfterRedo(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
-        cache.evictCollection(dbName, collName);
+    private static void repairAfterRedo(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
+        cache.evictCollection(projectName, collName);
         PageOccupancyReconciler.scheduleIndexRepairFor(
-                List.of(new PageOccupancyReconciler.ReplayedCollection(dbName, collName, rows, generation)));
+                List.of(new PageOccupancyReconciler.ReplayedCollection(projectName, collName, rows, generation)));
     }
 
-    private static boolean isUserDatabase(String dbName) {
-        return !Globals.ADMIN_DB_NAME.equals(dbName) && !Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    private static boolean isUserProject(String projectName) {
+        return !Globals.ADMIN_PROJECT_NAME.equals(projectName) && !Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName);
     }
 
     private static List<String> idsOf(List<PkIndexEntry> rows) {

@@ -29,7 +29,7 @@ public class ServerMainStartupOrderTest {
 
         assertTrue(positionOf(body, "fs.createBaseDbPath();") < probe,
                 "the probe syncs the db folder, so it must exist");
-        assertTrue(probe < positionOf(body, "fs.createAdminDatabase();"),
+        assertTrue(probe < positionOf(body, "fs.createAdminProject();"),
                 "a platform that cannot sync a folder must have fallen back before the first write");
         assertTrue(probe < positionOf(body, "backgroundTaskManager.startBackgroundWorkers();"));
     }
@@ -41,7 +41,7 @@ public class ServerMainStartupOrderTest {
 
         assertTrue(positionOf(body, "DeviceSyncGuard.fallBackWhenUnsyncable(fs);") < install,
                 "the guard may turn syncWrites off, and the shadow must record the forces that remain");
-        assertTrue(install < positionOf(body, "fs.createAdminDatabase();"),
+        assertTrue(install < positionOf(body, "fs.createAdminProject();"),
                 "every force from the first admin write on must be recorded, or a strict rebuild drops it");
     }
 
@@ -58,15 +58,15 @@ public class ServerMainStartupOrderTest {
     }
 
     @Test
-    public void test_the_folder_is_stamped_after_the_shadow_and_before_the_admin_database() throws IOException {
+    public void test_the_folder_is_stamped_after_the_shadow_and_before_the_admin_project() throws IOException {
         final var body = mainBody();
         final var stamp = positionOf(body, "StorageFormatGuard.stampIfUnstamped(fs);");
 
         assertTrue(positionOf(body, "StorageFormatGuard.refuseIncompatibleFolder(fs);") < stamp);
         assertTrue(positionOf(body, "installDurableShadowIfConfigured();") < stamp,
                 "the shadow must record the stamp's force, or a strict rebuild drops the stamp");
-        assertTrue(stamp < positionOf(body, "fs.createAdminDatabase();"),
-                "an admin database without a stamp must only ever mean a folder written before the stamp existed");
+        assertTrue(stamp < positionOf(body, "fs.createAdminProject();"),
+                "an admin project without a stamp must only ever mean a folder written before the stamp existed");
     }
 
     @Test
@@ -83,8 +83,8 @@ public class ServerMainStartupOrderTest {
         final var body = mainBody();
         final var recovery = positionOf(body, "fs.recoverWriteIntents();");
 
-        assertTrue(positionOf(body, "fs.createAdminDatabase();") < recovery,
-                "recovery walks the folders the admin database creates");
+        assertTrue(positionOf(body, "fs.createAdminProject();") < recovery,
+                "recovery walks the folders the admin project creates");
         assertTrue(recovery < positionOf(body, "cache.loadAdminData();"),
                 "admin collections are journaled too, and loading them first would cache their stale pk index");
         assertTrue(recovery < positionOf(body, "seedHybridClock();"),
@@ -96,7 +96,7 @@ public class ServerMainStartupOrderTest {
         final var body = mainBody();
         final var redo = positionOf(body, "fs.redoWriteAheadLogs()");
 
-        assertTrue(positionOf(body, "fs.createAdminDatabase();") < redo, "redo walks the folders it creates");
+        assertTrue(positionOf(body, "fs.createAdminProject();") < redo, "redo walks the folders it creates");
         assertTrue(redo < positionOf(body, "fs.recoverWriteIntents();"),
                 "a vacuum intent re-derives rows from a page the log may still have to finish");
         assertTrue(redo < positionOf(body, "cache.loadAdminData();"),
@@ -143,7 +143,7 @@ public class ServerMainStartupOrderTest {
         final var body = mainBody();
         final var warning = positionOf(body, "StartupWarnings.retainAndReportUncleanStops();");
 
-        assertTrue(positionOf(body, "fs.createAdminDatabase();") < warning, "the report walks the folders it creates");
+        assertTrue(positionOf(body, "fs.createAdminProject();") < warning, "the report walks the folders it creates");
         assertTrue(warning < positionOf(body, "fs.redoWriteAheadLogs()"),
                 "a checkpoint during startup persists a marker for replayed ids, which is not an unclean stop");
         assertTrue(warning < positionOf(body, "PageOccupancyReconciler.reconcileAll();"),
@@ -175,7 +175,7 @@ public class ServerMainStartupOrderTest {
         final var relist = positionOf(body, "relistUnlistedCollections();");
 
         assertTrue(positionOf(body, "PageOccupancyReconciler.reconcileAll();") < relist,
-                "the re-list writes admin/databases, which must not append onto a torn tail");
+                "the re-list writes admin/projects, which must not append onto a torn tail");
         assertTrue(relist < positionOf(body, "cleanupOrphanedTransactions();"));
         assertTrue(relist < positionOf(body, "backgroundTaskManager.startBackgroundWorkers();"));
     }

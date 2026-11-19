@@ -50,7 +50,7 @@ public class ListenRetentionTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(USER);
     }
 
@@ -75,7 +75,7 @@ public class ListenRetentionTest {
     }
 
     private ListenResponse listen(UUID clientId) {
-        final var request = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SkipAggregationStep(0)));
         return assertInstanceOf(ListenResponse.class, processor.processMessage(request, clientId));
     }
@@ -93,7 +93,7 @@ public class ListenRetentionTest {
     }
 
     private static String listenLineOf(int bytes) {
-        final var head = "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var head = "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[]";
         return head + " ".repeat(bytes - head.length() - 1) + "}";
     }
@@ -173,7 +173,7 @@ public class ListenRetentionTest {
         final var oneListen = listenManager.retainedBytes();
         TestUtils.setPrivateField(configuration, "listenMaxRetainedBytes", String.valueOf(2 * oneListen));
         listen(clientId);
-        final var request = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SkipAggregationStep(0)));
         final var refused = processor.processMessage(request, clientId);
         assertEquals(ErrorCode.LISTEN_RETAINED_BYTES_EXHAUSTED.getCode(), refused.getErrorCode());
@@ -237,7 +237,7 @@ public class ListenRetentionTest {
     }
 
     private static AggregateRequest dirtyRequest() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         return request;

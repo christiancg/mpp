@@ -43,8 +43,8 @@ public class PageCompactStayTest {
         TestUtils.standardTearDown();
     }
 
-    private static ReplacerFixture fixture(File root, String dbName) throws Exception {
-        final var rf = new ReplacerFixture(new File(root, dbName), dbName, COLL);
+    private static ReplacerFixture fixture(File root, String projectName) throws Exception {
+        final var rf = new ReplacerFixture(new File(root, projectName), projectName, COLL);
         rf.fx.seed(0, "a", "b");
         return rf;
     }
@@ -58,25 +58,25 @@ public class PageCompactStayTest {
     }
 
     private static VacuumedPage stay(ReplacerFixture rf) throws Exception {
-        return rf.vacuum.vacuumIfNeeded(rf.fx.dbName, COLL, 0, APPENDED, null, rf.fx.indexedRows());
+        return rf.vacuum.vacuumIfNeeded(rf.fx.projectName, COLL, 0, APPENDED, null, rf.fx.indexedRows());
     }
 
     @Test
     public void test_an_admin_stay_write_compacts_below_the_cap() throws Exception {
-        for (final var dbName : new String[]{Globals.ADMIN_DB_NAME, Globals.ADMIN_PAGES_DB_NAME}) {
-            final var rf = fixture(tmp, dbName);
+        for (final var projectName : new String[]{Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PAGES_PROJECT_NAME}) {
+            final var rf = fixture(tmp, projectName);
             appendRaw(rf, hole(2000));
 
-            assertNotNull(stay(rf), dbName);
+            assertNotNull(stay(rf), projectName);
 
             assertEquals(StorageFixture.record("a", "old-a") + StorageFixture.record("b", "old-b"),
-                    rf.fx.firstPageText(), dbName);
+                    rf.fx.firstPageText(), projectName);
         }
     }
 
     @Test
     public void test_an_admin_stay_write_below_the_floor_appends() throws Exception {
-        final var rf = fixture(tmp, Globals.ADMIN_DB_NAME);
+        final var rf = fixture(tmp, Globals.ADMIN_PROJECT_NAME);
         appendRaw(rf, hole(400));
 
         assertNull(stay(rf));
@@ -84,7 +84,7 @@ public class PageCompactStayTest {
 
     @Test
     public void test_a_user_stay_write_does_not_compact_below_the_cap() throws Exception {
-        final var rf = fixture(tmp, "userDb");
+        final var rf = fixture(tmp, "userProject");
         appendRaw(rf, hole(2000));
         final var before = Files.readAllBytes(rf.fx.page(0).toPath());
 
@@ -95,7 +95,7 @@ public class PageCompactStayTest {
 
     @Test
     public void test_a_refused_compaction_below_the_cap_appends_and_leaves_no_trace() throws Exception {
-        final var rf = fixture(tmp, Globals.ADMIN_DB_NAME);
+        final var rf = fixture(tmp, Globals.ADMIN_PROJECT_NAME);
         appendRaw(rf, hole(2000) + StorageFixture.record("stranger", "x"));
         final var before = Files.readAllBytes(rf.fx.page(0).toPath());
 
@@ -103,18 +103,18 @@ public class PageCompactStayTest {
 
         assertArrayEquals(before, Files.readAllBytes(rf.fx.page(0).toPath()));
         assertEquals(0, rf.fx.openIntents());
-        assertFalse(rf.fx.paths.vacuumFile(Globals.ADMIN_DB_NAME, COLL, 0).exists());
+        assertFalse(rf.fx.paths.vacuumFile(Globals.ADMIN_PROJECT_NAME, COLL, 0).exists());
     }
 
     @Test
     public void test_a_refused_compaction_on_the_known_occupancy_path_appends() throws Exception {
-        final var rf = fixture(tmp, Globals.ADMIN_DB_NAME);
+        final var rf = fixture(tmp, Globals.ADMIN_PROJECT_NAME);
         appendRaw(rf, hole(2000) + StorageFixture.record("stranger", "x"));
         final var before = Files.readAllBytes(rf.fx.page(0).toPath());
         final var rows = rf.fx.indexedRows();
         final var known = new PageOccupancy(PageRows.liveBytes(rows), rows.size());
 
-        assertNull(rf.vacuum.vacuumIfNeeded(rf.fx.dbName, COLL, 0, APPENDED, null, rows, _ -> known));
+        assertNull(rf.vacuum.vacuumIfNeeded(rf.fx.projectName, COLL, 0, APPENDED, null, rows, _ -> known));
 
         assertArrayEquals(before, Files.readAllBytes(rf.fx.page(0).toPath()));
         assertEquals(0, rf.fx.openIntents());
@@ -122,7 +122,7 @@ public class PageCompactStayTest {
 
     @Test
     public void test_a_refusal_at_the_cap_still_fails() throws Exception {
-        final var rf = fixture(tmp, Globals.ADMIN_DB_NAME);
+        final var rf = fixture(tmp, Globals.ADMIN_PROJECT_NAME);
         appendRaw(rf, hole(5000) + StorageFixture.record("stranger", "x"));
 
         assertThrows(VacuumRefusedException.class, () -> stay(rf));

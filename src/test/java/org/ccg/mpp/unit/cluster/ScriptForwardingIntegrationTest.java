@@ -27,7 +27,7 @@ import org.ccg.mpp.ops.ScriptAdmission;
 import org.ccg.mpp.ops.req.RequestParser;
 import org.ccg.mpp.ops.resp.ResponseParser;
 import org.ccg.mpp.simplejs.exceptions.JsThrowException;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
 import org.ccg.mpp.simplejs.internal.JsCoercion;
 import org.ccg.mpp.simplejs.values.JsObject;
 import org.ccg.mpp.test.TestGlobals;
@@ -35,14 +35,14 @@ import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.Test;
 
 public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
-    private static final String SLEEPING_SCRIPT = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String SLEEPING_SCRIPT = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"script\":\"export default new Promise(r => " + "setTimeout(() => r(1), 2000));\"}";
-    private static final String RUN_41_PLUS_1 = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String RUN_41_PLUS_1 = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"script\":\"return 41 + 1;\"}";
     private String collectionOwnedBySelf() {
         for (var i = 0; i < 500; i++) {
             final var coll = "script-local-" + i;
-            if (ownership.isOwner(TestGlobals.DB, coll)) {
+            if (ownership.isOwner(TestGlobals.PROJECT, coll)) {
                 return coll;
             }
         }
@@ -53,7 +53,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
     // since in a single JVM the "owner" node shares this node's OwnershipManager.
     private void seed(String coll, String id) {
         ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, coll, ReplicationOp.UPSERT, List.of(doc(id)), null),
+                new ReplicationPayload(TestGlobals.PROJECT, coll, ReplicationOp.UPSERT, List.of(doc(id)), null),
                 TestGlobals.APPLY_BUDGET_MS);
     }
 
@@ -63,8 +63,8 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         final var coll = collectionOwnedByOther();
         createCollection(coll);
         seed(coll, "routed-read");
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
-        final var found = db.findById(TestGlobals.DB, coll, "routed-read");
+        final var db = new EnforcingProjectAccess(ADMIN, null);
+        final var found = db.findById(TestGlobals.PROJECT, coll, "routed-read");
         assertNotNull(found);
         assertEquals("hello", found.get("value").asJsonString().getValue());
     }
@@ -76,9 +76,9 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(2, node("self", 19990), node("other", 1));
         final var coll = collectionOwnedByOther();
         createCollection(coll);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
         final var error = assertThrows(JsThrowException.class,
-                () -> db.bulkSave(TestGlobals.DB, coll, List.of(doc("routed-write"))));
+                () -> db.bulkSave(TestGlobals.PROJECT, coll, List.of(doc("routed-write"))));
         final var message = ((JsObject) error.getValue()).get("message");
         assertTrue(JsCoercion.toStrDataOnly(message).contains("unreachable"),
                 "expected an OWNER_UNREACHABLE message, got: " + JsCoercion.toStrDataOnly(message));
@@ -90,7 +90,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         final var coll = collectionOwnedByOther();
         createCollection(coll);
         seed(coll, "agg-1");
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
 
         final var operator = new JsonObject();
         operator.add("fieldOperatorType", new JsonString("EQUALS"));
@@ -102,7 +102,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         final var pipeline = new JsonArray();
         pipeline.add(step);
 
-        final var results = db.aggregate(TestGlobals.DB, coll, pipeline);
+        final var results = db.aggregate(TestGlobals.PROJECT, coll, pipeline);
         assertEquals(1, results.size());
         assertEquals("agg-1", results.getFirst().get("_id").asJsonString().getValue());
     }
@@ -112,10 +112,10 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
         final var coll = collectionOwnedByOther();
         createCollection(coll);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
         db.beginTransaction();
         try {
-            db.save(TestGlobals.DB, coll, doc("participant"));
+            db.save(TestGlobals.PROJECT, coll, doc("participant"));
             // The owner opened a persistent TxSession, which only happens on a FORWARD_TX_REQUEST.
             assertFalse(clientTracker.txSessionsSnapshot().isEmpty());
         } finally {
@@ -129,12 +129,12 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
         final var remote = collectionOwnedByOther();
         createCollection(remote);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
         db.beginTransaction();
         try {
-            assertNull(db.findById(TestGlobals.DB, remote, "read-yw"));
-            db.save(TestGlobals.DB, remote, doc("read-yw"));
-            assertNotNull(db.findById(TestGlobals.DB, remote, "read-yw"));
+            assertNull(db.findById(TestGlobals.PROJECT, remote, "read-yw"));
+            db.save(TestGlobals.PROJECT, remote, doc("read-yw"));
+            assertNotNull(db.findById(TestGlobals.PROJECT, remote, "read-yw"));
         } finally {
             db.rollbackTransaction();
         }
@@ -151,7 +151,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         located.add("_id", new JsonString("geo-1"));
         located.add("location", new JsonGeo("#geo(40.0,-74.0)"));
         ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, coll, ReplicationOp.UPSERT, List.of(located), null),
+                new ReplicationPayload(TestGlobals.PROJECT, coll, ReplicationOp.UPSERT, List.of(located), null),
                 TestGlobals.APPLY_BUDGET_MS);
 
         final var operator = new JsonObject();
@@ -166,8 +166,8 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         final var pipeline = new JsonArray();
         pipeline.add(step);
 
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
-        final var results = db.aggregate(TestGlobals.DB, coll, pipeline);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
+        final var results = db.aggregate(TestGlobals.PROJECT, coll, pipeline);
         assertEquals(1, results.size());
         assertEquals("geo-1", results.getFirst().get("_id").asJsonString().getValue());
     }
@@ -177,7 +177,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
     @Test
     public void test_run_script_is_forwarded_to_the_chosen_node_and_the_response_relayed() throws Exception {
         enableScriptRouting();
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"script\":\"return 41 + 1;\"}";
         final var forwardedBefore = scriptPlacement.getForwarded();
         final var response = router.forward(RequestParser.parseRequest(raw), raw, false, ADMIN, null);
@@ -196,8 +196,8 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         seed(coll, "forwarded-read");
         final var script = "import db from \\\"db\\\"; return db.findById(db.name, \\\"" + coll
                 + "\\\", \\\"forwarded-read\\\").value;";
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB + "\",\"script\":\"" + script
-                + "\"}";
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"script\":\""
+                + script + "\"}";
         final var response = router.forward(RequestParser.parseRequest(raw), raw, false, ADMIN, null);
         assertNotNull(response, "the script should have been forwarded, not run locally");
         assertTrue(response.contains("hello"), response);
@@ -210,7 +210,7 @@ public class ScriptForwardingIntegrationTest extends ScriptClusterTestBase {
         enableScriptRouting();
         final var admission = IocContainer.get(ScriptAdmission.class);
         admission.reconfigure(1, 0L);
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"script\":\"return 41 + 1;\"}";
         final var forwardedBefore = scriptPlacement.getForwarded();
         final var fallbacksBefore = scriptPlacement.getForwardFallbacks();

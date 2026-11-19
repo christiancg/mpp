@@ -59,11 +59,11 @@ public class SchemaBudgetOperationTest {
     @BeforeEach
     void reset() throws Exception {
         BeforeHookTestSupport.reset();
-        processor.processMessage(new DeleteSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        processor.processMessage(new DeleteSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private SaveSchemaRequest saveSchema(String schema) {
-        return new SaveSchemaRequest(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson(schema, JsonObject.class));
+        return new SaveSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL, eJson.fromJson(schema, JsonObject.class));
     }
 
     private static JsonObject named(String id, String name) {
@@ -74,14 +74,14 @@ public class SchemaBudgetOperationTest {
     }
 
     private static SaveRequest save(JsonObject document) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         request.set_id(document.get("_id").asJsonString().getValue());
         return request;
     }
 
     private JsonObject find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse found ? found.getObject() : null;
     }
@@ -94,8 +94,8 @@ public class SchemaBudgetOperationTest {
         assertEquals(OperationStatus.ERROR, response.getStatus());
         assertEquals(ErrorCode.SCHEMA_TOO_COMPLEX.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().startsWith(ErrorCode.SCHEMA_TOO_COMPLEX.getDefaultMessage()));
-        assertNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -106,8 +106,8 @@ public class SchemaBudgetOperationTest {
                     .processMessage(saveSchema("{\"$defs\":{\"d\":{\"patternProperties\":{\"^[a-z]{1,9}$\":{}}}}}"));
             assertEquals(ErrorCode.SCHEMA_PATTERN_TOO_LONG.getCode(), tooLong.getErrorCode());
             assertTrue(tooLong.getMessage().startsWith(ErrorCode.SCHEMA_PATTERN_TOO_LONG.getDefaultMessage()));
-            assertNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
-            assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+            assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
+            assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
             assertInstanceOf(SaveSchemaResponse.class,
                     processor.processMessage(saveSchema("{\"properties\":{\"name\":{\"pattern\":\"^[a-z]+$\"}}}")));
         } finally {
@@ -120,7 +120,7 @@ public class SchemaBudgetOperationTest {
     public void test_a_stored_schema_with_a_long_pattern_still_validates_writes() throws Exception {
         TestUtils.setPrivateField(configuration, "schemaMaxPatternLength", 4);
         try {
-            cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+            cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                     eJson.fromJson("{\"properties\":{\"name\":{\"pattern\":\"^x+y$\"}}}", JsonObject.class));
             assertEquals(OperationStatus.OK, processor.processMessage(save(named("long", "xxy"))).getStatus());
             assertEquals(ErrorCode.SCHEMA_VALIDATION_FAILED.getCode(),
@@ -142,7 +142,7 @@ public class SchemaBudgetOperationTest {
                         JsonObject.class));
             }
             assertEquals(OperationStatus.OK, processor.processMessage(save(tagged.getFirst())).getStatus());
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(tagged);
 
             final var response = processor.processMessage(request);
@@ -167,7 +167,7 @@ public class SchemaBudgetOperationTest {
                 tagged.add(eJson.fromJson("{\"_id\":\"hooked" + i + "\",\"tags\":[" + "\"t\",".repeat(299) + "\"t\"]}",
                         JsonObject.class));
             }
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(tagged);
 
             final var response = processor.processMessage(request);
@@ -195,7 +195,7 @@ public class SchemaBudgetOperationTest {
     @Test
     public void test_bulk_save_with_one_hostile_document_writes_nothing() {
         processor.processMessage(saveSchema(DiamondSchemas.redosPatternSchema()));
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(named("bulk-ok", "xxy"), named("bulk-bad", DiamondSchemas.hostileName())));
 
         final var response = processor.processMessage(request);
@@ -228,7 +228,7 @@ public class SchemaBudgetOperationTest {
         BeforeHookTestSupport.installHook("redos", "redos",
                 "export default (d) => ({ ...d, name: 'x'.repeat(800) + '!' });", EventType.CREATED);
 
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 BeforeHookTestSupport.ACTOR)) {
             final var outcome = hooks.apply(BeforeHookTestSupport.document("hooked"), "hooked", OperationType.SAVE);
 

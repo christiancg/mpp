@@ -37,11 +37,11 @@ const it = serverIt({ maxVectorDimensions: "8" });
 let places: Collection<Document, Stored<Document>>;
 
 beforeAll(async () => {
-    const database = it.client.database("custom_it");
-    await database.create();
-    places = database.collection("places");
+    const project = it.client.project("custom_it");
+    await project.create();
+    places = project.collection("places");
     await places.create();
-    await database.collection("typed").create();
+    await project.collection("typed").create();
     await places.saveAll([
         {
             _id: "ny",
@@ -76,7 +76,7 @@ describe("custom value types", () => {
         expect(lima?.location).toEqual(LIMA);
         expect((lima?.embedding as Vector).equals(Vector.of(0, 1, 0))).toBe(true);
         expect(lima?.stops).toEqual([GeoPoint.of(1, 2), GeoPoint.of(3, 4)]);
-        const typed = it.client.database("custom_it").collection<Place>("typed");
+        const typed = it.client.project("custom_it").collection<Place>("typed");
         const place: Place = {
             _id: "p1",
             openedAt: LocalDateTime.of(2024, 5, 5, 5, 5, 5, 123_000_000),
@@ -221,10 +221,10 @@ describe("custom value types", () => {
         try {
             const instant = new Date(Date.UTC(2024, 0, 1, 15, 0));
             await zoned
-                .database("custom_it")
+                .project("custom_it")
                 .collection<{ _id: string; at: Date }>("typed")
                 .save({ _id: "zoned", at: instant });
-            const read = await zoned.database("custom_it").collection("typed").findById("zoned");
+            const read = await zoned.project("custom_it").collection("typed").findById("zoned");
             expect(read?.at).toEqual(LocalDateTime.of(2024, 1, 1, 10, 0));
             expect((read?.at as LocalDateTime).toDate("America/Lima").getTime()).toBe(instant.getTime());
         } finally {

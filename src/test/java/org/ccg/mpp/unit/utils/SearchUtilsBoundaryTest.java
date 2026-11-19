@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 public class SearchUtilsBoundaryTest {
     private static List<FieldIndexEntry<Number>> single() {
-        return List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")));
+        return List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")));
     }
 
     private static Set<String> find(List<FieldIndexEntry<Number>> entries, FieldOperatorType type, Number value) {
@@ -100,8 +100,8 @@ public class SearchUtilsBoundaryTest {
 
     @Test
     public void test_two_entry_index_still_answers_both_directions() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")));
         assertEquals(Set.of("id2"), find(entries, FieldOperatorType.GREATER_THAN, 15));
         assertEquals(Set.of("id1"), find(entries, FieldOperatorType.SMALLER_THAN, 15));
         assertEquals(Set.of("id1", "id2"), find(entries, FieldOperatorType.GREATER_THAN_EQUALS, 10));

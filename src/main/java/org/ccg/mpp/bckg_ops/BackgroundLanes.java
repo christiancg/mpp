@@ -40,9 +40,9 @@ public final class BackgroundLanes {
     public int laneOf(Event event) {
         final var collection = switch (event) {
             case CollectionScopedEvent scoped ->
-                Cache.getCollectionIdentifier(scoped.getDbName(), scoped.getCollName());
+                Cache.getCollectionIdentifier(scoped.getProjectName(), scoped.getCollName());
             case ScriptRunHistoryEvent history when history.getRecord() != null ->
-                Cache.getCollectionIdentifier(history.getRecord().database(), Globals.SCRIPT_RUNS_COLLECTION_NAME);
+                Cache.getCollectionIdentifier(history.getRecord().project(), Globals.SCRIPT_RUNS_COLLECTION_NAME);
             default -> null;
         };
         return collection == null ? 0 : Math.floorMod(collection.hashCode(), queues.size());

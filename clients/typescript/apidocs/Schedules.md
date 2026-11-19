@@ -1,6 +1,6 @@
 # Schedules
 
-The scheduled procedures of one database.
+The scheduled procedures of one project.
 
 ## save
 

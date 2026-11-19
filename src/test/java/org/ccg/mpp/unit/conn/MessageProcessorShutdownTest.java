@@ -27,7 +27,7 @@ public class MessageProcessorShutdownTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -47,23 +47,22 @@ public class MessageProcessorShutdownTest {
 
     @Test
     public void test_a_write_is_refused_once_the_server_is_stopping() throws Exception {
-        final var response = run(
-                "{\"type\":\"SAVE\",\"databaseName\":\"testDb\",\"collectionName\":\"testColl\"," + "\"object\":{}}",
-                () -> true);
+        final var response = run("{\"type\":\"SAVE\",\"projectName\":\"testProject\",\"collectionName\":\"testColl\","
+                + "\"object\":{}}", () -> true);
 
         assertTrue(response.contains(SHUTTING_DOWN), response);
     }
 
     @Test
     public void test_a_public_operation_is_refused_once_the_server_is_stopping() throws Exception {
-        assertTrue(run("{\"type\":\"LIST_DATABASES\"}", () -> true).contains(SHUTTING_DOWN));
+        assertTrue(run("{\"type\":\"LIST_PROJECTS\"}", () -> true).contains(SHUTTING_DOWN));
     }
 
     @Test
     public void test_a_refused_request_never_reaches_the_operation_processor() throws Exception {
         final var processor = mock(OperationProcessor.class);
         final var out = new ByteArrayOutputStream();
-        final var in = new ByteArrayInputStream("{\"type\":\"LIST_DATABASES\"}\n".getBytes(StandardCharsets.UTF_8));
+        final var in = new ByteArrayInputStream("{\"type\":\"LIST_PROJECTS\"}\n".getBytes(StandardCharsets.UTF_8));
         final var messageProcessor = new MessageProcessor(TestUtils.clientSocket(in, out), () -> true);
         TestUtils.setPrivateField(messageProcessor, "operationProcessor", processor);
 
@@ -91,7 +90,7 @@ public class MessageProcessorShutdownTest {
 
     @Test
     public void test_requests_are_served_while_the_server_is_running() throws Exception {
-        final var response = run("{\"type\":\"LIST_DATABASES\"}", () -> false);
+        final var response = run("{\"type\":\"LIST_PROJECTS\"}", () -> false);
 
         assertTrue(response.contains("401-1"), response);
         assertFalse(response.contains(SHUTTING_DOWN), response);
@@ -148,7 +147,7 @@ public class MessageProcessorShutdownTest {
         when(processor.processMessage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new IllegalStateException("boom"));
         final var out = new ByteArrayOutputStream();
-        final var in = new ByteArrayInputStream("{\"type\":\"LIST_DATABASES\"}\n".getBytes(StandardCharsets.UTF_8));
+        final var in = new ByteArrayInputStream("{\"type\":\"LIST_PROJECTS\"}\n".getBytes(StandardCharsets.UTF_8));
         final var messageProcessor = new MessageProcessor(TestUtils.clientSocket(in, out));
         TestUtils.setPrivateField(messageProcessor, "operationProcessor", processor);
 

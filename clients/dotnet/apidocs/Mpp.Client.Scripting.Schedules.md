@@ -1,4 +1,4 @@
-The scheduled procedures of one database. Obtained from `Database.Schedules()`.
+The scheduled procedures of one project. Obtained from `Project.Schedules()`.
 
 ## DeleteAsync(string, CancellationToken)
 Deletes a schedule.

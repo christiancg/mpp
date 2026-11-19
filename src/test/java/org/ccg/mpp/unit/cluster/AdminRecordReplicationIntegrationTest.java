@@ -28,7 +28,7 @@ import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -62,7 +62,7 @@ public class AdminRecordReplicationIntegrationTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.start();
     }
 
@@ -80,8 +80,8 @@ public class AdminRecordReplicationIntegrationTest {
     }
 
     private AdminRecord collection(String collName) {
-        return new AdminRecord(AdminRecordKey.collection(TestGlobals.DB, collName), clock.next(),
-                bodyOf(new AdminCollEntry(TestGlobals.DB, collName)));
+        return new AdminRecord(AdminRecordKey.collection(TestGlobals.PROJECT, collName), clock.next(),
+                bodyOf(new AdminCollEntry(TestGlobals.PROJECT, collName)));
     }
 
     private AdminRecord bob() {
@@ -100,17 +100,17 @@ public class AdminRecordReplicationIntegrationTest {
         cluster.configureRemoteCoordinator();
         final var ack = pool.request(cluster.serverAddress(), replicateAdmin(collection("repl-coll")), 3000);
         assertEquals(ClusterMessageType.REPLICATE_ADMIN_ACK, ack.getType());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "repl-coll"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "repl-coll"));
     }
 
     @Test
-    public void test_a_replicated_database_record_carries_its_owners() throws Exception {
+    public void test_a_replicated_project_record_carries_its_owners() throws Exception {
         cluster.configureRemoteCoordinator();
-        final var record = new AdminRecord(AdminRecordKey.database("clusterdb"), clock.next(),
-                bodyOf(new AdminDbEntry("clusterdb", List.of(), List.of("alice"))));
+        final var record = new AdminRecord(AdminRecordKey.project("clusterdb"), clock.next(),
+                bodyOf(new AdminProjectEntry("clusterdb", List.of(), List.of("alice"))));
         final var ack = pool.request(cluster.serverAddress(), replicateAdmin(record), 3000);
         assertEquals(ClusterMessageType.REPLICATE_ADMIN_ACK, ack.getType());
-        assertTrue(cache.getAdminDbEntry("clusterdb").getOwners().contains("alice"));
+        assertTrue(cache.getAdminProjectEntry("clusterdb").getOwners().contains("alice"));
     }
 
     @Test
@@ -154,7 +154,7 @@ public class AdminRecordReplicationIntegrationTest {
         cluster.configureRemoteCoordinator();
         assertEquals(ReplicationOutcome.QUORUM_MET,
                 replicator.broadcastAdmin(new AdminSnapshotPayload(List.of(collection("peer-coll")))));
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "peer-coll"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "peer-coll"));
     }
 
     @Test
@@ -174,7 +174,7 @@ public class AdminRecordReplicationIntegrationTest {
     public void test_a_reindex_broadcast_rebuilds_on_a_peer() throws Exception {
         cluster.configureRemoteCoordinator();
         final var message = new ClusterMessage(null, ClusterMessageType.REINDEX_BROADCAST, SECRET, null, null);
-        message.setForwardBody(eJson.toJson(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null)));
+        message.setForwardBody(eJson.toJson(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null)));
         final var ack = pool.request(cluster.serverAddress(), message, 3000);
         assertEquals(ClusterMessageType.REINDEX_BROADCAST_ACK, ack.getType());
     }
@@ -183,28 +183,28 @@ public class AdminRecordReplicationIntegrationTest {
     public void test_a_primary_key_reindex_broadcast_rebuilds_the_peer_pk_index() throws Exception {
         cluster.configureRemoteCoordinator();
         final var pkFile = new File(
-                TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+                TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + "-pk.idx");
         Files.writeString(pkFile.toPath(), "garbage\n", StandardCharsets.UTF_8);
         final var message = new ClusterMessage(null, ClusterMessageType.REINDEX_BROADCAST, SECRET, null, null);
-        message.setForwardBody(eJson.toJson(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null, true)));
+        message.setForwardBody(eJson.toJson(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null, true)));
 
         final var ack = pool.request(cluster.serverAddress(), message, 3000);
 
         assertEquals(ClusterMessageType.REINDEX_BROADCAST_ACK, ack.getType());
-        assertTrue(IocContainer.get(FileSystem.class).readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).isEmpty(),
-                "the peer rebuilt the unreadable pk.idx from its (empty) pages");
+        assertTrue(IocContainer.get(FileSystem.class).readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL)
+                .isEmpty(), "the peer rebuilt the unreadable pk.idx from its (empty) pages");
     }
 
     @Test
     public void test_router_forwards_admin_op_and_a_receiver_that_does_not_coordinate_refuses_it() throws Exception {
         cluster.configureRemoteCoordinator();
-        final var request = new CreateCollectionRequest(TestGlobals.DB, "routed-coll");
+        final var request = new CreateCollectionRequest(TestGlobals.PROJECT, "routed-coll");
         final var relayed = router.forward(request, eJson.toJson(request), false, ClusterTestHarness.ACTING_ADMIN,
                 null);
         assertNotNull(relayed);
         assertTrue(relayed.contains("421-1"), relayed);
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "routed-coll"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "routed-coll"));
     }
 
     @Test
@@ -218,23 +218,24 @@ public class AdminRecordReplicationIntegrationTest {
     @Test
     public void test_router_executes_admin_locally_when_this_node_is_coordinator() throws Exception {
         cluster.configureMembership(1, node("self", 19990));
-        final var request = new CreateCollectionRequest(TestGlobals.DB, "local-coll");
+        final var request = new CreateCollectionRequest(TestGlobals.PROJECT, "local-coll");
         assertNull(router.forward(request, eJson.toJson(request), false, "alice", null));
     }
 
     @Test
     public void test_admin_op_rejected_without_quorum() throws Exception {
         cluster.configureMembership(3, node("self", 19990));
-        final var response = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "noquorum-coll"));
+        final var response = processor
+                .processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "noquorum-coll"));
         assertEquals("503-2", response.getErrorCode());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "noquorum-coll"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "noquorum-coll"));
     }
 
     @Test
     public void test_single_node_coordinator_creates_and_replicates() throws Exception {
         cluster.configureMembership(1, node("self", 19990));
-        final var response = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "coord-coll"));
+        final var response = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "coord-coll"));
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "coord-coll"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "coord-coll"));
     }
 }

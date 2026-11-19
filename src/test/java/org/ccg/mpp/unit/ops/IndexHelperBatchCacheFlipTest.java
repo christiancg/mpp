@@ -39,7 +39,7 @@ public class IndexHelperBatchCacheFlipTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalMaxMemory = configuration.getMaxMemoryBytes();
     }
 
@@ -55,18 +55,18 @@ public class IndexHelperBatchCacheFlipTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         return entry;
     }
 
     private void indexField(String field) throws Exception {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(field);
         entry.setIndexes(indexes);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, field);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, field);
     }
 
     private void admitFromTheNthStringLoad(String field, int admittingLoad) throws Exception {
@@ -85,7 +85,8 @@ public class IndexHelperBatchCacheFlipTest {
 
     private Map<String, Set<String>> idsByValueOnDisk(String field) throws Exception {
         final var byValue = new java.util.HashMap<String, Set<String>>();
-        for (final var entry : realFs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, field, String.class)) {
+        for (final var entry : realFs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, field,
+                String.class)) {
             byValue.put(entry.getValue(), new HashSet<>(entry.getIds()));
         }
         return byValue;
@@ -103,7 +104,7 @@ public class IndexHelperBatchCacheFlipTest {
             y.getData().addProperty(field, "fresh");
 
             admitFromTheNthStringLoad(field, admittingLoad);
-            IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of(x.get_id(), y.get_id()));
+            IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of(x.get_id(), y.get_id()));
             TestUtils.setPrivateField(userCache, "fs", realFs);
             TestUtils.setPrivateField(configuration, "maxMemoryBytes", originalMaxMemory);
 
@@ -125,7 +126,7 @@ public class IndexHelperBatchCacheFlipTest {
             y.getData().addProperty(field, "first");
 
             admitFromTheNthStringLoad(field, admittingLoad);
-            IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of(x.get_id(), y.get_id()));
+            IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of(x.get_id(), y.get_id()));
             TestUtils.setPrivateField(userCache, "fs", realFs);
             TestUtils.setPrivateField(configuration, "maxMemoryBytes", originalMaxMemory);
 
@@ -149,7 +150,8 @@ public class IndexHelperBatchCacheFlipTest {
             final var fieldIndexes = TestUtils.getPrivateField(userCache, "fieldIndexMap",
                     new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
                     });
-            final var collection = fieldIndexes.get(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+            final var collection = fieldIndexes
+                    .get(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
             if (collection != null && !collection.isEmpty()) {
                 admittedDuringBatch.incrementAndGet();
             }
@@ -157,7 +159,7 @@ public class IndexHelperBatchCacheFlipTest {
         }).when(spied).readWholeFieldIndexFiles(anyString(), anyString(), eq(field), eq(String.class));
         TestUtils.setPrivateField(userCache, "fs", spied);
 
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, x.get_id());
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, x.get_id());
 
         assertEquals(0, admittedDuringBatch.get());
         assertEquals(Set.of(x.get_id()), idsByValueOnDisk(field).get("after"));

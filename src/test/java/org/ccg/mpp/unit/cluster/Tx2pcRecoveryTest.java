@@ -62,7 +62,7 @@ public class Tx2pcRecoveryTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origPool = TestUtils.getPrivateField(recovery, "pool", PeerConnectionPool.class);
         cluster.enableAlone();
     }
@@ -145,7 +145,7 @@ public class Tx2pcRecoveryTest {
 
     @Test
     public void test_committed_transaction_with_mixed_ops_replayed() throws Exception {
-        final var seed = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var seed = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var seedObj = new JsonObject();
         seedObj.add("_id", new JsonString("mix-del"));
         seed.setObject(seedObj);
@@ -156,7 +156,7 @@ public class Tx2pcRecoveryTest {
         final var save = new JsonObject();
         save.add("_id", new JsonString("mix-save"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 0,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, save));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, save));
         final var bulkPayload = new JsonObject();
         final var array = new org.ccg.mpp.ejson.elements.JsonArray();
         final var bulkObj = new JsonObject();
@@ -164,11 +164,11 @@ public class Tx2pcRecoveryTest {
         array.add(bulkObj);
         bulkPayload.add("objects", array);
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 1,
-                AdminTransactionEntry.OP_TYPE_BULK_SAVE, TestGlobals.DB, TestGlobals.COLL, bulkPayload));
+                AdminTransactionEntry.OP_TYPE_BULK_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, bulkPayload));
         final var delPayload = new JsonObject();
         delPayload.add("_id", new JsonString("mix-del"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 2,
-                AdminTransactionEntry.OP_TYPE_DELETE, TestGlobals.DB, TestGlobals.COLL, delPayload));
+                AdminTransactionEntry.OP_TYPE_DELETE, TestGlobals.PROJECT, TestGlobals.COLL, delPayload));
         Tx2pcLog.recordParticipantPrepared(dtxId, SELF_ADDRESS, List.of(SELF_ADDRESS), List.of(collectionId()));
         Tx2pcLog.recordCoordinatorCommit(dtxId, null, List.of(SELF_ADDRESS));
 
@@ -384,13 +384,13 @@ public class Tx2pcRecoveryTest {
         return new Thread(() -> {
             final var locks = IocContainer.get(ResourceLocking.class);
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 held.countDown();
                 Thread.sleep(LOCK_HOLD_MILLIS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }, "lock-holder");
     }
@@ -424,7 +424,7 @@ public class Tx2pcRecoveryTest {
     }
 
     private void savePostRestart(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("source", new JsonString("post-restart"));
@@ -434,7 +434,7 @@ public class Tx2pcRecoveryTest {
     }
 
     private String sourceOf() {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("rec-newer");
         final var response = processor.processMessage(request);
         if (response instanceof org.ccg.mpp.ops.resp.FindByIdResponse found && found.getObject().has("source")) {

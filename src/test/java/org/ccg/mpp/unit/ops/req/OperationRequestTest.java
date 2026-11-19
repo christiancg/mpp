@@ -10,26 +10,26 @@ public class OperationRequestTest {
     @Test
     public void test_create_operation_request_with_valid_params() {
         OperationType type = OperationType.SAVE;
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
 
-        OperationRequest request = new OperationRequest(type, dbName, collName);
+        OperationRequest request = new OperationRequest(type, projectName, collName);
 
         assertEquals(type, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collName, request.getCollectionName());
     }
 
     @Test
     public void test_operation_request_getters_and_setters() {
         OperationType type = OperationType.FIND_BY_ID;
-        String dbName = "sampleDb";
+        String projectName = "sampleProject";
         String collName = "sampleCollection";
 
-        OperationRequest request = new OperationRequest(type, dbName, collName);
+        OperationRequest request = new OperationRequest(type, projectName, collName);
 
         assertEquals(type, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collName, request.getCollectionName());
     }
 }

@@ -25,7 +25,7 @@ settings = ClientSettings(
 )
 
 with MppClient.connect(settings) as client:
-    shop = client.database("shop")
+    shop = client.project("shop")
     shop.create()
     orders = shop.collection("orders")
     orders.create()
@@ -54,7 +54,7 @@ Every class has an async twin with the same methods: `AsyncMppClient`, `AsyncCol
 from mpp import AsyncMppClient
 
 async with await AsyncMppClient.connect(settings) as client:
-    orders = client.database("shop").collection("orders")
+    orders = client.project("shop").collection("orders")
     await orders.save({"_id": "o-2", "status": "new", "total": 30})
     count = await orders.query().filter(field("status").eq("new")).count()
 ```

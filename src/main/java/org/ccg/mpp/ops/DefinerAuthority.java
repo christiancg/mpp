@@ -28,30 +28,30 @@ public final class DefinerAuthority {
     private DefinerAuthority() {
     }
 
-    public static String refusal(String definer, String dbName, String collName) {
+    public static String refusal(String definer, String projectName, String collName) {
         final var user = definer == null ? null : cache.getAdminUserEntry(definer);
         if (user == null) {
             return "definer '" + definer + "' no longer exists";
         }
-        if (AuthorizationChecker.mayRunAsDefiner(user, dbName, collName)) {
+        if (AuthorizationChecker.mayRunAsDefiner(user, projectName, collName)) {
             return null;
         }
         final var required = collName == null
-                ? "script RUN on database '" + dbName + "'"
-                : "script RUN on database '" + dbName + "' and READ on collection '" + collName + "'";
+                ? "script RUN on project '" + projectName + "'"
+                : "script RUN on project '" + projectName + "' and READ on collection '" + collName + "'";
         return "definer '" + definer + "' no longer holds " + required;
     }
 
-    public static void disableTrigger(String dbName, String collName, TriggerDefinition trigger, String reason) {
-        disable(AdminRecordKey.triggers(dbName, collName),
-                "Trigger '" + trigger.getName() + "' on " + dbName + "|" + collName, reason,
-                () -> TriggerOperationHelper.disable(dbName, collName, trigger, reason));
+    public static void disableTrigger(String projectName, String collName, TriggerDefinition trigger, String reason) {
+        disable(AdminRecordKey.triggers(projectName, collName),
+                "Trigger '" + trigger.getName() + "' on " + projectName + "|" + collName, reason,
+                () -> TriggerOperationHelper.disable(projectName, collName, trigger, reason));
     }
 
-    public static void disableSchedule(String dbName, ScheduleDefinition schedule, String reason) {
-        disable(AdminRecordKey.schedule(dbName, schedule.getName()),
-                "Schedule '" + schedule.getName() + "' in " + dbName, reason,
-                () -> ScheduleOperationHelper.disable(dbName, schedule, reason));
+    public static void disableSchedule(String projectName, ScheduleDefinition schedule, String reason) {
+        disable(AdminRecordKey.schedule(projectName, schedule.getName()),
+                "Schedule '" + schedule.getName() + "' in " + projectName, reason,
+                () -> ScheduleOperationHelper.disable(projectName, schedule, reason));
     }
 
     private interface Disabling {

@@ -13,8 +13,8 @@ PORT = int(os.environ.get("SCRIPT_TEST_PORT", "8995"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "script_test_db"
-OTHER_DB = "script_other_db"
+PROJECT = "script_test_project"
+OTHER_PROJECT = "script_other_project"
 COLL = "docs"
 COLL2 = "more"
 
@@ -32,8 +32,8 @@ MAX_RESULT_BYTES = 64 * 1024
 MAX_ARRAY_LENGTH = 50_000
 CURSOR_BATCH_SIZE = 100
 CURSOR_MAX_BATCH_SIZE = 500
-MAX_PROCEDURES_PER_DATABASE = 40
-PROCEDURE_CAP_DB = "script_proc_cap_db"
+MAX_PROCEDURES_PER_PROJECT = 40
+PROCEDURE_CAP_PROJECT = "script_proc_cap_project"
 
 BIG_COLL = "big"
 EMPTY_COLL = "empty"
@@ -62,14 +62,14 @@ def check_no_stack(label: str, response: dict):
 
 
 class Conn(bu.Conn):
-    def run(self, script: str, args=None, db=DB) -> dict:
-        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+    def run(self, script: str, args=None, project=PROJECT) -> dict:
+        payload = {"type": "RUN_SCRIPT", "projectName": project, "script": script}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
 
-    def save_procedure(self, name: str, script: str, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+    def save_procedure(self, name: str, script: str, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "projectName": project, "name": name, "script": script}
         payload.update(extra)
         return self.send(payload)
 
@@ -109,7 +109,7 @@ def write_config(work_dir: str, scripts_enabled: bool, procedure_imports_enabled
                     scriptFetchMaxResponseBytes=fetch_max_response_bytes,
                     scriptFetchMaxConcurrent=fetch_max_concurrent,
                     procedureCacheMaxBytes=COMPILED_CACHE_MAX_BYTES,
-                    maxProceduresPerDatabase=MAX_PROCEDURES_PER_DATABASE)
+                    maxProceduresPerProject=MAX_PROCEDURES_PER_PROJECT)
 
 
 class FetchFixture:
@@ -178,26 +178,28 @@ class FetchFixture:
 
 def setup_data(conn: Conn):
     section("Setup")
-    for db in (DB, OTHER_DB):
-        conn.send({"type": "DROP_DATABASE", "databaseName": db})
-        check_status(f"CREATE_DATABASE {db}", conn.send({"type": "CREATE_DATABASE", "databaseName": db}), "OK")
+    for project in (PROJECT, OTHER_PROJECT):
+        conn.send({"type": "DROP_PROJECT", "projectName": project})
+        check_status(f"CREATE_PROJECT {project}", conn.send({"type": "CREATE_PROJECT", "projectName": project}), "OK")
     for coll in (COLL, COLL2, BIG_COLL, EMPTY_COLL):
         check_status(f"create collection {coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
-    check_status("create collection in the other database",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": OTHER_DB, "collectionName": COLL}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
+    check_status("create collection in the other project",
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": OTHER_PROJECT, "collectionName": COLL}), "OK")
     docs = [
         {"_id": "d1", "name": "alpha", "n": 1, "tags": ["x", "y"]},
         {"_id": "d2", "name": "beta", "n": 5, "tags": ["y"]},
         {"_id": "d3", "name": "gamma", "n": 9, "tags": []},
     ]
     check_status("seed documents",
-                 conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": docs}), "OK")
+                 conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": docs}),
+                 "OK")
     payload = "x" * BIG_PAYLOAD_CHARS
     seeded = True
     for start in range(0, BIG_DOCS, 50):
         batch = [{"_id": f"big{i:04d}", "payload": payload} for i in range(start, start + 50)]
-        response = conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": BIG_COLL, "objects": batch})
+        response = conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": BIG_COLL,
+                              "objects": batch})
         seeded = seeded and response.get("status") == "OK"
     check(f"seed {BIG_DOCS} large documents into {BIG_COLL}", seeded)
 
@@ -287,14 +289,14 @@ def test_compiled_script_cache(conn: Conn):
     for attempt in range(3):
         check_failed_script(f"a syntax error stays 400-9 (run {attempt + 1})",
                             conn.run("return (;"), "400-9", "SyntaxError")
-    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    stats = conn.send({"type": "GET_PROJECT_STATS"})
     entries = ((stats.get("stats") or {}).get("scripts") or {}).get("compiledCacheEntries")
     check("the cache reports its entry count", isinstance(entries, (int, float)) and entries >= 1,
           f"compiledCacheEntries={entries!r}")
     oversized = "let s = 0;\n" + "s += 1;\n" * 900 + "return s;"
     for attempt in range(2):
         check_result(f"a program past procedureCacheMaxBytes still runs (run {attempt + 1})", conn.run(oversized), 900)
-    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    stats = conn.send({"type": "GET_PROJECT_STATS"})
     after = ((stats.get("stats") or {}).get("scripts") or {}).get("compiledCacheEntries")
     check("but it is not kept in the compiled cache", after == entries,
           f"compiledCacheEntries before={entries!r} after={after!r}")
@@ -302,7 +304,7 @@ def test_compiled_script_cache(conn: Conn):
 
 def test_procedure_cache_checks_the_source_text(conn: Conn):
     section("Compiled procedure cache")
-    call = {"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "cached_proc"}
+    call = {"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "cached_proc"}
     check_status("save a procedure for the compiled cache", conn.save_procedure("cached_proc", "return 70;"), "OK")
     for attempt in range(2):
         check_result(f"a cached procedure answers from its source (call {attempt + 1})", conn.send(call), 70)
@@ -310,7 +312,7 @@ def test_procedure_cache_checks_the_source_text(conn: Conn):
                  conn.save_procedure("cached_proc", "return 71;"), "OK")
     check_result("the next call runs the new source", conn.send(call), 71)
     check_status("drop the cached procedure",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "cached_proc"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "cached_proc"}), "OK")
 
 
 def test_console_output(conn: Conn):
@@ -702,7 +704,7 @@ def test_history_kinds(conn: Conn):
     section("Run history kinds")
     check_result("an ad-hoc run still works", conn.run("return 'unrecorded';"), "unrecorded")
     time.sleep(1.0)
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                           "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
     ad_hoc = [row for row in (response.get("results") or []) if row.get("kind") == "RUN_SCRIPT"]
     check("an ad-hoc run is not recorded under the default kinds", not ad_hoc, f"rows={ad_hoc!r}")
@@ -742,7 +744,7 @@ def test_history_kinds_enabled(conn: Conn):
     check_result("a recorded ad-hoc run", conn.run("let t = 0; for (let i = 0; i < 20; i++) t += i; return t;"), 190)
 
     def recorded_runs() -> list:
-        response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+        response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                               "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
         return [row for row in (response.get("results") or []) if row.get("kind") == "RUN_SCRIPT"]
 
@@ -753,18 +755,18 @@ def test_history_kinds_enabled(conn: Conn):
         check("the row carries metrics",
               (rows[0].get("metrics") or {}).get("instructions", 0) > 0, f"row={rows[0]!r}")
         check("an ad-hoc run has no collection of its own", rows[0].get("collection") is None, f"row={rows[0]!r}")
-        indexed = conn.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": "script_runs",
+        indexed = conn.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": "script_runs",
                              "fieldName": "outcome"})
         check("CREATE_INDEX on script_runs succeeds once a run has created it", indexed.get("status") == "OK",
               f"got {indexed!r}")
-        is_null = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+        is_null = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                              "aggregationSteps": [{"type": "FILTER", "operator": {
                                  "type": "FIELD", "field": "collection",
                                  "fieldOperatorType": "EQUALS", "value": None}}]})
         matched = {row.get("_id") for row in (is_null.get("results") or [])}
         check("EQUALS null finds the freshly written row the response showed as null",
               rows[0].get("_id") in matched, f"matched={matched!r} row={rows[0]!r}")
-        not_null = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+        not_null = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                               "aggregationSteps": [{"type": "FILTER", "operator": {
                                   "type": "FIELD", "field": "collection",
                                   "fieldOperatorType": "NOT_EQUALS", "value": None}}]})
@@ -809,10 +811,10 @@ def test_fetch(conn: Conn, base_url: str, fixture):
     check_failed_script("a response past the timeout fails", slow, "400-9", "")
 
     check_status("store a fetching procedure",
-                 conn.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": "fetcher",
+                 conn.send({"type": "SAVE_PROCEDURE", "projectName": PROJECT, "name": "fetcher",
                             "script": f"const res = await fetch('{base_url}/hello');\nreturn await res.text();"}),
                  "OK")
-    called = conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "fetcher"})
+    called = conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "fetcher"})
     check("a stored procedure may fetch", called.get("result") == "hello", f"got {called}")
 
 
@@ -880,12 +882,12 @@ def test_locale_arguments(conn: Conn):
 
 def test_request_validation(conn: Conn):
     section("Request validation")
-    check_code("unknown database", conn.run("return 1;", db="no_such_db"), "NOT_FOUND", "404-4")
-    check_code("the reserved admin database", conn.run("return 1;", db="admin"), "ERROR", "400-1")
-    check_code("the reserved admin_pages database", conn.run("return 1;", db="admin_pages"), "ERROR", "400-1")
-    check_code("a missing script", conn.send({"type": "RUN_SCRIPT", "databaseName": DB}), "ERROR", "400-1")
+    check_code("unknown project", conn.run("return 1;", project="no_such_project"), "NOT_FOUND", "404-4")
+    check_code("the reserved admin project", conn.run("return 1;", project="admin"), "ERROR", "400-1")
+    check_code("the reserved admin_pages project", conn.run("return 1;", project="admin_pages"), "ERROR", "400-1")
+    check_code("a missing script", conn.send({"type": "RUN_SCRIPT", "projectName": PROJECT}), "ERROR", "400-1")
     check_code("a blank script", conn.run("   "), "ERROR", "400-1")
-    check_code("a malformed database name", conn.run("return 1;", db="ab"), "ERROR", "400-1")
+    check_code("a malformed project name", conn.run("return 1;", project="ab"), "ERROR", "400-1")
     check_failed_script("a syntax error is reported as a script failure",
                         conn.run("function ("), "400-9", "SyntaxError")
 
@@ -896,7 +898,7 @@ def test_request_validation(conn: Conn):
 
 def test_host_reads(conn: Conn):
     section("Host interface — reads")
-    check_result("db.name is the scoped database", conn.run('import db from "db";\nreturn db.name;'), DB)
+    check_result("db.name is the scoped project", conn.run('import db from "db";\nreturn db.name;'), PROJECT)
     check_result("findById returns the document",
                  conn.run(f'import db from "db";\nreturn db.findById(db.name, "{COLL}", "d2");'),
                  {"_id": "d2", "name": "beta", "n": 5, "tags": ["y"]})
@@ -916,11 +918,13 @@ def test_host_reads(conn: Conn):
                           "const pipeline = [{ type: 'FILTER', operator: "
                           "{ fieldOperatorType: 'EQUALS', field: 'name', value: 'nobody' } }];\n"
                           f'return db.aggregate(db.name, "{COLL}", pipeline).length;'), 0)
-    check_result("listCollections lists the scoped database",
+    check_result("listCollections lists the scoped project",
                  conn.run('import db from "db";\nreturn db.listCollections(db.name).sort();'),
                  sorted([COLL, COLL2, BIG_COLL, EMPTY_COLL]))
-    check_result("listDatabases answers only the scope",
-                 conn.run('import db from "db";\nreturn db.listDatabases();'), [DB])
+    check_result("listProjects answers only the scope",
+                 conn.run('import db from "db";\nreturn db.listProjects();'), [PROJECT])
+    check_result("the db module no longer has listDatabases",
+                 conn.run('import db from "db";\nreturn typeof db.listDatabases;'), "undefined")
     check_result("findById in a collection that was never created throws, as a write there does",
                  conn.run('import db from "db";\n'
                           'try { db.findById(db.name, "never_created", "x"); return "read"; }\n'
@@ -1002,7 +1006,8 @@ def test_host_writes(conn: Conn):
                           f'db.save(db.name, "{COLL}", {{ _id: "visible", via: "script" }});\nreturn "saved";'),
                  "saved")
     check_status("… and FIND_BY_ID sees it",
-                 conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "visible"}), "OK")
+                 conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "visible"}),
+                 "OK")
 
 
 def test_a_script_array_is_stored_as_the_script_sees_it(conn: Conn):
@@ -1034,7 +1039,7 @@ def test_host_round_trip_keeps_custom_spelling(conn: Conn):
     spellings = {"loc": "#geo(45,-122)", "at": "#datetime(2024-01-01T10:00:00)",
                  "time": "#time(10:00:00)", "vec": "#vector(1,2)"}
     check_status("write custom values over the wire",
-                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": "spell", **spellings}}), "OK")
     check_result("re-save the document read back, untouched and as a structured clone",
                  conn.run('import db from "db";\n'
@@ -1043,7 +1048,7 @@ def test_host_round_trip_keeps_custom_spelling(conn: Conn):
                           f'db.save(db.name, "{COLL}", {{ ...structuredClone(doc), _id: "spell-clone" }});\n'
                           'return "saved";'), "saved")
     for doc_id in ("spell", "spell-clone"):
-        stored = conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+        stored = conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                             "_id": doc_id}).get("object") or {}
         for field, spelling in spellings.items():
             check(f"{doc_id}: {field} is stored exactly as written", stored.get(field) == spelling,
@@ -1054,7 +1059,7 @@ def test_temporal_bridge_keeps_fractions(conn: Conn):
     section("Host interface — a value rebuilt from Temporal keeps its fraction of a second")
     written = {"at": "#datetime(2024-01-01T10:00:00.123)", "time": "#time(10:00:00.123)"}
     check_status("write sub-second custom values over the wire",
-                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": "fraction", **written}}), "OK")
     check_result("re-save them rebuilt through toTemporal()",
                  conn.run('import db from "db";\n'
@@ -1062,7 +1067,7 @@ def test_temporal_bridge_keeps_fractions(conn: Conn):
                           f'db.save(db.name, "{COLL}", {{ _id: "fraction", '
                           "at: DbDateTime.from(doc.at.toTemporal()), time: DbTime.from(doc.time.toTemporal()) });\n"
                           'return "saved";'), "saved")
-    stored = conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+    stored = conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                         "_id": "fraction"}).get("object") or {}
     for field, spelling in written.items():
         check(f"{field} keeps its milliseconds through the Temporal bridge", stored.get(field) == spelling,
@@ -1101,13 +1106,13 @@ def test_transactions(conn: Conn):
 
 
 def test_scope_and_failures(conn: Conn):
-    section("Database scope and failure surfacing")
-    check_result("another database is unreachable",
+    section("Project scope and failure surfacing")
+    check_result("another project is unreachable",
                  conn.run('import db from "db";\n'
-                          f'try {{ db.findById("{OTHER_DB}", "{COLL}", "d1"); return "reached"; }}\n'
+                          f'try {{ db.findById("{OTHER_PROJECT}", "{COLL}", "d1"); return "reached"; }}\n'
                           "catch (e) { return e.message; }"),
-                 f"This script may only access database '{DB}'")
-    check_result("the admin database is unreachable",
+                 f"This script may only access project '{PROJECT}'")
+    check_result("the admin project is unreachable",
                  conn.run('import db from "db";\n'
                           'try { db.findById("admin", "users", "admin"); return "reached"; }\n'
                           "catch (e) { return e instanceof Error; }"), True)
@@ -1127,7 +1132,7 @@ def test_schema_interaction(conn: Conn):
     section("Collection schemas apply to a script's writes")
     schema = {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}
     check_status("attach a schema to the second collection",
-                 conn.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL2, "schema": schema}),
+                 conn.send({"type": "SAVE_SCHEMA", "projectName": PROJECT, "collectionName": COLL2, "schema": schema}),
                  "OK")
     check_result("a compliant write is accepted",
                  conn.run('import db from "db";\n'
@@ -1137,7 +1142,7 @@ def test_schema_interaction(conn: Conn):
                           f'try {{ db.save(db.name, "{COLL2}", {{ _id: "s-bad", other: 1 }}); return "wrote"; }}\n'
                           "catch (e) { return e instanceof Error; }"), True)
     check_status("remove the schema",
-                 conn.send({"type": "DELETE_SCHEMA", "databaseName": DB, "collectionName": COLL2}), "OK")
+                 conn.send({"type": "DELETE_SCHEMA", "projectName": PROJECT, "collectionName": COLL2}), "OK")
 
 
 def test_arguments(conn: Conn):
@@ -1164,13 +1169,13 @@ def test_arguments(conn: Conn):
 
 def test_custom_types(conn: Conn):
     section("Host interface — EJson custom types")
-    check_result("Geo round-trips through the database",
+    check_result("Geo round-trips through the project",
                  conn.run('import db from "db";\n'
                           f'db.save(db.name, "{COLL}", {{ _id: "geo1", loc: Geo.from("#geo(40.4,-3.7)") }});\n'
                           f'const stored = db.findById(db.name, "{COLL}", "geo1");\n'
                           "return { lat: stored.loc.lat, lng: stored.loc.lng, text: stored.loc.toString() };"),
                  {"lat": 40.4, "lng": -3.7, "text": "#geo(40.4,-3.7)"})
-    check_result("Vector round-trips through the database",
+    check_result("Vector round-trips through the project",
                  conn.run('import db from "db";\n'
                           f'db.save(db.name, "{COLL}", {{ _id: "vec1", v: Vector.from([1, 2, 3]) }});\n'
                           f'const stored = db.findById(db.name, "{COLL}", "vec1");\n'
@@ -1207,7 +1212,7 @@ def test_value_guards(conn: Conn):
     check_failed_script("returning a non-finite number is refused too",
                         conn.run("return 1/0;"), "400-9", "is not a JSON number")
     check_code("no refused write reached the collection",
-               conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+               conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                           "_id": "nonfinite"}), "NOT_FOUND", "404-2")
 
     check_failed_script("an unregistered custom type is refused", conn.run(
@@ -1224,7 +1229,7 @@ def test_value_guards(conn: Conn):
             'import db from "db";\n'
             f'db.save(db.name, "{COLL}", {literal});'), "400-9")
     check_code("neither reached the collection",
-               conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+               conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                           "_id": "badcustom"}), "NOT_FOUND", "404-2")
 
     check_result("a custom-shaped string stores as the custom type the wire would build", conn.run(
@@ -1237,7 +1242,7 @@ def test_value_guards(conn: Conn):
         'import db from "db";\n'
         f'db.save(db.name, "{COLL}", {{ _id: "promoted2", loc: "#geo(1,2)" }});'), "OK")
     check_field("promotion keeps the raw wire text rather than normalising it",
-                conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                            "_id": "promoted2"}), "object.loc", "#geo(1,2)")
     check_result("JSON.stringify still treats a custom-shaped string as a string",
                  conn.run("return JSON.stringify({ a: '#geo(1,2)', b: 1/0 });"),
@@ -1257,7 +1262,7 @@ def test_db_module_arity(conn: Conn):
         check_failed_script(f"{label} with too few arguments is a TypeError",
                             conn.run(f'import db from "db";\n{call};'), "400-9", "TypeError")
         check_status(f"the connection still answers after {label} was refused",
-                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                     conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                                 "_id": "arity"}), "NOT_FOUND")
 
     check_result("the refusal is catchable inside the script", conn.run(
@@ -1289,9 +1294,9 @@ def test_db_insert(conn: Conn):
         f'db.insert(db.name, "{COLL}", {{ _id: "insert-after", v: 4 }});\n'
         'return refused;'), True)
     check_field("the stored document keeps its first body", conn.send(
-        {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "insert-once"}), "object.v", 1)
+        {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "insert-once"}), "object.v", 1)
     check_field("the write after the caught refusal landed", conn.send(
-        {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "insert-after"}), "object.v", 4)
+        {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "insert-after"}), "object.v", 4)
     check_failed_script("db.insert without a document is a TypeError",
                         conn.run('import db from "db";\n'
                                  f'db.insert(db.name, "{COLL}", 5);'),
@@ -1307,7 +1312,7 @@ def test_db_save_rejects_a_non_string_id(conn: Conn):
                                      f'db.save(db.name, "{COLL}", {{ _id: {literal}, v: 1 }});'),
                             "400-9", "_id must be a string")
         check_status(f"the connection still answers after {label} was refused",
-                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                     conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                                 "_id": "non-string-id"}), "NOT_FOUND")
 
     check_result("the refusal is catchable inside the script", conn.run(
@@ -1328,7 +1333,7 @@ def test_db_delete_refuses_a_non_string_id(conn: Conn):
     section("Host interface - db.delete and db.findById with an id that is not a string")
     for doc_id in ("undefined", "5"):
         check_status(f"save a document whose _id is {doc_id!r} over the wire",
-                     conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                     conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                 "object": {"_id": doc_id, "v": 1}}), "OK")
     for label, call in (("db.delete with no id", f'db.delete(db.name, "{COLL}")'),
                         ("db.delete with a number id", f'db.delete(db.name, "{COLL}", 5)'),
@@ -1338,7 +1343,7 @@ def test_db_delete_refuses_a_non_string_id(conn: Conn):
                             "400-9", "TypeError")
     for doc_id in ("undefined", "5"):
         check_status(f"the document whose _id is {doc_id!r} survived the refused deletes",
-                     conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                     conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                                 "_id": doc_id}), "OK")
     check_result("the refusal is catchable inside the script", conn.run(
         'import db from "db";\n'
@@ -1348,7 +1353,7 @@ def test_db_delete_refuses_a_non_string_id(conn: Conn):
         'import db from "db";\n'
         f'db.delete(db.name, "{COLL}", "undefined");\n'
         f'return db.findById(db.name, "{COLL}", "undefined");'), None)
-    check_status("clean up the numeric-looking id", conn.send({"type": "DELETE", "databaseName": DB,
+    check_status("clean up the numeric-looking id", conn.send({"type": "DELETE", "projectName": PROJECT,
                                                                "collectionName": COLL, "_id": "5"}), "OK")
 
 
@@ -1370,7 +1375,7 @@ def test_db_aggregate_refuses_an_unparseable_pipeline(conn: Conn):
             ' return "empty"; }\n'
             "catch (e) { return e.name; }"), "Error")
     check_status("the connection still answers after the refusals",
-                 conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                             "_id": "unparseable-pipeline"}), "NOT_FOUND")
 
 
@@ -1491,7 +1496,7 @@ def test_procedure_imports(conn: Conn):
                conn.save_procedure("lib_broken", "import { x } from 'procedures/absent';\nexport const y = x;"),
                "ERROR", "400-18")
     check_status("… and nothing was stored",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "lib_broken"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "lib_broken"}), "OK")
     check_status("the same save succeeds once the library exists",
                  conn.save_procedure("lib_broken", "import { cents } from 'procedures/lib_money';\n"
                                                    "export const y = cents;"), "OK")
@@ -1529,7 +1534,7 @@ def test_procedure_imports(conn: Conn):
                                      "const where = 'procedures/' + 'absent';\n"
                                      "const mod = await import(where);\n"
                                      "return mod.anything;"), "OK")
-    computed = conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_computed"})
+    computed = conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "lib_computed"})
     check("… and still fails when it runs",
           computed.get("errorCode") == "400-9"
           and "Cannot find module 'procedures/absent'" in (computed.get("message") or ""),
@@ -1542,7 +1547,7 @@ def test_procedure_imports(conn: Conn):
     check_result("the chain works while both exist",
                  conn.run("import { mid } from 'procedures/lib_mid';\nreturn mid();"), 7)
     check_status("delete the base library",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "lib_base"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "lib_base"}), "OK")
     check_failed_script("a nested import that has since been deleted fails, naming the missing module",
                         conn.run("import { mid } from 'procedures/lib_mid';\nreturn mid();"),
                         "400-9", "Cannot find module 'procedures/lib_base'")
@@ -1564,9 +1569,9 @@ def test_procedure_imports(conn: Conn):
                         conn.run("import { value } from 'procedures/lib_off';\nreturn value;"),
                         "400-9", "Cannot find module 'procedures/lib_off'")
 
-    check_status("store a library in the other database",
-                 conn.save_procedure("lib_elsewhere", "export const value = 1;", db=OTHER_DB), "OK")
-    check_failed_script("a procedure of another database is out of scope",
+    check_status("store a library in the other project",
+                 conn.save_procedure("lib_elsewhere", "export const value = 1;", project=OTHER_PROJECT), "OK")
+    check_failed_script("a procedure of another project is out of scope",
                         conn.run("import { value } from 'procedures/lib_elsewhere';\nreturn value;"),
                         "400-9", "Cannot find module 'procedures/lib_elsewhere'")
 
@@ -1610,7 +1615,7 @@ def test_procedure_imports(conn: Conn):
     check_result("a procedure written with a top-level return imports as undefined",
                  conn.run("import lib from 'procedures/lib_returning';\nreturn typeof lib;"), "undefined")
     check_result("… and it is still callable as a procedure",
-                 conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_returning"}), 5)
+                 conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "lib_returning"}), 5)
 
     check_status("store a library that throws while evaluating",
                  conn.save_procedure("lib_throwing", "throw new Error('library boom');"), "OK")
@@ -1829,7 +1834,7 @@ def test_cursor(conn: Conn):
     check_result("a cursor over a bare LIMIT pages one defined subset: the first rows by _id",
                  conn.run(limited_walk), [f"big{i:04d}" for i in range(7)])
 
-    counted = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": BIG_COLL,
+    counted = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": BIG_COLL,
                          "aggregationSteps": [{"type": "COUNT"}]})
     wire_count = (counted.get("results") or [{}])[0].get("count")
     check("… and the total matches a plain AGGREGATE count", wire_count == BIG_DOCS,
@@ -1875,7 +1880,7 @@ DOOMED_PASSWORD = "password1234"
 
 
 def await_document(conn: Conn, coll: str, doc_id: str, timeout=15.0) -> bool:
-    return bool(bu.wait_until(lambda: conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": coll,
+    return bool(bu.wait_until(lambda: conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": coll,
                                                  "_id": doc_id}).get("status") == "OK", timeout, 0.05))
 
 
@@ -1884,8 +1889,8 @@ def test_a_script_transaction_releases_its_locks_when_its_user_is_deleted_mid_ru
     conn.send({"type": "DELETE_USER", "username": DOOMED})
     check_status("create the doomed user", conn.send({
         "type": "CREATE_USER", "username": DOOMED, "password": DOOMED_PASSWORD, "admin": False,
-        "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {},
-        "scriptPermissions": {DB: True}}), "OK")
+        "globalPermissions": [], "projectPermissions": {PROJECT: "READ_WRITE"}, "collectionPermissions": {},
+        "scriptPermissions": {PROJECT: True}}), "OK")
     script = (
         'import db from "db";\n'
         f'db.save(db.name, "{COLL2}", {{ _id: "doomed-started" }});\n'
@@ -1925,28 +1930,28 @@ def test_a_script_transaction_releases_its_locks_when_its_user_is_deleted_mid_ru
           "not found" in (result.get("message") or ""), f"got {result}")
     started = time.time()
     check_status("a write to the collection the transaction had locked is accepted",
-                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": "after-doomed", "ok": True}}), "OK")
     check("and it did not have to wait out a lock timeout", time.time() - started < 4.0,
           f"took {time.time() - started:.1f}s")
     check("the transaction's own write was rolled back",
-          conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+          conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                      "_id": "doomed-tx"}).get("status") != "OK")
 
 
 def test_permissions(conn: Conn):
     section("Permissions")
     granted = {"type": "CREATE_USER", "username": "script_granted", "password": "password1234", "admin": False,
-               "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE", OTHER_DB: "READ_WRITE"},
-               "collectionPermissions": {}, "scriptPermissions": {DB: True}}
+               "globalPermissions": [], "projectPermissions": {PROJECT: "READ_WRITE", OTHER_PROJECT: "READ_WRITE"},
+               "collectionPermissions": {}, "scriptPermissions": {PROJECT: True}}
     denied = {"type": "CREATE_USER", "username": "script_denied", "password": "password1234", "admin": False,
-              "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE"},
+              "globalPermissions": [], "projectPermissions": {PROJECT: "READ_WRITE"},
               "collectionPermissions": {}, "scriptPermissions": {}}
     reader = {"type": "CREATE_USER", "username": "script_reader", "password": "password1234", "admin": False,
-              "globalPermissions": [], "databasePermissions": {DB: "READ"},
-              "collectionPermissions": {}, "scriptPermissions": {DB: True}}
+              "globalPermissions": [], "projectPermissions": {PROJECT: "READ"},
+              "collectionPermissions": {}, "scriptPermissions": {PROJECT: True}}
     owner = {"type": "CREATE_USER", "username": "script_owner", "password": "password1234", "admin": False,
-             "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {},
+             "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {},
              "scriptPermissions": {}}
     for payload in (granted, denied, reader, owner):
         conn.send({"type": "DELETE_USER", "username": payload["username"]})
@@ -1961,9 +1966,9 @@ def test_permissions(conn: Conn):
 
     with Conn() as c:
         c.authenticate("script_granted", "password1234")
-        check_result("a granted user may run a script on that database", c.run("return 'ran';"), "ran")
-        check_code("… but not on another database, even with READ_WRITE there",
-                   c.run("return 1;", db=OTHER_DB), "FORBIDDEN", "403-1")
+        check_result("a granted user may run a script on that project", c.run("return 'ran';"), "ran")
+        check_code("… but not on another project, even with READ_WRITE there",
+                   c.run("return 1;", project=OTHER_PROJECT), "FORBIDDEN", "403-1")
 
     with Conn() as c:
         c.authenticate("script_reader", "password1234")
@@ -1974,74 +1979,74 @@ def test_permissions(conn: Conn):
             f'try {{ db.save(db.name, "{COLL}", {{ _id: "denied" }}); return "wrote"; }}\n'
             "catch (e) { return e instanceof Error; }"), True)
 
-    check_status("make script_owner an owner of the database",
-                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": ["script_owner"]}), "OK")
+    check_status("make script_owner an owner of the project",
+                 conn.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": ["script_owner"]}), "OK")
     with Conn() as c:
         c.authenticate("script_owner", "password1234")
-        check_result("a database owner needs no explicit grant", c.run("return 'owner ran';"), "owner ran")
+        check_result("a project owner needs no explicit grant", c.run("return 'owner ran';"), "owner ran")
     check_status("drop the ownership again",
-                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": []}), "OK")
+                 conn.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": []}), "OK")
 
     check_status("revoke the grant", conn.send(
         {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
-         "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}), "OK")
+         "projectPermissions": {PROJECT: "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}), "OK")
     with Conn() as c:
         c.authenticate("script_granted", "password1234")
         check_code("the revoked user is forbidden again", c.run("return 1;"), "FORBIDDEN", "403-1")
 
     check_status("an explicit false grant is stored", conn.send(
         {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
-         "databasePermissions": {DB: "READ_WRITE"}, "collectionPermissions": {},
-         "scriptPermissions": {DB: False}}), "OK")
+         "projectPermissions": {PROJECT: "READ_WRITE"}, "collectionPermissions": {},
+         "scriptPermissions": {PROJECT: False}}), "OK")
     with Conn() as c:
         c.authenticate("script_granted", "password1234")
         check_code("an explicit false is a denial", c.run("return 1;"), "FORBIDDEN", "403-1")
 
-    check_code("a grant naming the reserved admin database is rejected", conn.send(
+    check_code("a grant naming the reserved admin project is rejected", conn.send(
         {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
-         "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"admin": True}}),
+         "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"admin": True}}),
         "ERROR", "400-1")
     check_code("a grant value that is neither a boolean nor a level name is rejected", conn.send(
         {"type": "CHANGE_PERMISSIONS", "username": "script_granted", "admin": False, "globalPermissions": [],
-         "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {DB: "READ"}}),
+         "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {PROJECT: "READ"}}),
         "ERROR", "400-1")
 
     users = conn.send({"type": "LIST_USERS", "aggregationSteps": [
         {"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "_id", "value": "script_reader"}}]})
     listed = (users.get("users") or [{}])[0]
-    check("LIST_USERS reports the script grants", listed.get("scriptPermissions") == {DB: "RUN"},
+    check("LIST_USERS reports the script grants", listed.get("scriptPermissions") == {PROJECT: "RUN"},
           f"scriptPermissions={listed.get('scriptPermissions')!r}")
 
 
-def test_procedures_per_database_are_capped(conn: Conn):
-    section("A database holds at most maxProceduresPerDatabase procedures")
-    conn.send({"type": "DROP_DATABASE", "databaseName": PROCEDURE_CAP_DB})
-    check_status("create a database to fill",
-                 conn.send({"type": "CREATE_DATABASE", "databaseName": PROCEDURE_CAP_DB}), "OK")
-    saved = [conn.save_procedure(f"proc{i}", f"return {i};", db=PROCEDURE_CAP_DB).get("status")
-             for i in range(MAX_PROCEDURES_PER_DATABASE)]
-    check("every procedure up to the cap is saved", saved == ["OK"] * MAX_PROCEDURES_PER_DATABASE,
+def test_procedures_per_project_are_capped(conn: Conn):
+    section("A project holds at most maxProceduresPerProject procedures")
+    conn.send({"type": "DROP_PROJECT", "projectName": PROCEDURE_CAP_PROJECT})
+    check_status("create a project to fill",
+                 conn.send({"type": "CREATE_PROJECT", "projectName": PROCEDURE_CAP_PROJECT}), "OK")
+    saved = [conn.save_procedure(f"proc{i}", f"return {i};", project=PROCEDURE_CAP_PROJECT).get("status")
+             for i in range(MAX_PROCEDURES_PER_PROJECT)]
+    check("every procedure up to the cap is saved", saved == ["OK"] * MAX_PROCEDURES_PER_PROJECT,
           f"statuses {saved}")
     check_code("one more -> 400-34",
-               conn.save_procedure("oneTooMany", "return 0;", db=PROCEDURE_CAP_DB), "ERROR", "400-34")
+               conn.save_procedure("oneTooMany", "return 0;", project=PROCEDURE_CAP_PROJECT), "ERROR", "400-34")
     check_status("replacing an existing procedure is never refused",
-                 conn.save_procedure("proc0", "return 'replaced';", db=PROCEDURE_CAP_DB), "OK")
+                 conn.save_procedure("proc0", "return 'replaced';", project=PROCEDURE_CAP_PROJECT), "OK")
     check_status("deleting one frees a slot",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": PROCEDURE_CAP_DB, "name": "proc1"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROCEDURE_CAP_PROJECT, "name": "proc1"}), "OK")
     check_status("so a new one fits again",
-                 conn.save_procedure("oneTooMany", "return 0;", db=PROCEDURE_CAP_DB), "OK")
-    conn.send({"type": "DROP_DATABASE", "databaseName": PROCEDURE_CAP_DB})
+                 conn.save_procedure("oneTooMany", "return 0;", project=PROCEDURE_CAP_PROJECT), "OK")
+    conn.send({"type": "DROP_PROJECT", "projectName": PROCEDURE_CAP_PROJECT})
 
 
 def test_admin_is_unrestricted(conn: Conn):
     section("Admins")
     check_result("an admin needs no grant", conn.run("return 'admin ran';"), "admin ran")
-    check_result("an admin script is still bound to the requested database",
+    check_result("an admin script is still bound to the requested project",
                  conn.run('import db from "db";\n'
-                          f'try {{ db.findById("{OTHER_DB}", "{COLL}", "d1"); return "reached"; }}\n'
+                          f'try {{ db.findById("{OTHER_PROJECT}", "{COLL}", "d1"); return "reached"; }}\n'
                           "catch (e) { return 'refused'; }"), "refused")
-    check_result("an admin may script the other database in its own run",
-                 conn.run("return 'other db';", db=OTHER_DB), "other db")
+    check_result("an admin may script the other project in its own run",
+                 conn.run("return 'other project';", project=OTHER_PROJECT), "other project")
 
 
 def test_procedure_imports_disabled(conn: Conn):
@@ -2056,7 +2061,7 @@ def test_procedure_imports_disabled(conn: Conn):
     check_result("the built-in specifiers still resolve",
                  conn.run("import db from 'db';\nreturn typeof db.findById;"), "function")
     check_status("a procedure with no imports still runs",
-                 conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "lib_returning"}), "OK")
+                 conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "lib_returning"}), "OK")
 
 
 def test_engine_disabled():
@@ -2064,22 +2069,22 @@ def test_engine_disabled():
     with Conn() as conn:
         conn.authenticate()
         check_code("an admin is refused", conn.run("return 1;"), "FORBIDDEN", "403-2")
-        check_code("… on any database", conn.run("return 1;", db=OTHER_DB), "FORBIDDEN", "403-2")
+        check_code("… on any project", conn.run("return 1;", project=OTHER_PROJECT), "FORBIDDEN", "403-2")
     with Conn() as conn:
         conn.authenticate("script_reader", "password1234")
         check_code("a granted user is refused too", conn.run("return 1;"), "FORBIDDEN", "403-2")
     with Conn() as conn:
         conn.authenticate()
         check_status("other operations keep working",
-                     conn.send({"type": "LIST_COLLECTIONS", "databaseName": DB}), "OK")
+                     conn.send({"type": "LIST_COLLECTIONS", "projectName": PROJECT}), "OK")
 
 
 def cleanup(conn: Conn):
     section("Cleanup")
     for username in ("script_granted", "script_denied", "script_reader", "script_owner"):
         conn.send({"type": "DELETE_USER", "username": username})
-    for db in (DB, OTHER_DB):
-        check_status(f"drop {db}", conn.send({"type": "DROP_DATABASE", "databaseName": db}), "OK")
+    for project in (PROJECT, OTHER_PROJECT):
+        check_status(f"drop {project}", conn.send({"type": "DROP_PROJECT", "projectName": project}), "OK")
 
 
 def main():
@@ -2142,7 +2147,7 @@ def main():
             test_permissions(conn)
             test_admin_is_unrestricted(conn)
             test_allocations_are_charged_before_they_happen(conn)
-            test_procedures_per_database_are_capped(conn)
+            test_procedures_per_project_are_capped(conn)
 
         bu.stop_server(proc)
         proc = None

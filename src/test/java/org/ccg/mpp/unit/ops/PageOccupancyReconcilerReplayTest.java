@@ -26,7 +26,7 @@ public class PageOccupancyReconcilerReplayTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(PageOccupancyReconciler.class, "taskManager",
                 BackgroundTaskManager.class);
         stubTaskManager = new BackgroundTaskManager();
@@ -36,23 +36,23 @@ public class PageOccupancyReconcilerReplayTest {
     @AfterEach
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, UNREGISTERED);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, UNREGISTERED);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
 
-    private static PkIndexEntry written(String dbName, String collName, String id, long page) {
-        return new PkIndexEntry(dbName, collName, id, 0L, 0L, page, 0L);
+    private static PkIndexEntry written(String projectName, String collName, String id, long page) {
+        return new PkIndexEntry(projectName, collName, id, 0L, 0L, page, 0L);
     }
 
     @Test
     public void test_replayed_ids_are_marked_and_queued_with_their_generation() throws Exception {
         final var replayed = PageOccupancyReconciler
-                .markReplayed(List.of(written(TestGlobals.DB, TestGlobals.COLL, "a", 0L),
-                        written(TestGlobals.DB, TestGlobals.COLL, "b", 1L)));
+                .markReplayed(List.of(written(TestGlobals.PROJECT, TestGlobals.COLL, "a", 0L),
+                        written(TestGlobals.PROJECT, TestGlobals.COLL, "b", 1L)));
 
-        assertEquals(Set.of("a", "b"), pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL),
+        assertEquals(Set.of("a", "b"), pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL),
                 "marked before any other startup step can checkpoint the replayed log");
         assertEquals(1, replayed.size());
 
@@ -67,21 +67,22 @@ public class PageOccupancyReconcilerReplayTest {
     @Test
     public void test_admin_collections_are_not_marked() {
         final var replayed = PageOccupancyReconciler.markReplayed(
-                List.of(written(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME, "x", 0L)));
+                List.of(written(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME, "x", 0L)));
 
         assertEquals(List.of(), replayed);
-        assertTrue(pendingIndexWrites.idsFor(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME).isEmpty());
+        assertTrue(pendingIndexWrites.idsFor(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME)
+                .isEmpty());
     }
 
     @Test
     public void test_an_unregistered_collection_has_its_marks_cleared() throws Exception {
         final var replayed = PageOccupancyReconciler
-                .markReplayed(List.of(written(TestGlobals.DB, UNREGISTERED, "z", 0L)));
-        assertEquals(Set.of("z"), pendingIndexWrites.idsFor(TestGlobals.DB, UNREGISTERED));
+                .markReplayed(List.of(written(TestGlobals.PROJECT, UNREGISTERED, "z", 0L)));
+        assertEquals(Set.of("z"), pendingIndexWrites.idsFor(TestGlobals.PROJECT, UNREGISTERED));
 
         PageOccupancyReconciler.scheduleIndexRepairFor(replayed);
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, UNREGISTERED).isEmpty(),
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, UNREGISTERED).isEmpty(),
                 "marks nobody will drain would keep a checkpoint writing the marker forever");
         assertEquals(List.of(), QueuedRepairs.of(stubTaskManager));
     }

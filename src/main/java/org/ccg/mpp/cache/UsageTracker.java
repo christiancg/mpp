@@ -21,45 +21,45 @@ public class UsageTracker {
     private final ConcurrentHashMap<AccessKey, UsageCounter> byAccess = new ConcurrentHashMap<>();
     private final Set<UsageCounter> unflushed = ConcurrentHashMap.newKeySet();
 
-    private record AccessKey(AccessKind kind, String dbName, String collName, String indexKey) {
+    private record AccessKey(AccessKind kind, String projectName, String collName, String indexKey) {
     }
 
     private boolean isCachingDisabled() {
         return config.isCachingDisabled();
     }
 
-    public static String buildKey(AccessKind kind, String dbName, String collName, String indexKey) {
-        return kind.name() + Globals.COLL_IDENTIFIER_SEPARATOR + dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName
-                + Globals.COLL_IDENTIFIER_SEPARATOR + (indexKey == null ? "" : indexKey);
+    public static String buildKey(AccessKind kind, String projectName, String collName, String indexKey) {
+        return kind.name() + Globals.COLL_IDENTIFIER_SEPARATOR + projectName + Globals.COLL_IDENTIFIER_SEPARATOR
+                + collName + Globals.COLL_IDENTIFIER_SEPARATOR + (indexKey == null ? "" : indexKey);
     }
 
-    public void recordAccess(AccessKind kind, String dbName, String collName, String indexKey) {
-        if (Globals.ADMIN_DB_NAME.equals(dbName)) {
+    public void recordAccess(AccessKind kind, String projectName, String collName, String indexKey) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
             return;
         }
         if (isCachingDisabled()) {
             return;
         }
-        final var counter = counterOf(kind, dbName, collName, indexKey);
+        final var counter = counterOf(kind, projectName, collName, indexKey);
         counter.increment(System.currentTimeMillis());
         if (counter.markUnflushed()) {
             unflushed.add(counter);
         }
     }
 
-    private UsageCounter counterOf(AccessKind kind, String dbName, String collName, String indexKey) {
-        final var access = accessKeyOf(kind, dbName, collName, indexKey);
+    private UsageCounter counterOf(AccessKind kind, String projectName, String collName, String indexKey) {
+        final var access = accessKeyOf(kind, projectName, collName, indexKey);
         final var known = byAccess.get(access);
         if (known != null) {
             return known;
         }
         return byAccess.computeIfAbsent(access,
-                _ -> counters.computeIfAbsent(buildKey(kind, dbName, collName, indexKey),
-                        _ -> new UsageCounter(kind, dbName, collName, access.indexKey(), 0L, 0L)));
+                _ -> counters.computeIfAbsent(buildKey(kind, projectName, collName, indexKey),
+                        _ -> new UsageCounter(kind, projectName, collName, access.indexKey(), 0L, 0L)));
     }
 
-    private static AccessKey accessKeyOf(AccessKind kind, String dbName, String collName, String indexKey) {
-        return new AccessKey(kind, dbName, collName, indexKey == null ? "" : indexKey);
+    private static AccessKey accessKeyOf(AccessKind kind, String projectName, String collName, String indexKey) {
+        return new AccessKey(kind, projectName, collName, indexKey == null ? "" : indexKey);
     }
 
     public List<UsageCounter> drainDirtyCounters() {
@@ -70,7 +70,7 @@ public class UsageTracker {
         for (final var counter : List.copyOf(unflushed)) {
             unflushed.remove(counter);
             counter.clearUnflushed();
-            final var key = buildKey(counter.kind(), counter.dbName(), counter.collName(), counter.indexKey());
+            final var key = buildKey(counter.kind(), counter.projectName(), counter.collName(), counter.indexKey());
             if (counters.get(key) == counter) {
                 drained.add(counter);
             }
@@ -90,25 +90,25 @@ public class UsageTracker {
         }
     }
 
-    public UsageCounter getCounter(AccessKind kind, String dbName, String collName, String indexKey) {
-        return counters.get(buildKey(kind, dbName, collName, indexKey));
+    public UsageCounter getCounter(AccessKind kind, String projectName, String collName, String indexKey) {
+        return counters.get(buildKey(kind, projectName, collName, indexKey));
     }
 
     public Map<String, UsageCounter> getCountersSnapshot() {
         return Map.copyOf(counters);
     }
 
-    public void clearCounter(AccessKind kind, String dbName, String collName, String indexKey) {
-        counters.remove(buildKey(kind, dbName, collName, indexKey));
-        byAccess.remove(accessKeyOf(kind, dbName, collName, indexKey));
+    public void clearCounter(AccessKind kind, String projectName, String collName, String indexKey) {
+        counters.remove(buildKey(kind, projectName, collName, indexKey));
+        byAccess.remove(accessKeyOf(kind, projectName, collName, indexKey));
     }
 
-    public void forgetCollection(String dbName, String collName) {
-        forgetWhere(counter -> dbName.equals(counter.dbName()) && collName.equals(counter.collName()));
+    public void forgetCollection(String projectName, String collName) {
+        forgetWhere(counter -> projectName.equals(counter.projectName()) && collName.equals(counter.collName()));
     }
 
-    public void forgetDatabase(String dbName) {
-        forgetWhere(counter -> dbName.equals(counter.dbName()));
+    public void forgetProject(String projectName) {
+        forgetWhere(counter -> projectName.equals(counter.projectName()));
     }
 
     private void forgetWhere(Predicate<UsageCounter> dropped) {
@@ -118,8 +118,8 @@ public class UsageTracker {
     }
 
     public void putCounter(UsageCounter counter) {
-        counters.put(buildKey(counter.kind(), counter.dbName(), counter.collName(), counter.indexKey()), counter);
-        byAccess.remove(accessKeyOf(counter.kind(), counter.dbName(), counter.collName(), counter.indexKey()));
+        counters.put(buildKey(counter.kind(), counter.projectName(), counter.collName(), counter.indexKey()), counter);
+        byAccess.remove(accessKeyOf(counter.kind(), counter.projectName(), counter.collName(), counter.indexKey()));
     }
 
     public void loadProfileFromAdmin() {
@@ -127,14 +127,14 @@ public class UsageTracker {
             return;
         }
         try {
-            try (var pagesStream = fs.streamPages(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME)) {
+            try (var pagesStream = fs.streamPages(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME)) {
                 pagesStream.forEach(map -> {
                     for (var e : map.values()) {
                         try {
                             final var data = e.getData();
                             data.addProperty(Globals.PK_FIELD, e.get_id());
                             final var usage = AdminCollectionUsageEntry.fromJsonObject(data);
-                            final var counter = new UsageCounter(usage.getKind(), usage.getDbName(),
+                            final var counter = new UsageCounter(usage.getKind(), usage.getTargetProject(),
                                     usage.getCollName(), usage.getIndexKey(), usage.getAccessCount(),
                                     usage.getLastAccessMillis());
                             putCounter(counter);
@@ -162,7 +162,7 @@ public class UsageTracker {
     }
 
     private UsageCounter counterFor(CacheableResource r) {
-        return counters.get(buildKey(r.kind(), r.dbName(), r.collName(), countedIndexKey(r)));
+        return counters.get(buildKey(r.kind(), r.projectName(), r.collName(), countedIndexKey(r)));
     }
 
     private static String countedIndexKey(CacheableResource r) {

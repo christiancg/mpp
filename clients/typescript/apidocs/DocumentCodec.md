@@ -1,6 +1,6 @@
 # DocumentCodec
 
-Maps your type to stored documents and back. Pass one to `Database.collection(name, codec)`.
+Maps your type to stored documents and back. Pass one to `Project.collection(name, codec)`.
 
 ## encode
 

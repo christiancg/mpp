@@ -13,16 +13,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalCheckpointBackoffTest {
-    private static final String DB = "backoffDb";
+    private static final String PROJECT = "backoffProject";
     private static final String COLL = "backoffColl";
     private static final CollectionTryLock FREE = new CollectionTryLock() {
         @Override
-        public boolean tryLock(String dbName, String collName) {
+        public boolean tryLock(String projectName, String collName) {
             return true;
         }
 
         @Override
-        public void unlock(String dbName, String collName) {
+        public void unlock(String projectName, String collName) {
         }
     };
 
@@ -37,7 +37,7 @@ public class WalCheckpointBackoffTest {
     public void setUp() throws Exception {
         previousGuard = TestUtils.getPrivateStaticField(WriteAheadLog.class, "guard", CheckpointGuard.class);
         WriteAheadLog.guardWith(CheckpointGuard.NO_INDEX_WORK);
-        fixture = new ReplacerFixture(tmp, DB, COLL);
+        fixture = new ReplacerFixture(tmp, PROJECT, COLL);
         fixture.fx.seed(0, "a", "b");
         recorder = RecordingForcer.install(true);
     }
@@ -53,7 +53,7 @@ public class WalCheckpointBackoffTest {
     }
 
     private WalLogState state() {
-        return WalLogState.known(fixture.fx.paths.writeAheadLog(DB, COLL).getAbsolutePath());
+        return WalLogState.known(fixture.fx.paths.writeAheadLog(PROJECT, COLL).getAbsolutePath());
     }
 
     private void failPkForces() {
@@ -107,7 +107,7 @@ public class WalCheckpointBackoffTest {
         failPkForces();
         checkpoints().idle(0L, 16, FREE);
         final var log = new WriteAheadLog(fixture.fx.paths);
-        WalCheckpointRequests.request(fixture.fx.paths.writeAheadLog(DB, COLL).getAbsolutePath(), DB, COLL);
+        WalCheckpointRequests.request(fixture.fx.paths.writeAheadLog(PROJECT, COLL).getAbsolutePath(), PROJECT, COLL);
 
         assertEquals(0, checkpoints().requested(FREE));
 

@@ -11,11 +11,11 @@ public class CompiledProcedureCache {
     private final SimpleJs simpleJs = IocContainer.get(SimpleJs.class);
     private final CompiledProgramLru<CompiledScript> cache = new CompiledProgramLru<>();
 
-    public CompiledScript get(String dbName, String name, long version, String source) {
+    public CompiledScript get(String projectName, String name, long version, String source) {
         if (cache.isDisabled()) {
             return simpleJs.compile(source, false);
         }
-        final var key = keyOf(dbName, name, version);
+        final var key = keyOf(projectName, name, version);
         final Predicate<CompiledScript> sameSource = compiled -> source.equals(compiled.source());
         final var cached = cache.get(key, sameSource);
         if (cached != null) {
@@ -24,13 +24,13 @@ public class CompiledProcedureCache {
         return cache.admit(key, simpleJs.compile(source, false), source, sameSource);
     }
 
-    public void invalidateDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public void invalidateProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         cache.removeIf(key -> key.startsWith(prefix));
     }
 
-    public void invalidateProcedure(String dbName, String name) {
-        final var prefix = Cache.getCollectionIdentifier(dbName, name) + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public void invalidateProcedure(String projectName, String name) {
+        final var prefix = Cache.getCollectionIdentifier(projectName, name) + Globals.COLL_IDENTIFIER_SEPARATOR;
         cache.removeIf(key -> key.startsWith(prefix));
     }
 
@@ -42,7 +42,7 @@ public class CompiledProcedureCache {
         return cache.weightedBytes();
     }
 
-    private static String keyOf(String dbName, String name, long version) {
-        return Cache.getCollectionIdentifier(dbName, name) + Globals.COLL_IDENTIFIER_SEPARATOR + version;
+    private static String keyOf(String projectName, String name, long version) {
+        return Cache.getCollectionIdentifier(projectName, name) + Globals.COLL_IDENTIFIER_SEPARATOR + version;
     }
 }

@@ -16,9 +16,9 @@ import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.ProcedureOperationHelper;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.simplejs.SimpleJs;
-import org.ccg.mpp.simplejs.host.DatabaseHostBindings;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
 import org.ccg.mpp.simplejs.host.ProcedureModuleResolver;
+import org.ccg.mpp.simplejs.host.ProjectHostBindings;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -35,10 +35,10 @@ public class ProcedureSourceVisibilityTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         saveUser(RUNNER, ScriptPermissionLevel.RUN);
         saveUser(MANAGER, ScriptPermissionLevel.MANAGE);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "srclib", SOURCE), MANAGER);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "srclib", SOURCE), MANAGER);
     }
 
     @AfterAll
@@ -49,14 +49,14 @@ public class ProcedureSourceVisibilityTest {
 
     private static void saveUser(String name, ScriptPermissionLevel level) throws Exception {
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(name, "unused", false, new HashSet<>(),
-                new HashMap<>(Map.of(TestGlobals.DB, PermissionLevel.READ_WRITE)), new HashMap<>(),
-                new HashMap<>(Map.of(TestGlobals.DB, level))));
+                new HashMap<>(Map.of(TestGlobals.PROJECT, PermissionLevel.READ_WRITE)), new HashMap<>(),
+                new HashMap<>(Map.of(TestGlobals.PROJECT, level))));
     }
 
     private static String runAs(String username) {
-        final var access = new EnforcingDatabaseAccess(username, null, TestGlobals.DB);
+        final var access = new EnforcingProjectAccess(username, null, TestGlobals.PROJECT);
         final var result = new SimpleJs().run(IMPORT_AND_SHOW,
-                DatabaseHostBindings.of(null, access, null, DatabaseHostBindings.limitsFromConfiguration(), null));
+                ProjectHostBindings.of(null, access, null, ProjectHostBindings.limitsFromConfiguration(), null));
         return result.getValue().asJsonString().getValue();
     }
 
@@ -72,20 +72,20 @@ public class ProcedureSourceVisibilityTest {
 
     @Test
     public void test_the_caller_decides_whether_the_source_is_readable() {
-        assertFalse(new EnforcingDatabaseAccess(RUNNER, null, TestGlobals.DB).mayReadProcedureSource());
-        assertTrue(new EnforcingDatabaseAccess(MANAGER, null, TestGlobals.DB).mayReadProcedureSource());
-        assertFalse(new EnforcingDatabaseAccess(MANAGER, null, null).mayReadProcedureSource());
-        assertFalse(new EnforcingDatabaseAccess("no-such-user", null, TestGlobals.DB).mayReadProcedureSource());
+        assertFalse(new EnforcingProjectAccess(RUNNER, null, TestGlobals.PROJECT).mayReadProcedureSource());
+        assertTrue(new EnforcingProjectAccess(MANAGER, null, TestGlobals.PROJECT).mayReadProcedureSource());
+        assertFalse(new EnforcingProjectAccess(MANAGER, null, null).mayReadProcedureSource());
+        assertFalse(new EnforcingProjectAccess("no-such-user", null, TestGlobals.PROJECT).mayReadProcedureSource());
     }
 
     @Test
     public void test_a_hidden_resolution_carries_no_shared_parse() {
         final var hidden = Objects.requireNonNull(
-                new ProcedureModuleResolver(TestGlobals.DB, false).resolve("procedures/srclib", "main"));
+                new ProcedureModuleResolver(TestGlobals.PROJECT, false).resolve("procedures/srclib", "main"));
         assertTrue(hidden.sourceHidden());
         assertNull(hidden.compiled());
         final var revealed = Objects
-                .requireNonNull(new ProcedureModuleResolver(TestGlobals.DB).resolve("procedures/srclib", "main"));
+                .requireNonNull(new ProcedureModuleResolver(TestGlobals.PROJECT).resolve("procedures/srclib", "main"));
         assertFalse(revealed.sourceHidden());
     }
 }

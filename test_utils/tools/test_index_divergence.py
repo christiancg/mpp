@@ -12,7 +12,7 @@ class ClassifierTest(unittest.TestCase):
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="mpp-divergence-test-")
-        self.folder = os.path.join(self.root, "db", "durability_db", "pl1")
+        self.folder = os.path.join(self.root, "db", "durability_project", "pl1")
         os.makedirs(self.folder)
         self.page_bytes = b""
 
@@ -30,7 +30,7 @@ class ClassifierTest(unittest.TestCase):
             fp.write("".join(line + "\n" for line in lines))
 
     def sight(self, doc_id: str):
-        return divergence.sight(os.path.join(self.root, "db"), "durability_db", "pl1", "n", doc_id)
+        return divergence.sight(os.path.join(self.root, "db"), "durability_project", "pl1", "n", doc_id)
 
     def test_an_id_on_its_page_but_in_no_index_line_is_index_lost(self):
         self.document("d0", 1)
@@ -94,9 +94,10 @@ class ClassifierTest(unittest.TestCase):
 
     def test_classify_reports_every_point(self):
         self.document("d0", 1)
-        db = os.path.join(self.root, "db")
+        data_folder = os.path.join(self.root, "db")
 
-        rows = divergence.classify({"at_power_loss": db, "after_recovery": db}, "durability_db", "pl1", "n", ["d0"])
+        rows = divergence.classify({"at_power_loss": data_folder, "after_recovery": data_folder}, "durability_project",
+                                   "pl1", "n", ["d0"])
 
         self.assertEqual({"id", "at_power_loss", "after_recovery"}, set(rows[0]))
         self.assertEqual(divergence.INDEX_LOST, rows[0]["after_recovery"]["verdict"])

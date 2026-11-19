@@ -12,9 +12,9 @@ public class TestTriggerRequest extends OperationRequest {
         super(OperationType.TEST_TRIGGER, null, null);
     }
 
-    public TestTriggerRequest(String databaseName, String collectionName, String name, String event,
+    public TestTriggerRequest(String projectName, String collectionName, String name, String event,
             JsonObject document) {
-        super(OperationType.TEST_TRIGGER, databaseName, collectionName);
+        super(OperationType.TEST_TRIGGER, projectName, collectionName);
         this.name = name;
         this.event = event;
         this.document = document;

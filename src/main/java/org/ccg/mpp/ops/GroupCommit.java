@@ -144,7 +144,7 @@ final class GroupCommit {
     }
 
     static Eligibility forSave(SaveRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         final var depth = request.getTriggerDepth();
         final var object = request.getObject();
@@ -154,24 +154,24 @@ final class GroupCommit {
                         : null;
         return new Eligibility(() -> depth == 0 && !request.isBackgroundFollowOn(),
                 request.get_id() != null ? request.get_id() : objectId,
-                () -> TriggerHelper.firesOnSave(dbName, collName, depth)
-                        || BeforeHookContext.hasHooksFor(dbName, collName, EventType.CREATED)
-                        || BeforeHookContext.hasHooksFor(dbName, collName, EventType.UPDATED),
+                () -> TriggerHelper.firesOnSave(projectName, collName, depth)
+                        || BeforeHookContext.hasHooksFor(projectName, collName, EventType.CREATED)
+                        || BeforeHookContext.hasHooksFor(projectName, collName, EventType.UPDATED),
                 request.isFailOnUpdate());
     }
 
     static Eligibility forDelete(DeleteRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         final var depth = request.getTriggerDepth();
         return new Eligibility(() -> depth == 0, request.get_id(),
-                () -> TriggerHelper.firesOnDelete(dbName, collName, depth)
-                        || BeforeHookContext.hasHooksFor(dbName, collName, EventType.DELETED),
+                () -> TriggerHelper.firesOnDelete(projectName, collName, depth)
+                        || BeforeHookContext.hasHooksFor(projectName, collName, EventType.DELETED),
                 false);
     }
 
-    static OperationResponse run(String dbName, String collName, GroupedWrite write) {
-        final var queue = queueOf(dbName, collName);
+    static OperationResponse run(String projectName, String collName, GroupedWrite write) {
+        final var queue = queueOf(projectName, collName);
         queue.writes.add(write);
         var interrupted = false;
         queue.monitor.lock();
@@ -196,27 +196,27 @@ final class GroupCommit {
             queue.monitor.unlock();
         }
         try {
-            return lead(dbName, collName, queue, write, interrupted);
+            return lead(projectName, collName, queue, write, interrupted);
         } finally {
             passTurn(queue);
         }
     }
 
-    static int queuedFor(String dbName, String collName) {
-        return queueOf(dbName, collName).writes.size();
+    static int queuedFor(String projectName, String collName) {
+        return queueOf(projectName, collName).writes.size();
     }
 
-    static void forget(String dbName, String collName) {
-        queues.remove(Cache.getCollectionIdentifier(dbName, collName));
+    static void forget(String projectName, String collName) {
+        queues.remove(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    static void forgetDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    static void forgetProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         queues.keySet().removeIf(collId -> collId.startsWith(prefix));
     }
 
-    private static GroupQueue queueOf(String dbName, String collName) {
-        return queues.computeIfAbsent(Cache.getCollectionIdentifier(dbName, collName), _ -> new GroupQueue());
+    private static GroupQueue queueOf(String projectName, String collName) {
+        return queues.computeIfAbsent(Cache.getCollectionIdentifier(projectName, collName), _ -> new GroupQueue());
     }
 
     private static void restoreInterrupt(boolean interrupted) {
@@ -244,22 +244,22 @@ final class GroupCommit {
         }
     }
 
-    private static OperationResponse lead(String dbName, String collName, GroupQueue queue, GroupedWrite write,
+    private static OperationResponse lead(String projectName, String collName, GroupQueue queue, GroupedWrite write,
             boolean interruptedBefore) {
         var interrupted = interruptedBefore;
         while (!write.served) {
-            final var acquired = acquire(dbName, collName, queue, write);
+            final var acquired = acquire(projectName, collName, queue, write);
             if (acquired == Acquired.WITHDRAWN) {
                 return write.failure();
             }
             interrupted |= acquired == Acquired.HELD_AFTER_INTERRUPT;
             final var batch = takeBatch(queue);
             try {
-                GroupedBatch.run(dbName, collName, batch);
+                GroupedBatch.run(projectName, collName, batch);
             } catch (Throwable thrown) {
-                failUnserved(dbName, collName, batch, thrown);
+                failUnserved(projectName, collName, batch, thrown);
             } finally {
-                locks.release(dbName, collName);
+                locks.release(projectName, collName);
             }
             publishRound(queue);
         }
@@ -267,22 +267,22 @@ final class GroupCommit {
         return write.response;
     }
 
-    private static void failUnserved(String dbName, String collName, List<GroupedWrite> batch, Throwable thrown) {
-        GroupedBatch.closeAfterThrow(dbName, collName);
+    private static void failUnserved(String projectName, String collName, List<GroupedWrite> batch, Throwable thrown) {
+        GroupedBatch.closeAfterThrow(projectName, collName);
         for (final var taken : batch) {
             if (!taken.served) {
                 taken.serve(taken.failure());
             }
         }
-        logger.error("A write batch on " + Cache.getCollectionIdentifier(dbName, collName) + " threw; its "
+        logger.error("A write batch on " + Cache.getCollectionIdentifier(projectName, collName) + " threw; its "
                 + batch.size() + " unanswered write(s) fail", thrown);
     }
 
-    private static Acquired acquire(String dbName, String collName, GroupQueue queue, GroupedWrite write) {
+    private static Acquired acquire(String projectName, String collName, GroupQueue queue, GroupedWrite write) {
         var interrupted = false;
         while (true) {
             try {
-                locks.lock(dbName, collName);
+                locks.lock(projectName, collName);
                 return interrupted ? Acquired.HELD_AFTER_INTERRUPT : Acquired.HELD;
             } catch (InterruptedException e) {
                 if (queue.writes.remove(write)) {

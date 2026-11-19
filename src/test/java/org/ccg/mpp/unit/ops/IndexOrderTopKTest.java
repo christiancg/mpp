@@ -53,7 +53,7 @@ public class IndexOrderTopKTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         fixture.createIndexedOnTs(TopKFixture.standardDocuments());
     }
@@ -130,7 +130,7 @@ public class IndexOrderTopKTest {
     public void test_pending_writes_on_the_sort_field_keep_the_scan_path() {
         fixture.save(TopKFixture.document("late", 2, -1));
         fixture.save(TopKFixture.document("d0002", 2, -2));
-        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.DB, COLL).isEmpty());
+        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.PROJECT, COLL).isEmpty());
         final var steps = topK(TopKFixture.regionEquals("r2"), true, 0);
 
         final var answer = fixture.run(steps);
@@ -182,25 +182,25 @@ public class IndexOrderTopKTest {
             data.addProperty(Globals.PK_FIELD, String.format("d%047d", i));
             data.addProperty("region", "r" + i % TopKFixture.REGIONS);
             data.addProperty("score", (i * 7919) % LARGE_INDEX_DOCUMENTS);
-            entries.add(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data));
+            entries.add(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data));
         }
-        fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "score");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("score"));
-        assertTrue(fs.indexFileBytes(TestGlobals.DB, TestGlobals.COLL, "score",
+        fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "score");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("score"));
+        assertTrue(fs.indexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL, "score",
                 "Number") > Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES);
         final var large = new TopKFixture(TestGlobals.COLL);
         final var steps = new BaseAggregationStep[]{TopKFixture.regionEquals("r4"),
                 new SortAggregationStep("score", true), new LimitAggregationStep(20)};
         final var expected = large.scanned(steps);
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", 1024L);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         final var spied = spy(fs);
         TestUtils.setPrivateField(userCache, "fs", spied);
 
         assertEquals(expected, large.run(steps).ids());
         assertEquals(20, expected.size());
-        verify(spied, never()).readWholeFieldIndexFiles(eq(TestGlobals.DB), eq(TestGlobals.COLL), eq("score"),
+        verify(spied, never()).readWholeFieldIndexFiles(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), eq("score"),
                 eq(Number.class));
     }
 }

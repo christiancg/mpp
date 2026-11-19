@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import {
-    type Database,
+    type Project,
     MppError,
     TriggerEvent,
     TriggerRunDecision,
@@ -10,10 +10,10 @@ import {
 import { eventually, serverIt } from "./server-it.js";
 
 const it = serverIt({ triggersEnabled: "true", triggerMaxAttempts: "1", triggerRetryBackoffMs: "100" });
-let shop: Database;
+let shop: Project;
 
 beforeAll(async () => {
-    shop = it.client.database("script_it");
+    shop = it.client.project("script_it");
     await shop.create();
     await shop.collection("orders").create();
     await shop.collection("audit").create();

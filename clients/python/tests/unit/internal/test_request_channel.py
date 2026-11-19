@@ -109,8 +109,8 @@ async def test_a_pinned_channel_refuses_operations_not_allowed_in_a_transaction(
     pool = ConnectionPool(ConnectionFactory(fake.settings(), RequestEncoder()))
     lease = await pool.borrow()
     channel = PinnedChannel(lease.connection, 5.0)
-    with pytest.raises(MppError, match="CREATE_DATABASE is not allowed inside a transaction"):
-        await channel.send("CREATE_DATABASE", {"type": "CREATE_DATABASE"})
+    with pytest.raises(MppError, match="CREATE_PROJECT is not allowed inside a transaction"):
+        await channel.send("CREATE_PROJECT", {"type": "CREATE_PROJECT"})
     assert (await channel.send("SAVE", {"type": "SAVE"}))["status"] == "OK"
     lease.release()
     await pool.close()

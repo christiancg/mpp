@@ -61,7 +61,7 @@ public class FieldIndexBatchTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
     }
 
@@ -82,14 +82,14 @@ public class FieldIndexBatchTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         return entry;
     }
 
     private void registerIndex() throws Exception {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(FIELD);
         entry.setIndexes(indexes);
@@ -97,7 +97,7 @@ public class FieldIndexBatchTest {
 
     private Map<String, Set<String>> stringIdsOnDisk() throws IOException {
         final var byValue = new java.util.HashMap<String, Set<String>>();
-        final var loaded = realFs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class);
+        final var loaded = realFs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class);
         if (loaded != null) {
             for (final var entry : loaded) {
                 byValue.put(entry.getValue(), new HashSet<>(entry.getIds()));
@@ -196,7 +196,7 @@ public class FieldIndexBatchTest {
                 anyString(), any(), any(), anyBoolean());
 
         assertThrows(IOException.class,
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("f1")));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("f1")));
 
         assertFalse(anyTypeResident(), "a failed batch mutated the resident list before its write failed");
         assertEquals(Map.of("before", Set.of("f1")), stringIdsOnDisk());
@@ -210,7 +210,7 @@ public class FieldIndexBatchTest {
         final var resident = support.resident(FIELD, String.class);
         doc.getData().addProperty(FIELD, "after");
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("k1"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("k1"));
 
         assertEquals(resident, support.resident(FIELD, String.class));
         assertEquals(List.of("after"), resident.stream().map(FieldIndexEntry::getValue).toList());
@@ -221,10 +221,10 @@ public class FieldIndexBatchTest {
     public void aSuccessfulBatchCachesTheIndexItWrote() throws Exception {
         final var doc = document("w1", "before");
         registerIndex();
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         doc.getData().addProperty(FIELD, "after");
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("w1"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("w1"));
 
         final var cached = support.resident(FIELD, String.class);
         assertNotNull(cached, "the writer publishes the list it just wrote so the next batch skips the disk read");
@@ -236,14 +236,14 @@ public class FieldIndexBatchTest {
     public void aFailedBatchCachesNothing() throws Exception {
         final var doc = document("w2", "before");
         registerIndex();
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         doc.getData().addProperty(FIELD, "after");
         final var spied = spyTheBatchFileSystem();
         doThrow(new IOException("disk full")).when(spied).appendIndexLog(anyString(), anyString(), anyString(),
                 anyString(), any(), any(), anyBoolean());
 
         assertThrows(IOException.class,
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("w2")));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("w2")));
 
         assertFalse(anyTypeResident(), "a list whose write failed differs from the file and must not be cached");
         assertEquals(Map.of("before", Set.of("w2")), stringIdsOnDisk());
@@ -253,14 +253,14 @@ public class FieldIndexBatchTest {
     public void anUnreadableTypeFileFailsTheBatchAndIsLeftUntouched() throws Exception {
         final var doc = document("u1", "before");
         registerIndex();
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         final var stringFile = FieldIndexBatchSupport.indexFile(FIELD, "String").toPath();
         final var unreadable = "no index line here\nnor here\n".getBytes(StandardCharsets.UTF_8);
         Files.write(stringFile, unreadable);
         doc.getData().addProperty(FIELD, "after");
 
         assertThrows(IOException.class,
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("u1")));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("u1")));
 
         assertArrayEquals(unreadable, Files.readAllBytes(stringFile),
                 "a file in which no line parsed is reported, never rewritten from an empty base");
@@ -271,10 +271,10 @@ public class FieldIndexBatchTest {
     public void droppedIndexMidBatchWritesNothing() throws Exception {
         document("d1", "value");
         registerIndex();
-        IndexHelper.dropIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        AdminOperationHelper.deleteIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        IndexHelper.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        AdminOperationHelper.deleteIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("d1"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("d1"));
 
         for (final var label : FieldIndexBatchSupport.typeLabels()) {
             assertFalse(FieldIndexBatchSupport.typeExists(FIELD, label), label);
@@ -307,7 +307,7 @@ public class FieldIndexBatchTest {
                 (IntConsumer) _ -> observed.add(numberFile.exists() && !stringFile.exists()));
         try {
             faultInjector.arm(FaultPoint.INDEX_BATCH_FLUSHED, FaultAction.HALT,
-                    Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                    Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
 
             support.applyBatch(FIELD, List.of("n", "s"));
         } finally {
@@ -321,7 +321,8 @@ public class FieldIndexBatchTest {
     }
 
     private boolean knownAbsent(Class<?> type) {
-        return cache.isFieldIndexTypeAbsent(TestGlobals.DB, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, type));
+        return cache.isFieldIndexTypeAbsent(TestGlobals.PROJECT, TestGlobals.COLL,
+                Cache.getIndexIdentifier(FIELD, type));
     }
 
     @Test
@@ -361,7 +362,7 @@ public class FieldIndexBatchTest {
         support.applyBatch(FIELD, List.of("c1"));
         assertTrue(knownAbsent(Boolean.class));
 
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
         assertFalse(knownAbsent(Boolean.class));
     }

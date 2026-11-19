@@ -16,7 +16,7 @@ public sealed class CustomTypesIT(CustomTypesIT.Server fixture) : IClassFixture<
     private static readonly GeoPoint NewYork = new(40.71, -74.0);
     private static readonly GeoPoint Lima = new(-12.05, -77.04);
 
-    private Collection<Place> Places => fixture.Client.Database("types_it").Collection<Place>("places");
+    private Collection<Place> Places => fixture.Client.Project("types_it").Collection<Place>("places");
 
     private static List<string> Ids(IEnumerable<Place> rows) => [.. rows.Select(row => row.Id!).Order(StringComparer.Ordinal)];
 
@@ -30,7 +30,7 @@ public sealed class CustomTypesIT(CustomTypesIT.Server fixture) : IClassFixture<
         Assert.Equal(NewYork, ny.Location);
         Assert.Equal(Vector.Of(1, 0, 0), ny.Embedding);
         Assert.Equal([0.5f, 0.25f], ny.Floats!);
-        var raw = await fixture.Client.Database("types_it").Collection("places").FindByIdAsync("ny");
+        var raw = await fixture.Client.Project("types_it").Collection("places").FindByIdAsync("ny");
         Assert.Equal(NewYork, raw!.GetGeoPoint("location"));
         Assert.Equal(new TimeOnly(9, 30), raw.GetTimeOnly("opensAt"));
         Assert.Equal(Vector.Of(0.5, 0.25), raw.GetVector("floats"));
@@ -81,9 +81,9 @@ public sealed class CustomTypesIT(CustomTypesIT.Server fixture) : IClassFixture<
 
         protected override async Task SeedAsync()
         {
-            var database = Client.Database("types_it");
-            await database.CreateAsync();
-            var places = database.Collection<Place>("places");
+            var project = Client.Project("types_it");
+            await project.CreateAsync();
+            var places = project.Collection<Place>("places");
             await places.CreateAsync();
             await places.SaveAllAsync([
                 new Place { Id = "ny", OpenedAt = new DateTime(2024, 1, 1, 10, 0, 0, 123), OpensAt = new TimeOnly(9, 30), Location = NewYork, Embedding = Vector.Of(1, 0, 0), Floats = [0.5f, 0.25f] },

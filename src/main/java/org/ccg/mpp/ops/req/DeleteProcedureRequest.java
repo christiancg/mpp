@@ -9,8 +9,8 @@ public class DeleteProcedureRequest extends OperationRequest {
         super(OperationType.DELETE_PROCEDURE, null, null);
     }
 
-    public DeleteProcedureRequest(String databaseName, String name) {
-        super(OperationType.DELETE_PROCEDURE, databaseName, null);
+    public DeleteProcedureRequest(String projectName, String name) {
+        super(OperationType.DELETE_PROCEDURE, projectName, null);
         this.name = name;
     }
 

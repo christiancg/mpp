@@ -24,7 +24,7 @@ final class WriteIntentJournal {
 
     private final FilePaths paths;
 
-    record Intent(File log, long seq, String dbName, String collName, List<WriteIntent> items) {
+    record Intent(File log, long seq, String projectName, String collName, List<WriteIntent> items) {
         String label() {
             return log.getName() + "#" + seq;
         }
@@ -40,9 +40,9 @@ final class WriteIntentJournal {
         this.paths = paths;
     }
 
-    Intent begin(String dbName, String collName, List<WriteIntent> items) throws IOException {
+    Intent begin(String projectName, String collName, List<WriteIntent> items) throws IOException {
         final var group = new ForceGroup();
-        final var intent = begin(dbName, collName, items, group);
+        final var intent = begin(projectName, collName, items, group);
         try {
             group.force();
         } catch (IOException e) {
@@ -52,8 +52,8 @@ final class WriteIntentJournal {
         return intent;
     }
 
-    Intent begin(String dbName, String collName, List<WriteIntent> items, ForceGroup forcedBy) throws IOException {
-        final var log = paths.intentLog(dbName, collName);
+    Intent begin(String projectName, String collName, List<WriteIntent> items, ForceGroup forcedBy) throws IOException {
+        final var log = paths.intentLog(projectName, collName);
         final Intent intent;
         final var lock = FileLocks.lockWrite(log);
         try {
@@ -61,7 +61,7 @@ final class WriteIntentJournal {
             if (log.exists() && ForceFailures.hasFailed(log.toPath())) {
                 compact(log, state);
             }
-            intent = new Intent(log, state.nextSeq, dbName, collName, List.copyOf(items));
+            intent = new Intent(log, state.nextSeq, projectName, collName, List.copyOf(items));
             append(log, state, IntentLogCodec.encode(intent));
             state.nextSeq++;
             state.open.add(intent.seq());
@@ -93,8 +93,8 @@ final class WriteIntentJournal {
         }
     }
 
-    List<Intent> openIntents(String dbName, String collName) throws IOException {
-        return openIntents(paths.intentLog(dbName, collName));
+    List<Intent> openIntents(String projectName, String collName) throws IOException {
+        return openIntents(paths.intentLog(projectName, collName));
     }
 
     List<Intent> openIntents(File log) throws IOException {

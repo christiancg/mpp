@@ -31,11 +31,11 @@ final class OrphanedPageRecords {
     }
 
     static List<DbEntry> adoptAll(FilePaths paths, PkRowsSession session, Iterable<Long> pages) throws IOException {
-        final var dbName = session.dbName();
+        final var projectName = session.projectName();
         final var collName = session.collName();
         final var recognised = session.recognised();
         if (recognised.isEmpty()) {
-            logger.error("The PK index of " + dbName + "|" + collName + " could not be read, so its pages were not"
+            logger.error("The PK index of " + projectName + "|" + collName + " could not be read, so its pages were not"
                     + " checked for records it does not name");
             return List.of();
         }
@@ -43,8 +43,8 @@ final class OrphanedPageRecords {
         final var indexedEnds = indexedEndsByPage(entries);
         final var orphansByPage = new HashMap<Long, List<Orphan>>();
         for (final var page : pages) {
-            final var orphans = orphansOf(paths.collectionPage(dbName, collName, page), dbName, collName, page,
-                    indexedEnds.getOrDefault(page, 0L), entries);
+            final var orphans = orphansOf(paths.collectionPage(projectName, collName, page), projectName, collName,
+                    page, indexedEnds.getOrDefault(page, 0L), entries);
             if (!orphans.isEmpty()) {
                 orphansByPage.put(page, orphans);
             }
@@ -55,31 +55,31 @@ final class OrphanedPageRecords {
         for (final var pageOrphans : orphansByPage.entrySet()) {
             for (final var orphan : pageOrphans.getValue()) {
                 adopted.add(orphan.entry());
-                adoptedIndexEntries.add(new PkIndexEntry(dbName, collName, orphan.entry().get_id(), orphan.position(),
-                        orphan.length(), pageOrphans.getKey(), UNVERSIONED));
+                adoptedIndexEntries.add(new PkIndexEntry(projectName, collName, orphan.entry().get_id(),
+                        orphan.position(), orphan.length(), pageOrphans.getKey(), UNVERSIONED));
             }
         }
         if (!adoptedIndexEntries.isEmpty()) {
             session.invalidate();
-            session.store().appendRows(dbName, collName, adoptedIndexEntries);
-            logger.warning("Adopted " + adopted.size() + " record(s) of " + dbName + "|" + collName
+            session.store().appendRows(projectName, collName, adoptedIndexEntries);
+            logger.warning("Adopted " + adopted.size() + " record(s) of " + projectName + "|" + collName
                     + " that were on a page but missing from its PK index, left by an interrupted write: "
                     + adopted.stream().map(DbEntry::get_id).toList());
         }
         return adopted;
     }
 
-    static void cutUncommittedCopies(FilePaths paths, PkIndexStore pkIndexStore, String dbName, String collName,
+    static void cutUncommittedCopies(FilePaths paths, PkIndexStore pkIndexStore, String projectName, String collName,
             Iterable<Long> pages) throws IOException {
-        final var recognised = pkIndexStore.readRecognisedPkIndex(dbName, collName);
+        final var recognised = pkIndexStore.readRecognisedPkIndex(projectName, collName);
         if (recognised.isEmpty() || !SyncedWrites.enabled()) {
             return;
         }
         final var entries = recognised.get();
         final var indexedEnds = indexedEndsByPage(entries);
         for (final var page : pages) {
-            final var file = paths.collectionPage(dbName, collName, page);
-            final var scan = scanRecords(file, dbName, collName, page, indexedEnds.getOrDefault(page, 0L));
+            final var file = paths.collectionPage(projectName, collName, page);
+            final var scan = scanRecords(file, projectName, collName, page, indexedEnds.getOrDefault(page, 0L));
             final var copies = scan.records();
             if (scan.readable() && !copies.isEmpty()
                     && copies.stream().allMatch(copy -> isIndexed(entries, copy.entry().get_id()))) {
@@ -89,7 +89,7 @@ final class OrphanedPageRecords {
     }
 
     static List<PkIndexEntry> retireDangling(PkRowsSession session, Map<Long, Long> pageLengths) throws IOException {
-        final var dbName = session.dbName();
+        final var projectName = session.projectName();
         final var collName = session.collName();
         final var recognised = session.recognised();
         if (recognised.isEmpty()) {
@@ -100,14 +100,15 @@ final class OrphanedPageRecords {
             return List.of();
         }
         session.invalidate();
-        final var rewritten = session.store().rewriteRows(dbName, collName, rows -> rows.stream()
+        final var rewritten = session.store().rewriteRows(projectName, collName, rows -> rows.stream()
                 .filter(row -> !isDangling(row, pageLengths)).collect(Collectors.toCollection(ArrayList::new)));
         if (!rewritten) {
             return List.of();
         }
         logger.error("Retired " + dangling.size() + " PK index entr" + (dangling.size() == 1 ? "y" : "ies") + " of "
-                + dbName + "|" + collName + " whose record reaches past the end of its page; the record was lost in"
-                + " an unclean stop: " + dangling.stream().map(PkIndexEntry::getValue).toList());
+                + projectName + "|" + collName
+                + " whose record reaches past the end of its page; the record was lost in" + " an unclean stop: "
+                + dangling.stream().map(PkIndexEntry::getValue).toList());
         return dangling;
     }
 
@@ -139,9 +140,9 @@ final class OrphanedPageRecords {
         return Collections.binarySearch(rowsSortedById, id) >= 0;
     }
 
-    static List<Orphan> orphansOf(File page, String dbName, String collName, long pageNumber, long indexedEnd,
+    static List<Orphan> orphansOf(File page, String projectName, String collName, long pageNumber, long indexedEnd,
             List<PkIndexEntry> rowsSortedById) throws IOException {
-        final var scan = scanRecords(page, dbName, collName, pageNumber, indexedEnd);
+        final var scan = scanRecords(page, projectName, collName, pageNumber, indexedEnd);
         final var held = scan.records().stream().filter(orphan -> isIndexed(rowsSortedById, orphan.entry().get_id()))
                 .toList();
         if (scan.readable() && held.isEmpty()) {
@@ -175,7 +176,7 @@ final class OrphanedPageRecords {
                 + copies.stream().map(copy -> copy.entry().get_id()).toList());
     }
 
-    static PageRecordScan scanRecords(File page, String dbName, String collName, long pageNumber, long fromOffset)
+    static PageRecordScan scanRecords(File page, String projectName, String collName, long pageNumber, long fromOffset)
             throws IOException {
         final var lock = FileLocks.lockWrite(page);
         try {
@@ -193,7 +194,7 @@ final class OrphanedPageRecords {
                 final var lineEnd = i + 1;
                 final var text = PageHoles.isHole(tail, lineStart) ? "" : recordText(tail, lineStart, i);
                 if (!text.isEmpty()) {
-                    final var record = parseOrphan(page, dbName, collName, pageNumber, text);
+                    final var record = parseOrphan(page, projectName, collName, pageNumber, text);
                     if (record == null) {
                         return unreadable("a record at offset " + (fromOffset + lineStart) + " has no readable _id");
                     }
@@ -244,9 +245,9 @@ final class OrphanedPageRecords {
         return new String(Arrays.copyOfRange(tail, start, end), StandardCharsets.UTF_8);
     }
 
-    private static DbEntry parseOrphan(File page, String dbName, String collName, long pageNumber, String text) {
+    private static DbEntry parseOrphan(File page, String projectName, String collName, long pageNumber, String text) {
         try {
-            final var entry = DbEntry.fromString(dbName, collName, text);
+            final var entry = DbEntry.fromString(projectName, collName, text);
             if (entry.get_id() == null) {
                 return null;
             }

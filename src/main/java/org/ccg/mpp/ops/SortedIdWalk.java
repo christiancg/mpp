@@ -13,7 +13,7 @@ final class SortedIdWalk implements Iterator<String> {
     private static final long GROWTH = 4;
     private static final Cache cache = IocContainer.get(Cache.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String fieldName;
     private final boolean ascending;
@@ -22,9 +22,9 @@ final class SortedIdWalk implements Iterator<String> {
     private int at;
     private boolean declined;
 
-    private SortedIdWalk(String dbName, String collName, String fieldName, boolean ascending, List<String> ids,
+    private SortedIdWalk(String projectName, String collName, String fieldName, boolean ascending, List<String> ids,
             long requested) {
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.fieldName = fieldName;
         this.ascending = ascending;
@@ -32,11 +32,11 @@ final class SortedIdWalk implements Iterator<String> {
         this.requested = requested;
     }
 
-    static SortedIdWalk open(String dbName, String collName, String fieldName, boolean ascending, long firstPage,
+    static SortedIdWalk open(String projectName, String collName, String fieldName, boolean ascending, long firstPage,
             ReadObserver observer) throws IOException {
-        final var ids = IndexHelper.getSortedIdsForField(dbName, collName, fieldName,
+        final var ids = IndexHelper.getSortedIdsForField(projectName, collName, fieldName,
                 SortOperatorHelper.entryOrder(ascending), firstPage, observer);
-        return ids == null ? null : new SortedIdWalk(dbName, collName, fieldName, ascending, ids, firstPage);
+        return ids == null ? null : new SortedIdWalk(projectName, collName, fieldName, ascending, ids, firstPage);
     }
 
     @Override
@@ -47,13 +47,13 @@ final class SortedIdWalk implements Iterator<String> {
         if (declined || ids.size() < requested) {
             return false;
         }
-        if (cache.reloadsLargeFieldIndex(dbName, collName, fieldName)) {
+        if (cache.reloadsLargeFieldIndex(projectName, collName, fieldName)) {
             declined = true;
             return false;
         }
         requested = Math.multiplyExact(requested, GROWTH);
         try {
-            final var longer = IndexHelper.getSortedIdsForField(dbName, collName, fieldName,
+            final var longer = IndexHelper.getSortedIdsForField(projectName, collName, fieldName,
                     SortOperatorHelper.entryOrder(ascending), requested, ReadObserver.NONE);
             if (longer == null) {
                 declined = true;

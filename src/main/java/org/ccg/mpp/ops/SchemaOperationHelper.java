@@ -31,21 +31,21 @@ public final class SchemaOperationHelper {
     }
 
     public static OperationResponse processSaveSchema(SaveSchemaRequest request) {
-        return OperationLocks.withCollectionLock(request.getDatabaseName(), request.getCollectionName(),
+        return OperationLocks.withCollectionLock(request.getProjectName(), request.getCollectionName(),
                 OperationType.SAVE_SCHEMA, ErrorCode.ERROR_SAVING_SCHEMA, () -> executeSaveSchema(request));
     }
 
     public static OperationResponse processDeleteSchema(DeleteSchemaRequest request) {
-        return OperationLocks.withCollectionLock(request.getDatabaseName(), request.getCollectionName(),
+        return OperationLocks.withCollectionLock(request.getProjectName(), request.getCollectionName(),
                 OperationType.DELETE_SCHEMA, ErrorCode.ERROR_DELETING_SCHEMA, () -> executeDeleteSchema(request));
     }
 
     public static OperationResponse executeSaveSchema(SaveSchemaRequest request) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.SAVE_SCHEMA, "Collection '" + collName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var schema = request.getSchema();
         final var capViolation = SchemaPatternCaps.violationOf(schema);
@@ -65,48 +65,48 @@ public final class SchemaOperationHelper {
                             + Globals.MAX_SCHEMA_EXPANDED_NODES + " schema nodes once its references are followed",
                     ErrorCode.SCHEMA_TOO_COMPLEX);
         }
-        StoredDefinitions.writeSchema(dbName, collName, schema);
-        cache.putCollectionSchema(dbName, collName, schema);
+        StoredDefinitions.writeSchema(projectName, collName, schema);
+        cache.putCollectionSchema(projectName, collName, schema);
         return new SaveSchemaResponse("Collection schema saved successfully", validation.getWarnings());
     }
 
     public static OperationResponse executeDeleteSchema(DeleteSchemaRequest request) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.DELETE_SCHEMA, "Collection '" + collName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
-        if (fs.metadataFiles().deleteCollectionSchema(dbName, collName)) {
-            AdminStamp.tombstone(AdminRecordKey.schema(dbName, collName));
+        if (fs.metadataFiles().deleteCollectionSchema(projectName, collName)) {
+            AdminStamp.tombstone(AdminRecordKey.schema(projectName, collName));
         }
-        cache.removeCollectionSchema(dbName, collName);
+        cache.removeCollectionSchema(projectName, collName);
         return OperationResponse.ok(OperationType.DELETE_SCHEMA, "Collection schema deleted successfully");
     }
 
     public static OperationResponse processGetSchema(GetSchemaRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var collectionId = Cache.getCollectionIdentifier(dbName, collName);
+        final var collectionId = Cache.getCollectionIdentifier(projectName, collName);
         final var response = OperationLocks.withReadLocks(false, List.of(collectionId), OperationType.GET_SCHEMA,
                 ErrorCode.ERROR_RETRIEVING, () -> executeGetSchema(request));
         if (ErrorCode.COLLECTION_NOT_FOUND.getCode().equals(response.getErrorCode())
-                && cache.getAdminCollectionEntry(dbName, collName) == null) {
-            locks.removeCollectionLock(dbName, collName);
+                && cache.getAdminCollectionEntry(projectName, collName) == null) {
+            locks.removeCollectionLock(projectName, collName);
         }
         return response;
     }
 
     private static OperationResponse executeGetSchema(GetSchemaRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.GET_SCHEMA, "Collection '" + collName + "' not found",
                     ErrorCode.COLLECTION_NOT_FOUND);
         }
         final JsonObject schema;
         try {
-            schema = cache.getCollectionSchema(dbName, collName);
+            schema = cache.getCollectionSchema(projectName, collName);
         } catch (MetadataReadException e) {
             return new OperationResponse(OperationType.GET_SCHEMA, ErrorCode.SCHEMA_UNAVAILABLE);
         }

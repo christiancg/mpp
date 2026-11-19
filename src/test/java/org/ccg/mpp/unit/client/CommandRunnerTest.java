@@ -18,7 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class CommandRunnerTest {
-    private static final String CREATE_SHOP = "{\"type\":\"CREATE_DATABASE\",\"databaseName\":\"shop\"}";
+    private static final String CREATE_SHOP = "{\"type\":\"CREATE_PROJECT\",\"projectName\":\"shop\"}";
     private FakeLineServer server;
     private final ByteArrayOutputStream captured = new ByteArrayOutputStream();
     private final PrintStream out = new PrintStream(captured, true, StandardCharsets.UTF_8);
@@ -41,23 +41,23 @@ public class CommandRunnerTest {
     public void test_exec_prints_compact_replies() throws IOException {
         try (var connection = server.connect()) {
             final var result = new CommandRunner(connection, out, true, false)
-                    .run(List.of("{\"type\":\"LIST_DATABASES\"}", "  ", "{\"type\":\"LIST_DATABASES\"}").iterator());
+                    .run(List.of("{\"type\":\"LIST_PROJECTS\"}", "  ", "{\"type\":\"LIST_PROJECTS\"}").iterator());
 
             assertEquals(ClientException.OK, result);
         }
         final var lines = printed().lines().toList();
         assertEquals(2, lines.size());
-        assertEquals(FakeLineServer.ok("LIST_DATABASES"), lines.getFirst());
+        assertEquals(FakeLineServer.ok("LIST_PROJECTS"), lines.getFirst());
     }
 
     @Test
     public void test_exec_prints_raw_line() throws IOException {
-        final var raw = "{ \"databases\" : [ {\"status\":\"ERROR\"} ], \"message\":\"a\\\"b\", "
-                + "\"type\":\"LIST_DATABASES\",\"status\":\"OK\",\"errorCode\":null }";
-        server.reply("LIST_DATABASES", raw);
+        final var raw = "{ \"projects\" : [ {\"status\":\"ERROR\"} ], \"message\":\"a\\\"b\", "
+                + "\"type\":\"LIST_PROJECTS\",\"status\":\"OK\",\"errorCode\":null }";
+        server.reply("LIST_PROJECTS", raw);
         try (var connection = server.connect()) {
             final var result = new CommandRunner(connection, out, true, false)
-                    .run(List.of("{\"type\":\"LIST_DATABASES\"}").iterator());
+                    .run(List.of("{\"type\":\"LIST_PROJECTS\"}").iterator());
 
             assertEquals(ClientException.OK, result);
         }
@@ -100,23 +100,23 @@ public class CommandRunnerTest {
     }
 
     @Test
-    public void test_existing_database_fails_when_not_merging() throws IOException {
-        server.reply("CREATE_DATABASE", FakeLineServer.error("CREATE_DATABASE", "ERROR", "409-2"));
+    public void test_existing_project_fails_when_not_merging() throws IOException {
+        server.reply("CREATE_PROJECT", FakeLineServer.error("CREATE_PROJECT", "ERROR", "409-2"));
         try (var connection = server.connect()) {
             final var result = new CommandRunner(connection, out, true, false)
-                    .run(List.of(CREATE_SHOP, "{\"type\":\"LIST_DATABASES\"}").iterator());
+                    .run(List.of(CREATE_SHOP, "{\"type\":\"LIST_PROJECTS\"}").iterator());
 
             assertEquals(ClientException.FAILED, result);
         }
-        assertEquals(List.of("CREATE_DATABASE", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("CREATE_PROJECT", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test
-    public void test_existing_database_succeeds_when_merging() throws IOException {
-        server.reply("CREATE_DATABASE", FakeLineServer.error("CREATE_DATABASE", "ERROR", "409-2"));
+    public void test_existing_project_succeeds_when_merging() throws IOException {
+        server.reply("CREATE_PROJECT", FakeLineServer.error("CREATE_PROJECT", "ERROR", "409-2"));
         try (var connection = server.connect()) {
             final var result = new CommandRunner(connection, out, false, true)
-                    .run(List.of(CREATE_SHOP, "{\"type\":\"LIST_DATABASES\"}").iterator());
+                    .run(List.of(CREATE_SHOP, "{\"type\":\"LIST_PROJECTS\"}").iterator());
 
             assertEquals(ClientException.OK, result);
         }

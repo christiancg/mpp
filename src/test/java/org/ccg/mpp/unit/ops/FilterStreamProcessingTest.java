@@ -33,7 +33,7 @@ public class FilterStreamProcessingTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -49,18 +49,18 @@ public class FilterStreamProcessingTest {
         testData.addProperty("field1", "value1");
 
         DbEntry testEntry = new DbEntry();
-        testEntry.setDatabaseName(TestGlobals.DB);
+        testEntry.setProjectName(TestGlobals.PROJECT);
         testEntry.setCollectionName(TestGlobals.COLL);
         testEntry.setData(testData);
         testEntry.set_id("1");
 
         final var cache = IocContainer.get(Cache.class);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, testEntry);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, testEntry);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, adminCollPkIndexEntry);
 
-        Stream<JsonObject> result = FilterOperatorHelper.processOperator(fieldOp, null, TestGlobals.DB,
+        Stream<JsonObject> result = FilterOperatorHelper.processOperator(fieldOp, null, TestGlobals.PROJECT,
                 TestGlobals.COLL);
 
         assertNotNull(result);
@@ -81,8 +81,8 @@ public class FilterStreamProcessingTest {
         testObj.addProperty("name", "test");
         Stream<JsonObject> resultStream = Stream.of(testObj);
 
-        Stream<JsonObject> result = FilterOperatorHelper.processOperator(conjunctionOp, resultStream, TestGlobals.DB,
-                TestGlobals.COLL);
+        Stream<JsonObject> result = FilterOperatorHelper.processOperator(conjunctionOp, resultStream,
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         List<JsonObject> resultList = result.toList();
         assertFalse(resultList.isEmpty());
@@ -94,7 +94,7 @@ public class FilterStreamProcessingTest {
         FieldOperator fieldOperator = new FieldOperator(FieldOperatorType.EQUALS, "field", new JsonString("value"));
         Stream<JsonObject> resultStream = Stream.of(new JsonObject());
         Stream<JsonObject> processedStream = FilterOperatorHelper.processOperator(fieldOperator, resultStream,
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(processedStream);
         assertFalse(processedStream.findAny().isPresent());
     }
@@ -105,9 +105,9 @@ public class FilterStreamProcessingTest {
         FieldOperator fieldOperator = new FieldOperator(FieldOperatorType.EQUALS, "field", new JsonString("value"));
 
         Stream<JsonObject> processedConjunctionStream = FilterOperatorHelper.processOperator(conjunctionOperator, null,
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
         Stream<JsonObject> processedFieldStream = FilterOperatorHelper.processOperator(fieldOperator, null,
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertNotNull(processedConjunctionStream);
         assertNotNull(processedFieldStream);
@@ -118,18 +118,18 @@ public class FilterStreamProcessingTest {
         ConjunctionOperator conjunctionOperator = new ConjunctionOperator(ConjunctionOperatorType.OR, List.of());
         Stream<JsonObject> resultStream = Stream.of(new JsonObject());
         Stream<JsonObject> processedStream = FilterOperatorHelper.processOperator(conjunctionOperator, resultStream,
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(processedStream);
         assertFalse(processedStream.findAny().isPresent());
     }
 
     @Test
-    public void test_process_operator_with_valid_db_and_coll() throws IOException {
+    public void test_process_operator_with_valid_project_and_coll() throws IOException {
         ConjunctionOperator conjunctionOperator = new ConjunctionOperator(ConjunctionOperatorType.AND, List.of());
         Stream<JsonObject> resultStream = Stream.of(new JsonObject());
 
         Stream<JsonObject> processedStream = FilterOperatorHelper.processOperator(conjunctionOperator, resultStream,
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertNotNull(processedStream);
     }
@@ -139,7 +139,7 @@ public class FilterStreamProcessingTest {
         Stream<JsonObject> resultStream = Stream.of(new JsonObject());
 
         assertThrows(NullPointerException.class,
-                () -> FilterOperatorHelper.processOperator(null, resultStream, TestGlobals.DB, TestGlobals.COLL));
+                () -> FilterOperatorHelper.processOperator(null, resultStream, TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -165,20 +165,20 @@ public class FilterStreamProcessingTest {
         DbEntry entry = new DbEntry();
         entry.set_id("arr1");
         entry.setData(obj);
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         final var cache = IocContainer.get(Cache.class);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "arr1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "arr1", 0, 100, 0));
 
         JsonArray arr = new JsonArray();
         arr.add(new JsonString("red"));
         arr.add(new JsonString("blue"));
         FieldOperator op = new FieldOperator(FieldOperatorType.IN, "color", arr);
 
-        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL)
+        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
 
         assertFalse(result.isEmpty());
@@ -196,8 +196,8 @@ public class FilterStreamProcessingTest {
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "role", new JsonString("admin"));
         java.util.stream.Stream<JsonObject> existing = java.util.stream.Stream.of(match, noMatch);
 
-        List<JsonObject> result = FilterOperatorHelper.processOperator(op, existing, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(op, existing, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals("admin", result.getFirst().get("role").asJsonString().getValue());
@@ -229,7 +229,7 @@ public class FilterStreamProcessingTest {
     @Test
     public void test_and_conjunction_with_two_children_over_existing_stream() throws IOException {
         final var result = FilterOperatorHelper.processOperator(twoChildren(ConjunctionOperatorType.AND), incoming(),
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("a"), idsOf(result));
     }
@@ -237,7 +237,7 @@ public class FilterStreamProcessingTest {
     @Test
     public void test_or_conjunction_with_two_children_over_existing_stream() throws IOException {
         final var result = FilterOperatorHelper.processOperator(twoChildren(ConjunctionOperatorType.OR), incoming(),
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("a", "b", "c"), idsOf(result));
     }
@@ -245,7 +245,7 @@ public class FilterStreamProcessingTest {
     @Test
     public void test_xor_conjunction_with_two_children_over_existing_stream() throws IOException {
         final var result = FilterOperatorHelper.processOperator(twoChildren(ConjunctionOperatorType.XOR), incoming(),
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("b", "c"), idsOf(result));
     }
@@ -253,7 +253,7 @@ public class FilterStreamProcessingTest {
     @Test
     public void test_nand_conjunction_with_two_children_over_existing_stream() throws IOException {
         final var result = FilterOperatorHelper.processOperator(twoChildren(ConjunctionOperatorType.NAND), incoming(),
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("b", "c"), idsOf(result));
     }
@@ -261,7 +261,7 @@ public class FilterStreamProcessingTest {
     @Test
     public void test_nor_conjunction_with_two_children_over_existing_stream() throws IOException {
         final var result = FilterOperatorHelper.processOperator(twoChildren(ConjunctionOperatorType.NOR), incoming(),
-                TestGlobals.DB, TestGlobals.COLL);
+                TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of(), idsOf(result));
     }
@@ -273,7 +273,8 @@ public class FilterStreamProcessingTest {
         outer.add(new FieldOperator(FieldOperatorType.EQUALS, "active", new JsonString("yes")));
         final var operator = new ConjunctionOperator(ConjunctionOperatorType.AND, outer);
 
-        final var result = FilterOperatorHelper.processOperator(operator, incoming(), TestGlobals.DB, TestGlobals.COLL);
+        final var result = FilterOperatorHelper.processOperator(operator, incoming(), TestGlobals.PROJECT,
+                TestGlobals.COLL);
 
         assertEquals(List.of("a", "c"), idsOf(result));
     }
@@ -286,7 +287,8 @@ public class FilterStreamProcessingTest {
         operators.add(new FieldOperator(FieldOperatorType.NOT_EQUALS, "role", new JsonString("user")));
         final var operator = new ConjunctionOperator(ConjunctionOperatorType.AND, operators);
 
-        final var result = FilterOperatorHelper.processOperator(operator, incoming(), TestGlobals.DB, TestGlobals.COLL);
+        final var result = FilterOperatorHelper.processOperator(operator, incoming(), TestGlobals.PROJECT,
+                TestGlobals.COLL);
 
         assertEquals(List.of("a"), idsOf(result));
     }

@@ -9,8 +9,8 @@ import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
 import org.ccg.mpp.ops.req.CreateIndexRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -23,13 +23,13 @@ public class MetadataLimitsTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
     void tearDown() throws Exception {
-        restoreDefault(ConfigKey.MAX_COLLECTIONS_PER_DATABASE);
-        restoreDefault(ConfigKey.MAX_DATABASES);
+        restoreDefault(ConfigKey.MAX_COLLECTIONS_PER_PROJECT);
+        restoreDefault(ConfigKey.MAX_PROJECTS);
         restoreDefault(ConfigKey.MAX_INDEXES_PER_COLLECTION);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -45,24 +45,24 @@ public class MetadataLimitsTest {
 
     @Test
     public void test_collection_count_is_capped_and_re_creation_still_allowed() throws Exception {
-        setLimit(ConfigKey.MAX_COLLECTIONS_PER_DATABASE, 2);
+        setLimit(ConfigKey.MAX_COLLECTIONS_PER_PROJECT, 2);
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "capcoll")).getStatus());
-        final var refused = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "capcoll2"));
-        assertEquals(ErrorCode.TOO_MANY_COLLECTIONS_FOR_DATABASE.getCode(), refused.getErrorCode());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "capcoll")).getStatus());
+        final var refused = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "capcoll2"));
+        assertEquals(ErrorCode.TOO_MANY_COLLECTIONS_FOR_PROJECT.getCode(), refused.getErrorCode());
 
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
     }
 
     @Test
-    public void test_database_count_is_capped() throws Exception {
-        setLimit(ConfigKey.MAX_DATABASES, 2);
+    public void test_project_count_is_capped() throws Exception {
+        setLimit(ConfigKey.MAX_PROJECTS, 2);
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest("capdb_two")).getStatus());
-        final var refused = processor.processMessage(new CreateDatabaseRequest("capdb_three"));
-        assertEquals(ErrorCode.TOO_MANY_DATABASES.getCode(), refused.getErrorCode());
+        assertEquals(OperationStatus.OK, processor.processMessage(new CreateProjectRequest("capdb_two")).getStatus());
+        final var refused = processor.processMessage(new CreateProjectRequest("capdb_three"));
+        assertEquals(ErrorCode.TOO_MANY_PROJECTS.getCode(), refused.getErrorCode());
     }
 
     @Test
@@ -70,12 +70,12 @@ public class MetadataLimitsTest {
         setLimit(ConfigKey.MAX_INDEXES_PER_COLLECTION, 1);
 
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "first")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "first")).getStatus());
         final var refused = processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "second"));
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "second"));
         assertEquals(ErrorCode.TOO_MANY_INDEXES_FOR_COLLECTION.getCode(), refused.getErrorCode());
 
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "first")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "first")).getStatus());
     }
 }

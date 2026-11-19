@@ -38,7 +38,7 @@ public class UserSetPasswordEnumerationTest {
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }

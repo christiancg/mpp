@@ -13,26 +13,26 @@ function result(reply: JsonObject): ReindexResult {
 
 export class Indexes {
     readonly #context: ClientContext;
-    readonly #database: string;
+    readonly #project: string;
     readonly #collection: string;
 
-    constructor(context: ClientContext, database: string, collection: string) {
+    constructor(context: ClientContext, project: string, collection: string) {
         this.#context = context;
-        this.#database = database;
+        this.#project = project;
         this.#collection = collection;
     }
 
     async create(field: string, ...moreFields: string[]): Promise<void> {
         await this.#context.channel.send(
             "CREATE_INDEX",
-            this.#context.encoder.createIndex(this.#database, this.#collection, [field, ...moreFields]),
+            this.#context.encoder.createIndex(this.#project, this.#collection, [field, ...moreFields]),
         );
     }
 
     async drop(field: string): Promise<void> {
         await this.#context.channel.send(
             "DROP_INDEX",
-            this.#context.encoder.dropIndex(this.#database, this.#collection, field),
+            this.#context.encoder.dropIndex(this.#project, this.#collection, field),
         );
     }
 
@@ -40,7 +40,7 @@ export class Indexes {
         return result(
             await this.#context.channel.send(
                 "REINDEX",
-                this.#context.encoder.reindex(this.#database, this.#collection, fields),
+                this.#context.encoder.reindex(this.#project, this.#collection, fields),
             ),
         );
     }
@@ -49,7 +49,7 @@ export class Indexes {
         return result(
             await this.#context.channel.send(
                 "REINDEX",
-                this.#context.encoder.reindexPrimaryKey(this.#database, this.#collection),
+                this.#context.encoder.reindexPrimaryKey(this.#project, this.#collection),
             ),
         );
     }

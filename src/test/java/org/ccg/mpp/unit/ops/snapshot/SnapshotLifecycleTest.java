@@ -57,7 +57,7 @@ public class SnapshotLifecycleTest {
     public void test_start_captures_every_collection_and_release_deletes_its_images() {
         support.save("d0", 0);
         final var response = (StartSnapshotResponse) support
-                .send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}");
+                .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}");
         assertEquals(List.of(SnapshotTestSupport.COLL, SnapshotTestSupport.OTHER), response.getCollectionNames());
         support.save("d0", 1);
         assertTrue(snapshotFolder(response.getSnapshotId()).isDirectory());
@@ -84,7 +84,7 @@ public class SnapshotLifecycleTest {
     @Test
     public void test_named_collections_are_the_only_ones_captured() {
         final var response = (StartSnapshotResponse) support
-                .send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB
+                .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT
                         + "\",\"collectionNames\":[\"" + SnapshotTestSupport.COLL + "\",\"missing\"]}");
 
         assertEquals(List.of(SnapshotTestSupport.COLL), response.getCollectionNames());
@@ -94,31 +94,31 @@ public class SnapshotLifecycleTest {
     }
 
     @Test
-    public void test_a_missing_database_is_not_found() {
-        assertCode(ErrorCode.DATABASE_NOT_FOUND,
-                support.send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"noSuchDb\"}"));
+    public void test_a_missing_project_is_not_found() {
+        assertCode(ErrorCode.PROJECT_NOT_FOUND,
+                support.send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"noSuchProject\"}"));
     }
 
     @Test
-    public void test_a_read_naming_another_database_is_not_found() {
+    public void test_a_read_naming_another_project_is_not_found() {
         final var snapshotId = support.start();
 
         assertCode(ErrorCode.SNAPSHOT_NOT_FOUND,
-                support.send("{\"type\":\"READ_SNAPSHOT\",\"databaseName\":\"elsewhere\","
+                support.send("{\"type\":\"READ_SNAPSHOT\",\"projectName\":\"elsewhere\","
                         + "\"collectionName\":\"coll\",\"snapshotId\":\"" + snapshotId + "\",\"limit\":5}"));
     }
 
     @Test
     public void test_unreadable_collections_are_left_out() throws Exception {
         final var grants = new HashMap<String, PermissionLevel>();
-        grants.put(SnapshotTestSupport.DB + "|" + SnapshotTestSupport.COLL, PermissionLevel.READ);
+        grants.put(SnapshotTestSupport.PROJECT + "|" + SnapshotTestSupport.COLL, PermissionLevel.READ);
         AdminOperationHelper
                 .saveUserEntry(new AdminUserEntry("narrow", "unused", false, Set.of(), new HashMap<>(), grants));
         final var narrow = support.connect();
         IocContainer.get(ClientTracker.class).setAuthenticatedUser(narrow, "narrow");
 
         final var response = (StartSnapshotResponse) support.send(narrow,
-                "{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}");
+                "{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}");
 
         assertEquals(List.of(SnapshotTestSupport.COLL), response.getCollectionNames());
     }
@@ -127,8 +127,8 @@ public class SnapshotLifecycleTest {
     public void test_snapshot_operations_are_refused_inside_a_transaction() {
         support.ok("{\"type\":\"START_TRANSACTION\"}");
         try {
-            assertCode(ErrorCode.OPERATION_NOT_ALLOWED_IN_TRANSACTION,
-                    support.send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}"));
+            assertCode(ErrorCode.OPERATION_NOT_ALLOWED_IN_TRANSACTION, support
+                    .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}"));
         } finally {
             support.ok("{\"type\":\"ROLLBACK_TRANSACTION\"}");
         }
@@ -146,7 +146,7 @@ public class SnapshotLifecycleTest {
         assertCode(ErrorCode.SNAPSHOT_ABORTED, read);
         assertTrue(read.getMessage().contains(ConfigKey.SNAPSHOT_MAX_BYTES.key()), read.getMessage());
         assertFalse(snapshotFolder(snapshotId).exists());
-        final var current = support.cache.getEntriesByIds(SnapshotTestSupport.DB, SnapshotTestSupport.COLL,
+        final var current = support.cache.getEntriesByIds(SnapshotTestSupport.PROJECT, SnapshotTestSupport.COLL,
                 Set.of("big"));
         assertEquals("after", current.getFirst().getData().get("v").asJsonString().getValue());
     }
@@ -155,7 +155,7 @@ public class SnapshotLifecycleTest {
     public void test_dropping_a_held_collection_aborts_the_snapshot() {
         final var snapshotId = support.start();
 
-        support.ok("{\"type\":\"DROP_COLLECTION\",\"databaseName\":\"" + SnapshotTestSupport.DB
+        support.ok("{\"type\":\"DROP_COLLECTION\",\"projectName\":\"" + SnapshotTestSupport.PROJECT
                 + "\",\"collectionName\":\"" + SnapshotTestSupport.OTHER + "\"}");
 
         final var read = support.read(support.client, snapshotId, SnapshotTestSupport.COLL, null, 5);
@@ -168,7 +168,7 @@ public class SnapshotLifecycleTest {
         support.save("d0", 0);
         final var snapshotId = support.start();
 
-        support.ok("{\"type\":\"REINDEX\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\",\"collectionName\":\""
+        support.ok("{\"type\":\"REINDEX\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\",\"collectionName\":\""
                 + SnapshotTestSupport.COLL + "\",\"primaryKey\":true}");
 
         final var read = support.read(support.client, snapshotId, SnapshotTestSupport.COLL, null, 5);
@@ -182,7 +182,7 @@ public class SnapshotLifecycleTest {
         final var first = support.start();
 
         assertCode(ErrorCode.SNAPSHOT_LIMIT_REACHED,
-                support.send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}"));
+                support.send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}"));
         support.release(support.client, first);
         support.start();
     }

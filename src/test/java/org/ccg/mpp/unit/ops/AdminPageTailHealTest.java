@@ -13,7 +13,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.AdminOperationHelper;
@@ -32,7 +32,7 @@ public class AdminPageTailHealTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -42,12 +42,12 @@ public class AdminPageTailHealTest {
     }
 
     private static File adminFolder() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_DB_NAME);
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECT_NAME);
     }
 
-    private static File pageRowFolder(String dbName, String collName) {
+    private static File pageRowFolder(String projectName, String collName) {
         return new File(adminFolder(), Globals.ADMIN_PAGES_FOLDER + Globals.FILE_SEPARATOR
-                + String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, dbName, collName));
+                + String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, projectName, collName));
     }
 
     private static File lastPage(File folder) {
@@ -86,17 +86,17 @@ public class AdminPageTailHealTest {
 
     @Test
     public void test_a_torn_admin_page_tail_is_healed() throws Exception {
-        assertHealed(lastPage(new File(adminFolder(), Globals.ADMIN_DATABASES_COLLECTION_NAME)));
+        assertHealed(lastPage(new File(adminFolder(), Globals.ADMIN_PROJECTS_COLLECTION_NAME)));
     }
 
     @Test
     public void test_a_torn_admin_pages_row_tail_is_healed() throws Exception {
-        assertHealed(lastPage(pageRowFolder(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME)));
+        assertHealed(lastPage(pageRowFolder(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME)));
     }
 
     @Test
     public void test_a_torn_user_page_row_collection_is_healed() throws Exception {
-        final var folder = pageRowFolder(TestGlobals.DB, TestGlobals.COLL);
+        final var folder = pageRowFolder(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(folder.isDirectory() || folder.mkdirs());
         final var page = new File(folder,
                 folder.getName() + Globals.FILE_PAGE_SEPARATOR + "0" + Globals.DB_FILE_EXTENSION);
@@ -107,13 +107,13 @@ public class AdminPageTailHealTest {
 
     @Test
     public void test_an_admin_append_after_the_heal_reads_back_from_disk() throws Exception {
-        tear(lastPage(new File(adminFolder(), Globals.ADMIN_DATABASES_COLLECTION_NAME)));
+        tear(lastPage(new File(adminFolder(), Globals.ADMIN_PROJECTS_COLLECTION_NAME)));
         PageOccupancyReconciler.reconcileAll();
 
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry("after_tear", new ArrayList<>(), List.of()));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry("after_tear", new ArrayList<>(), List.of()));
 
         final var ids = new ArrayList<String>();
-        try (var pages = fs.streamPages(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME)) {
+        try (var pages = fs.streamPages(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME)) {
             pages.forEach(page -> ids.addAll(page.keySet()));
         }
         assertTrue(ids.contains("after_tear"), "the acknowledged entry was glued onto the torn tail: " + ids);

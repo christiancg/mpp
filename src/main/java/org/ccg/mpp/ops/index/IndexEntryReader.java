@@ -39,28 +39,28 @@ public final class IndexEntryReader {
 
     // Entries are read under the field's index read lock and returned as deep copies, so the background
     // index writer can never mutate a set a consumer is still iterating.
-    public static List<FieldIndexEntry<?>> getIndexEntriesForField(String dbName, String collName, String fieldName,
-            ReadObserver observer) throws IOException {
-        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+    public static List<FieldIndexEntry<?>> getIndexEntriesForField(String projectName, String collName,
+            String fieldName, ReadObserver observer) throws IOException {
+        if (cache.hasNoIndex(projectName, collName, fieldName)) {
             return null;
         }
         final List<FieldIndexEntry<?>> combined = new ArrayList<>();
         final Set<String> hashIds = new HashSet<>();
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
             for (var type : IndexKind.scalarIndexClasses()) {
-                if (!addEntriesOfType(combined, dbName, collName, fieldName, type)) {
+                if (!addEntriesOfType(combined, projectName, collName, fieldName, type)) {
                     return null;
                 }
             }
             for (var kind : IndexKind.HASH_KINDS) {
-                final var hashEntries = cache.getHashIndexAndLoadIfNecessary(dbName, collName, fieldName, kind);
+                final var hashEntries = cache.getHashIndexAndLoadIfNecessary(projectName, collName, fieldName, kind);
                 if (hashEntries != null) {
                     for (var entry : hashEntries) {
                         hashIds.addAll(entry.getIds());
@@ -68,33 +68,34 @@ public final class IndexEntryReader {
                 }
             }
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
         if (!hashIds.isEmpty()) {
-            addHashIndexEntries(combined, dbName, collName, fieldName, hashIds, observer);
+            addHashIndexEntries(combined, projectName, collName, fieldName, hashIds, observer);
         }
-        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName);
-        if (!pendingIds.isEmpty() && !reconcilePending(combined, dbName, collName, fieldName, pendingIds, observer)) {
+        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName);
+        if (!pendingIds.isEmpty()
+                && !reconcilePending(combined, projectName, collName, fieldName, pendingIds, observer)) {
             return null;
         }
-        if (combined.isEmpty() || doesNotCoverEveryDocument(combined, dbName, collName)) {
+        if (combined.isEmpty() || doesNotCoverEveryDocument(combined, projectName, collName)) {
             return null;
         }
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
         return combined;
     }
 
-    public static List<String> sortedIdsForField(String dbName, String collName, String fieldName,
+    public static List<String> sortedIdsForField(String projectName, String collName, String fieldName,
             Comparator<FieldIndexEntry<?>> order, long maxIds, ReadObserver observer) throws IOException {
-        if (cache.hasNoIndex(dbName, collName, fieldName)
-                || !PendingWriteReconciler.pendingIds(dbName, collName).isEmpty()) {
+        if (cache.hasNoIndex(projectName, collName, fieldName)
+                || !PendingWriteReconciler.pendingIds(projectName, collName).isEmpty()) {
             return null;
         }
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
@@ -102,39 +103,39 @@ public final class IndexEntryReader {
         final List<String> ordered;
         try {
             for (var kind : IndexKind.HASH_KINDS) {
-                if (cache.getHashIndexAndLoadIfNecessary(dbName, collName, fieldName, kind) != null) {
+                if (cache.getHashIndexAndLoadIfNecessary(projectName, collName, fieldName, kind) != null) {
                     return null;
                 }
             }
             final var typeLists = new ArrayList<List<FieldIndexEntry<?>>>();
             var covered = 0L;
             for (var type : IndexKind.scalarIndexClasses()) {
-                final var cached = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, type);
+                final var cached = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, type);
                 if (cached != null && IndexKind.keysCandidatesOnly(type)) {
                     return null;
                 }
                 if (cached != null && !cached.isEmpty()) {
                     final var entries = cast(cached);
                     typeLists.add(entries);
-                    covered += idCounts.count(dbName, collName, Cache.memoizedIndexIdentifier(fieldName, type),
+                    covered += idCounts.count(projectName, collName, Cache.memoizedIndexIdentifier(fieldName, type),
                             () -> idCount(entries));
                 }
             }
-            if (typeLists.isEmpty() || coversFewer(covered, dbName, collName)) {
+            if (typeLists.isEmpty() || coversFewer(covered, projectName, collName)) {
                 return null;
             }
             final var walked = SortedIdWalk.idsInOrder(typeLists, order, maxIds);
             ordered = walked != null ? walked : copiedAndSorted(typeLists, order, maxIds);
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
-        if (!PendingWriteReconciler.pendingIds(dbName, collName).isEmpty()) {
+        if (!PendingWriteReconciler.pendingIds(projectName, collName).isEmpty()) {
             return null;
         }
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
         return ordered;
     }
 
@@ -151,12 +152,13 @@ public final class IndexEntryReader {
         return idsInOrder(entries, order, maxIds);
     }
 
-    private static boolean doesNotCoverEveryDocument(List<FieldIndexEntry<?>> entries, String dbName, String collName) {
-        return coversFewer(idCount(entries), dbName, collName);
+    private static boolean doesNotCoverEveryDocument(List<FieldIndexEntry<?>> entries, String projectName,
+            String collName) {
+        return coversFewer(idCount(entries), projectName, collName);
     }
 
-    private static boolean coversFewer(long covered, String dbName, String collName) {
-        final var documents = cache.pkCountForCoverage(dbName, collName);
+    private static boolean coversFewer(long covered, String projectName, String collName) {
+        final var documents = cache.pkCountForCoverage(projectName, collName);
         return documents < 0 || covered < documents;
     }
 
@@ -173,27 +175,27 @@ public final class IndexEntryReader {
         return count;
     }
 
-    public static List<Object> distinctValuesForField(String dbName, String collName, String fieldName,
+    public static List<Object> distinctValuesForField(String projectName, String collName, String fieldName,
             ReadObserver observer) throws IOException {
-        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+        if (cache.hasNoIndex(projectName, collName, fieldName)) {
             return null;
         }
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         if (!pendingBefore.isEmpty()) {
-            return valuesOf(getIndexEntriesForField(dbName, collName, fieldName, observer));
+            return valuesOf(getIndexEntriesForField(projectName, collName, fieldName, observer));
         }
         final var values = new ArrayList<>();
         final var hashIds = new HashSet<String>();
         var covered = 0L;
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
             for (var type : IndexKind.scalarIndexClasses()) {
-                final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, type);
+                final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, type);
                 if (entries != null && IndexKind.keysCandidatesOnly(type)) {
                     return null;
                 }
@@ -203,30 +205,30 @@ public final class IndexEntryReader {
                 }
             }
             for (var kind : IndexKind.HASH_KINDS) {
-                final var hashEntries = cache.getHashIndexAndLoadIfNecessary(dbName, collName, fieldName, kind);
+                final var hashEntries = cache.getHashIndexAndLoadIfNecessary(projectName, collName, fieldName, kind);
                 if (hashEntries != null) {
                     hashEntries.forEach(entry -> hashIds.addAll(entry.getIds()));
                 }
             }
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
         final var hashed = new ArrayList<FieldIndexEntry<?>>();
         if (!hashIds.isEmpty()) {
-            addHashIndexEntries(hashed, dbName, collName, fieldName, hashIds, observer);
+            addHashIndexEntries(hashed, projectName, collName, fieldName, hashIds, observer);
         }
-        if (!PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName).isEmpty()) {
-            return valuesOf(getIndexEntriesForField(dbName, collName, fieldName, observer));
+        if (!PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName).isEmpty()) {
+            return valuesOf(getIndexEntriesForField(projectName, collName, fieldName, observer));
         }
         covered += idCount(hashed);
         hashed.forEach(entry -> values.add(entry.getValue()));
-        if (values.isEmpty() || coversFewer(covered, dbName, collName)) {
+        if (values.isEmpty() || coversFewer(covered, projectName, collName)) {
             return null;
         }
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
         return values;
     }
 
@@ -268,13 +270,14 @@ public final class IndexEntryReader {
         return ids;
     }
 
-    private static void recordAnalyzeIndexUse(String dbName, String collName, String fieldName, ReadObserver observer) {
-        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+    private static void recordAnalyzeIndexUse(String projectName, String collName, String fieldName,
+            ReadObserver observer) {
+        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
     }
 
-    private static void addHashIndexEntries(List<FieldIndexEntry<?>> combined, String dbName, String collName,
+    private static void addHashIndexEntries(List<FieldIndexEntry<?>> combined, String projectName, String collName,
             String fieldName, Set<String> hashIds, ReadObserver observer) throws IOException {
-        final var docs = cache.getEntriesByIds(dbName, collName, hashIds);
+        final var docs = cache.getEntriesByIds(projectName, collName, hashIds);
         observer.scanned(docs.size());
         final var byValue = new HashMap<SaltedKey, FieldIndexEntry<JsonBaseElement>>();
         final var path = FieldPath.of(fieldName);
@@ -288,16 +291,16 @@ public final class IndexEntryReader {
                 continue;
             }
             byValue.computeIfAbsent(new SaltedKey(value), key -> {
-                final var entry = new FieldIndexEntry<>(dbName, collName, key.element(), new HashSet<>());
+                final var entry = new FieldIndexEntry<>(projectName, collName, key.element(), new HashSet<>());
                 combined.add(entry);
                 return entry;
             }).getIds().add(doc.get_id());
         }
     }
 
-    private static boolean addEntriesOfType(List<FieldIndexEntry<?>> combined, String dbName, String collName,
+    private static boolean addEntriesOfType(List<FieldIndexEntry<?>> combined, String projectName, String collName,
             String fieldName, Class<?> type) throws IOException {
-        final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, type);
+        final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, type);
         if (entries == null) {
             return true;
         }
@@ -305,7 +308,7 @@ public final class IndexEntryReader {
             return false;
         }
         for (var entry : entries) {
-            combined.add(new FieldIndexEntry<>(entry.getDatabaseName(), entry.getCollectionName(), entry.getValue(),
+            combined.add(new FieldIndexEntry<>(entry.getProjectName(), entry.getCollectionName(), entry.getValue(),
                     new HashSet<>(entry.getIds())));
         }
         return true;
@@ -313,7 +316,7 @@ public final class IndexEntryReader {
 
     // Pending ids are dropped from every entry and re-added under the document's CURRENT value; a
     // non-scalar pending value returns false so the caller falls back to a full scan.
-    private static boolean reconcilePending(List<FieldIndexEntry<?>> combined, String dbName, String collName,
+    private static boolean reconcilePending(List<FieldIndexEntry<?>> combined, String projectName, String collName,
             String fieldName, Set<String> pendingIds, ReadObserver observer) throws IOException {
         for (var entry : combined) {
             entry.getIds().removeAll(pendingIds);
@@ -323,7 +326,7 @@ public final class IndexEntryReader {
             byValue.put(new SaltedKey(IndexValueCodec.indexValueToElement(entry.getValue())), entry);
         }
         final var path = FieldPath.of(fieldName);
-        for (var dbEntry : PendingWriteReconciler.pendingDocuments(dbName, collName, pendingIds, observer)) {
+        for (var dbEntry : PendingWriteReconciler.pendingDocuments(projectName, collName, pendingIds, observer)) {
             final var data = dbEntry.getData();
             final var element = path.resolve(data);
             if (element == null) {
@@ -337,7 +340,7 @@ public final class IndexEntryReader {
                 if (nullEntry != null) {
                     nullEntry.getIds().add(dbEntry.get_id());
                 } else {
-                    final var newEntry = new FieldIndexEntry<>(dbName, collName, JsonNull.INSTANCE,
+                    final var newEntry = new FieldIndexEntry<>(projectName, collName, JsonNull.INSTANCE,
                             new HashSet<>(Set.of(dbEntry.get_id())));
                     combined.add(newEntry);
                     byValue.put(new SaltedKey(JsonNull.INSTANCE), newEntry);
@@ -348,7 +351,7 @@ public final class IndexEntryReader {
             if (existing != null) {
                 existing.getIds().add(dbEntry.get_id());
             } else {
-                final var newEntry = scalarEntryFor(dbName, collName, element.asJsonPrimitive(), dbEntry.get_id());
+                final var newEntry = scalarEntryFor(projectName, collName, element.asJsonPrimitive(), dbEntry.get_id());
                 combined.add(newEntry);
                 byValue.put(new SaltedKey(element), newEntry);
             }
@@ -357,22 +360,24 @@ public final class IndexEntryReader {
         return true;
     }
 
-    private static FieldIndexEntry<?> scalarEntryFor(String dbName, String collName, JsonPrimitive<?> primitive,
+    private static FieldIndexEntry<?> scalarEntryFor(String projectName, String collName, JsonPrimitive<?> primitive,
             String id) {
         final var ids = new HashSet<>(Set.of(id));
         return switch (primitive) {
-            case JsonNumber jsonNumber -> new FieldIndexEntry<>(dbName, collName, jsonNumber.doubleValue() + 0.0, ids);
-            case JsonBoolean jsonBoolean -> new FieldIndexEntry<>(dbName, collName, jsonBoolean.getValue(), ids);
+            case JsonNumber jsonNumber ->
+                new FieldIndexEntry<>(projectName, collName, jsonNumber.doubleValue() + 0.0, ids);
+            case JsonBoolean jsonBoolean -> new FieldIndexEntry<>(projectName, collName, jsonBoolean.getValue(), ids);
             case JsonString jsonString -> jsonString.isJsonCustom()
-                    ? new FieldIndexEntry<>(dbName, collName, CustomTypeFactory.getCustomTypeInstance(jsonString), ids)
-                    : new FieldIndexEntry<>(dbName, collName, jsonString.getValue(), ids);
+                    ? new FieldIndexEntry<>(projectName, collName, CustomTypeFactory.getCustomTypeInstance(jsonString),
+                            ids)
+                    : new FieldIndexEntry<>(projectName, collName, jsonString.getValue(), ids);
             default -> throw new IllegalStateException("Unexpected value: " + primitive);
         };
     }
 
-    public static Set<String> getMatchingIdsForJoin(String dbName, String collName, String fieldName,
+    public static Set<String> getMatchingIdsForJoin(String projectName, String collName, String fieldName,
             Set<JsonBaseElement> localValues, ReadObserver observer) throws IOException {
-        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+        if (cache.hasNoIndex(projectName, collName, fieldName)) {
             return null;
         }
         for (var localValue : localValues) {
@@ -380,8 +385,8 @@ public final class IndexEntryReader {
                 return null;
             }
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         final var lookupValues = new ArrayList<>(localValues.size());
         final var foldedStringKeys = new HashSet<String>();
         for (var localValue : localValues) {
@@ -391,16 +396,16 @@ public final class IndexEntryReader {
             }
             lookupValues.add(IndexValueCodec.elementToLookupValue(localValue));
         }
-        final var matchingIds = cache.getIdsEqualToAny(dbName, collName, fieldName, lookupValues);
+        final var matchingIds = cache.getIdsEqualToAny(projectName, collName, fieldName, lookupValues);
         if (matchingIds == null) {
             return null;
         }
-        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName);
+        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName);
         if (pendingIds.isEmpty()) {
             return matchingIds;
         }
         final var compiled = FieldPath.of(fieldName);
-        return PendingWriteReconciler.correctIds(matchingIds, dbName, collName, pendingIds, fieldName,
+        return PendingWriteReconciler.correctIds(matchingIds, projectName, collName, pendingIds, fieldName,
                 (data, field) -> {
                     final var resolved = compiled.reusedFor(field).resolve(data);
                     return resolved != null && localValues.contains(resolved);

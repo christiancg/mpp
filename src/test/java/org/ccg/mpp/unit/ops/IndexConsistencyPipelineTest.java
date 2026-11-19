@@ -44,7 +44,7 @@ public class IndexConsistencyPipelineTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         cache = IocContainer.get(Cache.class);
         pending = IocContainer.get(PendingIndexWrites.class);
@@ -59,31 +59,31 @@ public class IndexConsistencyPipelineTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, coll, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, coll, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, coll, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, coll, entry);
     }
 
     private void enableIndex(String coll, String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, coll, field);
-        cache.getAdminCollectionEntry(TestGlobals.DB, coll).setIndexes(Set.of(field));
+        IndexHelper.createIndex(TestGlobals.PROJECT, coll, field);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, coll).setIndexes(Set.of(field));
     }
 
     // Simulates a committed-but-not-yet-indexed write: in cache + marked pending, but not in the index
     // (because it is added after enableIndex).
     private void addPendingDoc(String coll, String id, String field, JsonBaseElement value) throws IOException {
         addDoc(coll, id, field, value);
-        pending.mark(TestGlobals.DB, coll, id);
+        pending.mark(TestGlobals.PROJECT, coll, id);
     }
 
     private Set<String> filterIds(JsonBaseElement value) throws IOException {
         final var operator = new FieldOperator(FieldOperatorType.EQUALS, "status", value);
-        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL)
+        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).collect(Collectors.toSet());
     }
 
     private long countWith(FilterAggregationStep filter) throws IOException {
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(filter, new CountAggregationStep()));
         final var result = AggregationOperationHelper.processAggregation(req);
         return result.getFirst().get("count").asJsonNumber().getValue().longValue();
@@ -126,14 +126,14 @@ public class IndexConsistencyPipelineTest {
     public void test_whole_collection_count_uses_pk_index() throws IOException {
         final var processor = new OperationProcessor();
         for (var id : List.of("1", "2", "3")) {
-            final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             final var obj = new JsonObject();
             obj.add(Globals.PK_FIELD, new JsonString(id));
             obj.addProperty("status", "active");
             save.setObject(obj);
             processor.processMessage(save);
         }
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new CountAggregationStep()));
         final var result = AggregationOperationHelper.processAggregation(req);
         assertEquals(3L, result.getFirst().get("count").asJsonNumber().getValue().longValue());
@@ -146,7 +146,7 @@ public class IndexConsistencyPipelineTest {
         enableIndex(TestGlobals.COLL, "color");
         addPendingDoc(TestGlobals.COLL, "3", "color", new JsonString("green"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var values = AggregationOperationHelper.processAggregation(req).stream()
                 .map(o -> o.get("color").asJsonString().getValue()).collect(Collectors.toSet());
@@ -159,7 +159,7 @@ public class IndexConsistencyPipelineTest {
         enableIndex(TestGlobals.COLL, "color");
         addPendingDoc(TestGlobals.COLL, "1", "color", new JsonString("blue"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var values = AggregationOperationHelper.processAggregation(req).stream()
                 .map(o -> o.get("color").asJsonString().getValue()).collect(Collectors.toSet());
@@ -173,7 +173,7 @@ public class IndexConsistencyPipelineTest {
         addPendingDoc(TestGlobals.COLL, "2", "type", new JsonString("A"));
         addPendingDoc(TestGlobals.COLL, "3", "type", new JsonString("B"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("type")));
         final var groups = AggregationOperationHelper.processAggregation(req);
         final var sizesByType = groups.stream().collect(Collectors.toMap(o -> o.get("type").asJsonString().getValue(),
@@ -190,7 +190,7 @@ public class IndexConsistencyPipelineTest {
         objValue.addProperty("nested", 1);
         addPendingDoc(TestGlobals.COLL, "2", "type", objValue);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("type")));
         final var groups = AggregationOperationHelper.processAggregation(req);
         assertEquals(2, groups.size());
@@ -203,7 +203,7 @@ public class IndexConsistencyPipelineTest {
         addPendingDoc(TestGlobals.COLL, "low", "num", new JsonNumber(1));
         addPendingDoc(TestGlobals.COLL, "high", "num", new JsonNumber(3));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new SortAggregationStep("num", true)));
         final var ordered = AggregationOperationHelper.processAggregation(req).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
@@ -215,15 +215,15 @@ public class IndexConsistencyPipelineTest {
         final var main = new JsonObject();
         main.add(Globals.PK_FIELD, new JsonString("m1"));
         main.addProperty("ref", 42);
-        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, main);
         mainEntry.set_id("m1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
 
         addDoc(TestGlobals.JOIN_COLL, "j0", "refKey", new JsonNumber(7));
         enableIndex(TestGlobals.JOIN_COLL, "refKey");
         addPendingDoc(TestGlobals.JOIN_COLL, "j1", "refKey", new JsonNumber(42));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
         final var result = AggregationOperationHelper.processAggregation(req);
         assertEquals(1, result.size());
@@ -239,14 +239,14 @@ public class IndexConsistencyPipelineTest {
         enableIndex(TestGlobals.JOIN_COLL, "refKey");
         addPendingDoc(TestGlobals.JOIN_COLL, "j1", "refKey", new JsonNumber(99));
 
-        final var matched = IndexHelper.getMatchingIdsForJoin(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey",
+        final var matched = IndexHelper.getMatchingIdsForJoin(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "refKey",
                 Set.of(new JsonNumber(7)), ReadObserver.NONE);
         assertNotNull(matched);
         assertFalse(matched.contains("j1"), "a pending doc whose value moved off the join key must not match");
     }
 
     private void saveViaProcessor(OperationProcessor processor, String id, String value) {
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty("status", value);
@@ -267,17 +267,17 @@ public class IndexConsistencyPipelineTest {
         saveViaProcessor(processor, "stay", "stay");
         enableIndex(TestGlobals.COLL, "status");
         // Simulate the saves' background indexing having completed, to isolate the delete's effect.
-        pending.clear(TestGlobals.DB, TestGlobals.COLL, "gone", 0L);
-        pending.clear(TestGlobals.DB, TestGlobals.COLL, "stay", 0L);
+        pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "gone", 0L);
+        pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "stay", 0L);
 
-        final var del = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var del = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         del.set_id("gone");
         processor.processMessage(del);
 
-        assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("gone"));
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("gone"));
         assertTrue(filterIds(new JsonString("gone")).isEmpty());
 
-        final var countReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var countReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         countReq.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("gone"))),
@@ -285,7 +285,7 @@ public class IndexConsistencyPipelineTest {
         assertEquals(0L, AggregationOperationHelper.processAggregation(countReq).getFirst().get("count").asJsonNumber()
                 .getValue().longValue());
 
-        final var distinctReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var distinctReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         distinctReq.setAggregationSteps(List.of(new DistinctAggregationStep("status")));
         final var values = AggregationOperationHelper.processAggregation(distinctReq).stream()
                 .map(o -> o.get("status").asJsonString().getValue()).collect(Collectors.toSet());

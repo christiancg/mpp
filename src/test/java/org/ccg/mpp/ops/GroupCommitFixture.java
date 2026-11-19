@@ -41,7 +41,7 @@ final class GroupCommitFixture {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("v", value);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         return request;
     }
@@ -51,7 +51,7 @@ final class GroupCommitFixture {
     }
 
     OperationResponse delete(String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request);
     }
@@ -61,7 +61,7 @@ final class GroupCommitFixture {
     }
 
     String valueOf(String id) {
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id(id);
         final var response = processor.processMessage(find);
         if (!(response instanceof FindByIdResponse found)) {
@@ -80,7 +80,7 @@ final class GroupCommitFixture {
 
     static void awaitQueued(int expected) {
         final var deadline = System.currentTimeMillis() + WAIT_MS;
-        while (GroupCommit.queuedFor(TestGlobals.DB, TestGlobals.COLL) < expected) {
+        while (GroupCommit.queuedFor(TestGlobals.PROJECT, TestGlobals.COLL) < expected) {
             assertTrue(System.currentTimeMillis() < deadline, "the writers never queued");
             LockSupport.parkNanos(QUEUE_POLL_NANOS);
         }
@@ -89,7 +89,7 @@ final class GroupCommitFixture {
     List<OperationResponse> runQueued(List<Supplier<OperationResponse>> writes) throws Exception {
         final var responses = new ConcurrentHashMap<Integer, OperationResponse>();
         final var threads = new ArrayList<Thread>();
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             for (var index = 0; index < writes.size(); index++) {
                 final var slot = index;
@@ -99,7 +99,7 @@ final class GroupCommitFixture {
             }
             recorder.clear();
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         for (final var thread : threads) {
             thread.join(WAIT_MS);

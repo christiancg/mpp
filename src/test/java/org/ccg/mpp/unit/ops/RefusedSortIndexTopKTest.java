@@ -39,7 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class RefusedSortIndexTopKTest {
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String COLL = TestGlobals.COLL;
     private static final int SMALL_INDEX_DOCUMENTS = 2000;
     private static final int LARGE_INDEX_DOCUMENTS = 20000;
@@ -55,7 +55,7 @@ public class RefusedSortIndexTopKTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
     }
 
@@ -66,12 +66,12 @@ public class RefusedSortIndexTopKTest {
             data.addProperty(Globals.PK_FIELD, String.format(idFormat, i));
             data.addProperty("cat", "c" + i % 10);
             data.addProperty("score", (i * 7919) % documents);
-            entries.add(DbEntry.fromJsonObject(DB, COLL, data));
+            entries.add(DbEntry.fromJsonObject(PROJECT, COLL, data));
         }
-        fs.bulkInsertIntoCollection(DB, COLL, entries);
-        IndexHelper.createIndex(DB, COLL, "cat");
-        IndexHelper.createIndex(DB, COLL, "score");
-        cache.getAdminCollectionEntry(DB, COLL).setIndexes(Set.of("cat", "score"));
+        fs.bulkInsertIntoCollection(PROJECT, COLL, entries);
+        IndexHelper.createIndex(PROJECT, COLL, "cat");
+        IndexHelper.createIndex(PROJECT, COLL, "score");
+        cache.getAdminCollectionEntry(PROJECT, COLL).setIndexes(Set.of("cat", "score"));
     }
 
     @AfterEach
@@ -83,7 +83,7 @@ public class RefusedSortIndexTopKTest {
     }
 
     private List<String> ids(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(DB, COLL);
+        final var request = new AggregateRequest(PROJECT, COLL);
         request.setAggregationSteps(List.of(steps));
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request);
         return assertInstanceOf(AggregateResponse.class, response, response.getMessage()).getResults().stream()
@@ -92,7 +92,7 @@ public class RefusedSortIndexTopKTest {
 
     private FileSystem refuseEveryIndexAndSpy() throws Exception {
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", 1024L);
-        cache.evictCollection(DB, COLL);
+        cache.evictCollection(PROJECT, COLL);
         final var spied = spy(fs);
         TestUtils.setPrivateField(userCache, "fs", spied);
         return spied;
@@ -116,25 +116,25 @@ public class RefusedSortIndexTopKTest {
     void aSmallSortIndexTheCacheCannotHoldIsStillWalked() throws Exception {
         load(SMALL_INDEX_DOCUMENTS, SHORT_ID);
         final var scanned = topK(true);
-        assertTrue(fs.indexFileBytes(DB, COLL, "score", "Number") <= Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES);
+        assertTrue(fs.indexFileBytes(PROJECT, COLL, "score", "Number") <= Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES);
         final var spied = refuseEveryIndexAndSpy();
 
         assertEquals(scanned, topK(false));
         assertEquals(20, scanned.size());
-        verify(spied, atLeastOnce()).readWholeFieldIndexFiles(eq(DB), eq(COLL), eq("score"), eq(Number.class));
+        verify(spied, atLeastOnce()).readWholeFieldIndexFiles(eq(PROJECT), eq(COLL), eq("score"), eq(Number.class));
     }
 
     @Test
     void aLargeSortIndexTheCacheCannotHoldIsNeverWalked() throws Exception {
         load(LARGE_INDEX_DOCUMENTS, LONG_ID);
         final var scanned = topK(true);
-        assertTrue(fs.indexFileBytes(DB, COLL, "score", "Number") > Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES);
+        assertTrue(fs.indexFileBytes(PROJECT, COLL, "score", "Number") > Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES);
         final var spied = refuseEveryIndexAndSpy();
 
         for (var run = 0; run < 3; run++) {
             assertEquals(scanned, topK(false));
         }
         assertEquals(20, scanned.size());
-        verify(spied, never()).readWholeFieldIndexFiles(eq(DB), eq(COLL), eq("score"), eq(Number.class));
+        verify(spied, never()).readWholeFieldIndexFiles(eq(PROJECT), eq(COLL), eq("score"), eq(Number.class));
     }
 }

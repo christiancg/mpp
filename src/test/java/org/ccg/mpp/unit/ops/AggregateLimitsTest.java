@@ -34,13 +34,13 @@ public class AggregateLimitsTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var objects = new StringBuilder(SAVED_DOCUMENTS * 24);
         for (var i = 0; i < SAVED_DOCUMENTS; i++) {
             objects.append(i == 0 ? "" : ",").append("{\"_id\":\"d").append(i).append("\",\"n\":").append(i)
                     .append('}');
         }
-        assertEquals(OperationStatus.OK, run("{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        assertEquals(OperationStatus.OK, run("{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"objects\":[" + objects + "]}").getStatus());
     }
 
@@ -59,7 +59,7 @@ public class AggregateLimitsTest {
     }
 
     private static String aggregate(String steps) {
-        return "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[" + steps + "]}";
     }
 
@@ -189,7 +189,7 @@ public class AggregateLimitsTest {
             objects.append(i == 0 ? "" : ",").append("{\"_id\":\"r").append(i).append("\",\"s\":\"").repeat("p", 1_000)
                     .append("\"}");
         }
-        assertEquals(OperationStatus.OK, run("{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        assertEquals(OperationStatus.OK, run("{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"objects\":[" + objects + "]}").getStatus());
         final var rejectEveryRow = aggregate(
                 "{\"type\":\"FILTER\",\"operator\":{\"fieldOperatorType\":\"CONTAINS\",\"field\":\"s\",\"value\":\"zz\"}}");

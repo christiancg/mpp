@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.List;
 import java.util.function.Consumer;
 import org.ccg.mpp.ejson.elements.JsonObject;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.internal.Interpreter;
 import org.ccg.mpp.simplejs.internal.Lexer;
@@ -30,7 +30,7 @@ public class SuppressedErrorRealmTest {
         }
 
         @Override
-        public DatabaseAccess database() {
+        public ProjectAccess project() {
             return null;
         }
 

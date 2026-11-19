@@ -53,8 +53,8 @@ public class IndexedFilterLimitTest {
     @BeforeAll
     static void seed() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var doc = new JsonObject();
@@ -63,14 +63,14 @@ public class IndexedFilterLimitTest {
             doc.add("mixed", i % 2 == 0 ? new JsonNumber(i % 10) : new JsonString("s" + i % 10));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
         for (final var field : List.of("num", "mixed")) {
             assertEquals(OperationStatus.OK,
-                    processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, field)).getStatus());
+                    processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, field)).getStatus());
         }
-        pending.clearCollection(TestGlobals.DB, COLL);
+        pending.clearCollection(TestGlobals.PROJECT, COLL);
     }
 
     @AfterAll
@@ -92,7 +92,7 @@ public class IndexedFilterLimitTest {
     }
 
     private static AggregateAnalyzeResponse analyzed(List<BaseAggregationStep> steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(steps);
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -116,7 +116,7 @@ public class IndexedFilterLimitTest {
     }
 
     private static long numAccesses() {
-        final var counter = usage.getCounter(AccessKind.FIELD_INDEX, TestGlobals.DB, COLL, "num");
+        final var counter = usage.getCounter(AccessKind.FIELD_INDEX, TestGlobals.PROJECT, COLL, "num");
         return counter == null ? 0 : counter.getAccessCount();
     }
 
@@ -138,15 +138,15 @@ public class IndexedFilterLimitTest {
     }
 
     private static void moveFirstIdBetweenEntries(double from, double to) throws Exception {
-        locks.lockRead(TestGlobals.DB, COLL);
+        locks.lockRead(TestGlobals.PROJECT, COLL);
         try {
-            final var entries = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, COLL, "num", Number.class);
+            final var entries = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, COLL, "num", Number.class);
             entries.stream().filter(entry -> entry.getValue().doubleValue() == from).findFirst().orElseThrow().getIds()
                     .remove(FIRST_ID);
             entries.stream().filter(entry -> entry.getValue().doubleValue() == to).findFirst().orElseThrow().getIds()
                     .add(FIRST_ID);
         } finally {
-            locks.releaseRead(TestGlobals.DB, COLL);
+            locks.releaseRead(TestGlobals.PROJECT, COLL);
         }
     }
 
@@ -170,15 +170,15 @@ public class IndexedFilterLimitTest {
     public void test_a_broad_not_in_declines_to_a_scan_source_that_keeps_the_later_steps() throws Exception {
         final var steps = List.of(filter(FieldOperatorType.NOT_IN, "num", numbers(3)), new SkipAggregationStep(4),
                 new LimitAggregationStep(LIMIT));
-        locks.lockRead(TestGlobals.DB, COLL);
+        locks.lockRead(TestGlobals.PROJECT, COLL);
         final IndexedSource.Fast fast;
         final List<JsonObject> rows;
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, new AnalyzeContext())) {
-            fast = IndexedFilterLimit.tryLazy(steps, TestGlobals.DB, COLL, context);
+            fast = IndexedFilterLimit.tryLazy(steps, TestGlobals.PROJECT, COLL, context);
             assertNotNull(fast);
             rows = fast.stream().toList();
         } finally {
-            locks.releaseRead(TestGlobals.DB, COLL);
+            locks.releaseRead(TestGlobals.PROJECT, COLL);
         }
 
         assertEquals(1, fast.nextStepIndex(), "the SKIP is left to its own step");

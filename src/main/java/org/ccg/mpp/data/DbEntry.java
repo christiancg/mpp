@@ -11,9 +11,9 @@ public class DbEntry extends JsonDocumentEntry {
     private long page;
     private long version;
 
-    public static DbEntry fromJsonObject(String databaseName, String collectionName, JsonObject jsonObject) {
+    public static DbEntry fromJsonObject(String projectName, String collectionName, JsonObject jsonObject) {
         final var entry = new DbEntry();
-        entry.setDatabaseName(databaseName);
+        entry.setProjectName(projectName);
         entry.setCollectionName(collectionName);
         entry.setData(jsonObject);
         entry.set_id(
@@ -21,9 +21,9 @@ public class DbEntry extends JsonDocumentEntry {
         return entry;
     }
 
-    public static DbEntry fromString(String databaseName, String collectionName, String wholeEntryFromFile) {
+    public static DbEntry fromString(String projectName, String collectionName, String wholeEntryFromFile) {
         final var entry = new DbEntry();
-        entry.setDatabaseName(databaseName);
+        entry.setProjectName(projectName);
         entry.setCollectionName(collectionName);
         final var data = eJson.fromJson(wholeEntryFromFile, JsonObject.class);
         entry.setData(data);
@@ -31,9 +31,9 @@ public class DbEntry extends JsonDocumentEntry {
         return entry;
     }
 
-    public static DbEntry fromBytes(String databaseName, String collectionName, byte[] utf8, int start, int end) {
+    public static DbEntry fromBytes(String projectName, String collectionName, byte[] utf8, int start, int end) {
         final var entry = new DbEntry();
-        entry.setDatabaseName(databaseName);
+        entry.setProjectName(projectName);
         entry.setCollectionName(collectionName);
         final var data = eJson.fromJson(utf8, start, end, JsonObject.class);
         entry.setData(data);
@@ -92,18 +92,18 @@ public class DbEntry extends JsonDocumentEntry {
         if (!(o instanceof DbEntry that))
             return false;
         return page == that.page && previousByteSize == that.previousByteSize && Objects.equals(_id, that._id)
-                && Objects.equals(databaseName, that.databaseName)
-                && Objects.equals(collectionName, that.collectionName) && Objects.equals(data, that.data);
+                && Objects.equals(projectName, that.projectName) && Objects.equals(collectionName, that.collectionName)
+                && Objects.equals(data, that.data);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(_id, databaseName, collectionName, data, page, previousByteSize);
+        return Objects.hash(_id, projectName, collectionName, data, page, previousByteSize);
     }
 
     @Override
     public String toString() {
-        return "DbEntry(id=" + _id + ", databaseName=" + databaseName + ", collectionName=" + collectionName + ", data="
+        return "DbEntry(id=" + _id + ", projectName=" + projectName + ", collectionName=" + collectionName + ", data="
                 + data + ", page=" + page + ", previousByteSize=" + previousByteSize + ")";
     }
 }

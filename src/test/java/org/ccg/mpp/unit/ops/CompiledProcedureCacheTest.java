@@ -111,11 +111,11 @@ public class CompiledProcedureCacheTest {
     }
 
     @Test
-    public void test_invalidate_database_drops_only_that_database() {
+    public void test_invalidate_project_drops_only_that_project() {
         final var cache = new CompiledProcedureCache();
         final var kept = cache.get("otherdb", "p", 1L, "return 1;");
         final var dropped = cache.get("db", "p", 1L, "return 1;");
-        cache.invalidateDatabase("db");
+        cache.invalidateProject("db");
         assertEquals(1, cache.size());
         assertSame(kept, cache.get("otherdb", "p", 1L, "return 1;"));
         assertNotSame(dropped, cache.get("db", "p", 1L, "return 1;"));
@@ -143,7 +143,7 @@ public class CompiledProcedureCacheTest {
             assertEquals(2, cache.size());
             assertEquals(25 * 40 * 2, cache.weightedBytes());
             assertNotSame(first, cache.get("db", "a", 1L, source));
-            cache.invalidateDatabase("db");
+            cache.invalidateProject("db");
             assertEquals(0, cache.weightedBytes());
         } finally {
             TestUtils.setPrivateField(configuration, "procedureCacheMaxBytes",

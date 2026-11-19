@@ -14,11 +14,11 @@ import org.ccg.mpp.test.TestGlobals;
 import org.junit.jupiter.api.Test;
 
 public class AdminStrayCopyTest extends FileSystemTestBase {
-    private static final String ID = "strayDb";
+    private static final String ID = "strayProject";
 
     private static File firstPage() {
-        final var collection = Globals.ADMIN_DATABASES_COLLECTION_NAME;
-        return new File(TestGlobals.PATH + File.separator + Globals.ADMIN_DB_NAME + File.separator + collection,
+        final var collection = Globals.ADMIN_PROJECTS_COLLECTION_NAME;
+        return new File(TestGlobals.PATH + File.separator + Globals.ADMIN_PROJECT_NAME + File.separator + collection,
                 collection + Globals.FILE_PAGE_SEPARATOR + 0 + Globals.DB_FILE_EXTENSION);
     }
 
@@ -26,7 +26,8 @@ public class AdminStrayCopyTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty(Globals.PK_FIELD, ID);
         data.addProperty("v", "acknowledged");
-        final var entry = DbEntry.fromJsonObject(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME, data);
+        final var entry = DbEntry.fromJsonObject(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME,
+                data);
         entry.set_id(ID);
         entry.setPage(0);
         fs.insertIntoCollection(entry);

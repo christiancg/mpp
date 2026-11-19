@@ -49,7 +49,7 @@ ClientSettings settings = ClientSettings.builder()
         .build();
 
 try (MppClient client = MppClient.connect(settings)) {
-    Database shop = client.database("shop");
+    Project shop = client.project("shop");
     shop.create();
     Collection<Document> orders = shop.collection("orders");
     orders.create();
@@ -77,7 +77,7 @@ retry policy and the rest are in the API reference.
 
 ## Typed collections
 
-`Database.collection(name, Class)` maps documents to records or POJOs through Jackson. A property named `id` is stored
+`Project.collection(name, Class)` maps documents to records or POJOs through Jackson. A property named `id` is stored
 as `_id`.
 
 ```java
@@ -186,10 +186,10 @@ above and add the starter:
 mpp.hosts=db1.example.com:8989,db2.example.com:8989
 mpp.username=app
 mpp.password=${MPP_PASSWORD}
-mpp.database=shop
+mpp.project=shop
 ```
 
-`mpp.database` is the database of an entity that names none. The client's other settings have properties of the
+`mpp.project` is the project of an entity that names none. The client's other settings have properties of the
 same name in kebab case (`mpp.pool-size`, `mpp.tls.*`, `mpp.retry.*`). With the actuator on the classpath,
 `/actuator/health` includes `mpp`.
 

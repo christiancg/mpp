@@ -4,7 +4,7 @@ The `mpp.*` properties.
 mpp.hosts=db1:8989,db2:8989
 mpp.username=app
 mpp.password=${MPP_PASSWORD}
-mpp.database=shop
+mpp.project=shop
 mpp.pool-size=16
 mpp.tls.enabled=true
 mpp.tls.trust-store=/etc/mpp/trust.p12
@@ -13,7 +13,7 @@ mpp.tls.trust-store=/etc/mpp/trust.p12
 @param hosts servers as `host:port` (`localhost:8989` by default)
 @param username the user to authenticate as
 @param password the password
-@param database the database of entities that name none
+@param project the project of entities that name none
 @param poolSize pooled connections
 @param connectTimeout socket and TLS handshake timeout
 @param requestTimeout per-request timeout

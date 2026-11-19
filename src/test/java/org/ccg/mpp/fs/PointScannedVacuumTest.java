@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PointScannedVacuumTest {
-    private static final String DB = "pointScanDb";
+    private static final String PROJECT = "pointScanProject";
     private static final String COLL = "pointScanColl";
     private static final long MAX_PAGE_SIZE = 1024 * 1024;
     private static final String LARGE = "x".repeat(20 * 1024);
@@ -34,7 +34,7 @@ public class PointScannedVacuumTest {
         TestUtils.standardInitialSetup();
         shippedMaxPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", MAX_PAGE_SIZE);
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         rf.fx.seed(1, "d", "e");
     }

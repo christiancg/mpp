@@ -18,8 +18,8 @@ final class ReplacerFixture {
     final PageAppender appender;
     final List<VacuumedPage> vacuumed = new ArrayList<>();
 
-    ReplacerFixture(File root, String dbName, String collName) throws IOException {
-        fx = new StorageFixture(root, dbName, collName);
+    ReplacerFixture(File root, String projectName, String collName) throws IOException {
+        fx = new StorageFixture(root, projectName, collName);
         vacuum = new PageVacuum(fx.paths, fx.store, fx.journal);
         vacuum.onVacuum(vacuumed::add);
         replacer = new RecordReplacer(fx.paths, fx.store, vacuum);
@@ -30,7 +30,7 @@ final class ReplacerFixture {
         final var data = new JsonObject();
         data.addProperty("_id", id);
         data.addProperty("v", value);
-        final var entry = DbEntry.fromJsonObject(fx.dbName, fx.collName, data);
+        final var entry = DbEntry.fromJsonObject(fx.projectName, fx.collName, data);
         entry.setPage(page);
         entry.setVersion(StorageFixture.NEW_VERSION);
         return entry;
@@ -49,7 +49,7 @@ final class ReplacerFixture {
         final var row = fx.indexed(id);
         final var indexed = new IndexedDbEntry();
         indexed.setIndex(row);
-        indexed.setDatabaseName(fx.dbName);
+        indexed.setProjectName(fx.projectName);
         indexed.setCollectionName(fx.collName);
         indexed.set_id(id);
         indexed.setData(entry(id, value, row.getPage()).getData());
@@ -63,12 +63,12 @@ final class ReplacerFixture {
 
     List<IndexedDbEntry> bulk(List<IndexedDbEntry> entries, List<PkIndexEntry> residentRows,
             LongFunction<PageOccupancy> occupancy) throws IOException {
-        return replacer.bulkReplace(fx.dbName, fx.collName, entries, residentRows,
+        return replacer.bulkReplace(fx.projectName, fx.collName, entries, residentRows,
                 updated -> line(updated.get_id(), updated.getData().get("v").asJsonString().getValue()), occupancy);
     }
 
     PageOccupancy occupancyOf(long page) throws IOException {
-        final var rows = PageRows.of(fx.store, null, fx.dbName, fx.collName, page);
+        final var rows = PageRows.of(fx.store, null, fx.projectName, fx.collName, page);
         return new PageOccupancy(PageRows.liveBytes(rows), rows.size());
     }
 

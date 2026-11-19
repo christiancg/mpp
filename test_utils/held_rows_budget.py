@@ -11,7 +11,7 @@ HOST = "127.0.0.1"
 HELD_PORT = int(os.environ.get("MEMORY_TEST_HELD_PORT", "9457"))
 HELD_XMX = "256m"
 HELD_BUDGET = "8mb"
-HELD_DB = "held_rows_db"
+HELD_PROJECT = "held_rows_project"
 HELD_COLL = "held_rows_coll"
 HELD_DOCS = int(os.environ.get("MEMORY_TEST_HELD_DOCS", "60000"))
 HELD_GROUPS = 10
@@ -30,7 +30,7 @@ CASE_VARIANTS = 800
 
 
 def send(c: Conn, request: dict) -> dict:
-    request.setdefault("databaseName", HELD_DB)
+    request.setdefault("projectName", HELD_PROJECT)
     request.setdefault("collectionName", HELD_COLL)
     return c.send(request, timeout=300)
 
@@ -40,7 +40,7 @@ def aggregate(c: Conn, steps: list) -> dict:
 
 
 def load(c: Conn) -> list:
-    check_status("create the held-rows database", c.send({"type": "CREATE_DATABASE", "databaseName": HELD_DB}), "OK")
+    check_status("create the held-rows project", c.send({"type": "CREATE_PROJECT", "projectName": HELD_PROJECT}), "OK")
     check_status("create the held-rows collection", send(c, {"type": "CREATE_COLLECTION"}), "OK")
     refused = []
     for start in range(0, HELD_DOCS, BULK):
@@ -109,9 +109,9 @@ def test_group_by_over_budget_is_refused_not_oom():
             reader.join(30)
             check(f"a concurrent FIND_BY_ID client kept working ({reader.reads} reads)",
                   reader.reads > 0 and not reader.failures, detail=str(reader.failures[:5]))
-            check_status("the server stays healthy afterwards", c.send({"type": "LIST_DATABASES"}), "OK")
+            check_status("the server stays healthy afterwards", c.send({"type": "LIST_PROJECTS"}), "OK")
             check("the server never ran out of heap", "OutOfMemoryError" not in bu.read_log(log_path))
-            c.send({"type": "DROP_DATABASE", "databaseName": HELD_DB}, timeout=120)
+            c.send({"type": "DROP_PROJECT", "projectName": HELD_PROJECT}, timeout=120)
     finally:
         if reader is not None:
             reader.stop.set()
@@ -146,7 +146,8 @@ def test_skewed_rows_and_an_indexed_join_fan_in_are_refused():
         proc = bu.start_server(work_dir, log_path, port=HELD_PORT)
         with Conn(port=HELD_PORT) as c:
             c.authenticate(bu.USERNAME, bu.PASSWORD)
-            check_status("create the held-rows database", c.send({"type": "CREATE_DATABASE", "databaseName": HELD_DB}),
+            check_status("create the held-rows project", c.send({"type": "CREATE_PROJECT",
+                                                                 "projectName": HELD_PROJECT}),
                          "OK")
             for coll in (SKEW_COLL, FAN_LEFT, FAN_REMOTE, CASE_REMOTE):
                 check_status(f"create {coll}", send(c, {"type": "CREATE_COLLECTION", "collectionName": coll}), "OK")
@@ -170,9 +171,9 @@ def test_skewed_rows_and_an_indexed_join_fan_in_are_refused():
                             "asField": "m"},
                            {"type": "LIMIT", "limit": 1}]}), "ERROR", "400-36")
             check_case_variants_are_not_charged(c)
-            check_status("the server stays healthy afterwards", c.send({"type": "LIST_DATABASES"}), "OK")
+            check_status("the server stays healthy afterwards", c.send({"type": "LIST_PROJECTS"}), "OK")
             check("the server never ran out of heap", "OutOfMemoryError" not in bu.read_log(log_path))
-            c.send({"type": "DROP_DATABASE", "databaseName": HELD_DB}, timeout=120)
+            c.send({"type": "DROP_PROJECT", "projectName": HELD_PROJECT}, timeout=120)
     finally:
         bu.stop_server(proc, port=HELD_PORT, wait_for_port=False)
         if bu.failure_count():
@@ -207,7 +208,7 @@ def joined(response: dict) -> list:
 
 
 def background_idle(c: Conn) -> bool:
-    background = c.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("background", {})
+    background = c.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("background", {})
     return background.get("maintenance", 1) == 0 and background.get("pending", 1) == 0
 
 
@@ -256,7 +257,7 @@ def test_concurrent_aggregations_share_one_budget():
         proc = bu.start_server(work_dir, log_path, xmx=HELD_XMX, port=HELD_PORT)
         with Conn(port=HELD_PORT) as c:
             c.authenticate(bu.USERNAME, bu.PASSWORD)
-            check_status("create the pool database", c.send({"type": "CREATE_DATABASE", "databaseName": HELD_DB}),
+            check_status("create the pool project", c.send({"type": "CREATE_PROJECT", "projectName": HELD_PROJECT}),
                          "OK")
             check_status("create the pool collection", send(c, {"type": "CREATE_COLLECTION"}), "OK")
             refused = load_in_batches(c, HELD_COLL, [
@@ -291,7 +292,7 @@ def test_concurrent_aggregations_share_one_budget():
                              {"type": "SORT", "fieldName": "n", "ascending": True},
                              {"type": "LIMIT", "limit": 10}]}), "OK")
             check("the server never ran out of heap", "OutOfMemoryError" not in bu.read_log(log_path))
-            c.send({"type": "DROP_DATABASE", "databaseName": HELD_DB}, timeout=120)
+            c.send({"type": "DROP_PROJECT", "projectName": HELD_PROJECT}, timeout=120)
     finally:
         bu.stop_server(proc, port=HELD_PORT, wait_for_port=False)
         if bu.failure_count():

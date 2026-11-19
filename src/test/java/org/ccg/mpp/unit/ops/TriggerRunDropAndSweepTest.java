@@ -18,9 +18,9 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.TriggerRunLog;
 import org.ccg.mpp.ops.TriggerRunRecovery;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.ccg.mpp.test.TriggerTestSupport;
@@ -32,14 +32,14 @@ import org.junit.jupiter.api.Test;
 
 public class TriggerRunDropAndSweepTest {
     private static final String DROPPED_COLL = "droppedColl";
-    private static final String DROPPED_DB = "droppedDb";
+    private static final String DROPPED_PROJECT = "droppedProject";
     private static final Configuration configuration = Configuration.getInstance();
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
 
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -61,29 +61,29 @@ public class TriggerRunDropAndSweepTest {
         }
     }
 
-    private static String recordRun(String dbName, String collName, String id) {
+    private static String recordRun(String projectName, String collName, String id) {
         final var data = new JsonObject();
         data.add("_id", new JsonString(id));
         final var entry = new DbEntry();
-        entry.setDatabaseName(dbName);
+        entry.setProjectName(projectName);
         entry.setCollectionName(collName);
         entry.set_id(id);
         entry.setData(data);
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(dbName, collName, "audit", "recalc",
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(projectName, collName, "audit", "recalc",
                 EventType.DELETED, false, "alice", 0, System.currentTimeMillis(), List.of(entry)));
     }
 
     @Test
     public void test_dropping_a_collection_removes_its_pending_trigger_runs() throws Exception {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, DROPPED_COLL)).getStatus());
-        final var droppedRun = recordRun(TestGlobals.DB, DROPPED_COLL, "old-tenant-doc");
-        final var keptRun = recordRun(TestGlobals.DB, TestGlobals.COLL, "unrelated");
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, DROPPED_COLL)).getStatus());
+        final var droppedRun = recordRun(TestGlobals.PROJECT, DROPPED_COLL, "old-tenant-doc");
+        final var keptRun = recordRun(TestGlobals.PROJECT, TestGlobals.COLL, "unrelated");
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, DROPPED_COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, DROPPED_COLL)).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, DROPPED_COLL)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, DROPPED_COLL)).getStatus());
 
         assertNull(TriggerTestSupport.pendingRun(droppedRun),
                 "a re-created same-name collection must never receive the dropped one's deleted documents");
@@ -91,22 +91,23 @@ public class TriggerRunDropAndSweepTest {
     }
 
     @Test
-    public void test_dropping_a_database_removes_its_pending_trigger_runs() throws Exception {
-        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest(DROPPED_DB)).getStatus());
+    public void test_dropping_a_project_removes_its_pending_trigger_runs() throws Exception {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(DROPPED_DB, DROPPED_COLL)).getStatus());
-        final var droppedRun = recordRun(DROPPED_DB, DROPPED_COLL, "old-tenant-doc");
+                processor.processMessage(new CreateProjectRequest(DROPPED_PROJECT)).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new CreateCollectionRequest(DROPPED_PROJECT, DROPPED_COLL)).getStatus());
+        final var droppedRun = recordRun(DROPPED_PROJECT, DROPPED_COLL, "old-tenant-doc");
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(DROPPED_DB)).getStatus());
+        assertEquals(OperationStatus.OK, processor.processMessage(new DropProjectRequest(DROPPED_PROJECT)).getStatus());
 
         assertNull(TriggerTestSupport.pendingRun(droppedRun));
     }
 
     @Test
     public void test_dead_trigger_rows_are_collected_by_the_standalone_sweep() throws Exception {
-        final var deadRun = recordRun(TestGlobals.DB, TestGlobals.COLL, "dead-letter");
+        final var deadRun = recordRun(TestGlobals.PROJECT, TestGlobals.COLL, "dead-letter");
         TriggerRunLog.markAttempt(deadRun, TriggerRunStatus.DEAD, 3, "Error: boom", 0L);
-        final var pendingRun = recordRun(TestGlobals.DB, TestGlobals.COLL, "still-pending");
+        final var pendingRun = recordRun(TestGlobals.PROJECT, TestGlobals.COLL, "still-pending");
         TestUtils.setPrivateField(configuration, "triggerRunRetentionMs", 1L);
         TestUtils.setPrivateField(configuration, "triggerDeadLetterRetentionMs", 1L);
         Thread.sleep(10L);

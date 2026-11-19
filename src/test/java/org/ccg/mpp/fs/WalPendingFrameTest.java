@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalPendingFrameTest {
-    private static final String DB = "pendingDb";
+    private static final String PROJECT = "pendingProject";
     private static final String COLL = "pendingColl";
     private static final int LARGE_PENDING_IDS = 2000;
     private static final long SMALL_CHECKPOINT_BYTES = 4096L;
@@ -38,16 +38,16 @@ public class WalPendingFrameTest {
         previousGuard = TestUtils.getPrivateStaticField(WriteAheadLog.class, "guard", CheckpointGuard.class);
         WriteAheadLog.guardWith(new CheckpointGuard() {
             @Override
-            public boolean holdsIndexWork(String dbName, String collName) {
+            public boolean holdsIndexWork(String projectName, String collName) {
                 return !pending.isEmpty();
             }
 
             @Override
-            public Collection<String> pendingIds(String dbName, String collName) {
+            public Collection<String> pendingIds(String projectName, String collName) {
                 return List.copyOf(pending);
             }
         });
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b");
     }
 
@@ -58,7 +58,7 @@ public class WalPendingFrameTest {
     }
 
     private File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private WalCodec.Decoded decoded() throws IOException {
@@ -79,7 +79,7 @@ public class WalPendingFrameTest {
     public void pendingOnlyLogIsDirtyOnceResolved() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
         pending.add("a");
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         assertTrue(decoded().pendingLogged());
         assertEquals(List.of("a"), decoded().pendingIds());
         assertFalse(dirty(wal), "a frame whose ids are still pending is up to date");
@@ -87,7 +87,7 @@ public class WalPendingFrameTest {
         pending.clear();
 
         assertTrue(dirty(wal), "a frame naming only resolved ids is stale");
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         assertFalse(decoded().pendingLogged());
         assertEquals(List.of(), decoded().pendingIds());
         assertFalse(dirty(wal));
@@ -97,11 +97,11 @@ public class WalPendingFrameTest {
     public void pendingOnlyLogStaysWhileIndexWorkHeld() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
         pending.add("a");
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         final var framed = Files.readAllBytes(log().toPath());
 
         try (var recorder = RecordingForcer.install(true)) {
-            wal.checkpoint(DB, COLL);
+            wal.checkpoint(PROJECT, COLL);
             new WalCheckpoints(rf.fx.paths, wal).atShutdown(Long.MAX_VALUE);
 
             assertEquals(List.of(), recorder.forced(), "nothing is forced or rewritten for a frame still in use");
@@ -112,7 +112,7 @@ public class WalPendingFrameTest {
     @Test
     public void restartAfterResolvedPendingReplaysNothing() throws Exception {
         pending.add("b");
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
         assertEquals(List.of("b"), replayedIds(), "the first restart re-queues the pending id");
 
         pending.clear();
@@ -130,7 +130,7 @@ public class WalPendingFrameTest {
             for (var index = 0; index < LARGE_PENDING_IDS; index++) {
                 pending.add("pending-id-" + index);
             }
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
             TestUtils.setPrivateField(configuration, "walCheckpointBytes", SMALL_CHECKPOINT_BYTES);
             assertTrue(log().length() > 2 * SMALL_CHECKPOINT_BYTES, "the frame alone is past twice the limit");
 

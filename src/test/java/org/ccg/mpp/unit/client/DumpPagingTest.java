@@ -38,7 +38,7 @@ public class DumpPagingTest {
     @BeforeEach
     void setUp() throws IOException {
         server = new FakeLineServer();
-        source = new FakeSource().database("shop", "orders").documents("shop", "orders", DOCUMENTS, PADDING);
+        source = new FakeSource().project("shop", "orders").documents("shop", "orders", DOCUMENTS, PADDING);
         source.serveOn(server);
     }
 
@@ -94,7 +94,7 @@ public class DumpPagingTest {
 
     @Test
     public void aSingleDocumentOverTheReplyCapFailsWithItsPosition() {
-        new FakeSource().database("shop", "orders").documents("shop", "orders", 3, LARGE_PADDING).serveOn(server);
+        new FakeSource().project("shop", "orders").documents("shop", "orders", 3, LARGE_PADDING).serveOn(server);
 
         final var failure = assertThrows(ClientException.class, () -> dump(REPLY_CAP));
 
@@ -104,11 +104,11 @@ public class DumpPagingTest {
 
     @Test
     public void aReplyOfTheWrongShapeIsAClientException() {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES", "\"databases\":[1,2]"));
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS", "\"projects\":[1,2]"));
 
         final var failure = assertThrows(ClientException.class, () -> dump(Connection.MAX_REPLY_BYTES));
 
         assertEquals(ClientException.FAILED, failure.exitCode());
-        assertTrue(failure.getMessage().contains("unexpected databases"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("unexpected projects"), failure.getMessage());
     }
 }

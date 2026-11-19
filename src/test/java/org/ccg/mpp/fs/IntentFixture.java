@@ -14,16 +14,16 @@ final class IntentFixture {
     static final long FIRST_PAGE = 0L;
     final StorageFixture fx;
 
-    IntentFixture(File root, String dbName, String collName) throws IOException {
-        fx = new StorageFixture(root, dbName, collName);
+    IntentFixture(File root, String projectName, String collName) throws IOException {
+        fx = new StorageFixture(root, projectName, collName);
     }
 
     WriteIntentJournal.Intent vacuumFirstPage() throws IOException {
-        return fx.journal.begin(fx.dbName, fx.collName, List.of(new WriteIntent.Vacuum(FIRST_PAGE)));
+        return fx.journal.begin(fx.projectName, fx.collName, List.of(new WriteIntent.Vacuum(FIRST_PAGE)));
     }
 
     void commitSubjectDelete() throws IOException {
-        PkRowWrites.deleteRows(fx.paths, fx.store, fx.dbName, fx.collName, List.of(SUBJECT));
+        PkRowWrites.deleteRows(fx.paths, fx.store, fx.projectName, fx.collName, List.of(SUBJECT));
     }
 
     void blank(PkIndexEntry row) throws IOException {

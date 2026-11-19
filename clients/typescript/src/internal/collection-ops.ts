@@ -4,7 +4,7 @@ import { ErrorCode } from "../errors/error-codes.js";
 import type { Filter, PipelineStep } from "../query/types.js";
 import type { AnalyzeResult, BulkSaveResult, SaveResult } from "../results.js";
 import type { ClientContext } from "./client-context.js";
-import { collectionName, databaseName, documentId } from "./names.js";
+import { collectionName, projectName, documentId } from "./names.js";
 import { booleanOf, document, documents, numberOf, strings, textOf } from "./response-decoder.js";
 import type { JsonObject } from "./values-codec.js";
 
@@ -32,13 +32,13 @@ export async function emptyOn<V>(code: string, empty: V, read: () => Promise<V>)
 
 export class CollectionOps<T, R> implements QueryTarget<R> {
     readonly context: ClientContext;
-    readonly database: string;
+    readonly project: string;
     readonly collection: string;
     readonly codec: RowCodec<T, R>;
 
-    constructor(context: ClientContext, database: string, collection: string, codec: RowCodec<T, R>) {
+    constructor(context: ClientContext, project: string, collection: string, codec: RowCodec<T, R>) {
         this.context = context;
-        this.database = databaseName(database);
+        this.project = projectName(project);
         this.collection = collectionName(collection);
         this.codec = codec;
     }
@@ -46,7 +46,7 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
     async save(value: T): Promise<SaveResult> {
         const reply = await this.context.channel.send(
             "SAVE",
-            this.context.encoder.save(this.database, this.collection, this.#encode(value)),
+            this.context.encoder.save(this.project, this.collection, this.#encode(value)),
         );
         return { id: textOf(reply._id), inserted: booleanOf(reply.inserted, false) };
     }
@@ -54,7 +54,7 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
     async insert(value: T): Promise<SaveResult> {
         const reply = await this.context.channel.send(
             "SAVE",
-            this.context.encoder.insert(this.database, this.collection, this.#encode(value)),
+            this.context.encoder.insert(this.project, this.collection, this.#encode(value)),
         );
         return { id: textOf(reply._id), inserted: booleanOf(reply.inserted, false) };
     }
@@ -63,13 +63,13 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
         const encoded = values.map((value) => this.#encode(value));
         const reply = await this.context.channel.send(
             "BULK_SAVE",
-            this.context.encoder.bulkSave(this.database, this.collection, encoded),
+            this.context.encoder.bulkSave(this.project, this.collection, encoded),
         );
         return { inserted: strings(reply.inserted), updated: strings(reply.updated) };
     }
 
     async findById(id: string, dirtyRead: boolean): Promise<R | undefined> {
-        const request = this.context.encoder.findById(this.database, this.collection, documentId(id), dirtyRead);
+        const request = this.context.encoder.findById(this.project, this.collection, documentId(id), dirtyRead);
         return emptyOn(ErrorCode.ENTRY_NOT_FOUND, undefined, async () => {
             const found = document(await this.context.channel.send("FIND_BY_ID", request), "object");
             return found === undefined ? undefined : this.codec.decode(found);
@@ -79,14 +79,14 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
     async delete(id: string): Promise<void> {
         await this.context.channel.send(
             "DELETE",
-            this.context.encoder.delete(this.database, this.collection, documentId(id)),
+            this.context.encoder.delete(this.project, this.collection, documentId(id)),
         );
     }
 
     async deleteWhere(condition: Filter): Promise<number> {
         const reply = await this.context.channel.send(
             "DELETE",
-            this.context.encoder.deleteWhere(this.database, this.collection, condition),
+            this.context.encoder.deleteWhere(this.project, this.collection, condition),
         );
         return numberOf(reply.deletedCount) ?? 0;
     }
@@ -95,7 +95,7 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
         const reply = await this.context.channel.send(
             "SAVE",
             this.context.encoder.updateWhere(
-                this.database,
+                this.project,
                 this.collection,
                 condition,
                 this.context.encoder.document(patch),
@@ -105,7 +105,7 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
     }
 
     async aggregate(steps: readonly PipelineStep[], dirtyRead: boolean): Promise<Document[]> {
-        const request = this.context.encoder.aggregate(this.database, this.collection, steps, dirtyRead, false);
+        const request = this.context.encoder.aggregate(this.project, this.collection, steps, dirtyRead, false);
         return emptyOn(ErrorCode.NO_RESULTS, [], async () =>
             documents(await this.context.channel.send("AGGREGATE", request), "results"),
         );
@@ -114,7 +114,7 @@ export class CollectionOps<T, R> implements QueryTarget<R> {
     async analyze(steps: readonly PipelineStep[], dirtyRead: boolean): Promise<AnalyzeResult> {
         const reply = await this.context.channel.send(
             "AGGREGATE",
-            this.context.encoder.aggregate(this.database, this.collection, steps, dirtyRead, true),
+            this.context.encoder.aggregate(this.project, this.collection, steps, dirtyRead, true),
         );
         return { results: documents(reply, "results"), analysis: document(reply, "analyzeResult") ?? {} };
     }

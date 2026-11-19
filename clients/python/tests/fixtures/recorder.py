@@ -4,7 +4,7 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 
-from mpp import Admin, AsyncAdmin, AsyncDatabase, Database
+from mpp import Admin, AsyncAdmin, AsyncProject, Project
 from mpp._internal.portal import SyncRuntime
 from mpp._internal.values_codec import JsonObject
 from tests.support.recording_channel import RecordingChannel, recording_context
@@ -17,9 +17,9 @@ class Recorder:
         self.encoder = self.context.encoder
         self.scripts = self.context.scripts
         self._runtime = runtime
-        shop = AsyncDatabase(self.context, "shop")
+        shop = AsyncProject(self.context, "shop")
         admin = AsyncAdmin(self.context)
-        self.shop: Any = shop if runtime is None else Database(runtime, shop)
+        self.shop: Any = shop if runtime is None else Project(runtime, shop)
         self.admin: Any = admin if runtime is None else Admin(runtime, admin)
         self.orders: Any = self.shop.collection("orders")
 

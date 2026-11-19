@@ -33,16 +33,16 @@ public class QueryAllocationBudgetTest {
     private static final long SKIP_SOURCE_PAGE_BUDGET = 431_871;
     private static final long GROUP_MAP_REMOVE_BUDGET_PER_DOC = 86;
     private static final String SKIP_PAGE = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"SKIP","skip":9000},{"type":"LIMIT","limit":100}]}""";
     private static final String GROUP_MAP_REMOVE = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"GROUP_BY","fieldName":"cat"},
             {"type":"MAP","operators":[
             {"fieldName":"size","operator":{"type":"SIZE","operand":"group"}},
             {"fieldName":"group"}]}]}""";
     private static final String WARM = """
-            {"type":"AGGREGATE","databaseName":"%s","collectionName":"%s","aggregationSteps":[
+            {"type":"AGGREGATE","projectName":"%s","collectionName":"%s","aggregationSteps":[
             {"type":"SKIP","skip":0}]}""";
     private static final com.sun.management.ThreadMXBean THREADS = (com.sun.management.ThreadMXBean) ManagementFactory
             .getThreadMXBean();
@@ -56,19 +56,19 @@ public class QueryAllocationBudgetTest {
         TestUtils.standardInitialSetup();
         shippedPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", PAGE_SIZE);
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (var start = 0; start < DOCS; start += BULK) {
             final var objects = new ArrayList<JsonObject>(BULK);
             for (var i = start; i < start + BULK; i++) {
                 objects.add(document(i));
             }
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(objects);
-            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
                 SaveOperationHelper.executeBulkSave(request);
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }
     }
@@ -109,17 +109,17 @@ public class QueryAllocationBudgetTest {
     }
 
     private static List<JsonObject> underReadLock(AggregateRequest request) throws Exception {
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
             return AggregationOperationHelper.processAggregation(request);
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     private static AggregateRequest request(String template) {
         return (AggregateRequest) RequestParser
-                .parseRequest(String.format(template, TestGlobals.DB, TestGlobals.COLL).replace("\n", ""));
+                .parseRequest(String.format(template, TestGlobals.PROJECT, TestGlobals.COLL).replace("\n", ""));
     }
 
     private static String report(String what, long measured, long budget) {
@@ -130,7 +130,7 @@ public class QueryAllocationBudgetTest {
     void aSourceSkipReadsOnlyThePagesItReturns() throws Exception {
         final var request = request(SKIP_PAGE);
         final var measured = cheapestOf(() -> {
-            cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+            cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
             assertEquals(100, underReadLock(request).size());
         });
         assertTrue(measured <= SKIP_SOURCE_PAGE_BUDGET,
@@ -141,7 +141,7 @@ public class QueryAllocationBudgetTest {
     void aMapRemovingTheGroupCopiesNoGroup() throws Exception {
         final var request = request(GROUP_MAP_REMOVE);
         assertEquals(DOCS, underReadLock(request(WARM)).size());
-        assertTrue(cache.holdsWholeCollection(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(cache.holdsWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL));
         final var measured = cheapestOf(() -> assertEquals(20, underReadLock(request).size())) / DOCS;
         assertTrue(measured <= GROUP_MAP_REMOVE_BUDGET_PER_DOC,
                 report("a grouped document whose group a MAP removes", measured, GROUP_MAP_REMOVE_BUDGET_PER_DOC));

@@ -36,7 +36,7 @@ public class RankedConjunctionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -84,10 +84,10 @@ public class RankedConjunctionTest {
 
     private static List<String> overCollection(BaseAggregationStep step) {
         final var processor = IocContainer.get(OperationProcessor.class);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(new ArrayList<>(rows()));
         processor.processMessage(bulk);
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(step));
         final var response = processor.processMessage(request);
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
@@ -115,7 +115,7 @@ public class RankedConjunctionTest {
 
     @Test
     public void test_a_pipeline_can_resume_from_a_later_step_over_a_given_source() throws Exception {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SkipAggregationStep(100), new LimitAggregationStep(2)));
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var resumed = AggregationOperationHelper.processAggregation(request, rows().stream(), 1, null,

@@ -21,33 +21,33 @@ public class TriggerEvent extends CollectionScopedEvent {
     private final int attempt;
     private final boolean staleEntries;
 
-    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+    public TriggerEvent(EventType type, String projectName, String collName, String triggerName, String procedureName,
             boolean batchMode, List<DbEntry> entries, String actingUser, int depth) {
-        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, null);
+        this(type, projectName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, null);
     }
 
-    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+    public TriggerEvent(EventType type, String projectName, String collName, String triggerName, String procedureName,
             boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId) {
-        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, 1);
+        this(type, projectName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, 1);
     }
 
-    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+    public TriggerEvent(EventType type, String projectName, String collName, String triggerName, String procedureName,
             boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt) {
-        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, attempt,
-                System.currentTimeMillis());
+        this(type, projectName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId,
+                attempt, System.currentTimeMillis());
     }
 
-    public TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+    public TriggerEvent(EventType type, String projectName, String collName, String triggerName, String procedureName,
             boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt,
             long firedAt) {
-        this(type, dbName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId, attempt,
-                firedAt, false);
+        this(type, projectName, collName, triggerName, procedureName, batchMode, entries, actingUser, depth, runId,
+                attempt, firedAt, false);
     }
 
-    private TriggerEvent(EventType type, String dbName, String collName, String triggerName, String procedureName,
+    private TriggerEvent(EventType type, String projectName, String collName, String triggerName, String procedureName,
             boolean batchMode, List<DbEntry> entries, String actingUser, int depth, String runId, int attempt,
             long firedAt, boolean staleEntries) {
-        super(type, dbName, collName);
+        super(type, projectName, collName);
         this.triggerName = triggerName;
         this.procedureName = procedureName;
         this.batchMode = batchMode;
@@ -61,12 +61,12 @@ public class TriggerEvent extends CollectionScopedEvent {
     }
 
     public TriggerEvent retry(int nextAttempt) {
-        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode, entries,
-                actingUser, depth, runId, nextAttempt, firedAt, getType() != EventType.DELETED);
+        return new TriggerEvent(getType(), getProjectName(), getCollName(), triggerName, procedureName, batchMode,
+                entries, actingUser, depth, runId, nextAttempt, firedAt, getType() != EventType.DELETED);
     }
 
     public TriggerEvent withCurrentEntries(List<DbEntry> currentEntries) {
-        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode,
+        return new TriggerEvent(getType(), getProjectName(), getCollName(), triggerName, procedureName, batchMode,
                 currentEntries, actingUser, depth, runId, attempt, firedAt, false);
     }
 
@@ -77,13 +77,13 @@ public class TriggerEvent extends CollectionScopedEvent {
         final var stubs = new ArrayList<DbEntry>(entries.size());
         for (final var entry : entries) {
             final var stub = new DbEntry();
-            stub.setDatabaseName(getDbName());
+            stub.setProjectName(getProjectName());
             stub.setCollectionName(getCollName());
             stub.set_id(entry.get_id());
             stubs.add(stub);
         }
-        return new TriggerEvent(getType(), getDbName(), getCollName(), triggerName, procedureName, batchMode, stubs,
-                actingUser, depth, runId, attempt, firedAt, true);
+        return new TriggerEvent(getType(), getProjectName(), getCollName(), triggerName, procedureName, batchMode,
+                stubs, actingUser, depth, runId, attempt, firedAt, true);
     }
 
     public long queuedBytes() {
@@ -156,9 +156,9 @@ public class TriggerEvent extends CollectionScopedEvent {
 
     @Override
     public String toString() {
-        return "TriggerEvent(super=" + super.toString() + ", dbName=" + getDbName() + ", collName=" + getCollName()
-                + ", triggerName=" + triggerName + ", procedureName=" + procedureName + ", batchMode=" + batchMode
-                + ", entries=" + entries.size() + ", actingUser=" + actingUser + ", depth=" + depth + ", runId=" + runId
-                + ")";
+        return "TriggerEvent(super=" + super.toString() + ", projectName=" + getProjectName() + ", collName="
+                + getCollName() + ", triggerName=" + triggerName + ", procedureName=" + procedureName + ", batchMode="
+                + batchMode + ", entries=" + entries.size() + ", actingUser=" + actingUser + ", depth=" + depth
+                + ", runId=" + runId + ")";
     }
 }

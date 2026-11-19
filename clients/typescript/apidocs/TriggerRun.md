@@ -10,9 +10,9 @@ Its id.
 
 `PENDING`, `DEAD` or `STAGED`.
 
-## database
+## project
 
-Its database.
+Its project.
 
 ## collection
 

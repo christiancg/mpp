@@ -7,10 +7,11 @@ public final class StaleWriteIntent {
     private StaleWriteIntent() {
     }
 
-    public static String writeVacuumIntent(String dbPath, String dbName, String collName, long page)
+    public static String writeVacuumIntent(String dbPath, String projectName, String collName, long page)
             throws IOException {
         final var paths = new FilePaths();
         paths.useDbPath(dbPath);
-        return new WriteIntentJournal(paths).begin(dbName, collName, List.of(new WriteIntent.Vacuum(page))).label();
+        return new WriteIntentJournal(paths).begin(projectName, collName, List.of(new WriteIntent.Vacuum(page)))
+                .label();
     }
 }

@@ -67,11 +67,11 @@ public class ClusterRouterTransactionReadTest {
     }
 
     private static String id(String collection) {
-        return Cache.getCollectionIdentifier(TestGlobals.DB, collection);
+        return Cache.getCollectionIdentifier(TestGlobals.PROJECT, collection);
     }
 
     private static AggregateRequest joinRead() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(JOINED, "ref", "k", "j")));
         return request;
     }
@@ -125,7 +125,7 @@ public class ClusterRouterTransactionReadTest {
     public void test_a_collection_written_on_two_nodes_refuses_even_a_single_collection_read() {
         wrote(TestGlobals.COLL, ClusterRouter.LOCAL_HOLDER);
         wrote(TestGlobals.COLL, UNREACHABLE_PEER);
-        final var response = route(new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = route(new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL));
         assertNotNull(response);
         assertTrue(response.contains("421-3"), response);
     }
@@ -133,7 +133,7 @@ public class ClusterRouterTransactionReadTest {
     @Test
     public void test_find_by_id_routes_to_the_holder_of_its_collection() {
         wrote(TestGlobals.COLL, UNREACHABLE_PEER);
-        final var response = route(new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = route(new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL));
         assertNotNull(response);
         assertTrue(response.contains("503-4"), response);
     }
@@ -141,7 +141,7 @@ public class ClusterRouterTransactionReadTest {
     @Test
     public void test_find_by_id_ignores_holders_of_other_collections() {
         wrote(JOINED, UNREACHABLE_PEER);
-        assertNull(route(new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL)));
+        assertNull(route(new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
@@ -159,7 +159,7 @@ public class ClusterRouterTransactionReadTest {
 
     @Test
     public void test_a_locally_buffered_write_records_the_local_holder() {
-        assertNull(route(new SaveRequest(TestGlobals.DB, TestGlobals.COLL)));
+        assertNull(route(new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL)));
         assertEquals(Set.of(ClusterRouter.LOCAL_HOLDER),
                 clientTracker.transactionWriteHolders(client, List.of(id(TestGlobals.COLL))));
     }
@@ -171,7 +171,7 @@ public class ClusterRouterTransactionReadTest {
         try {
             cluster.configureMembership(2, ClusterTestHarness.node("self", 19990), ClusterTestHarness.node("other", 1));
             final var remote = collectionOwnedByOther();
-            final var save = new SaveRequest(TestGlobals.DB, remote);
+            final var save = new SaveRequest(TestGlobals.PROJECT, remote);
 
             final var response = route(save);
 
@@ -185,7 +185,7 @@ public class ClusterRouterTransactionReadTest {
     private String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
             final var collection = "routed-" + i;
-            if (!ownership.isOwner(TestGlobals.DB, collection)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, collection)) {
                 return collection;
             }
         }

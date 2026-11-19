@@ -33,55 +33,55 @@ public class UserRequestParserTest {
     @Test
     public void test_parses_create_user_with_permissions() {
         final var msg = "{" + "\"type\":\"CREATE_USER\"," + "\"username\":\"bob\"," + "\"password\":\"secret1234\","
-                + "\"admin\":false," + "\"globalPermissions\":[\"CREATE_DATABASE\"],"
-                + "\"databasePermissions\":{\"mydb\":\"READ_WRITE\"},"
+                + "\"admin\":false," + "\"globalPermissions\":[\"CREATE_PROJECT\"],"
+                + "\"projectPermissions\":{\"mydb\":\"READ_WRITE\"},"
                 + "\"collectionPermissions\":{\"mydb|coll\":\"READ\"}" + "}";
         final var req = (CreateUserRequest) RequestParser.parseRequest(msg);
         assertEquals(OperationType.CREATE_USER, req.getType());
         assertEquals("bob", req.getUsername());
         assertEquals("secret1234", req.getPassword());
         assertFalse(req.getAdmin());
-        assertTrue(req.getGlobalPermissions().contains(GlobalPermissionType.CREATE_DATABASE));
-        assertEquals(PermissionLevel.READ_WRITE, req.getDatabasePermissions().get("mydb"));
+        assertTrue(req.getGlobalPermissions().contains(GlobalPermissionType.CREATE_PROJECT));
+        assertEquals(PermissionLevel.READ_WRITE, req.getProjectPermissions().get("mydb"));
         assertEquals(PermissionLevel.READ, req.getCollectionPermissions().get("mydb|coll"));
     }
 
     @Test
     public void test_parses_create_user_with_empty_permissions() {
         final var msg = "{" + "\"type\":\"CREATE_USER\"," + "\"username\":\"carol\"," + "\"password\":\"secret1234\","
-                + "\"admin\":true," + "\"globalPermissions\":[]," + "\"databasePermissions\":{},"
+                + "\"admin\":true," + "\"globalPermissions\":[]," + "\"projectPermissions\":{},"
                 + "\"collectionPermissions\":{}" + "}";
         final var req = (CreateUserRequest) RequestParser.parseRequest(msg);
         assertEquals("carol", req.getUsername());
         assertTrue(req.getAdmin());
         assertTrue(req.getGlobalPermissions().isEmpty());
-        assertTrue(req.getDatabasePermissions().isEmpty());
+        assertTrue(req.getProjectPermissions().isEmpty());
         assertTrue(req.getCollectionPermissions().isEmpty());
     }
 
     @Test
     public void test_parses_change_permissions_request() {
         final var msg = "{" + "\"type\":\"CHANGE_PERMISSIONS\"," + "\"username\":\"bob\"," + "\"admin\":true,"
-                + "\"globalPermissions\":[\"DROP_DATABASE\"]," + "\"databasePermissions\":{\"orders_db\":\"READ\"},"
-                + "\"collectionPermissions\":{\"orders_db|invoices\":\"READ_WRITE\"}" + "}";
+                + "\"globalPermissions\":[\"DROP_PROJECT\"]," + "\"projectPermissions\":{\"orders_project\":\"READ\"},"
+                + "\"collectionPermissions\":{\"orders_project|invoices\":\"READ_WRITE\"}" + "}";
         final var req = (ChangePermissionsRequest) RequestParser.parseRequest(msg);
         assertEquals(OperationType.CHANGE_PERMISSIONS, req.getType());
         assertEquals("bob", req.getUsername());
         assertTrue(req.getAdmin());
-        assertTrue(req.getGlobalPermissions().contains(GlobalPermissionType.DROP_DATABASE));
-        assertEquals(PermissionLevel.READ, req.getDatabasePermissions().get("orders_db"));
-        assertEquals(PermissionLevel.READ_WRITE, req.getCollectionPermissions().get("orders_db|invoices"));
+        assertTrue(req.getGlobalPermissions().contains(GlobalPermissionType.DROP_PROJECT));
+        assertEquals(PermissionLevel.READ, req.getProjectPermissions().get("orders_project"));
+        assertEquals(PermissionLevel.READ_WRITE, req.getCollectionPermissions().get("orders_project|invoices"));
     }
 
     @Test
     public void test_parses_change_permissions_empty() {
         final var msg = "{" + "\"type\":\"CHANGE_PERMISSIONS\"," + "\"username\":\"bob\"," + "\"admin\":false,"
-                + "\"globalPermissions\":[]," + "\"databasePermissions\":{}," + "\"collectionPermissions\":{}" + "}";
+                + "\"globalPermissions\":[]," + "\"projectPermissions\":{}," + "\"collectionPermissions\":{}" + "}";
         final var req = (ChangePermissionsRequest) RequestParser.parseRequest(msg);
         assertEquals("bob", req.getUsername());
         assertFalse(req.getAdmin());
         assertTrue(req.getGlobalPermissions().isEmpty());
-        assertTrue(req.getDatabasePermissions().isEmpty());
+        assertTrue(req.getProjectPermissions().isEmpty());
         assertTrue(req.getCollectionPermissions().isEmpty());
     }
 }

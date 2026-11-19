@@ -127,8 +127,8 @@ def verdict_of(sighting: Sighting) -> str:
     return STALE_INDEX
 
 
-def sight(db_root: str, database: str, coll: str, field_name: str, doc_id: str) -> Sighting:
-    folder = os.path.join(db_root, database, coll)
+def sight(db_root: str, project: str, coll: str, field_name: str, doc_id: str) -> Sighting:
+    folder = os.path.join(db_root, project, coll)
     sighting = Sighting()
     if not os.path.isdir(folder):
         sighting.verdict = NOT_ON_PAGE
@@ -143,12 +143,12 @@ def sight(db_root: str, database: str, coll: str, field_name: str, doc_id: str) 
     return sighting
 
 
-def classify(points: dict, database: str, coll: str, field_name: str, ids: list) -> list:
+def classify(points: dict, project: str, coll: str, field_name: str, ids: list) -> list:
     rows = []
     for doc_id in ids:
         row = {"id": doc_id}
         for label, db_root in points.items():
-            row[label] = vars(sight(db_root, database, coll, field_name, doc_id))
+            row[label] = vars(sight(db_root, project, coll, field_name, doc_id))
         rows.append(row)
     return rows
 
@@ -157,7 +157,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="classify the ids an O3 divergence names, from kept db folders")
     parser.add_argument("--at-power-loss", required=True, help="the db folder as the power loss left it")
     parser.add_argument("--after-recovery", default="", help="the db folder after the first restart")
-    parser.add_argument("--database", default="durability_db")
+    parser.add_argument("--project", default="durability_project")
     parser.add_argument("--collection", required=True)
     parser.add_argument("--field", required=True)
     parser.add_argument("--ids", required=True, help="comma-separated ids")
@@ -165,7 +165,7 @@ def main() -> int:
     points = {"at_power_loss": args.at_power_loss}
     if args.after_recovery:
         points["after_recovery"] = args.after_recovery
-    rows = classify(points, args.database, args.collection, args.field, [i for i in args.ids.split(",") if i])
+    rows = classify(points, args.project, args.collection, args.field, [i for i in args.ids.split(",") if i])
     for row in rows:
         stages = "; ".join(f"{label}: {row[label]['verdict']} (page {row[label]['page_value']!r},"
                            f" index {row[label]['index_keys']}, in wal {row[label]['in_wal']},"

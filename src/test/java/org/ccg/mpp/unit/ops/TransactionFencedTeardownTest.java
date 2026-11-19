@@ -36,7 +36,7 @@ public class TransactionFencedTeardownTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -57,13 +57,13 @@ public class TransactionFencedTeardownTest {
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, transaction);
         TransactionRecordCalls.persistBufferedOps(transaction);
         TxCommitLog.recordLocalCommit(transaction.getTransactionId().toString(), transaction.getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         return clientId;
     }
 
@@ -72,13 +72,14 @@ public class TransactionFencedTeardownTest {
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, transaction);
         TransactionRecordCalls.persistBufferedOps(transaction);
         Tx2pcLog.recordParticipantPrepared(transaction.getTransactionId().toString(), "127.0.0.1:9000",
-                List.of("127.0.0.1:9000"), List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of("127.0.0.1:9000"),
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         return clientId;
     }
 
@@ -95,12 +96,12 @@ public class TransactionFencedTeardownTest {
     private void assertEveryWriteIsRefusedAsHalfApplied(UUID clientId) {
         final var transaction = clientTracker.getActiveTransaction(clientId);
         final var opIds = List.copyOf(transaction.getBufferedOpIds());
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.setObject(document("late"));
         save.set_id("late");
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document("late_bulk")));
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("late");
 
         assertEquals("500-33", TransactionOperationHelper.bufferSave(save, transaction).getErrorCode());
@@ -222,7 +223,7 @@ public class TransactionFencedTeardownTest {
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("ordinary"));
         request.set_id("ordinary");
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -278,12 +279,12 @@ public class TransactionFencedTeardownTest {
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("keep"));
         request.set_id("keep");
         TransactionOperationHelper.bufferSave(request, transaction);
         final var corrupt = new AdminTransactionEntry(transaction.getTransactionId().toString(), "client", 99,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, new JsonObject());
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, new JsonObject());
         transaction.addPendingOp(corrupt);
 
         final var response = TransactionOperationHelper.commit(clientId);

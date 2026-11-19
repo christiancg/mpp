@@ -25,25 +25,25 @@ class Outcome:
         self.collections = set()
         self.indexed = {}
 
-    def note_index(self, db: str, coll: str, field: str) -> None:
-        self.indexed.setdefault((db, coll), set()).add(field)
+    def note_index(self, project: str, coll: str, field: str) -> None:
+        self.indexed.setdefault((project, coll), set()).add(field)
 
-    def forget_index(self, db: str, coll: str, field: str) -> None:
-        self.indexed.get((db, coll), set()).discard(field)
+    def forget_index(self, project: str, coll: str, field: str) -> None:
+        self.indexed.get((project, coll), set()).discard(field)
 
-    def forget_collection(self, db: str, coll: str) -> None:
-        self.collections.discard((db, coll))
-        self.indexed.pop((db, coll), None)
+    def forget_collection(self, project: str, coll: str) -> None:
+        self.collections.discard((project, coll))
+        self.indexed.pop((project, coll), None)
 
-    def forget_database(self, db: str) -> None:
-        for key in [c for c in self.collections if c[0] == db]:
+    def forget_project(self, project: str) -> None:
+        for key in [c for c in self.collections if c[0] == project]:
             self.forget_collection(*key)
 
     def live(self) -> list:
         return sorted(self.collections)
 
-    def indexed_fields(self, db: str, coll: str) -> list:
-        return sorted(self.indexed.get((db, coll), set()))
+    def indexed_fields(self, project: str, coll: str) -> list:
+        return sorted(self.indexed.get((project, coll), set()))
 
 
 class Executor:
@@ -90,16 +90,16 @@ class Executor:
         return outcome
 
     def wipe(self) -> None:
-        response = self.request({"type": "LIST_DATABASES"})
-        for name in (response.get("databases") or []):
-            self.request({"type": "DROP_DATABASE", "databaseName": name})
+        response = self.request({"type": "LIST_PROJECTS"})
+        for name in (response.get("projects") or []):
+            self.request({"type": "DROP_PROJECT", "projectName": name})
 
     def settle_indexes(self, outcome: Outcome, fields: list) -> Outcome:
-        for db, coll in outcome.live():
+        for project, coll in outcome.live():
             for field in fields:
-                if field in outcome.indexed_fields(db, coll):
+                if field in outcome.indexed_fields(project, coll):
                     continue
-                op = op_kinds.Op(kind=op_kinds.CREATE_INDEX, db=db, coll=coll, field=field)
+                op = op_kinds.Op(kind=op_kinds.CREATE_INDEX, project=project, coll=coll, field=field)
                 self._record(op, self.request(self._payload(op)), outcome)
         return outcome
 
@@ -126,21 +126,21 @@ class Executor:
         if not accepted(response):
             return
         if op.kind == op_kinds.CREATE_COLLECTION:
-            outcome.collections.add((op.db, op.coll))
+            outcome.collections.add((op.project, op.coll))
         elif op.kind == op_kinds.CREATE_INDEX:
-            outcome.note_index(op.db, op.coll, op.field)
+            outcome.note_index(op.project, op.coll, op.field)
         elif op.kind == op_kinds.DROP_INDEX:
-            outcome.forget_index(op.db, op.coll, op.field)
+            outcome.forget_index(op.project, op.coll, op.field)
         elif op.kind == op_kinds.DROP_COLLECTION:
-            outcome.forget_collection(op.db, op.coll)
-        elif op.kind == op_kinds.DROP_DATABASE:
-            outcome.forget_database(op.db)
+            outcome.forget_collection(op.project, op.coll)
+        elif op.kind == op_kinds.DROP_PROJECT:
+            outcome.forget_project(op.project)
 
     @staticmethod
     def _payload(op) -> dict:
         base = {"type": op.kind}
-        if op.db is not None:
-            base["databaseName"] = op.db
+        if op.project is not None:
+            base["projectName"] = op.project
         if op.coll is not None:
             base["collectionName"] = op.coll
         if op.kind == op_kinds.SAVE:

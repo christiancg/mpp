@@ -41,18 +41,17 @@ public final class Transaction implements AutoCloseable {
         return !finished.get();
     }
 
-    public TransactionCollection<Document> collection(String database, String collection) {
-        return collection(database, collection, DocumentCodec.identity());
+    public TransactionCollection<Document> collection(String project, String collection) {
+        return collection(project, collection, DocumentCodec.identity());
     }
 
-    public <T> TransactionCollection<T> collection(String database, String collection, Class<T> type) {
-        return collection(database, collection, new JacksonCodec<>(type, context.json()));
+    public <T> TransactionCollection<T> collection(String project, String collection, Class<T> type) {
+        return collection(project, collection, new JacksonCodec<>(type, context.json()));
     }
 
-    public <T> TransactionCollection<T> collection(String database, String collection, DocumentCodec<T> codec) {
+    public <T> TransactionCollection<T> collection(String project, String collection, DocumentCodec<T> codec) {
         requireOpen();
-        return new TransactionCollection<>(
-                new CollectionOps<>(context, context.channel(), database, collection, codec));
+        return new TransactionCollection<>(new CollectionOps<>(context, context.channel(), project, collection, codec));
     }
 
     public void commit() {

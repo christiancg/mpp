@@ -40,9 +40,9 @@ public class AnalyzeGoldenTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, JOINED));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, JOINED));
         for (var i = 0; i < 6; i++) {
             final var document = new JsonObject();
             document.add("_id", new JsonString("d" + i));
@@ -59,9 +59,9 @@ public class AnalyzeGoldenTest {
             save(JOINED, joined);
         }
         for (final var field : List.of("n", "meta", "location", "embedding")) {
-            processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, field));
+            processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, field));
         }
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, JOINED, "ref"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, JOINED, "ref"));
         final var pending = new JsonObject();
         pending.add("_id", new JsonString("d6"));
         pending.add("n", new JsonNumber(1));
@@ -75,13 +75,13 @@ public class AnalyzeGoldenTest {
     }
 
     private static void save(String coll, JsonObject document) {
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(document);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private static String analyzed(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(steps));
         final var result = ((AggregateAnalyzeResponse) processor.processMessage(request)).getAnalyzeResult();
@@ -97,7 +97,7 @@ public class AnalyzeGoldenTest {
 
     @Test
     public void aScalarIndexFilter() {
-        assertEquals("scanned=10 indexes=[n] locks=[myDb|analyzeGolden, myDb|analyzeGolden|n]",
+        assertEquals("scanned=10 indexes=[n] locks=[myProject|analyzeGolden, myProject|analyzeGolden|n]",
                 analyzed(field(FieldOperatorType.EQUALS, "n", new JsonNumber(1))));
     }
 
@@ -105,7 +105,7 @@ public class AnalyzeGoldenTest {
     public void aHashIndexFilter() {
         final var operand = new JsonObject();
         operand.add("k", new JsonNumber(1));
-        assertEquals("scanned=10 indexes=[meta] locks=[myDb|analyzeGolden, myDb|analyzeGolden|meta]",
+        assertEquals("scanned=10 indexes=[meta] locks=[myProject|analyzeGolden, myProject|analyzeGolden|meta]",
                 analyzed(field(FieldOperatorType.EQUALS, "meta", operand)));
     }
 
@@ -116,7 +116,7 @@ public class AnalyzeGoldenTest {
         args.add("value", target);
         args.add("comparator", new JsonString("SMALLER_THAN"));
         args.add("distance", new JsonNumber(1000.0));
-        assertEquals("scanned=7 indexes=[location] locks=[myDb|analyzeGolden, myDb|analyzeGolden|location]",
+        assertEquals("scanned=7 indexes=[location] locks=[myProject|analyzeGolden, myProject|analyzeGolden|location]",
                 analyzed(new FilterAggregationStep(new CustomOperator("distance", "location", target, args))));
     }
 
@@ -126,7 +126,7 @@ public class AnalyzeGoldenTest {
         final var query = new JsonVector("#vector(10.0,0.0)");
         args.add("value", query);
         args.add("k", new JsonNumber(2.0));
-        assertEquals("scanned=7 indexes=[embedding] locks=[myDb|analyzeGolden, myDb|analyzeGolden|embedding]",
+        assertEquals("scanned=7 indexes=[embedding] locks=[myProject|analyzeGolden, myProject|analyzeGolden|embedding]",
                 analyzed(new FilterAggregationStep(new CustomOperator("nearest", "embedding", query, args))));
     }
 
@@ -135,39 +135,39 @@ public class AnalyzeGoldenTest {
         final var ids = new JsonArray();
         ids.add(new JsonString("d1"));
         ids.add(new JsonString("d4"));
-        assertEquals("scanned=2 indexes=[_id] locks=[myDb|analyzeGolden, myDb|analyzeGolden]",
+        assertEquals("scanned=2 indexes=[_id] locks=[myProject|analyzeGolden, myProject|analyzeGolden]",
                 analyzed(field(FieldOperatorType.IN, "_id", ids)));
     }
 
     @Test
     public void anIndexedJoin() {
         assertEquals(
-                "scanned=19 indexes=[ref] locks=[myDb|analyzeGolden, myDb|analyzeGoldenJoined, "
-                        + "myDb|analyzeGoldenJoined|ref]",
+                "scanned=19 indexes=[ref] locks=[myProject|analyzeGolden, myProject|analyzeGoldenJoined, "
+                        + "myProject|analyzeGoldenJoined|ref]",
                 analyzed(new JoinAggregationStep(JOINED, "n", "ref", "joined")));
     }
 
     @Test
     public void anIndexedSort() {
-        assertEquals("scanned=9 indexes=[n] locks=[myDb|analyzeGolden, myDb|analyzeGolden|n]",
+        assertEquals("scanned=9 indexes=[n] locks=[myProject|analyzeGolden, myProject|analyzeGolden|n]",
                 analyzed(new SortAggregationStep("n", true), new LimitAggregationStep(2)));
     }
 
     @Test
     public void anIndexedGroupBy() {
-        assertEquals("scanned=14 indexes=[n] locks=[myDb|analyzeGolden, myDb|analyzeGolden|n]",
+        assertEquals("scanned=14 indexes=[n] locks=[myProject|analyzeGolden, myProject|analyzeGolden|n]",
                 analyzed(new GroupByAggregationStep("n")));
     }
 
     @Test
     public void anIndexFilterWithALimit() {
-        assertEquals("scanned=1 indexes=[n] locks=[myDb|analyzeGolden, myDb|analyzeGolden|n]",
+        assertEquals("scanned=1 indexes=[n] locks=[myProject|analyzeGolden, myProject|analyzeGolden|n]",
                 analyzed(field(FieldOperatorType.EQUALS, "n", new JsonNumber(1)), new LimitAggregationStep(1)));
     }
 
     @Test
     public void aFullScanFilter() {
-        assertEquals("scanned=7 indexes=[] locks=[myDb|analyzeGolden]",
+        assertEquals("scanned=7 indexes=[] locks=[myProject|analyzeGolden]",
                 analyzed(field(FieldOperatorType.EQUALS, "missing", new JsonNumber(1))));
     }
 }

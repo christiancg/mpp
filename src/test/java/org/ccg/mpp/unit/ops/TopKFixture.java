@@ -49,16 +49,16 @@ final class TopKFixture {
     }
 
     void createIndexedOnTs(List<JsonObject> documents) throws IOException, InterruptedException {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, collName));
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, collName);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, collName));
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, collName);
         bulk.setObjects(documents);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, collName, "ts"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, collName, "ts"));
         drain();
     }
 
     void drop() {
-        processor.processMessage(new DropCollectionRequest(TestGlobals.DB, collName));
+        processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, collName));
     }
 
     static List<JsonObject> standardDocuments() {
@@ -80,25 +80,26 @@ final class TopKFixture {
 
     void drain() throws IOException, InterruptedException {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        for (final var id : pending.idsFor(TestGlobals.DB, collName)) {
-            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.DB, collName, Set.of(id));
+        for (final var id : pending.idsFor(TestGlobals.PROJECT, collName)) {
+            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.PROJECT, collName,
+                    Set.of(id));
             if (!entries.isEmpty()) {
-                EventProcessorHelper
-                        .processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, collName, entries.getFirst()));
+                EventProcessorHelper.processEvent(
+                        new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, collName, entries.getFirst()));
             }
         }
-        assertTrue(pending.idsFor(TestGlobals.DB, collName).isEmpty(), "the pending overlay must be drained");
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, collName).isEmpty(), "the pending overlay must be drained");
     }
 
     void save(JsonObject document) {
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setObject(document);
         final var response = processor.processMessage(request);
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
     }
 
     Answer run(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, collName);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, collName);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(steps));
         final var response = processor.processMessage(request);

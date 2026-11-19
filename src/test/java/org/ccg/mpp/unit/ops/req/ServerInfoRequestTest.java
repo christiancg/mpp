@@ -21,7 +21,7 @@ public class ServerInfoRequestTest {
 
         final var info = assertInstanceOf(ServerInfoRequest.class, request);
         assertEquals(OperationType.SERVER_INFO, info.getType());
-        assertNull(info.getDatabaseName());
+        assertNull(info.getProjectName());
         assertNull(info.getCollectionName());
         assertFalse(info.isShuttingDown());
         assertTrue(RequestValidator.validate(info).isValid());

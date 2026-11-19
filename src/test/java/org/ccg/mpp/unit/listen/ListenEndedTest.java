@@ -48,7 +48,7 @@ public class ListenEndedTest {
     @BeforeAll
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
@@ -73,12 +73,12 @@ public class ListenEndedTest {
     }
 
     private static void saveReader(PermissionLevel level) throws Exception {
-        final var databasePermissions = new HashMap<String, PermissionLevel>();
+        final var projectPermissions = new HashMap<String, PermissionLevel>();
         if (level != null) {
-            databasePermissions.put(TestGlobals.DB, level);
+            projectPermissions.put(TestGlobals.PROJECT, level);
         }
         AdminOperationHelper.saveUserEntry(
-                new AdminUserEntry(READER, "unused", false, new HashSet<>(), databasePermissions, new HashMap<>()));
+                new AdminUserEntry(READER, "unused", false, new HashSet<>(), projectPermissions, new HashMap<>()));
     }
 
     private UUID connectedClient(String username) {
@@ -139,9 +139,9 @@ public class ListenEndedTest {
 
     @Test
     public void dropping_the_collection_pushes_one_terminal_frame() throws Exception {
-        final var listenId = delivered(request(TestGlobals.DB, List.of()));
+        final var listenId = delivered(request(TestGlobals.PROJECT, List.of()));
 
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
         runWorkerOver(listenId, listenId);
 
         assertEquals(1, frames().size(), written.toString(StandardCharsets.UTF_8));
@@ -151,10 +151,10 @@ public class ListenEndedTest {
 
     @Test
     public void dropping_a_join_target_ends_the_listen_on_the_primary_collection() throws Exception {
-        final var listenId = delivered(request(TestGlobals.DB,
+        final var listenId = delivered(request(TestGlobals.PROJECT,
                 List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "_id", "joined"))));
 
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.JOIN_COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, ListenManager.COLLECTION_DROPPED);
         runWorkerOver(listenId);
 
         assertEquals(1, frames().size(), written.toString(StandardCharsets.UTF_8));
@@ -162,23 +162,23 @@ public class ListenEndedTest {
     }
 
     @Test
-    public void dropping_the_database_ends_every_listen_in_it() throws Exception {
-        final var inDatabase = delivered(request(TestGlobals.DB, List.of()));
-        final var elsewhere = delivered(request("another_db", List.of()));
+    public void dropping_the_project_ends_every_listen_in_it() throws Exception {
+        final var inProject = delivered(request(TestGlobals.PROJECT, List.of()));
+        final var elsewhere = delivered(request("another_project", List.of()));
 
-        manager.endAllForDatabase(TestGlobals.DB, ListenManager.DATABASE_DROPPED);
-        runWorkerOver(inDatabase);
+        manager.endAllForProject(TestGlobals.PROJECT, ListenManager.PROJECT_DROPPED);
+        runWorkerOver(inProject);
 
         assertEquals(1, frames().size(), written.toString(StandardCharsets.UTF_8));
-        assertEndedFrame(frames().getFirst(), inDatabase, ListenManager.DATABASE_DROPPED);
+        assertEndedFrame(frames().getFirst(), inProject, ListenManager.PROJECT_DROPPED);
         assertNotNull(manager.getRegistration(elsewhere));
     }
 
     @Test
     public void a_listen_ended_before_its_response_is_flushed_waits_for_markDelivered() throws Exception {
-        final var listenId = listen(request(TestGlobals.DB, List.of()));
+        final var listenId = listen(request(TestGlobals.PROJECT, List.of()));
 
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
         runWorkerOver(listenId);
         assertTrue(frames().isEmpty(), "the terminal frame must not overtake the LISTEN response itself");
 
@@ -193,7 +193,7 @@ public class ListenEndedTest {
     public void a_revoked_reader_is_told_its_listen_ended() throws Exception {
         clientTracker.removeById(clientId);
         clientId = connectedClient(READER);
-        final var listenId = delivered(request(TestGlobals.DB, List.of()));
+        final var listenId = delivered(request(TestGlobals.PROJECT, List.of()));
         try {
             saveReader(null);
             runWorkerOver(listenId);
@@ -209,11 +209,11 @@ public class ListenEndedTest {
 
     @Test
     public void stop_listen_and_disconnect_stay_silent() throws Exception {
-        final var stopped = delivered(request(TestGlobals.DB, List.of()));
-        final var undelivered = listen(request(TestGlobals.DB, List.of()));
+        final var stopped = delivered(request(TestGlobals.PROJECT, List.of()));
+        final var undelivered = listen(request(TestGlobals.PROJECT, List.of()));
 
         assertTrue(manager.unregister(stopped, clientId));
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
         manager.unregisterAllForClient(clientId);
         manager.markDelivered(undelivered);
         runWorkerOver(stopped, undelivered);
@@ -223,10 +223,10 @@ public class ListenEndedTest {
 
     @Test
     public void a_gone_client_is_skipped_without_error() throws Exception {
-        final var listenId = delivered(request(TestGlobals.DB, List.of()));
+        final var listenId = delivered(request(TestGlobals.PROJECT, List.of()));
         clientTracker.removeById(clientId);
 
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
         runWorkerOver(listenId);
 
         assertTrue(frames().isEmpty());
@@ -235,11 +235,11 @@ public class ListenEndedTest {
 
     @Test
     public void an_update_already_produced_is_written_before_the_terminal_frame() throws Exception {
-        final var listenId = manager.register(clientId, request(TestGlobals.DB, List.of()), "stale-hash");
+        final var listenId = manager.register(clientId, request(TestGlobals.PROJECT, List.of()), "stale-hash");
         manager.markDelivered(listenId);
         runWorkerOver(listenId);
 
-        manager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        manager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
         runWorkerOver(listenId);
 
         assertEquals(2, frames().size(), written.toString(StandardCharsets.UTF_8));

@@ -21,7 +21,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 JAR = REPO / "target" / "mpp.jar"
 IMAGE = "mpp-syscall-audit"
 CONTAINER = "mpp-syscall-audit"
-DB, COLL = "audit", "docs"
+PROJECT, COLL = "audit", "docs"
 SEED_DOCS = 10000
 BULK_DOCS = 2000
 BULK_BATCH = 500
@@ -99,7 +99,7 @@ class Container:
         while time.time() < deadline:
             try:
                 with b.Conn.authenticated() as conn:
-                    if conn.send({"type": "LIST_DATABASES"}).get("status") == "OK":
+                    if conn.send({"type": "LIST_PROJECTS"}).get("status") == "OK":
                         return
             except OSError:
                 pass
@@ -268,35 +268,35 @@ class Audit:
 
     def run(self) -> None:
         with b.Conn.authenticated(timeout=600) as conn:
-            ok(conn, {"type": "CREATE_DATABASE", "databaseName": DB})
-            ok(conn, {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
+            ok(conn, {"type": "CREATE_PROJECT", "projectName": PROJECT})
+            ok(conn, {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
             for field in ("cat", "price"):
-                ok(conn, {"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL, "fieldName": field})
+                ok(conn, {"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL, "fieldName": field})
             for start in range(0, SEED_DOCS, BULK_BATCH):
                 ok(conn, bulk(start, 0))
             time.sleep(6)
             n = self.ops
             self.phase(conn, "insert", n, [save(document(20000 + i)) for i in range(n)])
             self.phase(conn, "update", n, [save(document(i, 1)) for i in range(n)])
-            self.phase(conn, "delete", n, [{"type": "DELETE", "databaseName": DB, "collectionName": COLL,
+            self.phase(conn, "delete", n, [{"type": "DELETE", "projectName": PROJECT, "collectionName": COLL,
                                             "_id": f"d{20000 + i}"} for i in range(n)])
             self.phase(conn, "bulk_insert", BULK_DOCS, [bulk(30000 + start, 0)
                                                         for start in range(0, BULK_DOCS, BULK_BATCH)])
             self.phase(conn, "bulk_update", BULK_DOCS, [bulk(1000 + start, 2)
                                                         for start in range(0, BULK_DOCS, BULK_BATCH)])
-            self.phase(conn, "find_by_id", n, [{"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+            self.phase(conn, "find_by_id", n, [{"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                                                 "_id": f"d{5000 + i}"} for i in range(n)])
             self.phase(conn, "find_eq_indexed", n // 4, [
-                {"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+                {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
                  "aggregationSteps": [b.filter_step("cat", "EQUALS", f"c{i % 50}")]} for i in range(n // 4)])
 
 
 def save(obj: dict) -> dict:
-    return {"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": obj}
+    return {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": obj}
 
 
 def bulk(start: int, version: int) -> dict:
-    return {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+    return {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
             "objects": [document(start + i, version) for i in range(BULK_BATCH)]}
 
 

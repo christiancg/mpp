@@ -20,7 +20,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("value", new JsonString("v"));
-        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         dbEntry.set_id(id);
         dbEntry.setPage(0);
         dbEntry.setVersion(version);
@@ -34,7 +34,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
     }
 
     private PkIndexEntry pkById(String id) throws IOException {
-        final var found = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var found = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(e -> e.getValue().equals(id)).findFirst().orElse(null);
         assertNotNull(found, "the bulk insert must write a pk index row for " + id);
         return found;
@@ -42,7 +42,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
 
     @Test
     public void test_the_returned_indexed_entry_carries_the_write_version() throws Exception {
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL,
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(entry("a", 41L), entry("b", 42L)));
 
         assertEquals(41L, indexedById(indexed, "a").getVersion(),
@@ -52,7 +52,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
 
     @Test
     public void test_the_db_entry_the_indexed_entry_produces_carries_the_write_version() throws Exception {
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL,
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(entry("a", 41L), entry("b", 42L)));
 
         assertEquals(41L, indexedById(indexed, "a").toDbEntry().getVersion());
@@ -61,7 +61,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
 
     @Test
     public void test_the_returned_version_matches_what_the_pk_index_recorded() throws Exception {
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL,
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(entry("a", 41L), entry("b", 42L)));
 
         assertEquals(pkById("a").getVersion(), indexedById(indexed, "a").getVersion());
@@ -70,7 +70,7 @@ public class BulkInsertVersionTest extends FileSystemTestBase {
 
     @Test
     public void test_a_zero_version_is_carried_through_unchanged() throws Exception {
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, List.of(entry("a", 0L)));
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entry("a", 0L)));
 
         assertEquals(0L, indexedById(indexed, "a").getVersion());
         assertEquals(0L, pkById("a").getVersion());

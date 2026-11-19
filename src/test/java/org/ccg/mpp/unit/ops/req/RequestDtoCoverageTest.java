@@ -18,15 +18,15 @@ public class RequestDtoCoverageTest {
         final var request = new ChangePermissionsRequest();
         request.setUsername("bob");
         request.setAdmin(true);
-        request.setGlobalPermissions(Set.of(GlobalPermissionType.CREATE_DATABASE));
-        request.setDatabasePermissions(Map.of("db1", PermissionLevel.READ_WRITE));
-        request.setCollectionPermissions(Map.of("db1|c1", PermissionLevel.READ));
+        request.setGlobalPermissions(Set.of(GlobalPermissionType.CREATE_PROJECT));
+        request.setProjectPermissions(Map.of("project1", PermissionLevel.READ_WRITE));
+        request.setCollectionPermissions(Map.of("project1|c1", PermissionLevel.READ));
 
         assertEquals("bob", request.getUsername());
         assertTrue(request.getAdmin());
-        assertEquals(Set.of(GlobalPermissionType.CREATE_DATABASE), request.getGlobalPermissions());
-        assertEquals(PermissionLevel.READ_WRITE, request.getDatabasePermissions().get("db1"));
-        assertEquals(PermissionLevel.READ, request.getCollectionPermissions().get("db1|c1"));
+        assertEquals(Set.of(GlobalPermissionType.CREATE_PROJECT), request.getGlobalPermissions());
+        assertEquals(PermissionLevel.READ_WRITE, request.getProjectPermissions().get("project1"));
+        assertEquals(PermissionLevel.READ, request.getCollectionPermissions().get("project1|c1"));
     }
 
     @Test
@@ -35,15 +35,15 @@ public class RequestDtoCoverageTest {
         request.setUsername("carol");
         request.setPassword("secret");
         request.setAdmin(false);
-        request.setGlobalPermissions(Set.of(GlobalPermissionType.DROP_DATABASE));
-        request.setDatabasePermissions(Map.of("db2", PermissionLevel.READ));
-        request.setCollectionPermissions(Map.of("db2|c2", PermissionLevel.READ_WRITE));
+        request.setGlobalPermissions(Set.of(GlobalPermissionType.DROP_PROJECT));
+        request.setProjectPermissions(Map.of("project2", PermissionLevel.READ));
+        request.setCollectionPermissions(Map.of("project2|c2", PermissionLevel.READ_WRITE));
 
         assertEquals("carol", request.getUsername());
         assertEquals("secret", request.getPassword());
         assertEquals(false, request.getAdmin());
-        assertEquals(Set.of(GlobalPermissionType.DROP_DATABASE), request.getGlobalPermissions());
-        assertEquals(PermissionLevel.READ, request.getDatabasePermissions().get("db2"));
-        assertEquals(PermissionLevel.READ_WRITE, request.getCollectionPermissions().get("db2|c2"));
+        assertEquals(Set.of(GlobalPermissionType.DROP_PROJECT), request.getGlobalPermissions());
+        assertEquals(PermissionLevel.READ, request.getProjectPermissions().get("project2"));
+        assertEquals(PermissionLevel.READ_WRITE, request.getCollectionPermissions().get("project2|c2"));
     }
 }

@@ -1,16 +1,16 @@
 What an operation addresses.
 
-## DATABASE
+## PROJECT
 
-Needs `databaseName`.
+Needs `projectName`.
 
 ## COLLECTION
 
-Needs `databaseName` and `collectionName`.
+Needs `projectName` and `collectionName`.
 
 ## OPTIONAL_COLLECTION
 
-Needs `databaseName`; `collectionName` narrows it.
+Needs `projectName`; `collectionName` narrows it.
 
 ## NONE
 

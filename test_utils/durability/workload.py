@@ -71,7 +71,7 @@ class History:
 
 @dataclass
 class WorkloadSchema:
-    db: str = "durability_db"
+    project: str = "durability_project"
     collections: list = field(default_factory=list)
     indexed_fields: dict = field(default_factory=dict)
     work_dir: str = ""
@@ -117,11 +117,11 @@ class Workload:
         schema = WorkloadSchema(collections=names, indexed_fields={name: list(INDEXED_FIELDS) for name in names})
         schema.ids = {name: [f"d{i}" for i in range(self.docs)] for name in names}
         with connect() as conn:
-            conn.send({"type": "CREATE_DATABASE", "databaseName": schema.db})
+            conn.send({"type": "CREATE_PROJECT", "projectName": schema.project})
             for name in names:
-                conn.send({"type": "CREATE_COLLECTION", "databaseName": schema.db, "collectionName": name})
+                conn.send({"type": "CREATE_COLLECTION", "projectName": schema.project, "collectionName": name})
                 for index_field in INDEXED_FIELDS:
-                    conn.send({"type": "CREATE_INDEX", "databaseName": schema.db, "collectionName": name,
+                    conn.send({"type": "CREATE_INDEX", "projectName": schema.project, "collectionName": name,
                                "fieldName": index_field})
             for name in names:
                 seeded = schema.ids[name][:self.docs // 2]
@@ -270,24 +270,24 @@ class Workload:
     def _save(self, conn, schema, rng, coll, doc_id, client) -> HistoryEntry:
         token = self._token(client)
         entry = self._record(SAVE, coll, [doc_id], [token], client)
-        return self._answer(entry, conn.send({"type": "SAVE", "databaseName": schema.db, "collectionName": coll,
+        return self._answer(entry, conn.send({"type": "SAVE", "projectName": schema.project, "collectionName": coll,
                                               "object": self._document(rng, doc_id, token)}))
 
     def _delete(self, conn, schema, coll, doc_id, client) -> HistoryEntry:
         entry = self._record(DELETE, coll, [doc_id], [None], client)
-        return self._answer(entry, conn.send({"type": "DELETE", "databaseName": schema.db, "collectionName": coll,
+        return self._answer(entry, conn.send({"type": "DELETE", "projectName": schema.project, "collectionName": coll,
                                               "_id": doc_id}))
 
     def _delete_where(self, conn, schema, coll, ids, client) -> HistoryEntry:
         present = self._last_written(coll, ids)
         entry = self._record(DELETE_WHERE, coll, ids, [None] * len(ids), client)
         entry.present = present
-        return self._answer(entry, conn.send({"type": "DELETE", "databaseName": schema.db, "collectionName": coll,
+        return self._answer(entry, conn.send({"type": "DELETE", "projectName": schema.project, "collectionName": coll,
                                               "condition": {"fieldOperatorType": "IN", "field": "_id",
                                                             "value": list(ids)}}))
 
     def _save_where(self, conn, schema, rng, coll, ids, client) -> HistoryEntry:
-        found = conn.send({"type": "AGGREGATE", "databaseName": schema.db, "collectionName": coll,
+        found = conn.send({"type": "AGGREGATE", "projectName": schema.project, "collectionName": coll,
                            "aggregationSteps": [{"type": "FILTER", "operator": _ids_in(ids)}]})
         present = sorted(row["_id"] for row in found.get("results") or [])
         if not present:
@@ -295,7 +295,7 @@ class Workload:
         token = self._token(client)
         drawn = self._document(rng, ids[0], token)
         entry = self._record(SAVE_WHERE, coll, present, [token] * len(present), client)
-        return self._answer(entry, conn.send({"type": "SAVE", "databaseName": schema.db, "collectionName": coll,
+        return self._answer(entry, conn.send({"type": "SAVE", "projectName": schema.project, "collectionName": coll,
                                               "condition": _ids_in(present),
                                               "object": {"w": token, "n": drawn["n"]}}))
 
@@ -313,7 +313,8 @@ class Workload:
         tokens = [self._token(client) for _ in ids]
         entry = self._record(BULK_SAVE, coll, ids, tokens, client)
         docs = [self._document(rng, doc_id, token) for doc_id, token in zip(ids, tokens)]
-        return self._answer(entry, conn.send({"type": "BULK_SAVE", "databaseName": schema.db, "collectionName": coll,
+        return self._answer(entry, conn.send({"type": "BULK_SAVE", "projectName": schema.project,
+                                              "collectionName": coll,
                                               "objects": docs}))
 
     def _transaction(self, conn, schema, rng, coll, steps, client) -> HistoryEntry:
@@ -327,10 +328,10 @@ class Workload:
         for kind, doc_id in steps:
             if kind == SAVE:
                 token = effects[doc_id]
-                response = conn.send({"type": "SAVE", "databaseName": schema.db, "collectionName": coll,
+                response = conn.send({"type": "SAVE", "projectName": schema.project, "collectionName": coll,
                                       "object": self._document(rng, doc_id, token)})
             else:
-                response = conn.send({"type": "DELETE", "databaseName": schema.db, "collectionName": coll,
+                response = conn.send({"type": "DELETE", "projectName": schema.project, "collectionName": coll,
                                       "_id": doc_id})
             outcome, _ = outcome_of(response)
             if outcome == OUTCOME_UNKNOWN:
@@ -342,7 +343,7 @@ class Workload:
 
     def _admin(self, conn, schema, coll, kind, index_field, client, primary_key) -> HistoryEntry:
         entry = self._record(kind, coll, [], [], client)
-        request = {"type": kind, "databaseName": schema.db, "collectionName": coll}
+        request = {"type": kind, "projectName": schema.project, "collectionName": coll}
         if kind == REINDEX:
             request["primaryKey"] = primary_key
         else:

@@ -33,7 +33,7 @@ public class ForwardedRequestGateTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         createUser(READER, PermissionLevel.READ);
         createUser(WRITER, PermissionLevel.READ_WRITE);
@@ -50,13 +50,13 @@ public class ForwardedRequestGateTest {
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>(Map.of(TestGlobals.DB, level)));
+        request.setProjectPermissions(new HashMap<>(Map.of(TestGlobals.PROJECT, level)));
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
 
     private static OperationRequest save(String db, String coll) {
-        return RequestParser.parseRequest("{\"type\":\"SAVE\",\"databaseName\":\"" + db + "\",\"collectionName\":\""
+        return RequestParser.parseRequest("{\"type\":\"SAVE\",\"projectName\":\"" + db + "\",\"collectionName\":\""
                 + coll + "\",\"object\":{\"_id\":\"g1\",\"v\":1}}");
     }
 
@@ -75,31 +75,31 @@ public class ForwardedRequestGateTest {
     }
 
     @Test
-    public void aReservedDatabaseIsRefused() {
+    public void aReservedProjectIsRefused() {
         assertRefused(ErrorCode.VALIDATION_ERROR,
                 ForwardedRequestGate.check(parse(
-                        "{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"admin\",\"collectionName\":\"users2\"}"),
+                        "{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"admin\",\"collectionName\":\"users2\"}"),
                         ADMIN));
     }
 
     @Test
     public void aNullActingUserIsRefusedWith401_1() {
         assertRefused(ErrorCode.MUST_AUTHENTICATE_FIRST,
-                ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), null));
+                ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), null));
         assertRefused(ErrorCode.MUST_AUTHENTICATE_FIRST,
-                ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), " "));
+                ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), " "));
     }
 
     @Test
     public void anUnknownActingUserIsRefusedWith401_2() {
         assertRefused(ErrorCode.USER_NO_LONGER_EXISTS,
-                ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), "nobody"));
+                ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), "nobody"));
     }
 
     @Test
     public void usernamesCompareLikeTheEdge() {
         final var otherCase = ADMIN.toUpperCase(Locale.ROOT);
-        final var response = ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), otherCase);
+        final var response = ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), otherCase);
         if (cache.getAdminUserEntry(otherCase) != null) {
             assertNull(response);
         } else {
@@ -110,35 +110,35 @@ public class ForwardedRequestGateTest {
     @Test
     public void aUserWithoutPermissionIsRefusedWith403_1() {
         assertRefused(ErrorCode.NO_PERMISSIONS,
-                ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), READER));
+                ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), READER));
     }
 
     @Test
     public void aUserWithPermissionPasses() {
-        assertNull(ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), WRITER));
-        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB
+        assertNull(ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), WRITER));
+        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"g1\"}"), READER));
     }
 
     @Test
     public void anAdminPasses() {
-        assertNull(ForwardedRequestGate.check(save(TestGlobals.DB, TestGlobals.COLL), ADMIN));
+        assertNull(ForwardedRequestGate.check(save(TestGlobals.PROJECT, TestGlobals.COLL), ADMIN));
         assertNull(ForwardedRequestGate.check(parse("{\"type\":\"LIST_USERS\"}"), ADMIN));
     }
 
     @Test
     public void aScriptRunsHistorySaveWithANullUserPasses() {
-        assertNull(ForwardedRequestGate.check(save(TestGlobals.DB, "script_runs"), null));
-        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\""
-                + TestGlobals.DB + "\",\"collectionName\":\"script_runs\"}"), null));
-        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB
+        assertNull(ForwardedRequestGate.check(save(TestGlobals.PROJECT, "script_runs"), null));
+        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\""
+                + TestGlobals.PROJECT + "\",\"collectionName\":\"script_runs\"}"), null));
+        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"script_runs\",\"_id\":\"r1\"}"), READER));
-        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        assertNull(ForwardedRequestGate.check(parse("{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"script_runs\",\"objects\":[{\"_id\":\"r1\"}]}"), null));
     }
 
     @Test
-    public void aScriptRunsHistoryWriteWithABadDatabaseNameIsStillRefused() {
+    public void aScriptRunsHistoryWriteWithABadProjectNameIsStillRefused() {
         assertRefused(ErrorCode.VALIDATION_ERROR, ForwardedRequestGate.check(save("../x", "script_runs"), null));
         assertRefused(ErrorCode.VALIDATION_ERROR, ForwardedRequestGate.check(save("admin", "script_runs"), null));
     }
@@ -146,9 +146,9 @@ public class ForwardedRequestGateTest {
     @Test
     public void aNonHistoryWriteToScriptRunsIsRefusedLikeAClient() {
         assertRefused(ErrorCode.VALIDATION_ERROR, ForwardedRequestGate.check(parse("{\"type\":\"DROP_COLLECTION\","
-                + "\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"script_runs\"}"), ADMIN));
+                + "\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\"script_runs\"}"), ADMIN));
         assertRefused(ErrorCode.VALIDATION_ERROR,
-                ForwardedRequestGate.check(save(TestGlobals.DB, "Script_Runs"), null));
+                ForwardedRequestGate.check(save(TestGlobals.PROJECT, "Script_Runs"), null));
     }
 
     @Test
@@ -166,13 +166,13 @@ public class ForwardedRequestGateTest {
         assertRefused(ErrorCode.USER_NO_LONGER_EXISTS,
                 ForwardedRequestGate.checkTransactional(parse("{\"type\":\"COMMIT_TRANSACTION\"}"), "nobody", false));
         assertRefused(ErrorCode.USER_NO_LONGER_EXISTS,
-                ForwardedRequestGate.checkTransactional(save(TestGlobals.DB, TestGlobals.COLL), "nobody", true));
+                ForwardedRequestGate.checkTransactional(save(TestGlobals.PROJECT, TestGlobals.COLL), "nobody", true));
     }
 
     @Test
     public void aRollbackIsLetThroughEvenForADeletedUser() {
         assertNull(ForwardedRequestGate.checkTransactional(parse("{\"type\":\"ROLLBACK_TRANSACTION\"}"), "nobody"));
         assertRefused(ErrorCode.NO_PERMISSIONS,
-                ForwardedRequestGate.checkTransactional(save(TestGlobals.DB, TestGlobals.COLL), READER));
+                ForwardedRequestGate.checkTransactional(save(TestGlobals.PROJECT, TestGlobals.COLL), READER));
     }
 }

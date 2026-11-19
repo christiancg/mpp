@@ -33,11 +33,11 @@ final class ProcedureBindingSupport {
 
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 100);
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerProject", 100);
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", 10_000L);
         registry.clear();
     }
@@ -51,7 +51,7 @@ final class ProcedureBindingSupport {
     }
 
     static OperationResponse saveProcedure(String name, String source, String actor) throws Exception {
-        return ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, name, source), actor);
+        return ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, name, source), actor);
     }
 
     static void installProcedure(String name, String source) throws Exception {
@@ -59,7 +59,7 @@ final class ProcedureBindingSupport {
     }
 
     static SaveTriggerRequest triggerRequest(String name, String procedure, String timing) {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, name, List.of("CREATED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, name, List.of("CREATED"),
                 procedure);
         request.setTiming(timing);
         return request;
@@ -71,13 +71,13 @@ final class ProcedureBindingSupport {
     }
 
     static void bindSchedule(String name, String procedure, String definer) throws Exception {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, name, procedure);
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, name, procedure);
         request.setIntervalMs(3_600_000L);
         final var saved = ScheduleOperationHelper.executeSave(request, definer);
         assertEquals(OperationStatus.OK, saved.getStatus(), saved.getMessage());
     }
 
     static OperationResponse refusal(String procedure, String caller) throws Exception {
-        return ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, TestGlobals.DB, procedure, caller);
+        return ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, TestGlobals.PROJECT, procedure, caller);
     }
 }

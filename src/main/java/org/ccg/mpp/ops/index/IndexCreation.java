@@ -27,23 +27,23 @@ final class IndexCreation {
     }
 
     static OperationResponse process(CreateIndexRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         final var targets = request.targetFieldNames();
         final var tooMany = tooManyIndexes(targets.size());
         if (tooMany != null) {
             return tooMany;
         }
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.CREATE_INDEX,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.CREATE_INDEX,
                 ErrorCode.ERROR_CREATING_INDEX, () -> {
-                    final var readinessError = CollectionReadinessGuard.check(OperationType.CREATE_INDEX, dbName,
+                    final var readinessError = CollectionReadinessGuard.check(OperationType.CREATE_INDEX, projectName,
                             collName);
                     if (readinessError != null) {
                         return readinessError;
                     }
                     final var missing = new ArrayList<String>();
                     for (final var fieldName : targets) {
-                        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+                        if (cache.hasNoIndex(projectName, collName, fieldName)) {
                             missing.add(fieldName);
                         }
                     }
@@ -51,30 +51,31 @@ final class IndexCreation {
                         return OperationResponse.ok(OperationType.CREATE_INDEX,
                                 "Index already exists for " + fieldsLabel(targets));
                     }
-                    final var refusal = refusalOf(dbName, collName, missing);
+                    final var refusal = refusalOf(projectName, collName, missing);
                     if (refusal != null) {
                         return refusal;
                     }
                     for (final var fieldName : missing) {
-                        fs.indexMarkers().mark(dbName, collName, fieldName);
+                        fs.indexMarkers().mark(projectName, collName, fieldName);
                     }
-                    IndexHelper.createIndexes(dbName, collName, missing);
+                    IndexHelper.createIndexes(projectName, collName, missing);
                     for (final var fieldName : missing) {
-                        AdminOperationHelper.saveNewIndex(dbName, collName, fieldName);
-                        fs.indexMarkers().clear(dbName, collName, fieldName);
+                        AdminOperationHelper.saveNewIndex(projectName, collName, fieldName);
+                        fs.indexMarkers().clear(projectName, collName, fieldName);
                     }
                     return OperationResponse.ok(OperationType.CREATE_INDEX, createdMessage(targets, missing));
                 });
     }
 
-    private static OperationResponse refusalOf(String dbName, String collName, List<String> missing) {
-        final var tooMany = tooManyIndexes(cache.getIndexesForCollection(dbName, collName).size() + missing.size());
+    private static OperationResponse refusalOf(String projectName, String collName, List<String> missing) {
+        final var tooMany = tooManyIndexes(
+                cache.getIndexesForCollection(projectName, collName).size() + missing.size());
         if (tooMany != null) {
             return tooMany;
         }
         final var byOnDiskKey = new HashMap<String, String>();
         for (final var fieldName : missing) {
-            var colliding = OnDiskNameRegistry.collidingIndexField(dbName, collName, fieldName);
+            var colliding = OnDiskNameRegistry.collidingIndexField(projectName, collName, fieldName);
             if (colliding == null) {
                 final var earlier = byOnDiskKey.putIfAbsent(OnDiskNameRegistry.onDiskKey(fieldName), fieldName);
                 colliding = earlier == null || earlier.equals(fieldName) ? null : earlier;

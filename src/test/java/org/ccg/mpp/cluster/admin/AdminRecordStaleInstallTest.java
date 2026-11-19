@@ -22,14 +22,14 @@ public class AdminRecordStaleInstallTest extends AdminRecordTestBase {
         body.addProperty("procedureName", "proc");
         body.addProperty("intervalMs", 1000);
         body.addProperty("writeVersion", Long.toString(version));
-        return new AdminRecord(AdminRecordKey.schedule(TestGlobals.DB, name), version, body);
+        return new AdminRecord(AdminRecordKey.schedule(TestGlobals.PROJECT, name), version, body);
     }
 
     private AdminRecord triggers(long version) {
         final var body = new JsonObject();
         body.add("triggers", new JsonArray());
         body.addProperty("writeVersion", Long.toString(version));
-        return new AdminRecord(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL), version, body);
+        return new AdminRecord(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL), version, body);
     }
 
     private AdminRecord installThenDelete(AdminRecord saved) {
@@ -47,13 +47,13 @@ public class AdminRecordStaleInstallTest extends AdminRecordTestBase {
         DefinitionRecordApplier.install(saved);
 
         AdminRecordMerge.apply(List.of(deleted), false);
-        assertNull(StoredDefinitions.schedule(TestGlobals.DB, NAME),
+        assertNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME),
                 "the older save must not leave a schedule file behind its newer tombstone");
     }
 
     @Test
     public void test_a_stale_procedure_schema_and_triggers_install_is_skipped() throws Exception {
-        final var procedure = procedure(TestGlobals.DB, "stale", clock.next());
+        final var procedure = procedure(TestGlobals.PROJECT, "stale", clock.next());
         final var schema = schema(TestGlobals.COLL, clock.next());
         final var triggers = triggers(clock.next());
         installThenDelete(procedure);
@@ -64,29 +64,29 @@ public class AdminRecordStaleInstallTest extends AdminRecordTestBase {
         assertTrue(DefinitionRecordApplier.install(schema));
         assertTrue(DefinitionRecordApplier.install(triggers));
 
-        assertNull(StoredDefinitions.procedure(TestGlobals.DB, "stale"));
-        assertNull(StoredDefinitions.schema(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(StoredDefinitions.triggers(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(StoredDefinitions.procedure(TestGlobals.PROJECT, "stale"));
+        assertNull(StoredDefinitions.schema(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(StoredDefinitions.triggers(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_stale_collection_install_after_its_drop_is_skipped() throws Exception {
-        final var saved = collection(TestGlobals.DB, "stale_coll", clock.next());
+        final var saved = collection(TestGlobals.PROJECT, "stale_coll", clock.next());
         installThenDelete(saved);
 
         assertTrue(CollectionRecordApplier.install(saved));
 
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "stale_coll"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "stale_coll"));
     }
 
     @Test
-    public void test_a_stale_database_install_after_its_drop_is_skipped() throws Exception {
-        final var saved = database("stale_db", clock.next());
+    public void test_a_stale_project_install_after_its_drop_is_skipped() throws Exception {
+        final var saved = project("stale_project", clock.next());
         installThenDelete(saved);
 
-        assertTrue(DatabaseRecordApplier.install(saved));
+        assertTrue(ProjectRecordApplier.install(saved));
 
-        assertNull(cache.getAdminDbEntry("stale_db"));
+        assertNull(cache.getAdminProjectEntry("stale_project"));
     }
 
     @Test
@@ -107,7 +107,7 @@ public class AdminRecordStaleInstallTest extends AdminRecordTestBase {
 
         assertTrue(DefinitionRecordApplier.remove(tombstone(saved.key(), older)));
 
-        assertNotNull(StoredDefinitions.schedule(TestGlobals.DB, NAME));
+        assertNotNull(StoredDefinitions.schedule(TestGlobals.PROJECT, NAME));
         assertEquals(older, tombstones().get(saved.key().id()).longValue());
     }
 

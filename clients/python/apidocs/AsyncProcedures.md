@@ -1,6 +1,6 @@
 # AsyncProcedures
 
-The stored procedures of a database.
+The stored procedures of a project.
 
 The sync class `Procedures` has the same members; its methods block and return the value directly.
 
@@ -17,7 +17,7 @@ Deletes a procedure by name.
 
 ## list
 
-Lists the database's procedures.
+Lists the project's procedures.
 
 Args:
     include_source: also return each procedure's source

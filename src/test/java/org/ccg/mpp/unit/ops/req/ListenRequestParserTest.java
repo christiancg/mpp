@@ -16,7 +16,7 @@ public class ListenRequestParserTest {
     @Test
     public void parseRequest_listen_withFilterStep_parsedCorrectly() {
         final var json = """
-                {"type":"LISTEN","databaseName":"testDb","collectionName":"testColl",
+                {"type":"LISTEN","projectName":"testProject","collectionName":"testColl",
                  "aggregationSteps":[{"type":"FILTER","operator":{"fieldOperatorType":"EQUALS",
                  "field":"status","value":{"$string":"active"}}}]}""";
 
@@ -24,14 +24,14 @@ public class ListenRequestParserTest {
 
         assertInstanceOf(ListenRequest.class, result);
         assertEquals(OperationType.LISTEN, result.getType());
-        assertEquals("testDb", result.getDatabaseName());
+        assertEquals("testProject", result.getProjectName());
         assertEquals("testColl", result.getCollectionName());
         assertFalse(((ListenRequest) result).getAggregationSteps().isEmpty());
     }
 
     @Test
     public void parseRequest_listen_emptySteps_parsedCorrectly() {
-        final var json = "{\"type\":\"LISTEN\",\"databaseName\":\"db\",\"collectionName\":\"coll\",\"aggregationSteps\":[]}";
+        final var json = "{\"type\":\"LISTEN\",\"projectName\":\"db\",\"collectionName\":\"coll\",\"aggregationSteps\":[]}";
 
         final var result = RequestParser.parseRequest(json);
 
@@ -54,7 +54,7 @@ public class ListenRequestParserTest {
 
     @Test
     public void test_a_listen_without_steps_still_parses() {
-        final var json = "{\"type\":\"LISTEN\",\"databaseName\":\"db\",\"collectionName\":\"coll\"}";
+        final var json = "{\"type\":\"LISTEN\",\"projectName\":\"db\",\"collectionName\":\"coll\"}";
 
         final var result = (ListenRequest) RequestParser.parseRequest(json);
 
@@ -65,7 +65,7 @@ public class ListenRequestParserTest {
     @Test
     public void test_listen_steps_bind_once() {
         final var json = """
-                {"type":"LISTEN","databaseName":"db","collectionName":"coll",
+                {"type":"LISTEN","projectName":"db","collectionName":"coll",
                  "aggregationSteps":[{"type":"LIMIT","limit":3},{"type":"COUNT"}]}""";
 
         final var result = (ListenRequest) RequestParser.parseRequest(json);

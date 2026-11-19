@@ -16,9 +16,9 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateRunScript(RunScriptRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         final var script = request.getScript();
         if (script == null || script.isBlank()) {
@@ -28,9 +28,9 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateSaveProcedure(SaveProcedureRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         final var nameResult = NameValidations.validateProcedureName(request.getName());
         if (!nameResult.isValid()) {
@@ -44,23 +44,23 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateDeleteProcedure(DeleteProcedureRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         return NameValidations.validateProcedureName(request.getName());
     }
 
     static ValidationResult validateCallProcedure(CallProcedureRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         return NameValidations.validateProcedureName(request.getProcedureName());
     }
 
     static ValidationResult validateSaveTrigger(SaveTriggerRequest request) {
-        final var namesResult = NameValidations.validateDbAndColl(request, true, true);
+        final var namesResult = NameValidations.validateProjectAndColl(request, true, true);
         if (!namesResult.isValid()) {
             return namesResult;
         }
@@ -72,7 +72,7 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateDeleteTrigger(DeleteTriggerRequest request) {
-        final var namesResult = NameValidations.validateDbAndColl(request, true);
+        final var namesResult = NameValidations.validateProjectAndColl(request, true);
         if (!namesResult.isValid()) {
             return namesResult;
         }
@@ -80,7 +80,7 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateTestTrigger(TestTriggerRequest request) {
-        final var namesResult = NameValidations.validateDbAndColl(request, true);
+        final var namesResult = NameValidations.validateProjectAndColl(request, true);
         if (!namesResult.isValid()) {
             return namesResult;
         }
@@ -95,9 +95,9 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateListTriggers(ListTriggersRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         final var collName = request.getCollectionName();
         if (collName == null || collName.isBlank()) {
@@ -107,9 +107,9 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateSaveSchedule(SaveScheduleRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         final var nameResult = NameValidations.validateProcedureName(request.getName());
         if (!nameResult.isValid()) {
@@ -119,9 +119,9 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateDeleteSchedule(DeleteScheduleRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         return NameValidations.validateProcedureName(request.getName());
     }

@@ -41,16 +41,16 @@ public class FileSystemQuarantineTest {
     }
 
     @Test
-    public void test_quarantine_of_an_absent_database_reports_nothing_moved() {
-        assertFalse(fileSystem.folderQuarantine().moveDatabaseAside("never_created"));
+    public void test_quarantine_of_an_absent_project_reports_nothing_moved() {
+        assertFalse(fileSystem.folderQuarantine().moveProjectAside("never_created"));
     }
 
     @Test
-    public void test_database_is_moved_aside_under_the_root() throws Exception {
-        fileSystem.createDatabaseFolder("movedb");
+    public void test_project_is_moved_aside_under_the_root() throws Exception {
+        fileSystem.createProjectFolder("movedb");
         fileSystem.createCollectionFile("movedb", "c1");
 
-        assertTrue(fileSystem.folderQuarantine().moveDatabaseAside("movedb"));
+        assertTrue(fileSystem.folderQuarantine().moveProjectAside("movedb"));
 
         assertFalse(new File(root(), "movedb").exists());
         final var moved = quarantinedIn(root(), "movedb");
@@ -60,37 +60,38 @@ public class FileSystemQuarantineTest {
 
     @Test
     public void test_two_quarantines_of_one_name_never_collide() {
-        fileSystem.createDatabaseFolder("twicedb");
-        assertTrue(fileSystem.folderQuarantine().moveDatabaseAside("twicedb"));
-        fileSystem.createDatabaseFolder("twicedb");
-        assertTrue(fileSystem.folderQuarantine().moveDatabaseAside("twicedb"));
-        fileSystem.createDatabaseFolder("twicedb");
-        assertTrue(fileSystem.folderQuarantine().moveDatabaseAside("twicedb"));
+        fileSystem.createProjectFolder("twicedb");
+        assertTrue(fileSystem.folderQuarantine().moveProjectAside("twicedb"));
+        fileSystem.createProjectFolder("twicedb");
+        assertTrue(fileSystem.folderQuarantine().moveProjectAside("twicedb"));
+        fileSystem.createProjectFolder("twicedb");
+        assertTrue(fileSystem.folderQuarantine().moveProjectAside("twicedb"));
 
         assertEquals(3, quarantinedIn(root(), "twicedb").length);
     }
 
     @Test
     public void test_an_empty_page_zero_is_not_a_leftover() throws Exception {
-        fileSystem.createDatabaseFolder(TestGlobals.DB);
-        assertFalse(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.DB, "fresh"));
-        fileSystem.createCollectionFile(TestGlobals.DB, "fresh");
+        fileSystem.createProjectFolder(TestGlobals.PROJECT);
+        assertFalse(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.PROJECT, "fresh"));
+        fileSystem.createCollectionFile(TestGlobals.PROJECT, "fresh");
 
-        assertFalse(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.DB, "fresh"));
+        assertFalse(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.PROJECT, "fresh"));
 
-        Files.writeString(new File(new File(new File(root(), TestGlobals.DB), "fresh"), "fresh-pk.idx").toPath(), "x");
-        assertTrue(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.DB, "fresh"));
+        Files.writeString(new File(new File(new File(root(), TestGlobals.PROJECT), "fresh"), "fresh-pk.idx").toPath(),
+                "x");
+        assertTrue(fileSystem.folderQuarantine().holdsLeftoverCollection(TestGlobals.PROJECT, "fresh"));
     }
 
     @Test
-    public void test_an_empty_database_folder_is_not_a_leftover() throws Exception {
-        assertFalse(fileSystem.folderQuarantine().holdsLeftoverDatabase("emptydb"));
-        fileSystem.createDatabaseFolder("emptydb");
+    public void test_an_empty_project_folder_is_not_a_leftover() throws Exception {
+        assertFalse(fileSystem.folderQuarantine().holdsLeftoverProject("emptydb"));
+        fileSystem.createProjectFolder("emptydb");
 
-        assertFalse(fileSystem.folderQuarantine().holdsLeftoverDatabase("emptydb"));
+        assertFalse(fileSystem.folderQuarantine().holdsLeftoverProject("emptydb"));
 
         fileSystem.createCollectionFile("emptydb", "c1");
-        assertTrue(fileSystem.folderQuarantine().holdsLeftoverDatabase("emptydb"));
+        assertTrue(fileSystem.folderQuarantine().holdsLeftoverProject("emptydb"));
     }
 
     @Test
@@ -101,13 +102,13 @@ public class FileSystemQuarantineTest {
         Files.writeString(new File(collection, "c1-name.building").toPath(), "");
 
         assertTrue(fileSystem.indexMarkers().retainUncleanStops().isEmpty(),
-                "a moved-aside database must not ask the operator to REINDEX a collection that does not exist");
+                "a moved-aside project must not ask the operator to REINDEX a collection that does not exist");
         assertTrue(fileSystem.indexMarkers().listMarked().isEmpty());
     }
 
     @Test
     public void test_a_re_created_collection_sees_no_stale_tombstones() throws Exception {
-        fileSystem.createDatabaseFolder("tombdb");
+        fileSystem.createProjectFolder("tombdb");
         fileSystem.createCollectionFile("tombdb", "c1");
         fileSystem.tombstones().append("tombdb", "c1", "gone", 7L);
         final var file = new File(root(), "tombdb" + File.separator + "c1" + File.separator + "c1-tombstones.idx");

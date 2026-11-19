@@ -37,13 +37,13 @@ public sealed class MppClient : IAsyncDisposable
     public static Task<MppClient> ConnectAsync(ClientSettings? settings = null, CancellationToken ct = default) =>
         ConnectAsync(settings ?? new ClientSettings(), Backoffs.Jittered, null, ct);
 
-    public Database Database(string name) => new(_context, name);
+    public Project Project(string name) => new(_context, name);
 
-    public async Task<IReadOnlyList<string>> ListDatabasesAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<string>> ListProjectsAsync(CancellationToken ct = default)
     {
-        var reply = await _context.Channel.SendAsync(Operation.ListDatabases, RequestEncoder.Request("LIST_DATABASES"), ct)
+        var reply = await _context.Channel.SendAsync(Operation.ListProjects, RequestEncoder.Request("LIST_PROJECTS"), ct)
             .ConfigureAwait(false);
-        return ResponseDecoder.Strings(reply["databases"]);
+        return ResponseDecoder.Strings(reply["projects"]);
     }
 
     public async Task<Admin.ServerInfo> ServerInfoAsync(CancellationToken ct = default)
@@ -53,9 +53,9 @@ public sealed class MppClient : IAsyncDisposable
         return Descriptors.Server(ResponseDecoder.DocumentOf(reply, "server") ?? Document.Empty);
     }
 
-    public async Task<Document> DatabaseStatsAsync(CancellationToken ct = default)
+    public async Task<Document> ProjectStatsAsync(CancellationToken ct = default)
     {
-        var reply = await _context.Channel.SendAsync(Operation.GetDatabaseStats, RequestEncoder.Request("GET_DATABASE_STATS"), ct)
+        var reply = await _context.Channel.SendAsync(Operation.GetProjectStats, RequestEncoder.Request("GET_PROJECT_STATS"), ct)
             .ConfigureAwait(false);
         return ResponseDecoder.DocumentOf(reply, "stats") ?? Document.Empty;
     }

@@ -17,8 +17,8 @@ export class TransactionCollection<T, R> {
         this.#ops = ops;
     }
 
-    get databaseName(): string {
-        return this.#ops.database;
+    get projectName(): string {
+        return this.#ops.project;
     }
 
     get name(): string {
@@ -88,18 +88,16 @@ export class Transaction implements AsyncDisposable {
         return !this.#finished;
     }
 
-    collection<T extends object = Document>(database: string, collection: string): TransactionCollection<T, Stored<T>>;
-    collection<T, R>(database: string, collection: string, codec: DocumentCodec<T, R>): TransactionCollection<T, R>;
+    collection<T extends object = Document>(project: string, collection: string): TransactionCollection<T, Stored<T>>;
+    collection<T, R>(project: string, collection: string, codec: DocumentCodec<T, R>): TransactionCollection<T, R>;
     collection<T, R>(
-        database: string,
+        project: string,
         collection: string,
         codec?: DocumentCodec<T, R>,
     ): TransactionCollection<T, R | Stored<T>> {
         this.#requireOpen();
         const rows: RowCodec<T, R | Stored<T>> = codec === undefined ? identityCodec<T>() : rowCodec(codec);
-        return new TransactionCollection<T, R | Stored<T>>(
-            new CollectionOps(this.#context, database, collection, rows),
-        );
+        return new TransactionCollection<T, R | Stored<T>>(new CollectionOps(this.#context, project, collection, rows));
     }
 
     commit(): Promise<void> {

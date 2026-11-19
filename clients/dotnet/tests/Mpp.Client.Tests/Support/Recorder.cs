@@ -11,7 +11,7 @@ internal sealed class Recorder
     public Recorder()
     {
         Context = RecordingChannel.Context(Channel);
-        Shop = new Database(Context, "shop");
+        Shop = new Project(Context, "shop");
         Orders = Shop.Collection("orders");
         TypedOrders = Shop.Collection<Order>("orders");
         Customers = Shop.Collection<Customer>("customers");
@@ -22,7 +22,7 @@ internal sealed class Recorder
 
     public ClientContext Context { get; }
 
-    public Database Shop { get; }
+    public Project Shop { get; }
 
     public Collection<Document> Orders { get; }
 

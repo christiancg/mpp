@@ -13,7 +13,7 @@ PORT = int(os.environ.get("SCHEDULE_TEST_PORT", "8995"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "sched_test_db"
+PROJECT = "sched_test_project"
 COLL = "counters"
 USER_PASSWORD = "password123"
 MANAGER = "sched_manager"
@@ -23,37 +23,37 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 
 TICK_MS = 200
 SCHEDULE_TIMEOUT_MS = 10_000
-MAX_PER_DATABASE = 3
+MAX_PER_PROJECT = 3
 MIN_INTERVAL_MS = 100
 MAX_TOTAL_PER_USER = 5
-OTHER_DB = "sched_other_db"
+OTHER_PROJECT = "sched_other_project"
 REVOKED = "sched_revoked"
 
 
 class Conn(bu.Conn):
-    def save_procedure(self, name, script, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+    def save_procedure(self, name, script, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "projectName": project, "name": name, "script": script}
         payload.update(extra)
         return self.send(payload)
 
-    def delete_procedure(self, name, db=DB) -> dict:
-        return self.send({"type": "DELETE_PROCEDURE", "databaseName": db, "name": name})
+    def delete_procedure(self, name, project=PROJECT) -> dict:
+        return self.send({"type": "DELETE_PROCEDURE", "projectName": project, "name": name})
 
-    def save_schedule(self, name, procedure, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_SCHEDULE", "databaseName": db, "name": name, "procedureName": procedure}
+    def save_schedule(self, name, procedure, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_SCHEDULE", "projectName": project, "name": name, "procedureName": procedure}
         payload.update(extra)
         return self.send(payload)
 
-    def delete_schedule(self, name, db=DB) -> dict:
-        return self.send({"type": "DELETE_SCHEDULE", "databaseName": db, "name": name})
+    def delete_schedule(self, name, project=PROJECT) -> dict:
+        return self.send({"type": "DELETE_SCHEDULE", "projectName": project, "name": name})
 
-    def list_schedules(self, db=DB, **extra) -> dict:
-        payload = {"type": "LIST_SCHEDULES", "databaseName": db}
+    def list_schedules(self, project=PROJECT, **extra) -> dict:
+        payload = {"type": "LIST_SCHEDULES", "projectName": project}
         payload.update(extra)
         return self.send(payload)
 
-    def find(self, doc_id, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id})
+    def find(self, doc_id, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": doc_id})
 
 def admin_conn() -> Conn:
     return Conn.authenticated()
@@ -90,7 +90,7 @@ def write_config(work_dir: str, scripts_enabled: bool, schedules_enabled: bool,
                     scriptLocale="en-US", procedureCacheSize=16, triggersEnabled=False,
                     schedulesEnabled=schedules_enabled, scheduleThreads=2, scheduleQueueSize=100,
                     scheduleTickMs=TICK_MS, scheduleRefreshMs=1000, scheduleTimeoutMs=SCHEDULE_TIMEOUT_MS,
-                    scheduleMaxPerDatabase=MAX_PER_DATABASE, scheduleCacheMaxBytes="8Mb",
+                    scheduleMaxPerProject=MAX_PER_PROJECT, scheduleCacheMaxBytes="8Mb",
                     scheduleMinIntervalMs=min_interval_ms, scheduleMaxTotalPerUser=MAX_TOTAL_PER_USER,
                     scriptRunHistoryEnabled=True, scriptRunHistoryKinds="CALL_PROCEDURE,TRIGGER,SCHEDULE",
                     scriptRunHistoryRetentionMs=604800000, scriptRunHistoryIncludeLogs=False,
@@ -109,18 +109,18 @@ COUNTER_SOURCE = (
 
 def setup_data(conn: Conn):
     section("Setup")
-    conn.send({"type": "DROP_DATABASE", "databaseName": DB})
-    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    conn.send({"type": "DROP_PROJECT", "projectName": PROJECT})
+    check_status("create project", conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
     check_status("create collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL}), "OK")
     check_status("store the counter procedure", conn.save_procedure("counter", COUNTER_SOURCE), "OK")
 
     check_status("create the MANAGE-level user", conn.send({
         "type": "CREATE_USER", "username": MANAGER, "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+        "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
     check_status("create the read-only user", conn.send({
         "type": "CREATE_USER", "username": READER, "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ"}}), "OK")
+        "projectPermissions": {PROJECT: "READ"}}), "OK")
 
 
 def clear_schedules(conn: Conn):
@@ -266,15 +266,15 @@ def test_validation(conn: Conn):
     conn.delete_schedule("hugestep")
     check_code("an unknown procedure is refused", conn.save_schedule("bad", "nosuchproc", intervalMs=1000),
                "NOT_FOUND", "404-8")
-    check_code("an unknown database is refused",
-               conn.save_schedule("bad", "counter", db="no_such_db", intervalMs=1000), "NOT_FOUND", "404-4")
+    check_code("an unknown project is refused",
+               conn.save_schedule("bad", "counter", project="no_such_project", intervalMs=1000), "NOT_FOUND", "404-4")
     check_code("an invalid schedule name is refused", conn.save_schedule("x", "counter", intervalMs=1000),
                "ERROR", "400-1")
     check_status("deleting an absent schedule is idempotent", conn.delete_schedule("neverExisted"), "OK")
 
-    section("Per-database cap")
+    section("Per-project cap")
     clear_schedules(conn)
-    for i in range(MAX_PER_DATABASE):
+    for i in range(MAX_PER_PROJECT):
         check_status(f"save schedule {i + 1} of the cap",
                      conn.save_schedule(f"capped{i}", "counter", cron="0 3 * * *"), "OK")
     check_code("one past the cap is refused", conn.save_schedule("capped99", "counter", cron="0 3 * * *"),
@@ -312,7 +312,7 @@ def test_failure_logs_a_stack(conn: Conn, log_path: str):
 
 
 def history_rows(conn: Conn, **filters) -> list:
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                           "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
     rows = response.get("results") or []
     for field, value in filters.items():
@@ -396,7 +396,7 @@ def test_import_failure(conn: Conn):
 
 
 def schedule_failures(conn: Conn) -> int:
-    stats = conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("schedules", {})
+    stats = conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("schedules", {})
     return stats.get("failed", 0)
 
 
@@ -497,26 +497,27 @@ def test_a_schedule_interval_below_the_minimum_is_refused(conn: Conn):
     conn.delete_schedule("atMinimum")
 
 
-def test_schedules_per_user_are_capped_across_databases(conn: Conn):
-    section("One user defines at most scheduleMaxTotalPerUser schedules across every database")
+def test_schedules_per_user_are_capped_across_projects(conn: Conn):
+    section("One user defines at most scheduleMaxTotalPerUser schedules across every project")
     clear_schedules(conn)
-    conn.send({"type": "DROP_DATABASE", "databaseName": OTHER_DB})
-    check_status("create a second database", conn.send({"type": "CREATE_DATABASE", "databaseName": OTHER_DB}),
+    conn.send({"type": "DROP_PROJECT", "projectName": OTHER_PROJECT})
+    check_status("create a second project", conn.send({"type": "CREATE_PROJECT", "projectName": OTHER_PROJECT}),
                  "OK")
-    check_status("store the counter procedure there", conn.save_procedure("counter", COUNTER_SOURCE, db=OTHER_DB),
+    check_status("store the counter procedure there",
+                 conn.save_procedure("counter", COUNTER_SOURCE, project=OTHER_PROJECT),
                  "OK")
-    for i in range(MAX_PER_DATABASE):
-        check_status(f"schedule {i} in the first database",
+    for i in range(MAX_PER_PROJECT):
+        check_status(f"schedule {i} in the first project",
                      conn.save_schedule(f"cap{i}", "counter", cron="0 3 * * *"), "OK")
-    for i in range(MAX_TOTAL_PER_USER - MAX_PER_DATABASE):
-        check_status(f"schedule {i} in the second database",
-                     conn.save_schedule(f"other{i}", "counter", db=OTHER_DB, cron="0 3 * * *"), "OK")
+    for i in range(MAX_TOTAL_PER_USER - MAX_PER_PROJECT):
+        check_status(f"schedule {i} in the second project",
+                     conn.save_schedule(f"other{i}", "counter", project=OTHER_PROJECT, cron="0 3 * * *"), "OK")
     check_code("one more anywhere -> 400-33",
-               conn.save_schedule("capOver", "counter", db=OTHER_DB, cron="0 3 * * *"), "ERROR", "400-33")
+               conn.save_schedule("capOver", "counter", project=OTHER_PROJECT, cron="0 3 * * *"), "ERROR", "400-33")
     check_status("replacing one of the user's own schedules takes no new slot",
                  conn.save_schedule("cap0", "counter", cron="0 4 * * *"), "OK")
-    check_status("dropping a database frees its schedules' slots",
-                 conn.send({"type": "DROP_DATABASE", "databaseName": OTHER_DB}), "OK")
+    check_status("dropping a project frees its schedules' slots",
+                 conn.send({"type": "DROP_PROJECT", "projectName": OTHER_PROJECT}), "OK")
     clear_schedules(conn)
     check_status("so a new schedule fits again", conn.save_schedule("capAfter", "counter", cron="0 3 * * *"), "OK")
     conn.delete_schedule("capAfter")
@@ -527,8 +528,8 @@ def schedule_entry(conn: Conn, name: str) -> dict:
 
 
 def set_script_level(admin: Conn, level: str) -> dict:
-    return admin.send({"type": "CHANGE_PERMISSIONS", "username": REVOKED, "databasePermissions": {DB: "READ_WRITE"},
-                       "scriptPermissions": {DB: level}})
+    return admin.send({"type": "CHANGE_PERMISSIONS", "username": REVOKED, "projectPermissions": {PROJECT: "READ_WRITE"},
+                       "scriptPermissions": {PROJECT: level}})
 
 
 def test_a_schedule_whose_definer_lost_script_run_is_disabled():
@@ -536,7 +537,7 @@ def test_a_schedule_whose_definer_lost_script_run_is_disabled():
     with admin_conn() as admin:
         check_status("create a definer with MANAGE", admin.send({
             "type": "CREATE_USER", "username": REVOKED, "password": USER_PASSWORD, "admin": False,
-            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+            "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
         with user_conn(REVOKED) as definer:
             check_status("the definer installs a fast schedule", definer.save_schedule(
                 "revocable", "counter", intervalMs=300, args={"id": "revocable"}), "OK")
@@ -565,8 +566,8 @@ def test_a_schedule_whose_definer_lost_script_run_is_disabled():
 def test_storage_placement(conn: Conn, work_dir: str):
     section("Storage placement")
     check_status("save a schedule to place", conn.save_schedule("placed", "counter", cron="0 3 * * *"), "OK")
-    path = os.path.join(work_dir, "db", DB, ".schedules", "placed.json")
-    check("the schedule lives with its database", os.path.isfile(path), f"expected a file at {path}")
+    path = os.path.join(work_dir, "db", PROJECT, ".schedules", "placed.json")
+    check("the schedule lives with its project", os.path.isfile(path), f"expected a file at {path}")
     if os.path.isfile(path):
         with open(path) as fp:
             stored = json.loads(fp.read())
@@ -579,7 +580,7 @@ def test_storage_placement(conn: Conn, work_dir: str):
 
 def test_stats(conn: Conn):
     section("Stats")
-    response = conn.send({"type": "GET_DATABASE_STATS"})
+    response = conn.send({"type": "GET_PROJECT_STATS"})
     check_status("get stats", response, "OK")
     schedules = response.get("stats", {}).get("schedules", {})
     check("the stats report the schedule counters",
@@ -594,12 +595,12 @@ def test_cascade_delete(conn: Conn, work_dir: str):
     check_status("save a schedule that keeps firing",
                  conn.save_schedule("doomed", "counter", intervalMs=500, args={"id": "doomed"}), "OK")
     check("the doomed schedule fired", await_counter(conn, "doomed", 1) >= 1, "counter never advanced")
-    check_status("drop the database", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+    check_status("drop the project", conn.send({"type": "DROP_PROJECT", "projectName": PROJECT}), "OK")
     check("the schedules folder is gone",
-          not os.path.isdir(os.path.join(work_dir, "db", DB, ".schedules")),
+          not os.path.isdir(os.path.join(work_dir, "db", PROJECT, ".schedules")),
           "the .schedules folder survived the drop")
     time.sleep(2.0)
-    check_code("the dropped database no longer answers LIST_SCHEDULES", conn.list_schedules(),
+    check_code("the dropped project no longer answers LIST_SCHEDULES", conn.list_schedules(),
                "NOT_FOUND", "404-4")
 
 
@@ -609,7 +610,7 @@ def test_switch_off(conn: Conn):
                "FORBIDDEN", "403-2")
     check_code("DELETE_SCHEDULE is refused", conn.delete_schedule("off"), "FORBIDDEN", "403-2")
     check_code("LIST_SCHEDULES is refused", conn.list_schedules(), "FORBIDDEN", "403-2")
-    response = conn.send({"type": "GET_DATABASE_STATS"})
+    response = conn.send({"type": "GET_PROJECT_STATS"})
     check("the stats report the feature as disabled",
           response.get("stats", {}).get("schedules", {}).get("enabled") is False,
           f"got {response.get('stats', {}).get('schedules')}")
@@ -620,8 +621,8 @@ SLOW_MIN_INTERVAL_MS = 120_000
 
 def test_cron_faster_than_minimum_is_400_35(conn: Conn):
     section(f"A cron firing faster than scheduleMinIntervalMs={SLOW_MIN_INTERVAL_MS} is refused")
-    conn.send({"type": "DROP_DATABASE", "databaseName": DB})
-    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    conn.send({"type": "DROP_PROJECT", "projectName": PROJECT})
+    check_status("create project", conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
     check_status("store the counter procedure", conn.save_procedure("counter", COUNTER_SOURCE), "OK")
     check_code("every minute -> 400-35", conn.save_schedule("everyMinute", "counter", cron="* * * * *"),
                "ERROR", "400-35")
@@ -631,7 +632,7 @@ def test_cron_faster_than_minimum_is_400_35(conn: Conn):
                  conn.save_schedule("everyFive", "counter", cron="*/5 * * * *", enabled=False), "OK")
     check_status("a weekly cron is accepted",
                  conn.save_schedule("weekly", "counter", cron="0 9 * * 1", enabled=False), "OK")
-    check_status("drop the database", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+    check_status("drop the project", conn.send({"type": "DROP_PROJECT", "projectName": PROJECT}), "OK")
 
 
 def main():
@@ -661,7 +662,7 @@ def main():
             test_validation(conn)
             test_a_schedule_timeout_past_the_ceiling_is_refused(conn)
             test_a_schedule_interval_below_the_minimum_is_refused(conn)
-            test_schedules_per_user_are_capped_across_databases(conn)
+            test_schedules_per_user_are_capped_across_projects(conn)
             test_import_failure(conn)
             test_failure_logs_a_stack(conn, log_path)
             test_run_history(conn)

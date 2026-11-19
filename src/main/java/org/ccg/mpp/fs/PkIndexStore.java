@@ -72,27 +72,27 @@ final class PkIndexStore {
     record PkAppend(File file, PkFileState before, long offset) {
     }
 
-    void appendRows(String dbName, String collName, List<PkIndexEntry> rows) throws IOException {
+    void appendRows(String projectName, String collName, List<PkIndexEntry> rows) throws IOException {
         if (rows.isEmpty()) {
             return;
         }
-        final var plan = new WalPlan(paths, this, dbName, collName);
+        final var plan = new WalPlan(paths, this, projectName, collName);
         rows.forEach(plan::insertRow);
         plan.commit();
     }
 
-    void appendReplacements(String dbName, String collName, List<PkIndexEntry> rows) throws IOException {
+    void appendReplacements(String projectName, String collName, List<PkIndexEntry> rows) throws IOException {
         if (rows.isEmpty()) {
             return;
         }
-        final var plan = new WalPlan(paths, this, dbName, collName);
+        final var plan = new WalPlan(paths, this, projectName, collName);
         rows.forEach(plan::replaceRow);
         plan.commit();
     }
 
-    PkAppend prepareAppend(String dbName, String collName) throws IOException {
-        final var indexFile = paths.pkIndexFile(dbName, collName);
-        final var before = trustedOrHealed(dbName, collName, indexFile);
+    PkAppend prepareAppend(String projectName, String collName) throws IOException {
+        final var indexFile = paths.pkIndexFile(projectName, collName);
+        final var before = trustedOrHealed(projectName, collName, indexFile);
         if (before == null || before.missing()) {
             OwnerOnly.ensureOwnerOnlyFile(indexFile.toPath());
             return new PkAppend(indexFile, before, indexFile.length());
@@ -100,7 +100,7 @@ final class PkIndexStore {
         return new PkAppend(indexFile, before, before.length());
     }
 
-    void appended(String dbName, String collName, PkAppend append, long bytes, int rowCount, long liveDelta) {
+    void appended(String projectName, String collName, PkAppend append, long bytes, int rowCount, long liveDelta) {
         final var before = append.before();
         if (before == null || before.length() != append.offset()) {
             forget(append.file());
@@ -110,35 +110,35 @@ final class PkIndexStore {
                 before.deadRows() + rowCount - liveDelta, true);
         fileStates.put(append.file().getAbsolutePath(), after);
         if (after.needsCompaction()) {
-            compact(dbName, collName, append.file());
+            compact(projectName, collName, append.file());
         }
     }
 
-    private PkFileState trustedOrHealed(String dbName, String collName, File indexFile) throws IOException {
+    private PkFileState trustedOrHealed(String projectName, String collName, File indexFile) throws IOException {
         final var known = trusted(indexFile);
         if (known != null) {
             return known;
         }
-        final var folded = fold(dbName, collName, indexFile);
+        final var folded = fold(projectName, collName, indexFile);
         if (folded.unrecognised()) {
             throw new IOException("No line in " + indexFile.getName() + " could be read as a PK index entry, so it is"
                     + " not the file this write expects; refusing to append to it. Rebuild it with REINDEX and"
                     + " \"primaryKey\": true, or repair or restore it");
         }
         if (folded.needsRewrite()) {
-            writeRows(dbName, collName, indexFile, folded.live());
+            writeRows(projectName, collName, indexFile, folded.live());
         }
         return trusted(indexFile);
     }
 
-    private void compact(String dbName, String collName, File indexFile) {
+    private void compact(String projectName, String collName, File indexFile) {
         try {
-            final var folded = fold(dbName, collName, indexFile);
+            final var folded = fold(projectName, collName, indexFile);
             if (folded.unrecognised()) {
                 forget(indexFile);
                 return;
             }
-            writeRows(dbName, collName, indexFile, folded.live());
+            writeRows(projectName, collName, indexFile, folded.live());
         } catch (IOException e) {
             forget(indexFile);
             logger.warning("Appended to " + indexFile.getName() + " but could not compact it; the rows it holds are"
@@ -147,41 +147,42 @@ final class PkIndexStore {
         }
     }
 
-    boolean rewriteRows(String dbName, String collectionName, UnaryOperator<List<PkIndexEntry>> change)
+    boolean rewriteRows(String projectName, String collectionName, UnaryOperator<List<PkIndexEntry>> change)
             throws IOException {
-        final var indexFile = paths.pkIndexFile(dbName, collectionName);
+        final var indexFile = paths.pkIndexFile(projectName, collectionName);
         final var lock = FileLocks.lockWrite(indexFile);
         try {
             final var folded = indexFile.exists()
-                    ? fold(dbName, collectionName, indexFile)
+                    ? fold(projectName, collectionName, indexFile)
                     : new Folded(new ArrayList<>(), 0, false, false);
             if (folded.unrecognised()) {
                 return false;
             }
             final var changed = change.apply(new ArrayList<>(folded.live()));
             changed.sort(Comparator.comparing(PkIndexEntry::getValue));
-            writeRows(dbName, collectionName, indexFile, changed);
+            writeRows(projectName, collectionName, indexFile, changed);
             return true;
         } finally {
             lock.unlock();
         }
     }
 
-    void replaceAll(String dbName, String collectionName, List<PkIndexEntry> entries) throws IOException {
-        final var indexFile = paths.pkIndexFile(dbName, collectionName);
+    void replaceAll(String projectName, String collectionName, List<PkIndexEntry> entries) throws IOException {
+        final var indexFile = paths.pkIndexFile(projectName, collectionName);
         final var lock = FileLocks.lockWrite(indexFile);
         try {
             final var sorted = new ArrayList<>(entries);
             sorted.sort(Comparator.comparing(PkIndexEntry::getValue));
-            writeRows(dbName, collectionName, indexFile, sorted);
-            wal.checkpoint(dbName, collectionName);
+            writeRows(projectName, collectionName, indexFile, sorted);
+            wal.checkpoint(projectName, collectionName);
         } finally {
             lock.unlock();
         }
     }
 
-    private void writeRows(String dbName, String collName, File indexFile, List<PkIndexEntry> rows) throws IOException {
-        wal.checkpoint(dbName, collName);
+    private void writeRows(String projectName, String collName, File indexFile, List<PkIndexEntry> rows)
+            throws IOException {
+        wal.checkpoint(projectName, collName);
         forget(indexFile);
         FileLocks.rewriteFileAtomically(indexFile.toPath(), out -> {
             final var lines = new PkLineWriter(out);
@@ -192,26 +193,27 @@ final class PkIndexStore {
         remember(indexFile, rows.size(), 0L);
     }
 
-    List<PkIndexEntry> readWholePkIndexFile(String dbName, String collectionName) throws IOException {
-        final var folded = readHealed(dbName, collectionName);
+    List<PkIndexEntry> readWholePkIndexFile(String projectName, String collectionName) throws IOException {
+        final var folded = readHealed(projectName, collectionName);
         if (folded.unrecognised()) {
-            throw new IOException("No line in " + paths.pkIndexFile(dbName, collectionName).getName()
+            throw new IOException("No line in " + paths.pkIndexFile(projectName, collectionName).getName()
                     + " could be read as a PK index entry; it is left untouched. Rebuild it with REINDEX and"
-                    + " \"primaryKey\": true, or repair or restore it, before reading or writing " + dbName + "|"
+                    + " \"primaryKey\": true, or repair or restore it, before reading or writing " + projectName + "|"
                     + collectionName);
         }
         return folded.live();
     }
 
-    Map<String, PkIndexEntry> rowsFor(String dbName, String collectionName, Collection<String> ids) throws IOException {
+    Map<String, PkIndexEntry> rowsFor(String projectName, String collectionName, Collection<String> ids)
+            throws IOException {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        final var indexFile = paths.pkIndexFile(dbName, collectionName);
-        requireCurrent(dbName, collectionName, indexFile);
+        final var indexFile = paths.pkIndexFile(projectName, collectionName);
+        requireCurrent(projectName, collectionName, indexFile);
         final var readLock = FileLocks.lockRead(indexFile);
         try (var in = Files.newInputStream(indexFile.toPath())) {
-            return PkPointScan.rowsFor(in, indexFile, dbName, collectionName, ids);
+            return PkPointScan.rowsFor(in, indexFile, projectName, collectionName, ids);
         } catch (NoSuchFileException e) {
             return Map.of();
         } finally {
@@ -219,18 +221,18 @@ final class PkIndexStore {
         }
     }
 
-    OptionalLong trustedLiveRows(String dbName, String collectionName) {
-        final var state = trusted(paths.pkIndexFile(dbName, collectionName));
+    OptionalLong trustedLiveRows(String projectName, String collectionName) {
+        final var state = trusted(paths.pkIndexFile(projectName, collectionName));
         return state == null ? OptionalLong.empty() : OptionalLong.of(state.liveRows());
     }
 
-    Optional<List<PkIndexEntry>> readRecognisedPkIndex(String dbName, String collectionName) throws IOException {
-        final var folded = readHealed(dbName, collectionName);
+    Optional<List<PkIndexEntry>> readRecognisedPkIndex(String projectName, String collectionName) throws IOException {
+        final var folded = readHealed(projectName, collectionName);
         return folded.unrecognised() ? Optional.empty() : Optional.of(folded.live());
     }
 
-    long highestVersion(String dbName, String collectionName) throws IOException {
-        final var indexFile = paths.pkIndexFile(dbName, collectionName);
+    long highestVersion(String projectName, String collectionName) throws IOException {
+        final var indexFile = paths.pkIndexFile(projectName, collectionName);
         if (!indexFile.exists()) {
             return 0L;
         }
@@ -294,32 +296,33 @@ final class PkIndexStore {
         }
     }
 
-    void markBehindAVacuum(String dbName, String collectionName) {
-        behindAVacuum.add(paths.pkIndexFile(dbName, collectionName).getAbsolutePath());
+    void markBehindAVacuum(String projectName, String collectionName) {
+        behindAVacuum.add(paths.pkIndexFile(projectName, collectionName).getAbsolutePath());
     }
 
-    boolean clearBehindAVacuum(String dbName, String collectionName) {
-        return behindAVacuum.remove(paths.pkIndexFile(dbName, collectionName).getAbsolutePath());
+    boolean clearBehindAVacuum(String projectName, String collectionName) {
+        return behindAVacuum.remove(paths.pkIndexFile(projectName, collectionName).getAbsolutePath());
     }
 
-    private static void requireCurrent(String dbName, String collectionName, File indexFile) throws IOException {
+    private static void requireCurrent(String projectName, String collectionName, File indexFile) throws IOException {
         if (!behindAVacuum.isEmpty() && behindAVacuum.contains(indexFile.getAbsolutePath())) {
-            throw new IOException("The PK index of " + dbName + "|" + collectionName + " is behind a page vacuum whose"
+            throw new IOException("The PK index of " + projectName + "|" + collectionName
+                    + " is behind a page vacuum whose"
                     + " moved rows could not be recorded, so its positions are stale; the collection's next use, or a"
                     + " restart, re-derives them from the vacuum's open intent");
         }
     }
 
-    private Folded readHealed(String dbName, String collectionName) throws IOException {
-        final var indexFile = paths.pkIndexFile(dbName, collectionName);
-        requireCurrent(dbName, collectionName, indexFile);
+    private Folded readHealed(String projectName, String collectionName) throws IOException {
+        final var indexFile = paths.pkIndexFile(projectName, collectionName);
+        requireCurrent(projectName, collectionName, indexFile);
         if (!indexFile.exists()) {
             return new Folded(new ArrayList<>(), 0, false, false);
         }
         final Folded folded;
         final var readLock = FileLocks.lockRead(indexFile);
         try {
-            folded = fold(dbName, collectionName, indexFile);
+            folded = fold(projectName, collectionName, indexFile);
         } finally {
             readLock.unlock();
         }
@@ -334,20 +337,20 @@ final class PkIndexStore {
         }
         final var writeLock = FileLocks.lockWrite(indexFile);
         try {
-            final var refolded = fold(dbName, collectionName, indexFile);
+            final var refolded = fold(projectName, collectionName, indexFile);
             if (!refolded.unrecognised() && refolded.needsRewrite()) {
-                writeRows(dbName, collectionName, indexFile, refolded.live());
+                writeRows(projectName, collectionName, indexFile, refolded.live());
             }
             return refolded;
         } catch (RewriteOpenException deferred) {
             logger.info("Left " + indexFile.getName() + " unhealed for now: " + deferred.getMessage());
-            return fold(dbName, collectionName, indexFile);
+            return fold(projectName, collectionName, indexFile);
         } finally {
             writeLock.unlock();
         }
     }
 
-    private static Folded fold(String dbName, String collectionName, File indexFile) throws IOException {
+    private static Folded fold(String projectName, String collectionName, File indexFile) throws IOException {
         final var bytes = Files.readAllBytes(indexFile.toPath());
         final var rows = new ArrayList<PkIndexEntry>();
         var malformed = false;
@@ -362,7 +365,7 @@ final class PkIndexStore {
                 break;
             }
             if (end > start) {
-                final var row = parseRow(dbName, collectionName, bytes, start, end, indexFile);
+                final var row = parseRow(projectName, collectionName, bytes, start, end, indexFile);
                 if (row == null) {
                     malformed = true;
                 } else {
@@ -382,14 +385,14 @@ final class PkIndexStore {
         return new Folded(rows, rowCount, malformed, torn);
     }
 
-    private static PkIndexEntry parseRow(String dbName, String collectionName, byte[] bytes, int start, int end,
+    private static PkIndexEntry parseRow(String projectName, String collectionName, byte[] bytes, int start, int end,
             File indexFile) {
         try {
             final var deletedId = PkIndexEntry.deletedIdOf(bytes, start, end);
             if (deletedId != null) {
-                return new PkIndexEntry(dbName, collectionName, deletedId, 0L, DELETED, 0L, 0L);
+                return new PkIndexEntry(projectName, collectionName, deletedId, 0L, DELETED, 0L, 0L);
             }
-            return PkIndexEntry.fromIndexFileBytes(dbName, collectionName, bytes, start, end);
+            return PkIndexEntry.fromIndexFileBytes(projectName, collectionName, bytes, start, end);
         } catch (Exception e) {
             logger.warning("Removing malformed PK index entry in " + indexFile.getName() + ": " + e.getMessage());
             return null;

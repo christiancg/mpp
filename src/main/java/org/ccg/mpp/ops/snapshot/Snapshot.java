@@ -12,7 +12,7 @@ import org.ccg.mpp.fs.SnapshotImageFile;
 
 public final class Snapshot {
     private final String id;
-    private final String dbName;
+    private final String projectName;
     private final UUID owner;
     private final List<String> collectionNames;
     private final Set<String> collections;
@@ -21,9 +21,9 @@ public final class Snapshot {
     private volatile long lastUsedNanos;
     private volatile String abortReason;
 
-    Snapshot(String id, String dbName, UUID owner, List<String> collectionNames, long nowNanos) {
+    Snapshot(String id, String projectName, UUID owner, List<String> collectionNames, long nowNanos) {
         this.id = id;
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.owner = owner;
         this.collectionNames = List.copyOf(collectionNames);
         this.collections = Set.copyOf(collectionNames);
@@ -34,8 +34,8 @@ public final class Snapshot {
         return id;
     }
 
-    public String dbName() {
-        return dbName;
+    public String projectName() {
+        return projectName;
     }
 
     UUID owner() {

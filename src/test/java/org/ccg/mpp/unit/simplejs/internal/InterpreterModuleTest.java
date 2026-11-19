@@ -17,7 +17,7 @@ import org.ccg.mpp.simplejs.values.JsFunction;
 import org.ccg.mpp.simplejs.values.JsNumber;
 import org.ccg.mpp.simplejs.values.JsObject;
 import org.ccg.mpp.simplejs.values.JsString;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class InterpreterModuleTest {
@@ -34,7 +34,7 @@ public class InterpreterModuleTest {
         return engine.run(source, new SimpleHostBindings(args(), null, null, ResourceLimits.unlimited()));
     }
 
-    private ScriptResult runWithDb(String source, FakeDatabaseAccess db) {
+    private ScriptResult runWithProject(String source, FakeProjectAccess db) {
         return engine.run(source, new SimpleHostBindings(new JsonObject(), db, null, ResourceLimits.unlimited()));
     }
 
@@ -79,31 +79,31 @@ public class InterpreterModuleTest {
 
     @Test
     public void test_import_db_find() {
-        final var db = new FakeDatabaseAccess();
+        final var db = new FakeProjectAccess();
         final var stored = new JsonObject();
         stored.add("_id", new JsonString("u1"));
         db.nextFindResult = stored;
-        final var result = runWithDb("import db from 'db'; return db.findById('mydb', 'users', 'u1');", db);
+        final var result = runWithProject("import db from 'db'; return db.findById('mydb', 'users', 'u1');", db);
         assertFalse(result.isError());
         assertEquals("u1", result.getValue().asJsonObject().get("_id").asJsonString().getValue());
     }
 
     @Test
     public void test_import_db_denied() {
-        final var db = new FakeDatabaseAccess();
+        final var db = new FakeProjectAccess();
         db.denyMessage = "action is forbidden, no permissions";
-        final var result = runWithDb("import db from 'db'; return db.save('mydb', 'users', {});", db);
+        final var result = runWithProject("import db from 'db'; return db.save('mydb', 'users', {});", db);
         assertTrue(result.isError());
         assertEquals("action is forbidden, no permissions", result.getErrorMessage());
     }
 
     @Test
     public void test_import_db_denied_catchable() {
-        final var db = new FakeDatabaseAccess();
+        final var db = new FakeProjectAccess();
         db.denyMessage = "schema violation";
         final var source = "import db from 'db';"
                 + " try { db.save('mydb', 'users', {}); return 'no'; } catch (e) { return e.message; }";
-        final var result = runWithDb(source, db);
+        final var result = runWithProject(source, db);
         assertEquals("schema violation", result.getValue().asJsonString().getValue());
     }
 
@@ -111,7 +111,7 @@ public class InterpreterModuleTest {
     public void test_import_db_unavailable() {
         final var result = runWithArgs("import db from 'db'; return db.findById('a', 'b', 'c');");
         assertTrue(result.isError());
-        assertTrue(result.getErrorMessage().contains("Database access is not available"));
+        assertTrue(result.getErrorMessage().contains("Project access is not available"));
     }
 
     @Test

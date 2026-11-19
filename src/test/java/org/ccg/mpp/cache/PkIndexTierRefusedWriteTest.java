@@ -42,7 +42,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class PkIndexTierRefusedWriteTest {
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String RESIDENT = TestGlobals.COLL;
     private static final String REFUSED = "refusedWrites";
     private static final int SEEDED = 40;
@@ -62,9 +62,9 @@ public class PkIndexTierRefusedWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(DB, REFUSED));
-        fs.createCollectionFile(DB, REFUSED);
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(PROJECT, REFUSED));
+        fs.createCollectionFile(PROJECT, REFUSED);
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         realWholeLoads = userCache.wholeLoads();
         saveTaskManager = TestUtils.getPrivateStaticField(SaveOperationHelper.class, "taskManager",
@@ -99,14 +99,14 @@ public class PkIndexTierRefusedWriteTest {
     private void seed(String collName) throws Exception {
         final var entries = new ArrayList<DbEntry>();
         for (var i = 0; i < SEEDED; i++) {
-            entries.add(DbEntry.fromJsonObject(DB, collName, document(id(i), "seed-" + i)));
+            entries.add(DbEntry.fromJsonObject(PROJECT, collName, document(id(i), "seed-" + i)));
         }
-        fs.bulkInsertIntoCollection(DB, collName, entries);
+        fs.bulkInsertIntoCollection(PROJECT, collName, entries);
     }
 
     private List<String> runScript(String collName) throws Exception {
         final var answers = new ArrayList<String>();
-        locks.lock(DB, collName);
+        locks.lock(PROJECT, collName);
         try {
             answers.add(eJson.toJson(save(collName, document("new-1", "inserted"))));
             answers.add(eJson.toJson(save(collName, document(id(3), "updated"))));
@@ -114,35 +114,35 @@ public class PkIndexTierRefusedWriteTest {
             answers.add(eJson.toJson(delete(collName, id(5))));
             answers.add(eJson.toJson(delete(collName, "missing")));
             answers.add(eJson.toJson(delete(collName, id(5))));
-            final var bulk = new BulkSaveRequest(DB, collName);
+            final var bulk = new BulkSaveRequest(PROJECT, collName);
             bulk.setObjects(new ArrayList<>(List.of(document(id(6), "bulk-updated"), document("new-2", "bulk-inserted"),
                     document(id(7), "bulk-updated"), document(id(5), "bulk-recreated"))));
             answers.add(eJson.toJson(SaveOperationHelper.executeBulkSave(bulk)));
-            answers.add(String.join(",", DeleteOperationHelper.executeBulkDelete(DB, collName,
+            answers.add(String.join(",", DeleteOperationHelper.executeBulkDelete(PROJECT, collName,
                     List.of(id(8), "missing", id(9), id(8), "new-2"), (_, _) -> {
                     }, true)));
             answers.add(eJson.toJson(save(collName, document("new-2", "after bulk delete"))));
         } finally {
-            locks.release(DB, collName);
+            locks.release(PROJECT, collName);
         }
         return answers;
     }
 
     private Object save(String collName, JsonObject object) throws Exception {
-        final var request = new SaveRequest(DB, collName);
+        final var request = new SaveRequest(PROJECT, collName);
         request.setObject(object);
         return SaveOperationHelper.executeSave(request);
     }
 
     private Object delete(String collName, String id) throws Exception {
-        final var request = new DeleteRequest(DB, collName);
+        final var request = new DeleteRequest(PROJECT, collName);
         request.set_id(id);
         return DeleteOperationHelper.executeDelete(request);
     }
 
     private Map<String, String> storedDocuments(String collName) throws Exception {
         final var stored = new TreeMap<String, String>();
-        for (final var row : fs.readWholePkIndexFile(DB, collName)) {
+        for (final var row : fs.readWholePkIndexFile(PROJECT, collName)) {
             final var document = fs.getByIndexEntries(List.of(row)).getFirst();
             stored.put(row.getValue(), eJson.toJson(document.getData()));
         }
@@ -151,13 +151,13 @@ public class PkIndexTierRefusedWriteTest {
 
     private void refuseThePk() throws Exception {
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", REFUSE_EVERYTHING);
-        locks.lock(DB, REFUSED);
+        locks.lock(PROJECT, REFUSED);
         try {
-            assertNotNull(userCache.getPkIndexAndLoadIfNecessary(DB, REFUSED));
+            assertNotNull(userCache.getPkIndexAndLoadIfNecessary(PROJECT, REFUSED));
         } finally {
-            locks.release(DB, REFUSED);
+            locks.release(PROJECT, REFUSED);
         }
-        assertNotNull(userCache.sizes().refusedPk(Cache.getCollectionIdentifier(DB, REFUSED)));
+        assertNotNull(userCache.sizes().refusedPk(Cache.getCollectionIdentifier(PROJECT, REFUSED)));
     }
 
     @Test
@@ -165,7 +165,7 @@ public class PkIndexTierRefusedWriteTest {
         seed(RESIDENT);
         seed(REFUSED);
         final var residentAnswers = runScript(RESIDENT);
-        assertTrue(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(DB, RESIDENT)));
+        assertTrue(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(PROJECT, RESIDENT)));
 
         refuseThePk();
         final var spied = spy(realWholeLoads);
@@ -176,7 +176,7 @@ public class PkIndexTierRefusedWriteTest {
         verify(spied, never()).transientPkIndex(anyString(), anyString());
         assertEquals(residentAnswers, refusedAnswers);
         assertEquals(storedDocuments(RESIDENT), storedDocuments(REFUSED));
-        assertFalse(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(DB, REFUSED)));
+        assertFalse(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(PROJECT, REFUSED)));
     }
 
     @Test
@@ -186,8 +186,8 @@ public class PkIndexTierRefusedWriteTest {
 
         runScript(REFUSED);
 
-        assertNull(userCache.pkIndexes().get(Cache.getCollectionIdentifier(DB, REFUSED)));
-        final var ids = fs.readWholePkIndexFile(DB, REFUSED).stream().map(PkIndexEntry::getValue).toList();
+        assertNull(userCache.pkIndexes().get(Cache.getCollectionIdentifier(PROJECT, REFUSED)));
+        final var ids = fs.readWholePkIndexFile(PROJECT, REFUSED).stream().map(PkIndexEntry::getValue).toList();
         assertEquals(SEEDED, ids.size());
         assertTrue(ids.containsAll(List.of("new-1", "new-2", id(5))));
         assertFalse(ids.contains(id(8)) || ids.contains(id(9)));
@@ -196,13 +196,13 @@ public class PkIndexTierRefusedWriteTest {
     @Test
     public void indexMaintenanceOnARefusedPkReadsItsBatchByPointScan() throws Exception {
         seed(REFUSED);
-        IndexHelper.createIndex(DB, REFUSED, "payload");
-        IocContainer.get(Cache.class).getAdminCollectionEntry(DB, REFUSED).setIndexes(Set.of("payload"));
+        IndexHelper.createIndex(PROJECT, REFUSED, "payload");
+        IocContainer.get(Cache.class).getAdminCollectionEntry(PROJECT, REFUSED).setIndexes(Set.of("payload"));
         refuseThePk();
         final var spied = spy(realWholeLoads);
         TestUtils.setPrivateField(userCache, "wholeLoads", spied);
 
-        IndexHelper.bulkUpdateIndexes(DB, REFUSED, List.of(id(1), id(2), "missing"));
+        IndexHelper.bulkUpdateIndexes(PROJECT, REFUSED, List.of(id(1), id(2), "missing"));
 
         verify(spied, never()).pkIndex(anyString(), anyString(), anyBoolean(), any());
         verify(spied, never()).transientPkIndex(anyString(), anyString());
@@ -213,9 +213,9 @@ public class PkIndexTierRefusedWriteTest {
         seed(RESIDENT);
         runScript(RESIDENT);
 
-        final var resident = userCache.pkIndexes().get(Cache.getCollectionIdentifier(DB, RESIDENT));
+        final var resident = userCache.pkIndexes().get(Cache.getCollectionIdentifier(PROJECT, RESIDENT));
         assertNotNull(resident);
-        assertEquals(fs.readWholePkIndexFile(DB, RESIDENT).stream().map(PkIndexEntry::getValue).toList(),
+        assertEquals(fs.readWholePkIndexFile(PROJECT, RESIDENT).stream().map(PkIndexEntry::getValue).toList(),
                 resident.stream().map(PkIndexEntry::getValue).toList());
     }
 }

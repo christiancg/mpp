@@ -32,7 +32,7 @@ public class DumpSnapshotTest {
     @BeforeEach
     void setUp() throws IOException {
         server = new FakeLineServer();
-        source = new FakeSource().database("shop", "orders", "leads").documents("shop", "orders", 5, 10)
+        source = new FakeSource().project("shop", "orders", "leads").documents("shop", "orders", 5, 10)
                 .documents("shop", "leads", 2, 10);
         source.serveOn(server);
     }
@@ -66,7 +66,7 @@ public class DumpSnapshotTest {
     }
 
     @Test
-    public void test_one_snapshot_per_database_names_its_collections_and_is_released_after_its_documents()
+    public void test_one_snapshot_per_project_names_its_collections_and_is_released_after_its_documents()
             throws IOException {
         assertEquals(ClientException.OK, dump());
 
@@ -166,12 +166,12 @@ public class DumpSnapshotTest {
     }
 
     @Test
-    public void test_a_database_without_collections_opens_no_snapshot() throws IOException {
-        new FakeSource().database("empty_db").serveOn(server);
+    public void test_a_project_without_collections_opens_no_snapshot() throws IOException {
+        new FakeSource().project("empty_project").serveOn(server);
 
         assertEquals(ClientException.OK, dump());
 
         assertTrue(requestsOf("START_SNAPSHOT").isEmpty());
-        assertTrue(emitted().contains("\"type\":\"CREATE_DATABASE\",\"databaseName\":\"empty_db\""), emitted());
+        assertTrue(emitted().contains("\"type\":\"CREATE_PROJECT\",\"projectName\":\"empty_project\""), emitted());
     }
 }

@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.christiancg.mpp.client.Database;
 import io.github.christiancg.mpp.client.Document;
+import io.github.christiancg.mpp.client.Project;
 import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
 import io.github.christiancg.mpp.client.error.MppException;
@@ -25,7 +25,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 public class ScriptingIT extends ServerIT {
-    private Database shop;
+    private Project shop;
 
     @Override
     protected Map<String, String> config() {
@@ -33,8 +33,8 @@ public class ScriptingIT extends ServerIT {
     }
 
     @BeforeAll
-    public void createDatabase() {
-        shop = client.database("script_it");
+    public void createProject() {
+        shop = client.project("script_it");
         shop.create();
         shop.collection("orders").create();
         shop.collection("audit").create();

@@ -43,7 +43,7 @@ public sealed class MppQueryable<T> : IOrderedQueryable<T>, IAsyncEnumerable<T>,
     }
 
     public override string ToString() =>
-        ((IMppQueryable)this).IsRoot ? $"{_provider.Root.Database}.{_provider.Root.Collection}" : Expression.ToString();
+        ((IMppQueryable)this).IsRoot ? $"{_provider.Root.Project}.{_provider.Root.Collection}" : Expression.ToString();
 
     internal static MppQueryable<T> Over(IQueryTarget<T> target) => new(new MppQueryProvider(new QueryRoot<T>(target)), null);
 }

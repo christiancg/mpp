@@ -50,46 +50,46 @@ public final class ScheduleOperationHelper {
         if (!configuration.isSchedulesEnabled()) {
             return new OperationResponse(OperationType.SAVE_SCHEDULE, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return databaseNotFound(dbName);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return projectNotFound(projectName);
         }
         final var timingError = validateTiming(request);
         if (timingError != null) {
             return timingError;
         }
-        if (cache.getProcedure(dbName, request.getProcedureName()) == null) {
+        if (cache.getProcedure(projectName, request.getProcedureName()) == null) {
             return procedureNotFound(request);
         }
-        return OperationLocks.withDatabaseShared(dbName, OperationType.SAVE_SCHEDULE, ErrorCode.ERROR_SAVING_SCHEDULE,
-                () -> saveUnderDatabaseBarrier(request, actingUser));
+        return OperationLocks.withProjectShared(projectName, OperationType.SAVE_SCHEDULE,
+                ErrorCode.ERROR_SAVING_SCHEDULE, () -> saveUnderProjectBarrier(request, actingUser));
     }
 
-    private static OperationResponse saveUnderDatabaseBarrier(SaveScheduleRequest request, String actingUser)
+    private static OperationResponse saveUnderProjectBarrier(SaveScheduleRequest request, String actingUser)
             throws IOException, InterruptedException {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return databaseNotFound(dbName);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return projectNotFound(projectName);
         }
-        locks.lock(dbName, Globals.SCHEDULES_FOLDER);
-        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        locks.lock(projectName, Globals.SCHEDULES_FOLDER);
+        locks.lock(projectName, Globals.PROCEDURES_FOLDER);
         try {
-            if (cache.getProcedure(dbName, request.getProcedureName()) == null) {
+            if (cache.getProcedure(projectName, request.getProcedureName()) == null) {
                 return procedureNotFound(request);
             }
-            final var existing = cache.getSchedule(dbName, request.getName());
+            final var existing = cache.getSchedule(projectName, request.getName());
             if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
                 return new OperationResponse(OperationType.SAVE_SCHEDULE, ErrorCode.PROCEDURE_VERSION_CONFLICT);
             }
             final var foreign = existing == null
                     ? null
-                    : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.SAVE_SCHEDULE, dbName,
+                    : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.SAVE_SCHEDULE, projectName,
                             existing.getDefiner(), actingUser);
             if (foreign != null) {
                 return foreign;
             }
-            final var scheduleNames = fs.metadataFiles().listScheduleNames(dbName);
-            if (existing == null && scheduleNames.size() >= configuration.getScheduleMaxPerDatabase()) {
+            final var scheduleNames = fs.metadataFiles().listScheduleNames(projectName);
+            if (existing == null && scheduleNames.size() >= configuration.getScheduleMaxPerProject()) {
                 return new OperationResponse(OperationType.SAVE_SCHEDULE, ErrorCode.TOO_MANY_SCHEDULES);
             }
             final var colliding = OnDiskNameRegistry.collidingDefinition(scheduleNames, request.getName());
@@ -106,16 +106,16 @@ public final class ScheduleOperationHelper {
                             ErrorCode.TOO_MANY_SCHEDULES_FOR_USER);
                 }
                 final var definition = newDefinition(request, existing, actingUser);
-                StoredDefinitions.writeSchedule(dbName, definition.getName(), definition.toJsonObject());
-                cache.putSchedule(dbName, definition);
-                registry.reload(dbName);
+                StoredDefinitions.writeSchedule(projectName, definition.getName(), definition.toJsonObject());
+                cache.putSchedule(projectName, definition);
+                registry.reload(projectName);
                 return new SaveScheduleResponse("Schedule saved successfully", definition.getVersion());
             } finally {
                 definerQuota.unlock();
             }
         } finally {
-            locks.release(dbName, Globals.PROCEDURES_FOLDER);
-            locks.release(dbName, Globals.SCHEDULES_FOLDER);
+            locks.release(projectName, Globals.PROCEDURES_FOLDER);
+            locks.release(projectName, Globals.SCHEDULES_FOLDER);
         }
     }
 
@@ -129,12 +129,12 @@ public final class ScheduleOperationHelper {
 
     private static OperationResponse procedureNotFound(SaveScheduleRequest request) {
         return new OperationResponse(OperationType.SAVE_SCHEDULE, "Procedure '" + request.getProcedureName()
-                + "' not found in database '" + request.getDatabaseName() + "'", ErrorCode.PROCEDURE_NOT_FOUND);
+                + "' not found in project '" + request.getProjectName() + "'", ErrorCode.PROCEDURE_NOT_FOUND);
     }
 
-    private static OperationResponse databaseNotFound(String dbName) {
-        return new OperationResponse(OperationType.SAVE_SCHEDULE, "Database '" + dbName + "' not found",
-                ErrorCode.DATABASE_NOT_FOUND);
+    private static OperationResponse projectNotFound(String projectName) {
+        return new OperationResponse(OperationType.SAVE_SCHEDULE, "Project '" + projectName + "' not found",
+                ErrorCode.PROJECT_NOT_FOUND);
     }
 
     private static OperationResponse validateTiming(SaveScheduleRequest request) {
@@ -200,29 +200,29 @@ public final class ScheduleOperationHelper {
         if (!configuration.isSchedulesEnabled()) {
             return new OperationResponse(OperationType.DELETE_SCHEDULE, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.DELETE_SCHEDULE, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.DELETE_SCHEDULE, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
-        locks.lock(dbName, Globals.SCHEDULES_FOLDER);
+        locks.lock(projectName, Globals.SCHEDULES_FOLDER);
         try {
-            final var existing = cache.getSchedule(dbName, request.getName());
+            final var existing = cache.getSchedule(projectName, request.getName());
             final var foreign = existing == null
                     ? null
-                    : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.DELETE_SCHEDULE, dbName,
+                    : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.DELETE_SCHEDULE, projectName,
                             existing.getDefiner(), actingUser);
             if (foreign != null) {
                 return foreign;
             }
-            if (fs.metadataFiles().deleteSchedule(dbName, request.getName())) {
-                AdminStamp.tombstone(AdminRecordKey.schedule(dbName, request.getName()));
+            if (fs.metadataFiles().deleteSchedule(projectName, request.getName())) {
+                AdminStamp.tombstone(AdminRecordKey.schedule(projectName, request.getName()));
             }
-            cache.removeSchedule(dbName, request.getName());
-            registry.reload(dbName);
+            cache.removeSchedule(projectName, request.getName());
+            registry.reload(projectName);
             return OperationResponse.ok(OperationType.DELETE_SCHEDULE, "Schedule deleted successfully");
         } finally {
-            locks.release(dbName, Globals.SCHEDULES_FOLDER);
+            locks.release(projectName, Globals.SCHEDULES_FOLDER);
         }
     }
 
@@ -235,66 +235,66 @@ public final class ScheduleOperationHelper {
         if (!configuration.isSchedulesEnabled()) {
             return new OperationResponse(OperationType.LIST_SCHEDULES, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.LIST_SCHEDULES, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.LIST_SCHEDULES, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var result = new ArrayList<JsonObject>();
-        for (final var name : fs.metadataFiles().listScheduleNames(dbName)) {
-            final var definition = cache.getSchedule(dbName, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(projectName)) {
+            final var definition = cache.getSchedule(projectName, name);
             if (definition != null) {
-                result.add(summaryOf(dbName, definition, request.isIncludeArgs()));
+                result.add(summaryOf(projectName, definition, request.isIncludeArgs()));
             }
         }
         return new ListSchedulesResponse("Ok", result);
     }
 
-    private static JsonObject summaryOf(String dbName, ScheduleDefinition definition, boolean includeArgs) {
+    private static JsonObject summaryOf(String projectName, ScheduleDefinition definition, boolean includeArgs) {
         final var json = includeArgs ? definition.toJsonObject() : definition.toSummaryJson();
-        final var entry = registry.get(dbName, definition.getName());
+        final var entry = registry.get(projectName, definition.getName());
         if (entry != null) {
             json.addProperty("nextRunAt", entry.getNextRunAt());
         }
-        final var owner = ownershipManager.ownerFor(dbName, ringKey(definition.getName()));
+        final var owner = ownershipManager.ownerFor(projectName, ringKey(definition.getName()));
         if (owner != null) {
             json.addProperty("owner", owner);
         }
         return json;
     }
 
-    public static boolean disable(String dbName, ScheduleDefinition dispatched, String reason)
+    public static boolean disable(String projectName, ScheduleDefinition dispatched, String reason)
             throws IOException, InterruptedException {
         final var budget = OperationLocks.lockBudgetMillis(false);
-        if (!locks.tryLockDatabaseShared(dbName, budget)) {
+        if (!locks.tryLockProjectShared(projectName, budget)) {
             return false;
         }
         try {
-            if (!locks.tryLockWrite(dbName, Globals.SCHEDULES_FOLDER, budget)) {
+            if (!locks.tryLockWrite(projectName, Globals.SCHEDULES_FOLDER, budget)) {
                 return false;
             }
             try {
-                final var existing = cache.getSchedule(dbName, dispatched.getName());
+                final var existing = cache.getSchedule(projectName, dispatched.getName());
                 if (existing == null || !existing.isEnabled() || existing.getVersion() != dispatched.getVersion()) {
                     return false;
                 }
                 final var disabled = existing.disabledCopy(reason, System.currentTimeMillis());
-                StoredDefinitions.writeSchedule(dbName, disabled.getName(), disabled.toJsonObject());
-                cache.putSchedule(dbName, disabled);
-                registry.reload(dbName);
+                StoredDefinitions.writeSchedule(projectName, disabled.getName(), disabled.toJsonObject());
+                cache.putSchedule(projectName, disabled);
+                registry.reload(projectName);
                 return true;
             } finally {
-                locks.release(dbName, Globals.SCHEDULES_FOLDER);
+                locks.release(projectName, Globals.SCHEDULES_FOLDER);
             }
         } finally {
-            locks.releaseDatabaseShared(dbName);
+            locks.releaseProjectShared(projectName);
         }
     }
 
-    public static List<ScheduleDefinition> schedulesIn(String dbName) throws IOException {
+    public static List<ScheduleDefinition> schedulesIn(String projectName) throws IOException {
         final var result = new ArrayList<ScheduleDefinition>();
-        for (final var name : fs.metadataFiles().listScheduleNames(dbName)) {
-            final var definition = cache.getSchedule(dbName, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(projectName)) {
+            final var definition = cache.getSchedule(projectName, name);
             if (definition != null) {
                 result.add(definition);
             }
@@ -302,8 +302,8 @@ public final class ScheduleOperationHelper {
         return result;
     }
 
-    public static String scheduleReferencing(String dbName, String procedureName) throws IOException {
-        for (final var definition : schedulesIn(dbName)) {
+    public static String scheduleReferencing(String projectName, String procedureName) throws IOException {
+        for (final var definition : schedulesIn(projectName)) {
             if (procedureName.equals(definition.getProcedureName())) {
                 return definition.getName();
             }

@@ -42,7 +42,7 @@ public class AggregateDeadlineOverlayTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var document = new JsonObject();
@@ -50,7 +50,7 @@ public class AggregateDeadlineOverlayTest {
             document.addProperty("n", i);
             objects.add(document);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, IocContainer.get(OperationProcessor.class).processMessage(bulk).getStatus());
         clientId = clientTracker.registerForwardedClient("admin");
@@ -67,7 +67,7 @@ public class AggregateDeadlineOverlayTest {
 
     private Transaction transactionWithOneSave() throws Exception {
         TransactionOperationHelper.start(clientId, UUID.randomUUID(), 0);
-        final var buffered = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var buffered = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var document = new JsonObject();
         document.addProperty("_id", "buffered");
         document.addProperty("n", -1);
@@ -86,7 +86,7 @@ public class AggregateDeadlineOverlayTest {
     @Test
     public void aFilterOverATransactionOverlayStopsAtTheDeadline() throws Exception {
         final var transaction = transactionWithOneSave();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new FilterAggregationStep(missingIs(1))));
 
         final var response = ReadPathHelper.processAggregateOperation(request, transaction);
@@ -97,7 +97,7 @@ public class AggregateDeadlineOverlayTest {
     @Test
     public void test_an_unindexed_filter_source_in_a_transaction_obeys_the_deadline() throws Exception {
         final var transaction = transactionWithOneSave();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new ConjunctionOperator(ConjunctionOperatorType.OR, List.of(missingIs(1), missingIs(2)))),
@@ -111,7 +111,7 @@ public class AggregateDeadlineOverlayTest {
     @Test
     public void test_a_sort_source_over_an_overlay_obeys_the_deadline() throws Exception {
         final var transaction = transactionWithOneSave();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("n", false)));
 
         final var response = ReadPathHelper.processAggregateOperation(request, transaction);

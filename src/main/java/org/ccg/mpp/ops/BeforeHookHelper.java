@@ -25,10 +25,10 @@ public final class BeforeHookHelper {
     }
 
     public static OperationResponse beforeSave(SaveRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (!BeforeHookContext.hasHooksFor(dbName, collName, EventType.CREATED)
-                && !BeforeHookContext.hasHooksFor(dbName, collName, EventType.UPDATED)) {
+        if (!BeforeHookContext.hasHooksFor(projectName, collName, EventType.CREATED)
+                && !BeforeHookContext.hasHooksFor(projectName, collName, EventType.UPDATED)) {
             return null;
         }
         if (hasConflictingIds(request)) {
@@ -36,11 +36,11 @@ public final class BeforeHookHelper {
         }
         resolveIdForWrite(request);
         return OperationResponse.respondOrError(OperationType.SAVE, ErrorCode.ERROR_SAVING, () -> {
-            final var event = isInsert(dbName, collName, request.get_id()) ? EventType.CREATED : EventType.UPDATED;
-            if (!BeforeHookContext.hasHooksFor(dbName, collName, event)) {
+            final var event = isInsert(projectName, collName, request.get_id()) ? EventType.CREATED : EventType.UPDATED;
+            if (!BeforeHookContext.hasHooksFor(projectName, collName, event)) {
                 return null;
             }
-            try (var hooks = BeforeHookContext.open(dbName, collName, event, actingUser,
+            try (var hooks = BeforeHookContext.open(projectName, collName, event, actingUser,
                     SchemaValidationHelper.budgetFor(request))) {
                 final var outcome = hooks.apply(request.getObject(), request.get_id(), OperationType.SAVE);
                 if (outcome.isRejected()) {
@@ -52,23 +52,23 @@ public final class BeforeHookHelper {
         });
     }
 
-    private static boolean isInsert(String dbName, String collName, String id) throws java.io.IOException {
+    private static boolean isInsert(String projectName, String collName, String id) throws java.io.IOException {
         return id == null || id.isBlank()
-                || Collections.binarySearch(cache.getPkIndexAndLoadIfNecessary(dbName, collName), id) < 0;
+                || Collections.binarySearch(cache.getPkIndexAndLoadIfNecessary(projectName, collName), id) < 0;
     }
 
     public static OperationResponse beforeBulkSave(BulkSaveRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var created = BeforeHookContext.hasHooksFor(dbName, collName, EventType.CREATED);
-        final var updated = BeforeHookContext.hasHooksFor(dbName, collName, EventType.UPDATED);
+        final var created = BeforeHookContext.hasHooksFor(projectName, collName, EventType.CREATED);
+        final var updated = BeforeHookContext.hasHooksFor(projectName, collName, EventType.UPDATED);
         if (!created && !updated) {
             return null;
         }
         return OperationResponse.respondOrError(OperationType.BULK_SAVE, ErrorCode.ERROR_BULK_SAVING, () -> {
-            try (var hooks = BulkBeforeHooks.open(dbName, collName, actingUser,
+            try (var hooks = BulkBeforeHooks.open(projectName, collName, actingUser,
                     SchemaValidationHelper.budgetFor(request))) {
-                final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+                final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
                 final var objects = new ArrayList<>(request.getObjects());
                 for (var i = 0; i < objects.size(); i++) {
                     final var object = objects.get(i);
@@ -87,14 +87,14 @@ public final class BeforeHookHelper {
     }
 
     public static OperationResponse beforeDelete(DeleteRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (!BeforeHookContext.hasHooksFor(dbName, collName, EventType.DELETED)) {
+        if (!BeforeHookContext.hasHooksFor(projectName, collName, EventType.DELETED)) {
             return null;
         }
         final JsonObject document;
         try {
-            final var entries = cache.getEntriesByIds(dbName, collName, Set.of(request.get_id()));
+            final var entries = cache.getEntriesByIds(projectName, collName, Set.of(request.get_id()));
             if (entries.isEmpty()) {
                 return null;
             }
@@ -103,15 +103,15 @@ public final class BeforeHookHelper {
             logger.error(OperationType.DELETE + " failed with " + ErrorCode.ERROR_DELETING.getCode(), e);
             return new OperationResponse(OperationType.DELETE, ErrorCode.ERROR_DELETING);
         }
-        try (var hooks = BeforeHookContext.open(dbName, collName, EventType.DELETED, actingUser)) {
+        try (var hooks = BeforeHookContext.open(projectName, collName, EventType.DELETED, actingUser)) {
             final var outcome = hooks.apply(document, request.get_id(), OperationType.DELETE);
             return outcome.isRejected() ? outcome.rejection() : null;
         }
     }
 
-    public static OperationResponse beforeDeleteAll(String dbName, String collName, List<DbEntry> documents,
+    public static OperationResponse beforeDeleteAll(String projectName, String collName, List<DbEntry> documents,
             String actingUser) {
-        try (var hooks = BeforeHookContext.open(dbName, collName, EventType.DELETED, actingUser)) {
+        try (var hooks = BeforeHookContext.open(projectName, collName, EventType.DELETED, actingUser)) {
             for (final var document : documents) {
                 final var outcome = hooks.apply(document.getData(), document.get_id(), OperationType.DELETE);
                 if (outcome.isRejected()) {

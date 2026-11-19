@@ -35,7 +35,7 @@ public class TriggerQueueBytesTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -64,7 +64,7 @@ public class TriggerQueueBytesTest {
         data.add("_id", new JsonString(id));
         data.add("payload", new JsonString("x".repeat(padding)));
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(collName);
         dbEntry.set_id(id);
         dbEntry.setData(data);
@@ -72,7 +72,7 @@ public class TriggerQueueBytesTest {
     }
 
     private static TriggerEvent event(EventType type, String collName, String id, int padding) {
-        return new TriggerEvent(type, TestGlobals.DB, collName, "audit", "recalc", false,
+        return new TriggerEvent(type, TestGlobals.PROJECT, collName, "audit", "recalc", false,
                 List.of(entry(collName, id, padding)), "alice", 0, null, 1);
     }
 
@@ -136,14 +136,15 @@ public class TriggerQueueBytesTest {
         executor.submit(event(EventType.DELETED, "otherColl", "kept", 10));
         final var before = executor.getQueuedBytes();
 
-        assertEquals(1, executor.discardQueuedFor(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(1, executor.discardQueuedFor(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(1, executor.getQueued());
         final var kept = queueOf(executor).peek();
         assertNotNull(kept);
         assertEquals("kept", kept.getEntries().getFirst().get_id());
         assertTrue(executor.getQueuedBytes() < before, "a discarded event gives its bytes back");
-        assertEquals(1, executor.discardQueuedFor(TestGlobals.DB, null), "a dropped database takes every collection");
+        assertEquals(1, executor.discardQueuedFor(TestGlobals.PROJECT, null),
+                "a dropped project takes every collection");
         assertEquals(0L, executor.getQueuedBytes());
     }
 

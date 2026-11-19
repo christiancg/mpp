@@ -59,7 +59,7 @@ public class BulkSaveCommittedPartTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -71,7 +71,7 @@ public class BulkSaveCommittedPartTest {
     private static BulkSaveRequest bulkRequest() {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, "inserted");
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(object));
         request.setTriggerDepth(DEPTH);
         return request;
@@ -102,7 +102,8 @@ public class BulkSaveCommittedPartTest {
 
             assertEquals(ErrorCode.ERROR_BULK_SAVING.getCode(), process(request).getErrorCode());
 
-            verify(staged).submitLanded(eq(COMMITTED_IDS), eq(TestGlobals.DB), eq(TestGlobals.COLL), any(), eq(DEPTH));
+            verify(staged).submitLanded(eq(COMMITTED_IDS), eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), any(),
+                    eq(DEPTH));
         }
     }
 
@@ -115,7 +116,7 @@ public class BulkSaveCommittedPartTest {
 
             assertEquals(ErrorCode.ERROR_BULK_SAVING.getCode(), process(request).getErrorCode());
 
-            cluster.verify(() -> ClusterWriteHelper.afterBulkSave(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            cluster.verify(() -> ClusterWriteHelper.afterBulkSave(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     argThat(BulkSaveCommittedPartTest::isTheCommittedPart)));
         }
     }
@@ -127,12 +128,13 @@ public class BulkSaveCommittedPartTest {
         try (var save = mockStatic(SaveOperationHelper.class, CALLS_REAL_METHODS);
                 var cluster = mockStatic(ClusterWriteHelper.class)) {
             save.when(() -> SaveOperationHelper.executeBulkSave(request)).thenReturn(committed);
-            cluster.when(() -> ClusterWriteHelper.afterBulkSave(TestGlobals.DB, TestGlobals.COLL, committed))
+            cluster.when(() -> ClusterWriteHelper.afterBulkSave(TestGlobals.PROJECT, TestGlobals.COLL, committed))
                     .thenReturn(replicated);
 
             assertSame(replicated, process(request),
                     "a successful bulk save answers with whatever replication made of it");
-            verify(staged).submitLanded(eq(COMMITTED_IDS), eq(TestGlobals.DB), eq(TestGlobals.COLL), any(), eq(DEPTH));
+            verify(staged).submitLanded(eq(COMMITTED_IDS), eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), any(),
+                    eq(DEPTH));
         }
     }
 
@@ -174,25 +176,25 @@ public class BulkSaveCommittedPartTest {
     public void test_a_bulk_save_keeps_the_pk_list_sorted_and_unique() throws Exception {
         final var processor = IocContainer.get(OperationProcessor.class);
         for (var round = 0; round < 4; round++) {
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(objectsFor(round, round % 2 == 0 ? 200 : 10));
             assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
         }
         final var locks = IocContainer.get(ResourceLocking.class);
         final var cache = IocContainer.get(Cache.class);
         final var fs = IocContainer.get(FileSystem.class);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var cached = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            final var cached = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
             final var ids = cached.stream().map(PkIndexEntry::getValue).toList();
             for (var i = 1; i < ids.size(); i++) {
                 assertEquals(-1, Integer.signum(ids.get(i - 1).compareTo(ids.get(i))), "sorted and unique at " + i);
             }
-            final var fromDisk = new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL));
+            final var fromDisk = new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL));
             fromDisk.sort(Comparator.comparing(PkIndexEntry::getValue));
             assertEquals(fromDisk, new ArrayList<>(cached));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 }

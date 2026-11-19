@@ -12,41 +12,41 @@ import org.junit.jupiter.api.Test;
 public class BulkSaveRequestTest {
     @Test
     public void create_bulk_save_request_with_valid_names() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collectionName = "testCollection";
 
-        BulkSaveRequest request = new BulkSaveRequest(dbName, collectionName);
+        BulkSaveRequest request = new BulkSaveRequest(projectName, collectionName);
 
         assertEquals(OperationType.BULK_SAVE, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collectionName, request.getCollectionName());
         assertNull(request.getObjects());
     }
 
     @Test
-    public void create_bulk_save_request_with_empty_db_name() {
-        String dbName = "";
+    public void create_bulk_save_request_with_empty_project_name() {
+        String projectName = "";
         String collectionName = "testCollection";
 
-        BulkSaveRequest request = new BulkSaveRequest(dbName, collectionName);
+        BulkSaveRequest request = new BulkSaveRequest(projectName, collectionName);
 
         assertEquals(OperationType.BULK_SAVE, request.getType());
-        assertEquals("", request.getDatabaseName());
+        assertEquals("", request.getProjectName());
         assertEquals(collectionName, request.getCollectionName());
         assertNull(request.getObjects());
     }
 
     @Test
     public void test_bulk_save_request_getters_and_setters() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         List<JsonObject> jsonObjects = List.of(new JsonObject(), new JsonObject());
 
-        BulkSaveRequest request = new BulkSaveRequest(dbName, collectionName);
+        BulkSaveRequest request = new BulkSaveRequest(projectName, collectionName);
         request.setObjects(jsonObjects);
 
         assertEquals(OperationType.BULK_SAVE, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collectionName, request.getCollectionName());
         assertEquals(jsonObjects, request.getObjects());
     }

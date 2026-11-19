@@ -16,8 +16,8 @@ public class SaveScheduleRequest extends VersionedDefinitionRequest {
         super(OperationType.SAVE_SCHEDULE, null, null);
     }
 
-    public SaveScheduleRequest(String databaseName, String name, String procedureName) {
-        super(OperationType.SAVE_SCHEDULE, databaseName, null);
+    public SaveScheduleRequest(String projectName, String name, String procedureName) {
+        super(OperationType.SAVE_SCHEDULE, projectName, null);
         this.name = name;
         this.procedureName = procedureName;
     }

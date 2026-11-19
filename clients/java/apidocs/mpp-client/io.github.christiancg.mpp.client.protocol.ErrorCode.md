@@ -67,7 +67,7 @@ unavailable) and the number is sequential.
 
 ## TOO_MANY_SCHEDULES
 
-`400-17`: The database already has the maximum number of schedules.
+`400-17`: The project already has the maximum number of schedules.
 
 ## PROCEDURE_IMPORT_NOT_FOUND
 
@@ -135,7 +135,7 @@ unavailable) and the number is sequential.
 
 ## TOO_MANY_PROCEDURES
 
-`400-34`: The database has the maximum number of procedures.
+`400-34`: The project has the maximum number of procedures.
 
 ## SCHEDULE_INTERVAL_TOO_SMALL
 
@@ -157,13 +157,13 @@ unavailable) and the number is sequential.
 
 `400-39`: The schema has more regular expressions than allowed.
 
-## TOO_MANY_COLLECTIONS_FOR_DATABASE
+## TOO_MANY_COLLECTIONS_FOR_PROJECT
 
-`400-40`: The database has the maximum number of collections.
+`400-40`: The project has the maximum number of collections.
 
-## TOO_MANY_DATABASES
+## TOO_MANY_PROJECTS
 
-`400-41`: The server has the maximum number of databases.
+`400-41`: The server has the maximum number of projects.
 
 ## TOO_MANY_INDEXES_FOR_COLLECTION
 
@@ -215,7 +215,7 @@ unavailable) and the number is sequential.
 
 ## DEFINITION_OWNED_BY_OTHER_DEFINER
 
-`403-5`: The trigger or schedule belongs to another user; only that user, a database owner or an admin may change it.
+`403-5`: The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it.
 
 ## SOURCE_REQUIRES_MANAGE
 
@@ -233,9 +233,9 @@ unavailable) and the number is sequential.
 
 `404-3`: No results.
 
-## DATABASE_NOT_FOUND
+## PROJECT_NOT_FOUND
 
-`404-4`: Database not found.
+`404-4`: Project not found.
 
 ## NO_USERS_FOUND
 
@@ -297,9 +297,9 @@ unavailable) and the number is sequential.
 
 `409-1`: User already exists.
 
-## DATABASE_ALREADY_EXISTS
+## PROJECT_ALREADY_EXISTS
 
-`409-2`: Database already exists.
+`409-2`: Project already exists.
 
 ## TRANSACTION_ALREADY_ACTIVE
 
@@ -421,21 +421,21 @@ unavailable) and the number is sequential.
 
 `500-10`: Error while deleting entry.
 
-## ERROR_CREATING_DATABASE
+## ERROR_CREATING_PROJECT
 
-`500-11`: Error while creating database.
+`500-11`: Error while creating project.
 
-## ERROR_UPDATING_DATABASE_OWNERS
+## ERROR_UPDATING_PROJECT_OWNERS
 
-`500-12`: Error updating database owners.
+`500-12`: Error updating project owners.
 
-## ERROR_DROPPING_DATABASE
+## ERROR_DROPPING_PROJECT
 
-`500-13`: Error while dropping database.
+`500-13`: Error while dropping project.
 
-## ERROR_LISTING_DATABASES
+## ERROR_LISTING_PROJECTS
 
-`500-14`: Error while listing databases.
+`500-14`: Error while listing projects.
 
 ## ERROR_CREATING_COLLECTION
 
@@ -467,7 +467,7 @@ unavailable) and the number is sequential.
 
 ## ERROR_GATHERING_STATS
 
-`500-22`: Error while gathering database stats.
+`500-22`: Error while gathering project stats.
 
 ## ERROR_LISTEN
 

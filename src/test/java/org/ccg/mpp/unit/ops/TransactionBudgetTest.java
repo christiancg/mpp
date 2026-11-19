@@ -38,7 +38,7 @@ public class TransactionBudgetTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         clientId = startedClient("budget");
         baseline = budget.reservedBytes();
@@ -73,7 +73,7 @@ public class TransactionBudgetTest {
     }
 
     private OperationResponse bufferSave(UUID client, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         return TransactionOperationHelper.bufferSave(request, transactionOf(client));
@@ -107,7 +107,7 @@ public class TransactionBudgetTest {
     @Test
     public void aBulkSaveReservesItsWholeBatchOrNothing() throws Exception {
         capTotalAtOneDocumentAndAHalf();
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document("bulk-a"), document("bulk-b")));
 
         final var refused = TransactionOperationHelper.bufferBulkSave(bulk, transactionOf(clientId));
@@ -121,7 +121,7 @@ public class TransactionBudgetTest {
     public void aBufferedDeleteReservesItsBytes() {
         bufferSave(clientId, "doomed");
         final var afterSave = budget.reservedBytes();
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("doomed");
 
         assertEquals(OperationStatus.OK,

@@ -2,7 +2,7 @@ package org.ccg.mpp.cache;
 
 import org.ccg.mpp.config.Globals;
 
-public record CacheableResource(AccessKind kind, String dbName, String collName, String indexKey,
+public record CacheableResource(AccessKind kind, String projectName, String collName, String indexKey,
         long estimatedSizeBytes) {
 
     public static String indexedFieldOf(String indexKey) {

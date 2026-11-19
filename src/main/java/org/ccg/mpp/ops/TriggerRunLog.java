@@ -33,7 +33,7 @@ public final class TriggerRunLog {
             .get(org.ccg.mpp.cluster.ClusterConfig.class);
     private static final Configuration configuration = Configuration.getInstance();
 
-    public record TriggerRunDescriptor(String dbName, String collName, String triggerName, String procedureName,
+    public record TriggerRunDescriptor(String projectName, String collName, String triggerName, String procedureName,
             EventType eventType, boolean batchMode, String actingUser, int depth, long firedAt, List<DbEntry> entries) {
     }
 
@@ -76,9 +76,9 @@ public final class TriggerRunLog {
         return write(descriptor, runId, null, txId, sink);
     }
 
-    public static String deterministicRunId(String txId, String dbName, String collName, String triggerName,
+    public static String deterministicRunId(String txId, String projectName, String collName, String triggerName,
             EventType eventType, String idOrNull) {
-        final var key = String.join(String.valueOf(Globals.COLL_IDENTIFIER_SEPARATOR), txId, dbName, collName,
+        final var key = String.join(String.valueOf(Globals.COLL_IDENTIFIER_SEPARATOR), txId, projectName, collName,
                 triggerName, eventType.name(), idOrNull == null ? BATCH_RUN_KEY : idOrNull);
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
@@ -183,7 +183,7 @@ public final class TriggerRunLog {
                     ? documentChunks(descriptor.entries(), staged)
                     : idChunks(descriptor.entries(), staged);
             if (chunks == null) {
-                logger.warning("Trigger '" + descriptor.triggerName() + "' on " + descriptor.dbName() + "|"
+                logger.warning("Trigger '" + descriptor.triggerName() + "' on " + descriptor.projectName() + "|"
                         + descriptor.collName()
                         + " could not be logged durably: a document exceeds maxEntrySize. Running it without a"
                         + " durable record, so it will be lost if this node dies before it completes.");
@@ -210,7 +210,7 @@ public final class TriggerRunLog {
             return runId;
         } catch (Exception e) {
             logger.warning("Failed to record the pending trigger run for '" + descriptor.triggerName() + "' on "
-                    + descriptor.dbName() + "|" + descriptor.collName() + ": " + e.getMessage());
+                    + descriptor.projectName() + "|" + descriptor.collName() + ": " + e.getMessage());
             return null;
         }
     }
@@ -263,19 +263,19 @@ public final class TriggerRunLog {
         if (runId == null || !isEnabled()) {
             return;
         }
-        String dbName = null;
+        String projectName = null;
         try {
             for (final var entry : AdminOperationHelper.readTriggerRuns(recordIdsFor(runId))) {
                 entry.markAttempt(status, attempts, error, nextAttemptAt);
                 AdminOperationHelper.saveTriggerRun(entry);
-                dbName = entry.getDbName();
+                projectName = entry.getTargetProject();
             }
         } catch (Exception e) {
             logger.warning(
                     "Failed to record attempt " + attempts + " of trigger run '" + runId + "': " + e.getMessage());
         }
         if (status == TriggerRunStatus.DEAD) {
-            TriggerDeadLetterCap.afterDeadLetter(dbName);
+            TriggerDeadLetterCap.afterDeadLetter(projectName);
         }
     }
 
@@ -305,11 +305,11 @@ public final class TriggerRunLog {
         logger.info("Garbage-collected " + stale.size() + " stranded trigger run record(s)");
     }
 
-    public static void discardAllFor(String dbName, String collName) {
+    public static void discardAllFor(String projectName, String collName) {
         try {
             final var dropped = new ArrayList<String>();
             for (final var run : TriggerRunIndex.current()) {
-                if (dbName.equals(run.dbName()) && (collName == null || collName.equals(run.collName()))) {
+                if (projectName.equals(run.projectName()) && (collName == null || collName.equals(run.collName()))) {
                     dropped.add(run.recordId());
                 }
             }
@@ -318,9 +318,9 @@ public final class TriggerRunLog {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.error("Interrupted while discarding the trigger runs of " + dbName + "|" + collName, e);
+            logger.error("Interrupted while discarding the trigger runs of " + projectName + "|" + collName, e);
         } catch (Exception e) {
-            logger.error("Failed to discard the trigger runs of " + dbName + "|" + collName
+            logger.error("Failed to discard the trigger runs of " + projectName + "|" + collName
                     + "; they are skipped when they fire, since their trigger is gone", e);
         }
     }
@@ -370,7 +370,7 @@ public final class TriggerRunLog {
         }
 
         AdminTriggerRunEntry toEntry(String runId, long chunkSeq, String nodeId, TriggerRunDescriptor descriptor) {
-            return new AdminTriggerRunEntry(runId, chunkSeq, nodeId, descriptor.dbName(), descriptor.collName(),
+            return new AdminTriggerRunEntry(runId, chunkSeq, nodeId, descriptor.projectName(), descriptor.collName(),
                     descriptor.triggerName(), descriptor.procedureName(), descriptor.eventType(),
                     descriptor.batchMode(), descriptor.actingUser(), descriptor.depth(), descriptor.firedAt(), ids,
                     documents);

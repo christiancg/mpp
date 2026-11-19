@@ -38,7 +38,7 @@ final class BeforeHookTestSupport {
 
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     static void tearDownAll() throws Exception {
@@ -58,22 +58,22 @@ final class BeforeHookTestSupport {
         TestUtils.setPrivateField(configuration, "beforeHookInstructionBudget", 200_000L);
         TestUtils.setPrivateField(configuration, "beforeHookTimeoutMs", 2_000L);
         TestUtils.resetClients();
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     static void installHook(String name, String procedure, String source, EventType... events) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, procedure, source), ACTOR);
-        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, procedure, source), ACTOR);
+        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         existing.add(new TriggerDefinition(name, new LinkedHashSet<>(Set.of(events)), procedure,
                 TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, ACTOR, 1L, 1L, 1L,
                 ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, existing);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, existing);
     }
 
     static UUID newClient() {

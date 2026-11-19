@@ -32,13 +32,13 @@ public class PendingIndexWrites {
 
     private static final class PublishedSingletonGuard implements CheckpointGuard {
         @Override
-        public boolean holdsIndexWork(String dbName, String collName) {
-            return IocContainer.get(PendingIndexWrites.class).holdsIndexWork(dbName, collName);
+        public boolean holdsIndexWork(String projectName, String collName) {
+            return IocContainer.get(PendingIndexWrites.class).holdsIndexWork(projectName, collName);
         }
 
         @Override
-        public Collection<String> pendingIds(String dbName, String collName) {
-            return IocContainer.get(PendingIndexWrites.class).idsFor(dbName, collName);
+        public Collection<String> pendingIds(String projectName, String collName) {
+            return IocContainer.get(PendingIndexWrites.class).idsFor(projectName, collName);
         }
     }
 
@@ -46,8 +46,8 @@ public class PendingIndexWrites {
         fs.guardCheckpoints(new PublishedSingletonGuard());
     }
 
-    public long mark(String dbName, String collName, String id) {
-        return mark(dbName, collName, List.of(id));
+    public long mark(String projectName, String collName, String id) {
+        return mark(projectName, collName, List.of(id));
     }
 
     @FunctionalInterface
@@ -55,31 +55,31 @@ public class PendingIndexWrites {
         T write() throws Exception;
     }
 
-    public <T> T writeWhilePending(String dbName, String collName, Iterable<String> ids, long generation,
+    public <T> T writeWhilePending(String projectName, String collName, Iterable<String> ids, long generation,
             PendingWrite<T> write) throws Exception {
         try {
             return write.write();
         } catch (Exception e) {
-            clear(dbName, collName, ids, generation);
+            clear(projectName, collName, ids, generation);
             throw e;
         }
     }
 
-    public long markRecovered(String dbName, String collName, Iterable<String> ids) {
-        return mark(dbName, collName, ids, true);
+    public long markRecovered(String projectName, String collName, Iterable<String> ids) {
+        return mark(projectName, collName, ids, true);
     }
 
-    public long mark(String dbName, String collName, Iterable<String> ids) {
-        return mark(dbName, collName, ids, false);
+    public long mark(String projectName, String collName, Iterable<String> ids) {
+        return mark(projectName, collName, ids, false);
     }
 
-    public boolean holdsIndexWork(String dbName, String collName) {
-        final var byId = pending.get(Cache.getCollectionIdentifier(dbName, collName));
+    public boolean holdsIndexWork(String projectName, String collName) {
+        final var byId = pending.get(Cache.getCollectionIdentifier(projectName, collName));
         return byId != null && !byId.isEmpty();
     }
 
-    private long mark(String dbName, String collName, Iterable<String> ids, boolean unlogged) {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    private long mark(String projectName, String collName, Iterable<String> ids, boolean unlogged) {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         final var markerLock = markerLockFor(collId);
         markerLock.lock();
         try {
@@ -88,7 +88,7 @@ public class PendingIndexWrites {
                 byId.merge(id, 1, Integer::sum);
             }
             if (unlogged) {
-                markDirty(dbName, collName);
+                markDirty(projectName, collName);
             }
             return pins.computeIfAbsent(collId, _ -> epoch.get());
         } finally {
@@ -96,20 +96,20 @@ public class PendingIndexWrites {
         }
     }
 
-    private void markDirty(String dbName, String collName) {
+    private void markDirty(String projectName, String collName) {
         try {
-            fs.indexMarkers().markDirty(dbName, collName);
+            fs.indexMarkers().markDirty(projectName, collName);
         } catch (IOException e) {
-            logger.warning("Could not make the index-dirty marker of " + dbName + "|" + collName + " durable while"
+            logger.warning("Could not make the index-dirty marker of " + projectName + "|" + collName + " durable while"
                     + " scheduling startup recovery; the ids stay pending in memory: " + e.getMessage());
         }
     }
 
-    public void clear(String dbName, String collName, String id, long generation) {
-        clearIn(dbName, collName, Cache.getCollectionIdentifier(dbName, collName), id, generation);
+    public void clear(String projectName, String collName, String id, long generation) {
+        clearIn(projectName, collName, Cache.getCollectionIdentifier(projectName, collName), id, generation);
     }
 
-    private void clearIn(String dbName, String collName, String collId, String id, long generation) {
+    private void clearIn(String projectName, String collName, String collId, String id, long generation) {
         final var markerLock = markerLockFor(collId);
         markerLock.lock();
         try {
@@ -120,22 +120,22 @@ public class PendingIndexWrites {
             }
             byId.computeIfPresent(id, (_, current) -> current - 1 <= 0 ? null : current - 1);
             if (byId.isEmpty()) {
-                fs.indexMarkers().clearDirty(dbName, collName);
+                fs.indexMarkers().clearDirty(projectName, collName);
             }
         } finally {
             markerLock.unlock();
         }
     }
 
-    public void clear(String dbName, String collName, Iterable<String> ids, long generation) {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    public void clear(String projectName, String collName, Iterable<String> ids, long generation) {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         for (var id : ids) {
-            clearIn(dbName, collName, collId, id, generation);
+            clearIn(projectName, collName, collId, id, generation);
         }
     }
 
-    public void clearCollection(String dbName, String collName) {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    public void clearCollection(String projectName, String collName) {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         final var markerLock = markerLockFor(collId);
         markerLock.lock();
         try {
@@ -147,13 +147,13 @@ public class PendingIndexWrites {
         }
     }
 
-    public void clearDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public void clearProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         final var collIds = new HashSet<>(pending.keySet());
         collIds.addAll(pins.keySet());
         for (final var collId : collIds) {
             if (collId.startsWith(prefix)) {
-                clearCollection(dbName, collId.substring(prefix.length()));
+                clearCollection(projectName, collId.substring(prefix.length()));
             }
         }
     }
@@ -170,8 +170,8 @@ public class PendingIndexWrites {
         return stripes;
     }
 
-    public Set<String> idsFor(String dbName, String collName) {
-        final var byId = pending.get(Cache.getCollectionIdentifier(dbName, collName));
+    public Set<String> idsFor(String projectName, String collName) {
+        final var byId = pending.get(Cache.getCollectionIdentifier(projectName, collName));
         if (byId == null || byId.isEmpty()) {
             return Set.of();
         }

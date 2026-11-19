@@ -25,7 +25,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
             final var thread = new Thread(() -> {
                 try {
                     for (var i = 0; i < 50; i++) {
-                        fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+                        fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
                     }
                 } catch (Exception e) {
                     failure.compareAndSet(null, e);
@@ -42,20 +42,20 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var first = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var first = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         first.set_id("keep");
         fileSystem.insertIntoCollection(first);
-        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator
+        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator
                 + TestGlobals.COLL + File.separator + TestGlobals.COLL + "-pk.idx");
         java.nio.file.Files.writeString(indexFile.toPath(), "this is not a pk index line" + System.lineSeparator(),
                 java.nio.file.StandardOpenOption.APPEND);
 
-        final var second = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var second = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         second.set_id("added");
         assertDoesNotThrow(() -> fileSystem.insertIntoCollection(second),
                 "one torn line must not fail every write, the same way it does not fail every read");
 
-        final var index = fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var index = fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(index.stream().anyMatch(e -> e.getValue().equals("keep")));
         assertTrue(index.stream().anyMatch(e -> e.getValue().equals("added")));
     }
@@ -65,16 +65,16 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var entry1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry1.set_id("1");
-        final var entry2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry2.set_id("2");
         final var pk1 = fileSystem.insertIntoCollection(entry1);
         final var pk2 = fileSystem.insertIntoCollection(entry2);
 
         fileSystem.deleteFromCollection(pk1);
 
-        final var rows = fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var rows = fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(List.of(pk2.toFileEntry()), rows.stream().map(PkIndexEntry::toFileEntry).toList());
     }
 
@@ -83,13 +83,13 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("1");
         final var pk = fileSystem.insertIntoCollection(entry);
 
         fileSystem.deleteFromCollection(pk);
 
-        assertTrue(fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     @Test
@@ -99,7 +99,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         data.addProperty("name", "test");
         final var pks = new ArrayList<PkIndexEntry>();
         for (var id : List.of("1", "2", "3")) {
-            final var e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+            final var e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
             e.set_id(id);
             pks.add(fileSystem.insertIntoCollection(e));
         }
@@ -135,7 +135,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         fs.updateFromCollection(FileSystemTestBase.updateEntry(idxA, "a", "updated-longer-value-for-a").toDbEntry(),
                 idxA);
 
-        final var disk = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var disk = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         final var bDisk = disk.stream().filter(p -> p.getValue().equals("b")).findFirst().orElseThrow();
         assertEquals(bPosBefore, bDisk.getPosition(), "'a' is appended and blanked, so 'b' never moves");
         assertEquals("short", fs.getById(bDisk).getData().get("v").asJsonString().getValue());
@@ -153,17 +153,17 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
 
         assertEquals("short", FileSystemTestBase.readValueFromDisk(fs, "a"));
         assertEquals("short", FileSystemTestBase.readValueFromDisk(fs, "c"));
-        final var disk = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var disk = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(disk.stream().noneMatch(p -> p.getValue().equals("b")), "'b' must be removed from the index");
     }
 
     @Test
     public void test_compactTombstones_dedups_and_drops_old() throws Exception {
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "keep", 1000L);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "keep", 2000L);
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "old", 100L);
-        fs.tombstones().compact(TestGlobals.DB, TestGlobals.COLL, 500L);
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "keep", 1000L);
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "keep", 2000L);
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "old", 100L);
+        fs.tombstones().compact(TestGlobals.PROJECT, TestGlobals.COLL, 500L);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, tombstones.size());
         assertEquals(2000L, tombstones.get("keep"));
         assertNull(tombstones.get("old"));
@@ -171,8 +171,8 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
 
     @Test
     public void test_compactTombstones_missing_file_is_noop() throws Exception {
-        fs.tombstones().compact(TestGlobals.DB, "noSuchColl", 0L);
-        assertTrue(fs.tombstones().read(TestGlobals.DB, "noSuchColl").isEmpty());
+        fs.tombstones().compact(TestGlobals.PROJECT, "noSuchColl", 0L);
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, "noSuchColl").isEmpty());
     }
 
     @Test
@@ -180,10 +180,10 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var seed = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var seed = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         seed.set_id("seed");
         fileSystem.insertIntoCollection(seed);
-        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator
+        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator
                 + TestGlobals.COLL + File.separator + TestGlobals.COLL + "-pk.idx");
 
         final var appended = java.util.Collections.synchronizedList(new ArrayList<String>());
@@ -193,7 +193,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
             var i = 0;
             while (!stop.get()) {
                 try {
-                    final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+                    final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
                     entry.set_id("appended" + i++);
                     fileSystem.insertIntoCollection(entry);
                     appended.add(entry.get_id());
@@ -208,7 +208,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
             for (var round = 0; round < 200; round++) {
                 java.nio.file.Files.writeString(indexFile.toPath(), "torn line " + round + System.lineSeparator(),
                         java.nio.file.StandardOpenOption.APPEND);
-                fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+                fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         } finally {
             stop.set(true);
@@ -218,7 +218,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
             throw new AssertionError("the appending writer failed", failure.get());
         }
 
-        final var onDisk = fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var onDisk = fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .map(PkIndexEntry::getValue).collect(java.util.stream.Collectors.toSet());
         final var lost = new ArrayList<String>();
         for (final var id : List.copyOf(appended)) {
@@ -235,10 +235,10 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var seed = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var seed = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         seed.set_id("seed");
         fileSystem.insertIntoCollection(seed);
-        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator
+        final var indexFile = new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator
                 + TestGlobals.COLL + File.separator + TestGlobals.COLL + "-pk.idx");
         java.nio.file.Files.writeString(indexFile.toPath(), "torn" + System.lineSeparator(),
                 java.nio.file.StandardOpenOption.APPEND);
@@ -249,12 +249,12 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         }
 
         assertNull(failure.get(), "two healers racing on the same file must not fail the read");
-        assertTrue(fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        assertTrue(fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .anyMatch(e -> e.getValue().equals("seed")));
     }
 
     private File pkIndexFile() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL
                 + File.separator + TestGlobals.COLL + "-pk.idx");
     }
 
@@ -263,7 +263,8 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty("name", "test");
         for (final var id : new String[]{"a", "b"}) {
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data.deepCopy().asJsonObject());
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL,
+                    data.deepCopy().asJsonObject());
             entry.set_id(id);
             fileSystem.insertIntoCollection(entry);
         }
@@ -278,7 +279,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
                 "not a pk line at all" + System.lineSeparator() + "nor is this one" + System.lineSeparator());
         final var before = java.nio.file.Files.readAllBytes(file.toPath());
 
-        assertThrows(IOException.class, () -> fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL));
+        assertThrows(IOException.class, () -> fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(file.toPath()),
                 "nothing rebuilds the pk index, so a read that understood none of it must never rewrite it");
@@ -292,7 +293,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
                 "a|0|20|0|0" + System.lineSeparator() + "b|20|20|0|0" + System.lineSeparator());
         final var before = java.nio.file.Files.readAllBytes(file.toPath());
 
-        assertThrows(IOException.class, () -> fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL),
+        assertThrows(IOException.class, () -> fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL),
                 "a file in the pre-change grammar is unparseable, not half-readable");
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(file.toPath()),
                 "an old data directory must fail loudly, never destructively");
@@ -305,7 +306,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         java.nio.file.Files.writeString(file.toPath(), "torn line with no separators" + System.lineSeparator(),
                 java.nio.file.StandardOpenOption.APPEND);
 
-        final var read = fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var read = fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(2, read.size(), "the intact entries must survive: " + read);
         assertFalse(java.nio.file.Files.readString(file.toPath()).contains("torn line"),
@@ -317,7 +318,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         final var fileSystem = fs;
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("versioned");
         entry.setVersion(1720000000123L);
         final var indexEntry = fileSystem.insertIntoCollection(entry);
@@ -335,7 +336,8 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         data.addProperty("name", "test");
         final var indexEntries = new ArrayList<PkIndexEntry>();
         for (final var id : new String[]{"v1", "v2"}) {
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data.deepCopy().asJsonObject());
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL,
+                    data.deepCopy().asJsonObject());
             entry.set_id(id);
             entry.setVersion(id.equals("v1") ? 11L : 22L);
             indexEntries.add(fileSystem.insertIntoCollection(entry));
@@ -351,7 +353,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
 
     private static DbEntry document(String id) {
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id(id);
         entry.setData(new JsonObject());
@@ -391,7 +393,7 @@ public class FileSystemPkIndexTest extends FileSystemTestBase {
         assertTrue(diskLines.stream().noneMatch(l -> l.contains("not a valid")),
                 "the malformed pk index line should have been removed");
 
-        final var remaining = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var remaining = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, remaining.size());
         assertEquals("good1", remaining.getFirst().getValue());
     }

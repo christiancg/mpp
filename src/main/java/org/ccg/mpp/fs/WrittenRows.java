@@ -30,9 +30,9 @@ record WrittenRows(Map<String, PkIndexEntry> replaced, String deletedId) {
         return row != null ? row : PageRows.rowOf(residentRows, id);
     }
 
-    List<PkIndexEntry> rowsOn(PkIndexStore store, List<PkIndexEntry> residentRows, String dbName, String collName,
+    List<PkIndexEntry> rowsOn(PkIndexStore store, List<PkIndexEntry> residentRows, String projectName, String collName,
             long page) throws IOException {
-        final var rows = PageRows.of(store, residentRows, dbName, collName, page, deletedId);
+        final var rows = PageRows.of(store, residentRows, projectName, collName, page, deletedId);
         if (replaced.isEmpty()) {
             return rows;
         }

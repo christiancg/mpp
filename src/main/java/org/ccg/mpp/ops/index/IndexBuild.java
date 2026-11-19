@@ -37,20 +37,20 @@ public final class IndexBuild {
     private IndexBuild() {
     }
 
-    public static void buildAll(String dbName, String collName, List<String> fields)
+    public static void buildAll(String projectName, String collName, List<String> fields)
             throws IOException, InterruptedException {
         if (fields.isEmpty()) {
             return;
         }
         var finished = false;
         try {
-            for (final var pass : passesOf(fields, documentCount(dbName, collName))) {
-                buildPass(dbName, collName, pass);
+            for (final var pass : passesOf(fields, documentCount(projectName, collName))) {
+                buildPass(projectName, collName, pass);
             }
             finished = true;
         } finally {
             if (!finished) {
-                dropEvery(dbName, collName, fields);
+                dropEvery(projectName, collName, fields);
             }
         }
     }
@@ -72,8 +72,8 @@ public final class IndexBuild {
         return Math.max(configuration.getMaxMemoryBytes() / 2, MIN_PASS_BUDGET_BYTES);
     }
 
-    private static long documentCount(String dbName, String collName) {
-        final var pages = cache.getAdminPageEntries(dbName, collName);
+    private static long documentCount(String projectName, String collName) {
+        final var pages = cache.getAdminPageEntries(projectName, collName);
         var documents = 0L;
         if (pages != null) {
             for (final var page : pages) {
@@ -83,20 +83,21 @@ public final class IndexBuild {
         return documents;
     }
 
-    private static void buildPass(String dbName, String collName, List<String> fields)
+    private static void buildPass(String projectName, String collName, List<String> fields)
             throws IOException, InterruptedException {
         final var builders = new ArrayList<FieldBuilder>(fields.size());
         for (final var field : fields) {
-            builders.add(new FieldBuilder(dbName, collName, field));
+            builders.add(new FieldBuilder(projectName, collName, field));
         }
-        forEachDocument(dbName, collName, document -> {
+        forEachDocument(projectName, collName, document -> {
             for (final var builder : builders) {
                 builder.add(document);
             }
         });
         for (final var builder : builders) {
             builder.write();
-            faultInjector.at(FaultPoint.INDEX_BUILD_FIELD_WRITTEN, Cache.getCollectionIdentifier(dbName, collName));
+            faultInjector.at(FaultPoint.INDEX_BUILD_FIELD_WRITTEN,
+                    Cache.getCollectionIdentifier(projectName, collName));
         }
     }
 
@@ -104,15 +105,15 @@ public final class IndexBuild {
         void accept(DbEntry document);
     }
 
-    private static void forEachDocument(String dbName, String collName, DocumentSink sink) throws IOException {
-        final var cached = cache.userCache().getCachedCollection(dbName, collName);
-        if (cached != null && !cached.isEmpty() && cached.size() == cache.pkIndexSize(dbName, collName)) {
+    private static void forEachDocument(String projectName, String collName, DocumentSink sink) throws IOException {
+        final var cached = cache.userCache().getCachedCollection(projectName, collName);
+        if (cached != null && !cached.isEmpty() && cached.size() == cache.pkIndexSize(projectName, collName)) {
             for (final var document : cached.values()) {
                 sink.accept(document);
             }
             return;
         }
-        try (var pages = fs.streamPages(dbName, collName)) {
+        try (var pages = fs.streamPages(projectName, collName)) {
             pages.forEach(page -> {
                 for (final var document : page.values()) {
                     sink.accept(document);
@@ -123,36 +124,36 @@ public final class IndexBuild {
         }
     }
 
-    private static void dropEvery(String dbName, String collName, List<String> fields) {
+    private static void dropEvery(String projectName, String collName, List<String> fields) {
         for (final var field : fields) {
             var locked = false;
             try {
-                rl.lockIndex(dbName, collName, field);
+                rl.lockIndex(projectName, collName, field);
                 locked = true;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             try {
-                fs.dropIndex(dbName, collName, field);
-                cache.evictFieldIndexAllTypes(dbName, collName, field);
+                fs.dropIndex(projectName, collName, field);
+                cache.evictFieldIndexAllTypes(projectName, collName, field);
             } finally {
                 if (locked) {
-                    rl.releaseIndex(dbName, collName, field);
+                    rl.releaseIndex(projectName, collName, field);
                 }
             }
         }
     }
 
     private static final class FieldBuilder {
-        private final String dbName;
+        private final String projectName;
         private final String collName;
         private final String field;
         private final FieldPath path;
         private final Map<Class<?>, Map<String, FieldIndexEntry<Object>>> scalars = new LinkedHashMap<>();
         private final Map<IndexKind, Map<String, FieldIndexEntry<Object>>> hashes = new EnumMap<>(IndexKind.class);
 
-        private FieldBuilder(String dbName, String collName, String field) {
-            this.dbName = dbName;
+        private FieldBuilder(String projectName, String collName, String field) {
+            this.projectName = projectName;
             this.collName = collName;
             this.field = field;
             this.path = FieldPath.of(field);
@@ -168,7 +169,7 @@ public final class IndexBuild {
                     : scalars.computeIfAbsent(indexed.type(), _ -> new LinkedHashMap<>());
             var entry = byKey.get(indexed.key());
             if (entry == null) {
-                entry = new FieldIndexEntry<>(dbName, collName, indexed.value(), new IdSet());
+                entry = new FieldIndexEntry<>(projectName, collName, indexed.value(), new IdSet());
                 byKey.put(indexed.key(), entry);
             }
             entry.getIds().add(document.get_id());
@@ -181,18 +182,18 @@ public final class IndexBuild {
                 entries.sort(cast(FieldIndexLoader.orderFor(type.getKey())));
                 scalarEntries.put(type.getKey(), cast(entries));
             }
-            rl.lockIndex(dbName, collName, field);
+            rl.lockIndex(projectName, collName, field);
             try {
-                fs.dropIndex(dbName, collName, field);
-                fs.writeIndexFile(dbName, collName, field, scalarEntries);
+                fs.dropIndex(projectName, collName, field);
+                fs.writeIndexFile(projectName, collName, field, scalarEntries);
                 for (final var kind : hashes.entrySet()) {
                     final List<FieldIndexEntry<String>> entries = cast(new ArrayList<>(kind.getValue().values()));
                     entries.sort(FieldIndexLoader.hashOrder());
-                    fs.writeHashIndexFile(dbName, collName, field, kind.getKey(), entries);
+                    fs.writeHashIndexFile(projectName, collName, field, kind.getKey(), entries);
                 }
-                cache.evictFieldIndexAllTypes(dbName, collName, field);
+                cache.evictFieldIndexAllTypes(projectName, collName, field);
             } finally {
-                rl.releaseIndex(dbName, collName, field);
+                rl.releaseIndex(projectName, collName, field);
             }
             scalars.clear();
             hashes.clear();

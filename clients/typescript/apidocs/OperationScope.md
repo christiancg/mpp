@@ -1,3 +1,3 @@
 # OperationScope
 
-Whether an operation names a database, a collection, an optional collection or neither.
+Whether an operation names a project, a collection, an optional collection or neither.

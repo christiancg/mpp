@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class OperationProcessorFailOnUpdateTest {
-    private static final String TARGET = "\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+    private static final String TARGET = "\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
             + TestGlobals.COLL + "\"";
     private static final String EXISTS = ErrorCode.DOCUMENT_ALREADY_EXISTS.getCode();
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
@@ -33,7 +33,7 @@ public class OperationProcessorFailOnUpdateTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach

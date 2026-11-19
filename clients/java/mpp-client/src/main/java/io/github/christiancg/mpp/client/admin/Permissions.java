@@ -13,14 +13,14 @@ public final class Permissions {
 
     private final boolean admin;
     private final Set<GlobalPermission> global;
-    private final Map<String, DataPermission> databases;
+    private final Map<String, DataPermission> projects;
     private final Map<String, DataPermission> collections;
     private final Map<String, ScriptPermission> scripts;
 
     private Permissions(Builder builder) {
         this.admin = builder.admin;
         this.global = Collections.unmodifiableSet(EnumSet.copyOf(builder.global));
-        this.databases = Collections.unmodifiableMap(new LinkedHashMap<>(builder.databases));
+        this.projects = Collections.unmodifiableMap(new LinkedHashMap<>(builder.projects));
         this.collections = Collections.unmodifiableMap(new LinkedHashMap<>(builder.collections));
         this.scripts = Collections.unmodifiableMap(new LinkedHashMap<>(builder.scripts));
     }
@@ -37,8 +37,8 @@ public final class Permissions {
         return global;
     }
 
-    public Map<String, DataPermission> databases() {
-        return databases;
+    public Map<String, DataPermission> projects() {
+        return projects;
     }
 
     public Map<String, DataPermission> collections() {
@@ -51,7 +51,7 @@ public final class Permissions {
 
     public static final class Builder {
         private final Set<GlobalPermission> global = EnumSet.noneOf(GlobalPermission.class);
-        private final Map<String, DataPermission> databases = new LinkedHashMap<>();
+        private final Map<String, DataPermission> projects = new LinkedHashMap<>();
         private final Map<String, DataPermission> collections = new LinkedHashMap<>();
         private final Map<String, ScriptPermission> scripts = new LinkedHashMap<>();
         private boolean admin;
@@ -69,22 +69,21 @@ public final class Permissions {
             return this;
         }
 
-        public Builder database(String database, DataPermission permission) {
-            databases.put(Objects.requireNonNull(database, "database"),
-                    Objects.requireNonNull(permission, "permission"));
+        public Builder project(String project, DataPermission permission) {
+            projects.put(Objects.requireNonNull(project, "project"), Objects.requireNonNull(permission, "permission"));
             return this;
         }
 
-        public Builder collection(String database, String collection, DataPermission permission) {
+        public Builder collection(String project, String collection, DataPermission permission) {
             collections.put(
-                    Objects.requireNonNull(database, "database") + COLLECTION_SEPARATOR
+                    Objects.requireNonNull(project, "project") + COLLECTION_SEPARATOR
                             + Objects.requireNonNull(collection, "collection"),
                     Objects.requireNonNull(permission, "permission"));
             return this;
         }
 
-        public Builder scripts(String database, ScriptPermission permission) {
-            scripts.put(Objects.requireNonNull(database, "database"), Objects.requireNonNull(permission, "permission"));
+        public Builder scripts(String project, ScriptPermission permission) {
+            scripts.put(Objects.requireNonNull(project, "project"), Objects.requireNonNull(permission, "permission"));
             return this;
         }
 

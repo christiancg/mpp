@@ -38,7 +38,7 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
 
     @AfterEach
     public void clearPending() {
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private void seed() throws Exception {
@@ -53,9 +53,9 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add(PRICE, price == null ? JsonNull.INSTANCE : new JsonNumber((Number) price));
         object.add(LABEL, new JsonString(label));
-        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        org.ccg.mpp.test.TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        org.ccg.mpp.test.TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private static FieldOperator leaf(FieldOperatorType type, String field, JsonBaseElement value) {
@@ -72,14 +72,15 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
 
     private Set<String> filtered(BaseOperator operator, AnalyzeContext analyze) throws IOException {
         return FilterOperatorHelper
-                .processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL,
+                .processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL,
                         PipelineContext.of(0L, Long.MAX_VALUE, analyze))
                 .map(row -> row.get(Globals.PK_FIELD).asJsonString().getValue())
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
     private Set<String> candidates(ConjunctionOperator operator) throws IOException {
-        return ConjunctionCandidates.of(operator, TestGlobals.DB, TestGlobals.COLL, PipelineContext.withoutScripts());
+        return ConjunctionCandidates.of(operator, TestGlobals.PROJECT, TestGlobals.COLL,
+                PipelineContext.withoutScripts());
     }
 
     @Test
@@ -144,7 +145,7 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
         seed();
         put("p3", 999.0, "odd");
         put("late", 35.0, "odd");
-        pending.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("p3", "late"));
+        pending.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("p3", "late"));
 
         final var result = filtered(conjunction(ConjunctionOperatorType.AND,
                 price(FieldOperatorType.GREATER_THAN_EQUALS, 20), price(FieldOperatorType.SMALLER_THAN, 50)),
@@ -193,8 +194,8 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
         for (var i = 0; i < DOCUMENTS; i++) {
             final var meta = new JsonObject();
             meta.addProperty("k", i % 3);
-            final var object = cache.getById(TestGlobals.DB, TestGlobals.COLL,
-                    cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).get(i)).getData();
+            final var object = cache.getById(TestGlobals.PROJECT, TestGlobals.COLL,
+                    cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).get(i)).getData();
             object.add("meta", meta);
         }
         indexField("meta");
@@ -211,10 +212,10 @@ public class ConjunctionCandidatesTest extends FilterResolutionSupport {
     }
 
     private List<String> scanned(ConjunctionOperator range) throws IOException {
-        final var everyDocument = cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).values().stream()
+        final var everyDocument = cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).values().stream()
                 .map(org.ccg.mpp.data.DbEntry::getData);
         return FilterOperatorHelper
-                .processOperator(range, everyDocument, TestGlobals.DB, TestGlobals.COLL,
+                .processOperator(range, everyDocument, TestGlobals.PROJECT, TestGlobals.COLL,
                         PipelineContext.withoutScripts())
                 .map(row -> row.get(Globals.PK_FIELD).asJsonString().getValue()).sorted().toList();
     }

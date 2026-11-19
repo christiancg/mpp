@@ -32,7 +32,7 @@ public class FencedCollectionReadTest {
 
     private final Configuration configuration = Configuration.getInstance();
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
-    private final String collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private final String collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private final CountDownLatch held = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
     private Thread holder;
@@ -58,11 +58,11 @@ public class FencedCollectionReadTest {
     private void holdTheWriteLockFenced() throws InterruptedException {
         holder = Thread.ofPlatform().start(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 locks.fence(List.of(collId));
                 held.countDown();
                 release.await();
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -96,11 +96,11 @@ public class FencedCollectionReadTest {
 
     @Test
     public void anAggregateOfAFencedCollectionAnswersInsteadOfWaiting() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         holdTheWriteLockFenced();
-        final var count = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var count = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         count.setAggregationSteps(List.of(new CountAggregationStep()));
-        final var scan = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var scan = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         scan.setAggregationSteps(List.of(new LimitAggregationStep(5)));
 
         assertEquals(ErrorCode.COLLECTION_FENCED.getCode(),
@@ -114,12 +114,12 @@ public class FencedCollectionReadTest {
         final var fenceNow = new CountDownLatch(1);
         holder = Thread.ofPlatform().start(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 held.countDown();
                 fenceNow.await();
                 locks.fence(List.of(collId));
                 release.await();
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

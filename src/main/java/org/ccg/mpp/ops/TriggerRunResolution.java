@@ -31,8 +31,8 @@ public final class TriggerRunResolution {
                 if (filter != null && first.getStatus().reported() != filter) {
                     continue;
                 }
-                rows.add(new TriggerRunRow(first.getRunId(), first.getStatus().reported().name(), first.getDbName(),
-                        first.getCollName(), first.getTriggerName(), first.getProcedureName(),
+                rows.add(new TriggerRunRow(first.getRunId(), first.getStatus().reported().name(),
+                        first.getTargetProject(), first.getCollName(), first.getTriggerName(), first.getProcedureName(),
                         first.getEventType().name(), first.getAttempts(), first.getLastError(), first.getFiredAt(),
                         first.getNextAttemptAt()));
             }

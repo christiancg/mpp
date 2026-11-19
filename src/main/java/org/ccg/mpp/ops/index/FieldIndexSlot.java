@@ -35,7 +35,7 @@ final class FieldIndexSlot {
     @SuppressWarnings("FieldMayBeFinal")
     private static FileSystem fs = IocContainer.get(FileSystem.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String fieldName;
     private final String identifier;
@@ -62,11 +62,11 @@ final class FieldIndexSlot {
     private long idsAdded;
     private long idsRemoved;
 
-    private FieldIndexSlot(String dbName, String collName, String fieldName, String identifier, String fileLabel,
+    private FieldIndexSlot(String projectName, String collName, String fieldName, String identifier, String fileLabel,
             Comparator<FieldIndexEntry<Object>> order, boolean spellingMatters, IndexTypeReader loader,
             CanonicalIds canonicalIds) {
         this.canonicalIds = canonicalIds;
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.fieldName = fieldName;
         this.identifier = identifier;
@@ -76,25 +76,26 @@ final class FieldIndexSlot {
         this.loader = loader;
     }
 
-    static FieldIndexSlot scalar(String dbName, String collName, String fieldName, Class<?> type, HeldTypeLists held,
-            CanonicalIds canonicalIds) {
+    static FieldIndexSlot scalar(String projectName, String collName, String fieldName, Class<?> type,
+            HeldTypeLists held, CanonicalIds canonicalIds) {
         final var identifier = Cache.memoizedIndexIdentifier(fieldName, type);
         final var label = IndexKind.fileLabel(type);
-        return new FieldIndexSlot(dbName, collName, fieldName, identifier, label, cast(FieldIndexLoader.orderFor(type)),
-                hasSpellings(type),
-                HeldTypeLists.reading(held, identifier, () -> fs.indexTypeStamp(dbName, collName, fieldName, label),
-                        () -> fs.readWholeFieldIndexFiles(dbName, collName, fieldName, type)),
+        return new FieldIndexSlot(projectName, collName, fieldName, identifier, label,
+                cast(FieldIndexLoader.orderFor(type)), hasSpellings(type),
+                HeldTypeLists.reading(held, identifier,
+                        () -> fs.indexTypeStamp(projectName, collName, fieldName, label),
+                        () -> fs.readWholeFieldIndexFiles(projectName, collName, fieldName, type)),
                 canonicalIds);
     }
 
-    static FieldIndexSlot hash(String dbName, String collName, String fieldName, IndexKind kind, HeldTypeLists held,
-            CanonicalIds canonicalIds) {
+    static FieldIndexSlot hash(String projectName, String collName, String fieldName, IndexKind kind,
+            HeldTypeLists held, CanonicalIds canonicalIds) {
         final var identifier = Cache.memoizedHashIndexIdentifier(fieldName, kind);
-        return new FieldIndexSlot(dbName, collName, fieldName, identifier, kind.label(),
+        return new FieldIndexSlot(projectName, collName, fieldName, identifier, kind.label(),
                 cast(FieldIndexLoader.hashOrder()), true,
                 HeldTypeLists.reading(held, identifier,
-                        () -> fs.indexTypeStamp(dbName, collName, fieldName, kind.label()),
-                        () -> fs.readWholeHashIndexFile(dbName, collName, fieldName, kind)),
+                        () -> fs.indexTypeStamp(projectName, collName, fieldName, kind.label()),
+                        () -> fs.readWholeHashIndexFile(projectName, collName, fieldName, kind)),
                 canonicalIds);
     }
 
@@ -112,8 +113,8 @@ final class FieldIndexSlot {
     }
 
     boolean attach(boolean mayLogOnly) throws IOException {
-        resident = cast(cache.residentFieldIndex(dbName, collName, identifier));
-        if (resident == null && mayLogOnly && cache.isFieldIndexTypeRefused(dbName, collName, identifier)) {
+        resident = cast(cache.residentFieldIndex(projectName, collName, identifier));
+        if (resident == null && mayLogOnly && cache.isFieldIndexTypeRefused(projectName, collName, identifier)) {
             logOnly = true;
             entries = List.of();
             return false;
@@ -124,12 +125,12 @@ final class FieldIndexSlot {
         } else {
             final var fromDisk = loader.read();
             onDisk = fromDisk != null;
-            if (!onDisk && !fs.indexTypeFileExists(dbName, collName, fieldName, fileLabel)) {
-                cache.rememberFieldIndexTypeAbsent(dbName, collName, identifier);
+            if (!onDisk && !fs.indexTypeFileExists(projectName, collName, fieldName, fileLabel)) {
+                cache.rememberFieldIndexTypeAbsent(projectName, collName, identifier);
             } else if (!onDisk) {
                 throw new IOException(
-                        "The " + fileLabel + " index file of " + Cache.getCollectionIdentifier(dbName, collName) + "."
-                                + fieldName + " could not be read, so this batch leaves it untouched;"
+                        "The " + fileLabel + " index file of " + Cache.getCollectionIdentifier(projectName, collName)
+                                + "." + fieldName + " could not be read, so this batch leaves it untouched;"
                                 + " run REINDEX on the collection to rebuild it");
             }
             entries = fromDisk != null ? cast(fromDisk) : new ArrayList<>();
@@ -195,7 +196,7 @@ final class FieldIndexSlot {
         if (fresh != null) {
             return fresh;
         }
-        final var probe = new FieldIndexEntry<>(dbName, collName, value, Set.of());
+        final var probe = new FieldIndexEntry<>(projectName, collName, value, Set.of());
         final var at = ChunkedList.binarySearch(entries, probe, order);
         if (at < 0) {
             return null;
@@ -224,7 +225,7 @@ final class FieldIndexSlot {
     FieldIndexEntry<Object> addId(String id, String key, Object value, FieldIndexEntry<Object> found) {
         var entry = found;
         if (entry == null) {
-            entry = new FieldIndexEntry<>(dbName, collName, value, new IdSet());
+            entry = new FieldIndexEntry<>(projectName, collName, value, new IdSet());
             created.put(key, entry);
             if (resident != null) {
                 touched().put(entry, CREATED_IN_BATCH);
@@ -298,16 +299,16 @@ final class FieldIndexSlot {
             return false;
         }
         if (logOnly) {
-            cache.forgetFieldIndexTypeAbsent(dbName, collName, identifier);
-            fold = fs.appendIndexLogOnly(dbName, collName, fieldName, fileLabel, changes(), loader);
+            cache.forgetFieldIndexTypeAbsent(projectName, collName, identifier);
+            fold = fs.appendIndexLogOnly(projectName, collName, fieldName, fileLabel, changes(), loader);
             return true;
         }
         applyInPlace();
-        cache.forgetFieldIndexTypeAbsent(dbName, collName, identifier);
-        fold = fs.appendIndexLog(dbName, collName, fieldName, fileLabel, changes(), entries,
-                resident == null && cache.isFieldIndexTypeRefused(dbName, collName, identifier));
+        cache.forgetFieldIndexTypeAbsent(projectName, collName, identifier);
+        fold = fs.appendIndexLog(projectName, collName, fieldName, fileLabel, changes(), entries,
+                resident == null && cache.isFieldIndexTypeRefused(projectName, collName, identifier));
         if (resident != null && fold != null && !fold.pastResidentCeiling()) {
-            IdleIndexFolds.markDue(dbName, collName, fieldName, fileLabel, identifier);
+            IdleIndexFolds.markDue(projectName, collName, fieldName, fileLabel, identifier);
             fold = null;
         }
         return true;
@@ -457,22 +458,22 @@ final class FieldIndexSlot {
             return;
         }
         if (entries.isEmpty()) {
-            cache.evictFieldIndex(dbName, collName, identifier);
+            cache.evictFieldIndex(projectName, collName, identifier);
             return;
         }
         if (shared != null) {
             shared.adjustSharedIdBytes(sharedDelta);
         }
-        cache.rememberFieldIndexBatch(dbName, collName, identifier, previousCount, bytesDelta(), changedIds);
+        cache.rememberFieldIndexBatch(projectName, collName, identifier, previousCount, bytesDelta(), changedIds);
     }
 
     boolean coveredByCache() {
-        return !logOnly && entries.isEmpty() || cache.residentFieldIndex(dbName, collName, identifier) != null;
+        return !logOnly && entries.isEmpty() || cache.residentFieldIndex(projectName, collName, identifier) != null;
     }
 
     private void admitWhatWasLoaded() {
         if ((dirty || onDisk) && !entries.isEmpty()) {
-            cache.admitMaintainedFieldIndex(dbName, collName, identifier, cast(entries));
+            cache.admitMaintainedFieldIndex(projectName, collName, identifier, cast(entries));
         }
     }
 

@@ -28,7 +28,7 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.admin.PageRowWriteBack;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.test.PlatformSupport;
 import org.ccg.mpp.test.RequiresDirectorySync;
 import org.ccg.mpp.test.TestGlobals;
@@ -50,7 +50,7 @@ public class AdminUsageBatchTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetUsageCounters(TestUtils.usageTrackerOf(memoryManagement));
         memoryManagement.takeDirtyUsage();
         recorder = RecordingForcer.install(PlatformSupport.directorySync());
@@ -67,8 +67,8 @@ public class AdminUsageBatchTest {
     }
 
     private UsageCounter touched(AccessKind kind, String indexKey) {
-        memoryManagement.recordAccess(kind, TestGlobals.DB, TestGlobals.COLL, indexKey);
-        return memoryManagement.getCounter(kind, TestGlobals.DB, TestGlobals.COLL, indexKey);
+        memoryManagement.recordAccess(kind, TestGlobals.PROJECT, TestGlobals.COLL, indexKey);
+        return memoryManagement.getCounter(kind, TestGlobals.PROJECT, TestGlobals.COLL, indexKey);
     }
 
     private long usageLogForces() {
@@ -76,13 +76,13 @@ public class AdminUsageBatchTest {
     }
 
     private long rowsOnDisk(String id) throws IOException {
-        return fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME).stream()
+        return fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME).stream()
                 .filter(pk -> pk.getValue().equals(id)).count();
     }
 
     private AdminCollectionUsageEntry storedRow(String indexKey) throws Exception {
         final var pk = cache.getPkIndexCollectionUsage(
-                AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, indexKey));
+                AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, indexKey));
         final var entry = fs.getById(pk);
         final var data = entry.getData();
         data.addProperty(Globals.PK_FIELD, entry.get_id());
@@ -104,7 +104,7 @@ public class AdminUsageBatchTest {
         assertEquals(1, usageLogForces() - before);
         for (var i = 0; i < 300; i += 37) {
             assertEquals(1,
-                    rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "field" + i)));
+                    rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, "field" + i)));
         }
     }
 
@@ -117,7 +117,7 @@ public class AdminUsageBatchTest {
 
         AdminOperationHelper.flushCollectionUsage(List.of(first, fresh));
 
-        assertEquals(1, rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "kept")));
+        assertEquals(1, rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, "kept")));
         assertEquals(2L, storedRow("kept").getAccessCount());
         assertEquals(1L, storedRow("fresh").getAccessCount());
     }
@@ -130,26 +130,28 @@ public class AdminUsageBatchTest {
 
         AdminOperationHelper.flushCollectionUsage(List.of(collection, pkIndex));
 
-        assertEquals(1, rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "")));
+        assertEquals(1, rowsOnDisk(AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, "")));
         assertEquals(AccessKind.PK_INDEX, storedRow("").getKind());
         assertEquals(2L, storedRow("").getAccessCount());
     }
 
     @Test
     public void test_a_dropped_collection_or_a_forgotten_counter_writes_no_row() throws Exception {
-        memoryManagement.recordAccess(AccessKind.COLLECTION, "noSuchDb", "noSuchColl", null);
-        final var unregistered = memoryManagement.getCounter(AccessKind.COLLECTION, "noSuchDb", "noSuchColl", null);
+        memoryManagement.recordAccess(AccessKind.COLLECTION, "noSuchProject", "noSuchColl", null);
+        final var unregistered = memoryManagement.getCounter(AccessKind.COLLECTION, "noSuchProject", "noSuchColl",
+                null);
         final var forgotten = touched(AccessKind.FIELD_INDEX, "forgotten");
-        memoryManagement.clearCounter(AccessKind.FIELD_INDEX, TestGlobals.DB, TestGlobals.COLL, "forgotten");
-        final var admin = new UsageCounter(AccessKind.COLLECTION, Globals.ADMIN_DB_NAME, "databases", null, 1L, 1L);
+        memoryManagement.clearCounter(AccessKind.FIELD_INDEX, TestGlobals.PROJECT, TestGlobals.COLL, "forgotten");
+        final var admin = new UsageCounter(AccessKind.COLLECTION, Globals.ADMIN_PROJECT_NAME, "projects", null, 1L, 1L);
 
         AdminOperationHelper.flushCollectionUsage(List.of(unregistered, forgotten, admin));
 
-        assertNull(cache.getPkIndexCollectionUsage(AdminCollectionUsageEntry.buildId("noSuchDb", "noSuchColl", "")));
+        assertNull(
+                cache.getPkIndexCollectionUsage(AdminCollectionUsageEntry.buildId("noSuchProject", "noSuchColl", "")));
         assertNull(cache.getPkIndexCollectionUsage(
-                AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "forgotten")));
-        assertNull(cache
-                .getPkIndexCollectionUsage(AdminCollectionUsageEntry.buildId(Globals.ADMIN_DB_NAME, "databases", "")));
+                AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, "forgotten")));
+        assertNull(cache.getPkIndexCollectionUsage(
+                AdminCollectionUsageEntry.buildId(Globals.ADMIN_PROJECT_NAME, "projects", "")));
     }
 
     @Test
@@ -178,7 +180,7 @@ public class AdminUsageBatchTest {
     }
 
     private String fieldRow(int index) {
-        return AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "field" + index);
+        return AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, "field" + index);
     }
 
     @Test
@@ -186,15 +188,15 @@ public class AdminUsageBatchTest {
     public void dropDeletesUsageRowsInOneWrite() throws Exception {
         AdminOperationHelper.flushCollectionUsage(touchedFields(300));
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "otherColl")).getStatus());
-        memoryManagement.recordAccess(AccessKind.COLLECTION, TestGlobals.DB, "otherColl", null);
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "otherColl")).getStatus());
+        memoryManagement.recordAccess(AccessKind.COLLECTION, TestGlobals.PROJECT, "otherColl", null);
         AdminOperationHelper.flushCollectionUsage(
-                List.of(memoryManagement.getCounter(AccessKind.COLLECTION, TestGlobals.DB, "otherColl", null)));
-        final var otherRow = AdminCollectionUsageEntry.buildId(TestGlobals.DB, "otherColl", "");
+                List.of(memoryManagement.getCounter(AccessKind.COLLECTION, TestGlobals.PROJECT, "otherColl", null)));
+        final var otherRow = AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, "otherColl", "");
         final var before = usageLogForces();
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
 
         assertEquals(1, usageLogForces() - before, "300 usage rows go in one forced record");
         for (var i = 0; i < 300; i += 37) {
@@ -205,10 +207,11 @@ public class AdminUsageBatchTest {
     }
 
     @Test
-    public void dropDatabaseDeletesEveryUsageRowOfIt() throws Exception {
+    public void dropProjectDeletesEveryUsageRowOfIt() throws Exception {
         AdminOperationHelper.flushCollectionUsage(touchedFields(5));
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getStatus());
 
         for (var i = 0; i < 5; i++) {
             assertNull(cache.getPkIndexCollectionUsage(fieldRow(i)));
@@ -233,8 +236,8 @@ public class AdminUsageBatchTest {
         for (var i = 0; i < 300; i += 37) {
             assertNull(cache.getPkIndexCollectionUsage(fieldRow(i)));
             assertEquals(0, rowsOnDisk(fieldRow(i)));
-            assertNull(
-                    memoryManagement.getCounter(AccessKind.FIELD_INDEX, TestGlobals.DB, TestGlobals.COLL, "field" + i));
+            assertNull(memoryManagement.getCounter(AccessKind.FIELD_INDEX, TestGlobals.PROJECT, TestGlobals.COLL,
+                    "field" + i));
         }
     }
 }

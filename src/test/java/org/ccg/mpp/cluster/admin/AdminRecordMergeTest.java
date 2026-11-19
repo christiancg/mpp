@@ -10,7 +10,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.auth.PermissionLevel;
 import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.admin.AdminRecordKey;
@@ -22,61 +22,63 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
 
     @Test
     public void test_a_newer_record_installs_and_reports_a_change() {
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "fresh", clock.next())), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "fresh", clock.next())),
+                true);
 
         assertTrue(result.complete());
         assertTrue(result.changed());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "fresh"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "fresh"));
     }
 
     @Test
     public void test_an_older_record_than_the_local_one_is_skipped() {
-        final var local = liveVersion(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL));
+        final var local = liveVersion(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, TestGlobals.COLL, 2L, "f")), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, TestGlobals.COLL, 2L, "f")),
+                true);
 
         assertTrue(result.complete());
         assertFalse(result.changed());
-        assertTrue(cache.getIndexesForCollection(TestGlobals.DB, TestGlobals.COLL).isEmpty());
-        assertEquals(local, liveVersion(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL)));
+        assertTrue(cache.getIndexesForCollection(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
+        assertEquals(local, liveVersion(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
     public void test_a_tombstone_at_the_live_version_removes_the_record_and_is_kept() throws Exception {
-        final var version = liveVersion(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL));
+        final var version = liveVersion(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        final var result = AdminRecordMerge
-                .apply(List.of(tombstone(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL), version)), true);
+        final var result = AdminRecordMerge.apply(
+                List.of(tombstone(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL), version)), true);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(version,
-                tombstones().get(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL).id()).longValue());
+                tombstones().get(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL).id()).longValue());
     }
 
     @Test
     public void test_a_live_record_at_a_tombstone_version_does_not_resurrect_it() throws Exception {
-        final var key = AdminRecordKey.collection(TestGlobals.DB, "buried");
+        final var key = AdminRecordKey.collection(TestGlobals.PROJECT, "buried");
         final var version = clock.next();
         AdminStamp.tombstoneAt(key, version);
 
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "buried", version)), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "buried", version)), true);
 
         assertFalse(result.changed());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "buried"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "buried"));
     }
 
     @Test
     public void test_a_newer_live_record_outranks_an_older_tombstone() throws Exception {
-        AdminStamp.tombstoneAt(AdminRecordKey.collection(TestGlobals.DB, "reborn"), clock.next());
+        AdminStamp.tombstoneAt(AdminRecordKey.collection(TestGlobals.PROJECT, "reborn"), clock.next());
 
-        AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "reborn", clock.next())), true);
+        AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "reborn", clock.next())), true);
 
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "reborn"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "reborn"));
     }
 
     @Test
-    public void test_a_child_of_an_unknown_database_is_incomplete() {
+    public void test_a_child_of_an_unknown_project_is_incomplete() {
         final var result = AdminRecordMerge.apply(List.of(collection("nodb", "coll", clock.next())), true);
 
         assertFalse(result.complete());
@@ -84,9 +86,9 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
     }
 
     @Test
-    public void test_a_child_older_than_its_database_tombstone_is_dropped_as_complete() throws Exception {
+    public void test_a_child_older_than_its_project_tombstone_is_dropped_as_complete() throws Exception {
         final var childVersion = clock.next();
-        AdminStamp.tombstoneAt(AdminRecordKey.database("gonedb"), clock.next());
+        AdminStamp.tombstoneAt(AdminRecordKey.project("gonedb"), clock.next());
 
         final var result = AdminRecordMerge.apply(List.of(collection("gonedb", "coll", childVersion)), true);
 
@@ -97,12 +99,12 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
     @Test
     public void test_a_schema_under_a_dropped_collection_is_dropped_as_complete() throws Exception {
         final var schemaVersion = clock.next();
-        AdminStamp.tombstoneAt(AdminRecordKey.collection(TestGlobals.DB, "gonecoll"), clock.next());
+        AdminStamp.tombstoneAt(AdminRecordKey.collection(TestGlobals.PROJECT, "gonecoll"), clock.next());
 
         final var result = AdminRecordMerge.apply(List.of(schema("gonecoll", schemaVersion)), true);
 
         assertTrue(result.complete());
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, "gonecoll"));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, "gonecoll"));
     }
 
     @Test
@@ -112,28 +114,29 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
 
     @Test
     public void test_records_apply_parents_first_whatever_order_they_arrive_in() {
-        final var dbVersion = clock.next();
+        final var projectVersion = clock.next();
         final var schema = new AdminRecord(AdminRecordKey.schema("newdb", "child"), clock.next(),
                 schema("child", 1L).body());
-        final var result = AdminRecordMerge
-                .apply(List.of(schema, collection("newdb", "child", clock.next()), database("newdb", dbVersion)), true);
+        final var result = AdminRecordMerge.apply(
+                List.of(schema, collection("newdb", "child", clock.next()), project("newdb", projectVersion)), true);
 
         assertTrue(result.complete());
-        assertNotNull(cache.getAdminDbEntry("newdb"));
+        assertNotNull(cache.getAdminProjectEntry("newdb"));
         assertNotNull(cache.getAdminCollectionEntry("newdb", "child"));
     }
 
     @Test
     public void test_a_user_tombstone_deletes_the_user_and_its_ownerships() throws Exception {
-        AdminRecordMerge.apply(List.of(user("dave", clock.next(), Map.of(TestGlobals.DB, PermissionLevel.READ))), true);
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB,
-                cache.getAdminDbEntry(TestGlobals.DB).getCollections(), List.of("dave")));
+        AdminRecordMerge.apply(List.of(user("dave", clock.next(), Map.of(TestGlobals.PROJECT, PermissionLevel.READ))),
+                true);
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT,
+                cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections(), List.of("dave")));
 
         final var result = AdminRecordMerge.apply(List.of(tombstone(AdminRecordKey.user("dave"), clock.next())), true);
 
         assertTrue(result.complete());
         assertNull(cache.getAdminUserEntry("dave"));
-        assertFalse(cache.getAdminDbEntry(TestGlobals.DB).isOwner("dave"));
+        assertFalse(cache.getAdminProjectEntry(TestGlobals.PROJECT).isOwner("dave"));
     }
 
     @Test
@@ -162,11 +165,12 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
                 + Globals.FILE_SEPARATOR + Globals.CLUSTER_ADMIN_TOMBSTONES_FILE);
         assertTrue(file.mkdirs());
 
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "blocked", clock.next())), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "blocked", clock.next())),
+                true);
 
         assertFalse(result.complete());
         assertFalse(result.changed());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "blocked"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "blocked"));
     }
 
     @Test
@@ -189,7 +193,7 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
     public void test_an_interrupted_merge_stops_incomplete() {
         Thread.currentThread().interrupt();
         try {
-            final var result = AdminRecordMerge.apply(List.of(database("intdb", clock.next())), true);
+            final var result = AdminRecordMerge.apply(List.of(project("intdb", clock.next())), true);
             assertFalse(result.complete());
         } finally {
             assertTrue(Thread.interrupted());
@@ -198,15 +202,15 @@ public class AdminRecordMergeTest extends AdminRecordTestBase {
 
     @Test
     public void aTombstoneAppliedInABatchOutranksALowerLiveRecordLaterInIt() {
-        final var key = AdminRecordKey.collection(TestGlobals.DB, "late");
+        final var key = AdminRecordKey.collection(TestGlobals.PROJECT, "late");
         final var older = clock.next();
         final var newer = clock.next();
 
         final var result = AdminRecordMerge
-                .apply(List.of(tombstone(key, newer), collection(TestGlobals.DB, "late", older)), true);
+                .apply(List.of(tombstone(key, newer), collection(TestGlobals.PROJECT, "late", older)), true);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "late"),
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "late"),
                 "the batch's own tombstone keeps the older live record out");
     }
 }

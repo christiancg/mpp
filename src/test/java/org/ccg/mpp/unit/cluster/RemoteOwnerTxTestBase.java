@@ -47,15 +47,15 @@ abstract class RemoteOwnerTxTestBase {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         beforeClusterStart();
         cluster.start(false, 10_000L);
         TestUtils.setPrivateField(config, "clusterEnabled", true);
         cluster.configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
         coll = collectionOwnedByOther();
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, coll));
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
         clientId = clientTracker.addClient(TestUtils.clientSocket());
     }
 
@@ -79,7 +79,7 @@ abstract class RemoteOwnerTxTestBase {
     private String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
             final var candidate = collectionPrefix() + i;
-            if (!ownership.isOwner(TestGlobals.DB, candidate)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, candidate)) {
                 return candidate;
             }
         }
@@ -98,7 +98,7 @@ abstract class RemoteOwnerTxTestBase {
 
     void removeCollectionFolder() {
         final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + coll);
+                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR + coll);
         final var files = folder.listFiles();
         if (files != null) {
             for (final var file : files) {
@@ -109,7 +109,7 @@ abstract class RemoteOwnerTxTestBase {
     }
 
     OperationStatus findStatus(String id) {
-        final var find = new FindByIdRequest(TestGlobals.DB, coll);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, coll);
         find.set_id(id);
         return processor.processMessage(find).getStatus();
     }

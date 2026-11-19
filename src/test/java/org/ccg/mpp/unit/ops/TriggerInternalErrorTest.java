@@ -40,7 +40,7 @@ public class TriggerInternalErrorTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TriggerTestSupport.createDefiner(DEFINER);
     }
 
@@ -67,8 +67,8 @@ public class TriggerInternalErrorTest {
     }
 
     private void storeProcedure(String script) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "arity", script), DEFINER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "arity", script), DEFINER);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition(TRIGGER, new LinkedHashSet<>(Set.of(EventType.CREATED)), "arity",
                         TriggerDefinition.MODE_DOCUMENT, false, true, DEFINER, 1L, 1L, 1L, DEFINER)));
     }
@@ -77,7 +77,7 @@ public class TriggerInternalErrorTest {
         final var data = new JsonObject();
         data.add("_id", new JsonString(FIRED_ID));
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id(FIRED_ID);
         dbEntry.setData(data);
@@ -85,12 +85,13 @@ public class TriggerInternalErrorTest {
     }
 
     private static String recordRun() {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, TRIGGER,
-                "arity", EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(firedDocument())));
+        return TriggerRunLog
+                .record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, TRIGGER, "arity",
+                        EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(firedDocument())));
     }
 
     private static TriggerEvent event(String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, TRIGGER, "arity", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, TRIGGER, "arity", false,
                 List.of(firedDocument()), DEFINER, 0, runId);
     }
 

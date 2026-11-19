@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class FieldIndexLogTest {
-    private static final String DB = "logdb";
+    private static final String PROJECT = "logdb";
     private static final String COLL = "docs";
     private static final String FIELD = "tag";
 
@@ -47,15 +47,15 @@ public class FieldIndexLogTest {
         TestUtils.standardInitialSetup();
         final var paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(new File(tmp, DB + File.separator + COLL).mkdirs());
+        assertTrue(new File(tmp, PROJECT + File.separator + COLL).mkdirs());
         store = new FieldIndexStore(paths);
         loader = new FieldIndexLoader(paths);
-        base = java.util.Objects.requireNonNull(paths.indexFile(DB, COLL, FIELD, "String"));
+        base = java.util.Objects.requireNonNull(paths.indexFile(PROJECT, COLL, FIELD, "String"));
         log = FilePaths.logFileOf(base);
     }
 
     private static FieldIndexEntry<String> entry(String value, String... ids) {
-        return new FieldIndexEntry<>(DB, COLL, value, new HashSet<>(Set.of(ids)));
+        return new FieldIndexEntry<>(PROJECT, COLL, value, new HashSet<>(Set.of(ids)));
     }
 
     private static IndexLogChange change(String value, List<String> added, List<String> removed) {
@@ -63,7 +63,7 @@ public class FieldIndexLogTest {
     }
 
     private Map<String, Set<String>> loaded() throws IOException {
-        final var entries = loader.readWholeFieldIndexFiles(DB, COLL, FIELD, String.class);
+        final var entries = loader.readWholeFieldIndexFiles(PROJECT, COLL, FIELD, String.class);
         if (entries == null) {
             return null;
         }
@@ -186,7 +186,7 @@ public class FieldIndexLogTest {
     public void dropIndexRemovesTheLogToo() throws IOException {
         append(List.of(change("alpha", List.of("a"), List.of())), List.of(entry("alpha", "a")));
 
-        assertTrue(store.dropIndex(DB, COLL, FIELD));
+        assertTrue(store.dropIndex(PROJECT, COLL, FIELD));
 
         assertFalse(log.exists());
     }
@@ -195,7 +195,7 @@ public class FieldIndexLogTest {
     public void aFullBuildDeletesAStaleLog() throws IOException {
         append(List.of(change("stale", List.of("s"), List.of())), List.of(entry("stale", "s")));
 
-        store.writeIndexFile(DB, COLL, FIELD, Map.of(String.class, List.of(entry("fresh", "f"))));
+        store.writeIndexFile(PROJECT, COLL, FIELD, Map.of(String.class, List.of(entry("fresh", "f"))));
 
         assertFalse(log.exists());
         assertEquals(Map.of("fresh", Set.of("f")), loaded());
@@ -203,7 +203,7 @@ public class FieldIndexLogTest {
 
     private boolean append(List<IndexLogChange> changes, List<? extends FieldIndexEntry<?>> survivors)
             throws IOException {
-        final var fold = store.appendIndexLog(DB, COLL, FIELD, "String", changes, survivors, 1);
+        final var fold = store.appendIndexLog(PROJECT, COLL, FIELD, "String", changes, survivors, 1);
         return fold == null ? survivors.isEmpty() : store.fold(fold) != PendingFold.Outcome.SKIPPED;
     }
 
@@ -427,6 +427,6 @@ public class FieldIndexLogTest {
         assertFalse(outcome.due());
         assertFalse(outcome.pastResidentCeiling());
         assertEquals(outcome.logBytes(), unchanged.logBytes(), "an empty append reports the remembered length");
-        assertNull(store.appendIndexLog(DB, COLL, FIELD, "String", List.of(), List.of(entry("alpha", "a")), 1));
+        assertNull(store.appendIndexLog(PROJECT, COLL, FIELD, "String", List.of(), List.of(entry("alpha", "a")), 1));
     }
 }

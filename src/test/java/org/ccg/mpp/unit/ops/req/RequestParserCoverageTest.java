@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.ccg.mpp.ops.req.AggregateRequest;
 import org.ccg.mpp.ops.req.ArmFaultRequest;
 import org.ccg.mpp.ops.req.AwaitFaultRequest;
-import org.ccg.mpp.ops.req.GetDatabaseStatsRequest;
+import org.ccg.mpp.ops.req.GetProjectStatsRequest;
 import org.ccg.mpp.ops.req.ListUsersRequest;
 import org.ccg.mpp.ops.req.ReleaseFaultRequest;
 import org.ccg.mpp.ops.req.RequestParser;
@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 public class RequestParserCoverageTest {
 
     @Test
-    public void test_parse_get_database_stats() {
-        final var result = RequestParser.parseRequest("{\"type\":\"GET_DATABASE_STATS\"}");
-        assertInstanceOf(GetDatabaseStatsRequest.class, result);
+    public void test_parse_get_project_stats() {
+        final var result = RequestParser.parseRequest("{\"type\":\"GET_PROJECT_STATS\"}");
+        assertInstanceOf(GetProjectStatsRequest.class, result);
     }
 
     @Test
@@ -33,7 +33,7 @@ public class RequestParserCoverageTest {
     @Test
     public void test_parse_cast_to_json_custom() {
         final var json = """
-                {"type":"AGGREGATE","databaseName":"testDb","collectionName":"testColl",
+                {"type":"AGGREGATE","projectName":"testProject","collectionName":"testColl",
                  "aggregationSteps":[{"type":"MAP","operators":[{"fieldName":"casted","condition":null,
                  "operator":{"type":"CAST","fieldName":"loc","toType":"JSON_CUSTOM","customTypeName":"Geo"}}]}]}""";
         final var result = RequestParser.parseRequest(json);
@@ -43,7 +43,7 @@ public class RequestParserCoverageTest {
     @Test
     public void test_parse_conjunction_with_malformed_nested_operator_throws() {
         final var json = """
-                {"type":"AGGREGATE","databaseName":"testDb","collectionName":"testColl",
+                {"type":"AGGREGATE","projectName":"testProject","collectionName":"testColl",
                  "aggregationSteps":[{"type":"FILTER","operator":{"conjunctionType":"AND",
                  "operators":[{"garbage":true}]}}]}""";
         assertThrows(Exception.class, () -> RequestParser.parseRequest(json));

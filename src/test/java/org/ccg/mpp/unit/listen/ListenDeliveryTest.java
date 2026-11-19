@@ -44,7 +44,7 @@ public class ListenDeliveryTest {
     @BeforeAll
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
@@ -74,7 +74,7 @@ public class ListenDeliveryTest {
     }
 
     private static AggregateRequest dirtyRequest(String collection) {
-        final var request = new AggregateRequest(TestGlobals.DB, collection);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, collection);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         return request;
@@ -154,7 +154,7 @@ public class ListenDeliveryTest {
         final var document = new JsonObject();
         document.addProperty("_id", "cjk");
         document.addProperty("text", "界面 ünïcødé 😀");
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         save.set_id("cjk");
         save.setObject(document);
         SaveOperationHelper.executeSave(save);

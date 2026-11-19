@@ -40,7 +40,7 @@ public class BackgroundMaintenanceTest {
 
     private static ScriptRunHistoryEvent historyEvent(String runId) {
         return new ScriptRunHistoryEvent(
-                new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, "laneDb", "job", "proc", null, null, "u1",
+                new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, "laneProject", "job", "proc", null, null, "u1",
                         "u1", 1L, 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, null, false));
     }
 
@@ -73,7 +73,7 @@ public class BackgroundMaintenanceTest {
     @Test
     public void test_discarding_drops_maintenance_but_counts_only_regular_events() {
         final var lanes = new BackgroundLanes(2);
-        lanes.add(new EntityEvent(EventType.CREATED, "laneDb", "coll", new DbEntry()));
+        lanes.add(new EntityEvent(EventType.CREATED, "laneProject", "coll", new DbEntry()));
         lanes.addMaintenance(new UsageProfileFlushEvent());
         lanes.addMaintenance(new UsageProfileCleanupEvent());
 
@@ -88,7 +88,7 @@ public class BackgroundMaintenanceTest {
         for (var i = 0; i < 5; i++) {
             lanes.add(historyEvent("run" + i));
         }
-        lanes.add(new EntityEvent(EventType.CREATED, "laneDb", "coll", new DbEntry()));
+        lanes.add(new EntityEvent(EventType.CREATED, "laneProject", "coll", new DbEntry()));
         assertEquals(5, lanes.historyQueued());
 
         invoke(lanes, "poll", new Class<?>[]{int.class}, 0);
@@ -176,7 +176,7 @@ public class BackgroundMaintenanceTest {
         assertTrue(manager.awaitCapacity(0L));
 
         for (var i = 0; i < 3; i++) {
-            manager.submitBackgroundTask(new EntityEvent(EventType.CREATED, "gateDb", "c" + i, new DbEntry()));
+            manager.submitBackgroundTask(new EntityEvent(EventType.CREATED, "gateProject", "c" + i, new DbEntry()));
         }
 
         assertFalse(manager.awaitCapacity(0L));

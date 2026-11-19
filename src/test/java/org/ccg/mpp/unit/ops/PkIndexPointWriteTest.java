@@ -51,7 +51,7 @@ public class PkIndexPointWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalMaxMemory = String.valueOf(configuration.getMaxMemoryBytes());
         SCANS.clear();
     }
@@ -76,20 +76,20 @@ public class PkIndexPointWriteTest {
     }
 
     private OperationResponse save(String id, int payload) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, payload));
         request.set_id(id);
         return processor.processMessage(request);
     }
 
     private OperationResponse delete(String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request);
     }
 
     private OperationResponse find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request);
     }
@@ -104,14 +104,14 @@ public class PkIndexPointWriteTest {
         final var mapType = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var resident = TestUtils.getPrivateField(cache.userCache(), "pkIndexMap", mapType);
-        final var identifier = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var identifier = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         final var counting = new ScanCountingPkIndex(resident.get(identifier));
         resident.put(identifier, counting);
         return counting;
     }
 
     private List<PkIndexEntry> residentIndex() throws Exception {
-        return new ArrayList<>(cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL));
+        return new ArrayList<>(cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private static void assertSorted(List<PkIndexEntry> rows) {
@@ -267,9 +267,8 @@ public class PkIndexPointWriteTest {
         }
 
         assertEquals(Map.of(), SCANS, "a vacuum finds its rows by id, never by walking the pk list");
-        assertTrue(
-                IocContainer.get(FileSystem.class).pageFileLength(TestGlobals.DB, TestGlobals.COLL, 0L) <= SMALL_PAGE,
-                "the page was vacuumed rather than grown");
+        assertTrue(IocContainer.get(FileSystem.class).pageFileLength(TestGlobals.PROJECT, TestGlobals.COLL,
+                0L) <= SMALL_PAGE, "the page was vacuumed rather than grown");
         for (var i = 0; i < 6; i++) {
             assertEquals(0L, counting.get(i).getPage(), "every update stayed on its page");
             assertFound(idOf(i));

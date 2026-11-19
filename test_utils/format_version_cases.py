@@ -6,7 +6,7 @@ import tempfile
 import base_utils as bu
 from base_utils import Conn, check, check_status, section
 
-DB = "format_db"
+PROJECT = "format_project"
 COLL = "docs"
 DOC = {"_id": "kept", "body": "written before the refusals"}
 
@@ -54,10 +54,10 @@ def test_a_fresh_folder_is_stamped(work_dir: str, port: int) -> bytes:
     proc = bu.start_server(work_dir, os.path.join(work_dir, "server.out"), port=port)
     try:
         with Conn.authenticated(port=port) as c:
-            check_status("create the database", c.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
-            check_status("create the collection", c.send({"type": "CREATE_COLLECTION", "databaseName": DB,
+            check_status("create the project", c.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
+            check_status("create the collection", c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                           "collectionName": COLL}), "OK")
-            check_status("save a document", c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+            check_status("save a document", c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                                     "object": DOC}), "OK")
             info = c.send({"type": "SERVER_INFO"}).get("server") or {}
     finally:
@@ -69,6 +69,11 @@ def test_a_fresh_folder_is_stamped(work_dir: str, port: int) -> bytes:
           f"stamp={stamp}, server={info}")
     check("it names the release that wrote it", stamp.get("writtenBy") == info.get("version"),
           f"stamp={stamp}, server={info}")
+    check("SERVER_INFO speaks protocol 2 and storage format 2",
+          info.get("protocolVersion") == 2 and info.get("storageFormatVersion") == 2, f"server={info}")
+    check("the admin metadata keeps its projects in admin/projects",
+          os.path.isdir(os.path.join(work_dir, "db", "admin", "projects"))
+          and not os.path.exists(os.path.join(work_dir, "db", "admin", "databases")))
     with open(_stamp_path(work_dir), "rb") as fp:
         return fp.read()
 
@@ -92,13 +97,27 @@ def test_a_malformed_stamp_refuses_to_start(work_dir: str, port: int):
     _refused("malformed stamp", work_dir, port, ["format.json", "not a valid storage format stamp"])
 
 
+def test_an_older_format_refuses_to_start(work_dir: str, port: int, original: dict):
+    section("A folder stamped by an older storage format refuses to start")
+    older = {"formatVersion": original["formatVersion"] - 1, "writtenBy": "0.1.0"}
+    _write_stamp(work_dir, json.dumps(older).encode())
+    _refused("older format", work_dir, port, ["storage format 1", "0.1.0", "--dump"])
+
+
+def test_an_unstamped_folder_refuses_to_start(work_dir: str, port: int):
+    section("A folder holding data but no stamp is read as format 1 and refuses to start")
+    os.remove(_stamp_path(work_dir))
+    _refused("unstamped folder", work_dir, port, ["storage format 1", "format.json"])
+    check("unstamped folder: no stamp was written", not os.path.exists(_stamp_path(work_dir)))
+
+
 def test_the_original_stamp_starts_and_serves_the_data(work_dir: str, port: int, original: bytes):
     section("With the original stamp back, the server starts and serves what it held")
     _write_stamp(work_dir, original)
     proc = bu.start_server(work_dir, os.path.join(work_dir, "server.out"), port=port)
     try:
         with Conn.authenticated(port=port) as c:
-            found = c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": DOC["_id"]})
+            found = c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": DOC["_id"]})
     finally:
         bu.stop_server(proc, port=port)
     check("the document written before the refusals is there", (found.get("object") or {}).get("body") == DOC["body"],
@@ -114,4 +133,6 @@ def run_all(write_config, port: int):
     test_a_newer_format_refuses_to_start(work_dir, port, json.loads(original))
     test_an_invalid_format_version_refuses_to_start(work_dir, port)
     test_a_malformed_stamp_refuses_to_start(work_dir, port)
+    test_an_older_format_refuses_to_start(work_dir, port, json.loads(original))
+    test_an_unstamped_folder_refuses_to_start(work_dir, port)
     test_the_original_stamp_starts_and_serves_the_data(work_dir, port, original)

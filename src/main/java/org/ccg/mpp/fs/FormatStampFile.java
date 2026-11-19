@@ -41,7 +41,7 @@ public final class FormatStampFile {
     }
 
     public boolean holdsData() {
-        return paths.databaseFolder(Globals.ADMIN_DB_NAME).isDirectory();
+        return paths.projectFolder(Globals.ADMIN_PROJECT_NAME).isDirectory();
     }
 
     private JsonObject parse(Path path, String content) throws MalformedFormatStampException {

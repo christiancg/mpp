@@ -3,7 +3,7 @@ package org.ccg.mpp.ops;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ioc.IocContainer;
-import org.ccg.mpp.ops.admin.DatabaseVisibility;
+import org.ccg.mpp.ops.admin.ProjectVisibility;
 import org.ccg.mpp.ops.auth.AuthorizationChecker;
 
 public record StatsView(AdminUserEntry user) {
@@ -17,11 +17,11 @@ public record StatsView(AdminUserEntry user) {
         return user() != null && user().isAdmin();
     }
 
-    public boolean includesDatabase(String name) {
-        return includesNodeSections() || DatabaseVisibility.isVisible(user(), cache.getAdminDbEntry(name));
+    public boolean includesProject(String name) {
+        return includesNodeSections() || ProjectVisibility.isVisible(user(), cache.getAdminProjectEntry(name));
     }
 
-    public boolean includesCollection(String database, String collection) {
-        return AuthorizationChecker.canReadCollection(user(), database, collection);
+    public boolean includesCollection(String project, String collection) {
+        return AuthorizationChecker.canReadCollection(user(), project, collection);
     }
 }

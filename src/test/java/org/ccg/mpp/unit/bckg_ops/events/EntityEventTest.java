@@ -14,15 +14,15 @@ public class EntityEventTest {
     @Test
     public void test_create_entity_event_with_valid_parameters() {
         EventType type = EventType.CREATED;
-        String dbName = "testDatabase";
+        String projectName = "testProject";
         String collName = "testCollection";
         JsonObject jsonObject = new JsonObject();
-        DbEntry dbEntry = DbEntry.fromJsonObject(dbName, collName, jsonObject);
+        DbEntry dbEntry = DbEntry.fromJsonObject(projectName, collName, jsonObject);
 
-        EntityEvent entityEvent = new EntityEvent(type, dbName, collName, dbEntry);
+        EntityEvent entityEvent = new EntityEvent(type, projectName, collName, dbEntry);
 
         assertEquals(type, entityEvent.getType());
-        assertEquals(dbName, entityEvent.getDbName());
+        assertEquals(projectName, entityEvent.getProjectName());
         assertEquals(collName, entityEvent.getCollName());
         assertEquals(EntityRef.of(dbEntry), entityEvent.getEntity());
     }
@@ -30,12 +30,12 @@ public class EntityEventTest {
     @Test
     public void test_getters() {
         EventType type = EventType.CREATED;
-        String dbName = "testDatabase";
+        String projectName = "testProject";
         String collName = "testCollection";
         JsonObject jsonObject = new JsonObject();
-        DbEntry dbEntry = DbEntry.fromJsonObject(dbName, collName, jsonObject);
-        EntityEvent entityEvent = new EntityEvent(type, dbName, collName, dbEntry);
-        assertEquals("testDatabase", entityEvent.getDbName());
+        DbEntry dbEntry = DbEntry.fromJsonObject(projectName, collName, jsonObject);
+        EntityEvent entityEvent = new EntityEvent(type, projectName, collName, dbEntry);
+        assertEquals("testProject", entityEvent.getProjectName());
         assertEquals("testCollection", entityEvent.getCollName());
         assertEquals(EntityRef.of(dbEntry), entityEvent.getEntity());
     }
@@ -43,12 +43,12 @@ public class EntityEventTest {
     @Test
     public void test_equals_and_hashCode() {
         EventType type = EventType.CREATED;
-        String dbName = "testDatabase";
+        String projectName = "testProject";
         String collName = "testCollection";
         JsonObject jsonObject = new JsonObject();
-        DbEntry dbEntry = DbEntry.fromJsonObject(dbName, collName, jsonObject);
-        EntityEvent entityEvent1 = new EntityEvent(type, dbName, collName, dbEntry);
-        EntityEvent entityEvent2 = new EntityEvent(type, dbName, collName, dbEntry);
+        DbEntry dbEntry = DbEntry.fromJsonObject(projectName, collName, jsonObject);
+        EntityEvent entityEvent1 = new EntityEvent(type, projectName, collName, dbEntry);
+        EntityEvent entityEvent2 = new EntityEvent(type, projectName, collName, dbEntry);
         assertEquals(entityEvent1, entityEvent2);
         assertEquals(entityEvent1.hashCode(), entityEvent2.hashCode());
     }

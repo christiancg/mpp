@@ -21,12 +21,12 @@ public final class PendingWriteReconciler {
     private PendingWriteReconciler() {
     }
 
-    public static Set<String> pendingIds(String dbName, String collName) {
-        return pendingIndexWrites.idsFor(dbName, collName);
+    public static Set<String> pendingIds(String projectName, String collName) {
+        return pendingIndexWrites.idsFor(projectName, collName);
     }
 
-    public static Set<String> pendingIdsAround(Set<String> before, String dbName, String collName) {
-        final var after = pendingIndexWrites.idsFor(dbName, collName);
+    public static Set<String> pendingIdsAround(Set<String> before, String projectName, String collName) {
+        final var after = pendingIndexWrites.idsFor(projectName, collName);
         if (before.isEmpty()) {
             return after;
         }
@@ -38,18 +38,19 @@ public final class PendingWriteReconciler {
         return union;
     }
 
-    public static List<DbEntry> pendingDocuments(String dbName, String collName, Set<String> pendingIds,
+    public static List<DbEntry> pendingDocuments(String projectName, String collName, Set<String> pendingIds,
             ReadObserver observer) throws IOException {
-        final var documents = cache.getEntriesByIds(dbName, collName, pendingIds);
+        final var documents = cache.getEntriesByIds(projectName, collName, pendingIds);
         observer.scanned(documents.size());
         return documents;
     }
 
-    public static Set<String> correctIds(Set<String> indexed, String dbName, String collName, Set<String> pendingIds,
-            String fieldName, BiPredicate<JsonObject, String> matches, ReadObserver observer) throws IOException {
+    public static Set<String> correctIds(Set<String> indexed, String projectName, String collName,
+            Set<String> pendingIds, String fieldName, BiPredicate<JsonObject, String> matches, ReadObserver observer)
+            throws IOException {
         final var corrected = new HashSet<>(indexed);
         corrected.removeAll(pendingIds);
-        for (final var dbEntry : pendingDocuments(dbName, collName, pendingIds, observer)) {
+        for (final var dbEntry : pendingDocuments(projectName, collName, pendingIds, observer)) {
             if (matches.test(dbEntry.getData(), fieldName)) {
                 corrected.add(dbEntry.get_id());
             }

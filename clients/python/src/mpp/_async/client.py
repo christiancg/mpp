@@ -7,7 +7,7 @@ from types import TracebackType
 from typing import Self
 
 from mpp._async.admin import AsyncAdmin
-from mpp._async.database import AsyncDatabase
+from mpp._async.project import AsyncProject
 from mpp._async.transaction import AsyncTransaction
 from mpp._internal.client_context import ClientContext
 from mpp._internal.connection_factory import ConnectionFactory, Opener, open_streams
@@ -61,19 +61,19 @@ class AsyncMppClient:
     def settings(self) -> ClientSettings:
         return self._settings
 
-    def database(self, name: str) -> AsyncDatabase:
-        return AsyncDatabase(self._context, name)
+    def project(self, name: str) -> AsyncProject:
+        return AsyncProject(self._context, name)
 
-    async def list_databases(self) -> tuple[str, ...]:
-        reply = await self._context.channel.send("LIST_DATABASES", self._context.encoder.list_databases())
-        return strings(reply.get("databases"))
+    async def list_projects(self) -> tuple[str, ...]:
+        reply = await self._context.channel.send("LIST_PROJECTS", self._context.encoder.list_projects())
+        return strings(reply.get("projects"))
 
     async def server_info(self) -> ServerInfo:
         reply = await self._context.channel.send("SERVER_INFO", self._context.encoder.server_info())
         return server(document(reply, "server") or {})
 
-    async def database_stats(self) -> Document:
-        reply = await self._context.channel.send("GET_DATABASE_STATS", self._context.encoder.database_stats())
+    async def project_stats(self) -> Document:
+        reply = await self._context.channel.send("GET_PROJECT_STATS", self._context.encoder.project_stats())
         return document(reply, "stats") or {}
 
     async def change_password(self, current_password: str, new_password: str) -> None:

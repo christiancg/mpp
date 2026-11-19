@@ -37,8 +37,8 @@ public class CheckpointGuardTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "name"));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "name"));
         recorder = RecordingForcer.install(PlatformSupport.directorySync());
     }
 
@@ -46,7 +46,7 @@ public class CheckpointGuardTest {
     public void tearDown() throws Exception {
         TestUtils.setPrivateField(Configuration.getInstance(), "walCheckpointBytes", SHIPPED_CHECKPOINT_BYTES);
         recorder.close();
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -55,7 +55,7 @@ public class CheckpointGuardTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("name", "x");
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.setObject(object);
         assertEquals(OperationStatus.OK, processor.processMessage(save).getStatus());
     }
@@ -65,8 +65,9 @@ public class CheckpointGuardTest {
     }
 
     private Set<String> idsTheReplayReports() throws Exception {
-        return fs.redoWriteAheadLogs().stream().filter(
-                row -> TestGlobals.DB.equals(row.getDatabaseName()) && TestGlobals.COLL.equals(row.getCollectionName()))
+        return fs.redoWriteAheadLogs().stream()
+                .filter(row -> TestGlobals.PROJECT.equals(row.getProjectName())
+                        && TestGlobals.COLL.equals(row.getCollectionName()))
                 .map(PkIndexEntry::getValue).collect(Collectors.toSet());
     }
 
@@ -87,7 +88,7 @@ public class CheckpointGuardTest {
     @RequiresDirectorySync
     public void test_a_checkpoint_with_nothing_pending_writes_no_marker() throws Exception {
         save("indexed");
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         recorder.clear();
 
         fs.checkpointWriteAheadLogs(Long.MAX_VALUE);
@@ -111,7 +112,7 @@ public class CheckpointGuardTest {
     public void test_an_id_whose_index_work_finished_leaves_the_next_checkpoint() throws Exception {
         checkpointEveryWrite();
         save("drained");
-        pendingIndexWrites.clear(TestGlobals.DB, TestGlobals.COLL, "drained", Long.MAX_VALUE);
+        pendingIndexWrites.clear(TestGlobals.PROJECT, TestGlobals.COLL, "drained", Long.MAX_VALUE);
 
         save("later");
 
@@ -132,7 +133,7 @@ public class CheckpointGuardTest {
 
     @Test
     public void test_a_second_instance_does_not_take_over_the_guard() throws Exception {
-        assertTrue(new PendingIndexWrites().idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(new PendingIndexWrites().idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
         checkpointEveryWrite();
 
         save("pending");

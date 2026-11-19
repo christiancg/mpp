@@ -19,7 +19,7 @@ LARGE_ENTRY_MATCHING = int(os.environ.get("INDEX_TEST_LARGE_ENTRY_MATCHING", "10
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "idxagg_db"
+PROJECT = "idxagg_project"
 COLL = "idxagg_main"
 JOIN_LEFT = "idxagg_left"
 JOIN_BIG = "idxagg_big"
@@ -65,7 +65,7 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 
 
 def stats(c) -> dict:
-    return c.send({"type": "GET_DATABASE_STATS"})
+    return c.send({"type": "GET_PROJECT_STATS"})
 
 
 def caching_disabled(c) -> bool:
@@ -73,7 +73,7 @@ def caching_disabled(c) -> bool:
 
 
 def agg(c, coll, steps) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                        "aggregationSteps": steps})
 
 
@@ -100,7 +100,7 @@ def timed_once(c: Conn, coll, steps):
 
 
 def index_used(c, coll, steps):
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll, "aggregationSteps": steps,
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": steps,
                 "analyze": True})
     return bool((r.get("analyzeResult") or {}).get("indexUsed"))
 
@@ -154,13 +154,13 @@ def bulk_load(c, coll, docs):
     for doc in docs:
         batch.append(doc)
         if len(batch) >= BULK_BATCH_SIZE:
-            r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll, "objects": batch})
+            r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll, "objects": batch})
             if r.get("status") != "OK":
                 check_status(f"BULK_SAVE into {coll}", r, "OK")
                 return
             batch = []
     if batch:
-        c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll, "objects": batch})
+        c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll, "objects": batch})
 
 
 def big_ref_for(v: int) -> str:
@@ -169,9 +169,9 @@ def big_ref_for(v: int) -> str:
 
 
 def setup_fixtures(c):
-    c.send({"type": "CREATE_DATABASE", "databaseName": DB})
+    c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
     for coll in (COLL, JOIN_LEFT, JOIN_BIG):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
 
     bulk_load(c, COLL, ({
         "_id": f"doc_{v:06d}",
@@ -197,10 +197,10 @@ def setup_fixtures(c):
 
 def indexes_present(c, expected) -> bool:
     present = {}
-    for db in stats(c).get("stats", {}).get("databases", []):
-        if db.get("name") != DB:
+    for project in stats(c).get("stats", {}).get("projects", []):
+        if project.get("name") != PROJECT:
             continue
-        for coll in db.get("collections", []):
+        for coll in project.get("collections", []):
             present[coll.get("name")] = set(coll.get("indexes") or [])
     return all(field in present.get(coll, set()) for coll, field in expected)
 
@@ -214,7 +214,7 @@ def wait_for_indexes(c: Conn, expected, timeout_s=20.0):
 
 def build_indexes(c, expected):
     for coll, field in expected:
-        c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": coll, "fieldName": field})
+        c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": coll, "fieldName": field})
     wait_for_indexes(c, expected)
 
 
@@ -236,7 +236,7 @@ def create_indexes(c):
 
 
 def teardown_fixtures(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
 
 
 DISTINCT_STEPS = [{"type": "DISTINCT", "fieldName": "category"}]
@@ -320,14 +320,14 @@ MANY_MATCHES_DOCS = int(os.environ.get("INDEX_TEST_MANY_MATCHES", "10000"))
 
 
 def documents_scanned(c, coll, steps):
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll, "aggregationSteps": steps,
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": steps,
                 "analyze": True})
     return (r.get("analyzeResult") or {}).get("documentsScanned")
 
 
 def probe_a_limit_over_many_matches_reads_only_its_rows(c):
     section(f"FILTER + LIMIT 10 over {MANY_MATCHES_DOCS} matches reads only the rows it returns")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": MANY_MATCHES})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": MANY_MATCHES})
     bulk_load(c, MANY_MATCHES, ({"_id": f"m{v:06d}", "v": "same", "n": v + 1} for v in range(MANY_MATCHES_DOCS)))
     build_index(c, MANY_MATCHES, "v", "n")
     wait_for_background()
@@ -357,7 +357,7 @@ REINDEX_PROBES = [
 def probe_reindex_of_every_field_matches_the_scan(c):
     section("A REINDEX of every field rebuilds indexes that answer exactly like a scan")
     check_status("REINDEX every field of the main collection",
-                 c.send({"type": "REINDEX", "databaseName": DB, "collectionName": COLL}, timeout=120), "OK")
+                 c.send({"type": "REINDEX", "projectName": PROJECT, "collectionName": COLL}, timeout=120), "OK")
     for steps in REINDEX_PROBES:
         by_index = sorted(agg_ids(c, COLL, steps))
         by_scan = sorted(agg_ids(c, COLL, forced_scan(steps)))
@@ -428,12 +428,12 @@ def compare(label, scan_time, unindexed_resp, indexed_time, indexed_resp, signat
 
 
 def save_doc(c, coll, obj) -> dict:
-    return c.send({"type": "SAVE", "databaseName": DB, "collectionName": coll, "object": obj})
+    return c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": coll, "object": obj})
 
 
 def setup_consistency(c):
     for coll in (CONS, CONS_SORT, CONS_COUNT, CONS_JOIN, CONS_LEFT, CONS_CREATE):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     save_doc(c, CONS_LEFT, {"_id": "left_shared", "joinKey": "shared"})
     build_indexes(c, [(CONS, "status"), (CONS_SORT, "score"), (CONS_JOIN, "joinKey")])
 
@@ -577,7 +577,7 @@ def probe_delete_consistency(c):
         value = f"del_{i}"
         doc_id = f"del_doc_{i}"
         save_doc(c, CONS, {"_id": doc_id, "status": value})
-        c.send({"type": "DELETE", "databaseName": DB, "collectionName": CONS, "_id": doc_id})
+        c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": CONS, "_id": doc_id})
         if filter_status(c, value):
             bad += 1
         if agg_count(c, CONS, [bu.filter_step("status", "EQUALS", value)]) != 0:
@@ -612,7 +612,7 @@ def probe_save_delete_converges(c):
         value = f"sd_{i}"
         doc_id = f"sd_doc_{i}"
         save_doc(c, CONS, {"_id": doc_id, "status": value})
-        c.send({"type": "DELETE", "databaseName": DB, "collectionName": CONS, "_id": doc_id})
+        c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": CONS, "_id": doc_id})
     wait_for_background()
     bad = sum(1 for i in range(CONS_REPEATS) if filter_status(c, f"sd_{i}"))
     check("save+delete of the same id converges to absent after the background settles", bad == 0,
@@ -644,7 +644,7 @@ def probe_concurrent_save_during_create_index(c: Conn):
     t.start()
     try:
         time.sleep(0.05)
-        c.send({"type": "CREATE_INDEX", "databaseName": DB,
+        c.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                     "collectionName": CONS_CREATE, "fieldName": "tag"})
         time.sleep(0.05)
     finally:
@@ -662,43 +662,43 @@ def probe_concurrent_save_during_create_index(c: Conn):
 
 
 def probe_drop_burst_no_background_errors(c):
-    burst_db = "idxagg_drop_burst"
-    c.send({"type": "CREATE_DATABASE", "databaseName": burst_db})
+    burst_project = "idxagg_drop_burst"
+    c.send({"type": "CREATE_PROJECT", "projectName": burst_project})
     n = max(CONS_REPEATS, 12)
     for i in range(n):
         coll = f"burst_{i}"
-        c.send({"type": "CREATE_COLLECTION", "databaseName": burst_db, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": burst_project, "collectionName": coll})
         for j in range(5):
-            c.send({"type": "SAVE", "databaseName": burst_db, "collectionName": coll,
+            c.send({"type": "SAVE", "projectName": burst_project, "collectionName": coll,
                         "object": {"_id": f"d{j}", "k": f"v{j}"}})
-        c.send({"type": "DROP_COLLECTION", "databaseName": burst_db, "collectionName": coll})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": burst_db, "collectionName": "keep"})
+        c.send({"type": "DROP_COLLECTION", "projectName": burst_project, "collectionName": coll})
+    c.send({"type": "CREATE_COLLECTION", "projectName": burst_project, "collectionName": "keep"})
     for j in range(5):
-        c.send({"type": "SAVE", "databaseName": burst_db, "collectionName": "keep",
+        c.send({"type": "SAVE", "projectName": burst_project, "collectionName": "keep",
                     "object": {"_id": f"k{j}", "k": f"v{j}"}})
     wait_for_background()
-    r = c.send({"type": "AGGREGATE", "databaseName": burst_db, "collectionName": "keep",
+    r = c.send({"type": "AGGREGATE", "projectName": burst_project, "collectionName": "keep",
                     "aggregationSteps": [{"type": "COUNT"}]})
     count = bu.count_of(r)
-    c.send({"type": "DROP_DATABASE", "databaseName": burst_db})
+    c.send({"type": "DROP_PROJECT", "projectName": burst_project})
     check("drop burst keeps survivors intact (no stale-position corruption)", count == 5,
                detail=f"survivor count={count} (expected 5)")
 
 
 def probe_bulk_update_same_page_no_corruption(c):
     coll = "idxagg_bulk_upd"
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     ids = [f"bu_{i}" for i in range(6)]
-    c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll,
+    c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll,
                 "objects": [{"_id": i, "v": "short"} for i in ids]})
-    c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll,
+    c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll,
                 "objects": [{"_id": i, "v": f"updated-longer-value-for-{i}"} for i in ids]})
     bad = 0
     for i in ids:
-        r = c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": coll, "_id": i})
+        r = c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": coll, "_id": i})
         if (r.get("object") or {}).get("v") != f"updated-longer-value-for-{i}":
             bad += 1
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     check("bulk update of multiple same-page docs reads back intact (no page corruption)", bad == 0,
                detail=f"{bad}/{len(ids)} docs corrupted/stale after bulk update")
 
@@ -726,7 +726,7 @@ def logged_status(i: int, round_number: int) -> str:
 
 
 def probe_index_log_after_many_updates(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": LOGGED_JOIN_LEFT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": LOGGED_JOIN_LEFT})
     for value in range(13):
         save_doc(c, LOGGED_JOIN_LEFT, {"_id": f"left_{value}", "joinKey": f"logged_{value}"})
     for i in range(LOGGED_DOCS):
@@ -771,17 +771,17 @@ def bucket_docs(offset: int):
 
 
 def probe_large_resident_index_edits_match_the_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CONS_EDITS})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CONS_EDITS})
     build_index(c, CONS_EDITS, "bucket")
     for i in range(EDITS_SHARED):
         save_doc(c, CONS_EDITS, {"_id": f"s_{i:02d}", "bucket": 1})
-    c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": CONS_EDITS, "objects": bucket_docs(1000)},
+    c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": CONS_EDITS, "objects": bucket_docs(1000)},
            timeout=120)
     wait_for_background()
     agg(c, CONS_EDITS, [bu.filter_step("bucket", "EQUALS", 1)])
     for i in range(5):
         save_doc(c, CONS_EDITS, {"_id": f"s_{i:02d}", "bucket": 2})
-    c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": CONS_EDITS, "objects": bucket_docs(5000)},
+    c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": CONS_EDITS, "objects": bucket_docs(5000)},
            timeout=120)
     wait_for_background()
     bad = []
@@ -842,13 +842,13 @@ GEO_POLY_MID = ["#geo(40.04,-74.01)", "#geo(40.04,-73.99)", "#geo(40.06,-73.99)"
 
 
 def agg_analyze(c, coll, steps) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                        "analyze": True, "aggregationSteps": steps})
 
 
 def setup_geo(c):
     for coll in (GEO, GEO_SCAN):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
         for _id, loc in GEO_SEED:
             save_doc(c, coll, {"_id": _id, "location": loc})
     build_index(c, GEO, "location")
@@ -1048,7 +1048,7 @@ def index_matches_scan(c: Conn, coll, steps, extract: Callable[[dict], object] =
 
 def setup_agreement(c):
     for coll in AGREE_COLLECTIONS:
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     save_doc(c, AGREE_CONTAINS_NUM, {"_id": "scalar", "tags": 5})
     save_doc(c, AGREE_CONTAINS_NUM, {"_id": "inArray", "tags": [5, 7]})
     save_doc(c, AGREE_CONTAINS_BOOL, {"_id": "scalar", "flags": True})
@@ -1139,7 +1139,7 @@ def probe_sort_limit_is_deterministic(c):
     for i in range(30):
         save_doc(c, AGREE_SORT_TIES, {"_id": f"churn{i}", "score": 5})
     for i in range(30):
-        c.send({"type": "DELETE", "databaseName": DB, "collectionName": AGREE_SORT_TIES,
+        c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": AGREE_SORT_TIES,
                 "_id": f"churn{i}"})
     after = {tuple(agree_ordered_ids(agg(c, AGREE_SORT_TIES, steps))) for _ in range(10)}
     check("SORT + LIMIT over tied keys is stable across churn in the tied bucket",
@@ -1388,7 +1388,7 @@ def probe_dotted_group_by_and_distinct_agree_with_scan(c):
 
 
 def probe_large_in_list_agrees_with_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": AGREE_LARGE_IN})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": AGREE_LARGE_IN})
     words = [f"Word{i}" for i in range(1500)]
     bulk_load(c, AGREE_LARGE_IN, ({"_id": f"w{i:05d}", "tag": words[i % 1500] if i % 3 else i % 700}
                                   for i in range(4500)))
@@ -1403,7 +1403,7 @@ def probe_large_in_list_agrees_with_scan(c):
 
 
 def probe_a_broad_filter_agrees_with_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": AGREE_BROAD})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": AGREE_BROAD})
     bulk_load(c, AGREE_BROAD, ({"_id": f"b{i:05d}", "n": i, "even": i % 2 == 0} for i in range(6000)))
     build_index(c, AGREE_BROAD, "n", "even")
     for label, steps in (("a 90%-selective range", [bu.filter_step("n", "GREATER_THAN_EQUALS", 600)]),
@@ -1476,7 +1476,7 @@ REG_RANGE_TOP_K = "idxagg_reg_rangetopk"
 
 
 def probe_non_ascii_indexed_values(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_UNICODE})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_UNICODE})
     for doc_id, city in (("u1", "café"), ("u2", "日本語"), ("u3", "plain"), ("u4", "a😀b")):
         save_doc(c, REG_UNICODE, {"_id": doc_id, "city": city})
     build_index(c, REG_UNICODE, "city")
@@ -1492,7 +1492,7 @@ def probe_non_ascii_indexed_values(c):
           "u3" not in filter_ids(c, REG_UNICODE, "city", "plain"))
 
     check_status("REINDEX the non-ASCII collection",
-                 c.send({"type": "REINDEX", "databaseName": DB, "collectionName": REG_UNICODE}), "OK")
+                 c.send({"type": "REINDEX", "projectName": PROJECT, "collectionName": REG_UNICODE}), "OK")
     wait_for_background()
     for city, expected in (("café", ["u1", "u5"]), ("日本語", ["u2", "u3"]), ("a😀b", ["u4"])):
         got = filter_ids(c, REG_UNICODE, "city", city)
@@ -1502,7 +1502,7 @@ def probe_non_ascii_indexed_values(c):
 
 
 def probe_index_values_containing_delimiters(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_DELIMITER})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_DELIMITER})
     values = {
         "d1": "line\nbreak",
         "d2": "carriage\rreturn",
@@ -1524,7 +1524,7 @@ def probe_index_values_containing_delimiters(c):
 
 
 def probe_repeated_create_index_is_idempotent(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_IDEMPOTENT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_IDEMPOTENT})
     for doc_id, status in (("i0", "active"), ("i1", "active"), ("i2", "archived")):
         save_doc(c, REG_IDEMPOTENT, {"_id": doc_id, "status": status})
 
@@ -1547,7 +1547,7 @@ def probe_repeated_create_index_is_idempotent(c):
 
 
 def probe_single_valued_index_ranges(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_SINGLE})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_SINGLE})
     for i in range(5):
         save_doc(c, REG_SINGLE, {"_id": f"s{i}", "score": 10})
     build_index(c, REG_SINGLE, "score")
@@ -1568,7 +1568,7 @@ def probe_single_valued_index_ranges(c):
 
 
 def probe_conjunction_after_a_filter_step(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_CONJ})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_CONJ})
     for doc_id, role, active in (("a", "admin", "yes"), ("b", "admin", "no"),
                                  ("c", "user", "yes"), ("ghost", "ghost", "yes")):
         save_doc(c, REG_CONJ, {"_id": doc_id, "role": role, "active": active})
@@ -1593,7 +1593,7 @@ def probe_conjunction_after_a_filter_step(c):
 
 
 def probe_low_cardinality_numeric_index(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NUMERIC})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NUMERIC})
     save_doc(c, REG_NUMERIC, {"_id": "seed", "bucket": 99, "big": 1, "ratio": 0.5})
     build_index(c, REG_NUMERIC, "bucket", "big", "ratio")
 
@@ -1630,14 +1630,14 @@ def probe_low_cardinality_numeric_index(c):
 
 
 def probe_bulk_save_indexes_every_doc_sharing_a_value(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_BULK})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_BULK})
     save_doc(c, REG_BULK, {"_id": "seed", "status": "seeded"})
     build_index(c, REG_BULK, "status")
     wait_for_background()
 
     documents = [{"_id": f"b{i}", "status": "active" if i % 2 == 0 else "archived"} for i in range(5)]
     check_status("BULK_SAVE five documents over two status values",
-                 c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": REG_BULK,
+                 c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": REG_BULK,
                          "objects": documents}), "OK")
     wait_for_background()
 
@@ -1651,7 +1651,7 @@ def probe_bulk_save_indexes_every_doc_sharing_a_value(c):
 
 
 def probe_case_variants_agree_between_index_and_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_CASE})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_CASE})
     for doc_id, name in (("a", "Bob"), ("b", "bob"), ("c", "bob"), ("d", "carol")):
         save_doc(c, REG_CASE, {"_id": doc_id, "name": name})
 
@@ -1670,7 +1670,7 @@ def probe_case_variants_agree_between_index_and_scan(c):
 
 
 def probe_sort_keeps_documents_without_the_field(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_SORT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_SORT})
     total = 20
     for i in range(total):
         if i % 3 == 0:
@@ -1689,7 +1689,7 @@ def probe_sort_keeps_documents_without_the_field(c):
 
 
 def probe_mixed_type_field_falls_back_to_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_MIXED})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_MIXED})
     save_doc(c, REG_MIXED, {"_id": "m1", "tags": "alpha"})
     save_doc(c, REG_MIXED, {"_id": "m2", "tags": ["alpha", "beta"]})
     save_doc(c, REG_MIXED, {"_id": "m3", "tags": "beta"})
@@ -1704,7 +1704,7 @@ def probe_mixed_type_field_falls_back_to_scan(c):
 
 
 def probe_numeric_in_agrees_between_index_and_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_IN})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_IN})
     for i, score in enumerate((1, 2, 3, 5, 9)):
         save_doc(c, REG_IN, {"_id": f"n{i}", "score": score})
 
@@ -1723,7 +1723,7 @@ def probe_numeric_in_agrees_between_index_and_scan(c):
 
 
 def probe_not_in_then_equals_on_a_scalar_only_field(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NOTIN})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NOTIN})
     for i, score in enumerate((1, 2, 2, 7)):
         save_doc(c, REG_NOTIN, {"_id": f"s{i}", "score": score})
     build_index(c, REG_NOTIN, "score")
@@ -1744,7 +1744,7 @@ def probe_not_in_then_equals_on_a_scalar_only_field(c):
 
 
 def probe_group_by_integer_min_value(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_MINVALUE})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_MINVALUE})
     for i in range(3):
         save_doc(c, REG_MINVALUE, {"_id": f"m{i}", "n": -2147483648})
 
@@ -1758,7 +1758,7 @@ def probe_group_by_integer_min_value(c):
 
 
 def probe_geo_distance_across_the_antimeridian(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_GEO_WRAP})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_GEO_WRAP})
     save_doc(c, REG_GEO_WRAP, {"_id": "east", "location": "#geo(0.000000,179.950000)"})
     save_doc(c, REG_GEO_WRAP, {"_id": "west", "location": "#geo(0.000000,-179.950000)"})
     save_doc(c, REG_GEO_WRAP, {"_id": "mid", "location": "#geo(0.000000,0.000000)"})
@@ -1775,7 +1775,7 @@ def probe_geo_distance_across_the_antimeridian(c):
 
 
 def probe_a_non_finite_geo_operand_is_refused(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_GEO_NAN})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_GEO_NAN})
     save_doc(c, REG_GEO_NAN, {"_id": "inside", "location": "#geo(2.000000,5.000000)"})
     nan_polygon = ["#geo(0,0)", "#geo(10,0)", "#geo(NaN,NaN)"]
     nan_target = geo_distance_steps("SMALLER_THAN", 50000, target="#geo(NaN,0)")
@@ -1793,7 +1793,7 @@ def probe_a_non_finite_geo_operand_is_refused(c):
 
 
 def probe_sort_ties_do_not_depend_on_the_index(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_TIES})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_TIES})
     for i in range(10):
         save_doc(c, REG_TIES, {"_id": f"p{i:02d}", "score": 5})
 
@@ -1814,7 +1814,7 @@ REG_CUSTOM_WHERE = "#geo(40.0,-74.0)"
 
 
 def probe_a_custom_filter_survives_a_map_step(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_CUSTOM})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_CUSTOM})
     save_doc(c, REG_CUSTOM, {"_id": "cu1", "when": REG_CUSTOM_WHEN, "where": REG_CUSTOM_WHERE, "note": "keep"})
     save_doc(c, REG_CUSTOM, {"_id": "cu2", "when": "#datetime(2025-06-01T08:30:00)",
                              "where": "#geo(34.05,-118.24)", "note": "keep"})
@@ -1841,7 +1841,7 @@ def probe_a_custom_filter_survives_a_map_step(c):
 
 
 def probe_a_conjunction_after_a_row_reshaping_step(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NOID})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NOID})
     for doc_id, category in (("n1", "books"), ("n2", "music"), ("n3", "books")):
         save_doc(c, REG_NOID, {"_id": doc_id, "category": category})
     wait_for_background()
@@ -1866,7 +1866,7 @@ def probe_a_conjunction_after_a_row_reshaping_step(c):
 
 
 def probe_a_sorted_conjunction_keeps_its_order(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_CONJ_ORDER})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_CONJ_ORDER})
     rows = (("o1", 9, "admin", "yes"), ("o2", 3, "user", "yes"), ("o3", 7, "admin", "no"),
             ("o4", 1, "admin", "yes"), ("o5", 5, "user", "no"), ("o6", 8, "user", "yes"))
     for doc_id, score, role, active in rows:
@@ -1892,7 +1892,7 @@ def probe_a_sorted_conjunction_keeps_its_order(c):
 
 
 def probe_a_conjunction_keeps_equal_rows_without_an_id(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NOID_DUP})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NOID_DUP})
     for doc_id, extra in (("d1", "a"), ("d2", "b"), ("d3", "c")):
         save_doc(c, REG_NOID_DUP, {"_id": doc_id, "category": "books", "extra": extra})
     wait_for_background()
@@ -1907,7 +1907,7 @@ def probe_a_conjunction_keeps_equal_rows_without_an_id(c):
 
 
 def probe_nearest_ties_are_broken_on_id(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NEAREST_TIES})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NEAREST_TIES})
     for doc_id, vector in (("t3", "#vector(3.0,0.0)"), ("t1", "#vector(1.0,0.0)"), ("t2", "#vector(2.0,0.0)"),
                            ("t9", "#vector(0.0,1.0)")):
         save_doc(c, REG_NEAREST_TIES, {"_id": doc_id, "embedding": vector})
@@ -1926,7 +1926,7 @@ def probe_nearest_ties_are_broken_on_id(c):
 
 
 def probe_nearest_scores_huge_and_tiny_vectors(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NEAREST_SCALE})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NEAREST_SCALE})
     for doc_id, vector in (("huge", "#vector(1e200,1e200)"), ("tiny", "#vector(1e-200,1e-200)"),
                            ("axis", "#vector(1.0,0.0)")):
         save_doc(c, REG_NEAREST_SCALE, {"_id": doc_id, "embedding": vector})
@@ -1946,7 +1946,7 @@ def probe_nearest_scores_huge_and_tiny_vectors(c):
 
 
 def probe_a_field_operator_without_a_value_is_refused(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_VALUELESS})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_VALUELESS})
     save_doc(c, REG_VALUELESS, {"_id": "v1", "name": "alice"})
     wait_for_background()
 
@@ -1956,7 +1956,7 @@ def probe_a_field_operator_without_a_value_is_refused(c):
 
     for indexed in (False, True):
         if indexed:
-            c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": REG_VALUELESS,
+            c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": REG_VALUELESS,
                     "fieldName": "name"})
             wait_for_background()
         label = "indexed" if indexed else "unindexed"
@@ -1985,7 +1985,7 @@ def probe_a_trailing_dot_cannot_alias_the_primary_key(c):
         check_code(f"a FILTER on '{alias}' is a validation error", rows(alias), "ERROR", "400-1")
     for alias in ("_id.", "_id.."):
         check_code(f"a CREATE_INDEX on '{alias}' is refused",
-                   c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": REG_VALUELESS,
+                   c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": REG_VALUELESS,
                            "fieldName": alias}), "ERROR", "400-1")
 
 
@@ -2013,7 +2013,7 @@ def check_casts(c, to_type):
 
 
 def probe_cast_keeps_the_value_boundary(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_CAST})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_CAST})
     check_casts(c, "NUMBER")
     selected_ids = agg_ids(c, REG_CAST, cast_steps("n", "NUMBER") + [bu.filter_step("n", "GREATER_THAN", 100)])
     check("a numeric filter after the cast selects only the row that really is a number",
@@ -2029,7 +2029,7 @@ AVG_FOLD_STEPS = [{"type": "MAP", "operators": [
 
 
 def probe_a_map_null_result_is_a_real_json_null(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_NULLFOLD})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_NULLFOLD})
     save_doc(c, REG_NULLFOLD, {"_id": "priced", "price": 10})
     save_doc(c, REG_NULLFOLD, {"_id": "unpriced", "label": "no price here"})
     wait_for_background()
@@ -2057,7 +2057,7 @@ def probe_indexing_a_field_written_as_null_is_consistent(c):
     wait_for_background()
 
     before = filter_ids(c, REG_NULLFOLD, "price", 10)
-    created = c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": REG_NULLFOLD,
+    created = c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": REG_NULLFOLD,
                       "fieldName": "price"})
     check("an index builds over a collection holding a null value", created.get("status") == "OK",
           detail=f"got {created.get('status')!r} {created.get('message')!r}")
@@ -2075,12 +2075,12 @@ def _complement_answers(c, coll, field, op, value):
 
 
 def probe_complements_agree_between_index_and_scan(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_COMPLEMENT_KINDS})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_COMPLEMENT_KINDS})
     save_doc(c, REG_COMPLEMENT_KINDS, {"_id": "obj", "x": {"a": 1}})
     save_doc(c, REG_COMPLEMENT_KINDS, {"_id": "arr", "x": [1, 2, 3]})
     save_doc(c, REG_COMPLEMENT_KINDS, {"_id": "str", "x": "hello"})
     save_doc(c, REG_COMPLEMENT_KINDS, {"_id": "nul", "x": None})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_COMPLEMENT_NULL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_COMPLEMENT_NULL})
     save_doc(c, REG_COMPLEMENT_NULL, {"_id": "a", "x": "a"})
     save_doc(c, REG_COMPLEMENT_NULL, {"_id": "b", "x": "b"})
     save_doc(c, REG_COMPLEMENT_NULL, {"_id": "n", "x": None})
@@ -2147,14 +2147,14 @@ def regression_suite(c):
 def limits_suite(c):
     section("Request limits on custom literals, filter operands and MAP results")
     over = "#vector(" + ",".join(["0.5"] * 16385) + ")"
-    refused = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+    refused = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                       "object": {"_id": "vec-over", "embedding": over}})
     check("A vector past maxVectorDimensions is not a valid command",
           refused.get("status") == "ERROR" and refused.get("message") == "The command is not valid"
           and refused.get("errorCode") == "400-43",
           f"got={str(refused)[:200]}")
     check_status("It was never stored",
-                 c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "vec-over"}),
+                 c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "vec-over"}),
                  "NOT_FOUND")
     check_code("IN with more than maxFilterOperands values -> 400-27",
                agg(c, COLL, [{"type": "FILTER", "operator": {"fieldOperatorType": "IN", "field": "category",
@@ -2188,11 +2188,11 @@ def limits_suite(c):
                  "OK")
     join_cap_suite(c)
     check_status("A geo point written with a trailing comma is accepted",
-                 c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                 c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                          "object": {"_id": "geo-trailing", "location": "#geo(40.0,-74.0,)"}}), "OK")
-    check_status("and stays readable", c.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL,
+    check_status("and stays readable", c.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL,
                                                "_id": "geo-trailing"}), "OK")
-    c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "geo-trailing"})
+    c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "geo-trailing"})
 
 
 MAX_ENTRY_BYTES = 1024 * 1024
@@ -2201,17 +2201,18 @@ JOIN_CAP_COLL = "idxagg_joincap"
 
 def join_cap_suite(c):
     section("A JOIN row whose joined array passes maxEntrySize is refused, indexed or not")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": JOIN_CAP_COLL})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": JOIN_CAP_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": JOIN_CAP_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": JOIN_CAP_COLL})
     shared = [{"_id": f"jc{i}", "key": "k", "pad": rand_payload(400)} for i in range(3000)]
     check_status("load 3000 documents sharing one join key",
-                 c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": JOIN_CAP_COLL, "objects": shared}),
+                 c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": JOIN_CAP_COLL,
+                         "objects": shared}),
                  "OK")
     join = [{"type": "LIMIT", "limit": 1}, {"type": "JOIN", "joinCollection": JOIN_CAP_COLL, "localField": "key",
                                              "remoteField": "key", "asField": "matched"}]
     check_code("the scanned JOIN is refused -> 400-28", agg(c, JOIN_CAP_COLL, join), "ERROR", "400-28")
     check_status("index the join key",
-                 c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": JOIN_CAP_COLL,
+                 c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": JOIN_CAP_COLL,
                          "fieldName": "key"}), "OK")
     check_code("the indexed JOIN is refused the same way -> 400-28", agg(c, JOIN_CAP_COLL, join), "ERROR", "400-28")
     counted = agg(c, JOIN_CAP_COLL, [bu.filter_step("key", "EQUALS", "k"), join[1], {"type": "COUNT"}])
@@ -2221,12 +2222,12 @@ def join_cap_suite(c):
                  agg(c, COLL, [{"type": "LIMIT", "limit": 3}, {"type": "JOIN", "joinCollection": JOIN_CAP_COLL,
                                                                 "localField": "_id", "remoteField": "_id",
                                                                 "asField": "matched"}]), "OK")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": JOIN_CAP_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": JOIN_CAP_COLL})
 
 
 def test_a_bounded_range_and_reads_only_its_documents(c):
     section("An AND of two bounds on one indexed field reads only the documents inside the range")
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
                 "aggregationSteps": RANGE_AND_STEPS, "analyze": True})
     check_status("the bounded range query answers", r, "OK")
     analysis = r.get("analyzeResult") or {}
@@ -2234,12 +2235,12 @@ def test_a_bounded_range_and_reads_only_its_documents(c):
           analysis.get("documentsScanned") == 10, f"scanned {analysis.get('documentsScanned')}")
     check("the rows match the same query on the scan path, in order",
           agree_ordered_ids(r) == agree_ordered_ids(agg(c, COLL, forced_scan(RANGE_AND_STEPS))))
-    filtered = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+    filtered = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
                        "aggregationSteps": [RANGE_AND_FILTER], "analyze": True})
     check("on its own it reads exactly the documents inside the range, not each bound's half of the collection",
           (filtered.get("analyzeResult") or {}).get("documentsScanned") == RANGE_WIDTH,
           str(filtered.get("analyzeResult")))
-    counted = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+    counted = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
                       "aggregationSteps": [RANGE_AND_FILTER, {"type": "COUNT"}], "analyze": True})
     check("COUNT of the range is answered from the index alone",
           (counted.get("analyzeResult") or {}).get("documentsScanned") == 0, str(counted.get("analyzeResult")))
@@ -2258,7 +2259,7 @@ def range_top_k_disagreements(c, coll, queries):
 
 
 def analyzed(c, coll, steps) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll, "aggregationSteps": steps,
+    return c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": steps,
                    "analyze": True})
 
 
@@ -2268,7 +2269,7 @@ def scanned_documents(r: dict):
 
 def test_not_in_matches_scan(c):
     section("NOT_IN and NOT_EQUALS: a selective complement reads only its rows, a broad one scans, both match the scan")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": NOT_IN_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": NOT_IN_COLL})
     bulk_load(c, NOT_IN_COLL, ({"_id": f"ni{i:05d}", "c": i % 100,
                                 "h": None if i % 37 == 0 else i % 100} for i in range(NOT_IN_DOCS)))
     build_index(c, NOT_IN_COLL, "c", "h")
@@ -2299,7 +2300,7 @@ def test_not_in_matches_scan(c):
     check("NOT_EQUALS 5 answers what NOT_IN [5] answers",
           agg_ids(c, NOT_IN_COLL, [bu.filter_step("c", "NOT_EQUALS", 5)])
           == agg_ids(c, NOT_IN_COLL, [bu.filter_step("c", "NOT_IN", [5])]))
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": NOT_IN_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": NOT_IN_COLL})
 
 
 COMPLEMENT_LIMIT_COLL = "idxagg_complement_limit"
@@ -2328,7 +2329,7 @@ def check_limited_subset(c, label, filter_steps, limit, skip=0):
 def test_complement_limits_and_in_counts_match_scan(c):
     section("NOT_EQUALS/NOT_IN + LIMIT and IN + COUNT answer what the scan answers, broad complements read only "
             "their rows")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COMPLEMENT_LIMIT_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COMPLEMENT_LIMIT_COLL})
     bulk_load(c, COMPLEMENT_LIMIT_COLL, (complement_limit_doc(i) for i in range(COMPLEMENT_LIMIT_DOCS)))
     build_index(c, COMPLEMENT_LIMIT_COLL, "c", "u", "h", "m")
     broad = [bu.filter_step("c", "NOT_EQUALS", 5)]
@@ -2381,7 +2382,7 @@ def test_complement_limits_and_in_counts_match_scan(c):
     check("IN of ten scalars + COUNT is answered from the index without reading a document",
           scanned_documents(counted) == 0 and bu.count_of(counted) == 10,
           detail=str(counted.get("analyzeResult")))
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": COMPLEMENT_LIMIT_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": COMPLEMENT_LIMIT_COLL})
 
 
 def test_range_top_k_agrees_with_the_scan(c):
@@ -2400,12 +2401,12 @@ def test_range_top_k_agrees_with_the_scan(c):
     wrong = range_top_k_disagreements(c, COLL, queries)
     check(f"{len(queries)} spans, directions, limits and bounds agree with the scan, rows in order", not wrong,
           f"first disagreement: {wrong[0]!r}" if wrong else "")
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL, "analyze": True,
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL, "analyze": True,
                 "aggregationSteps": range_top_k_steps(NUM_DOCS // 8, 500, True, 10)})
     check("a span-500 range with LIMIT 10 reads only ten documents",
           (r.get("analyzeResult") or {}).get("documentsScanned") == 10, str(r.get("analyzeResult")))
 
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REG_RANGE_TOP_K})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REG_RANGE_TOP_K})
     for i in range(60):
         save_doc(c, REG_RANGE_TOP_K, {"_id": f"t{(i * 17) % 60:02d}", "n": i % 7})
     for doc_id, value in (("str", "3"), ("bool", True), ("arr", [3]), ("obj", {"n": 3}), ("nul", None)):
@@ -2426,7 +2427,7 @@ def test_range_top_k_agrees_with_the_scan(c):
 
 def test_a_range_count_across_index_chunks_matches_the_scan(c):
     section("A range or equality COUNT over a field index of thousands of entries agrees with the scan")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CHUNKED_COUNT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CHUNKED_COUNT})
     bulk_load(c, CHUNKED_COUNT, ({"_id": f"k{i:05d}", "n": i if i else -0.0, "s": ("V" if i % 2 else "v") +
                                  f"{i // 2:05d}"} for i in range(CHUNKED_COUNT_DOCS)))
     build_index(c, CHUNKED_COUNT, "n", "s")
@@ -2451,20 +2452,20 @@ def test_a_range_count_across_index_chunks_matches_the_scan(c):
 
 def test_wide_and_conjunction_stays_within_memory(c):
     section("A source AND of 2000 children keeps one tally per document, not one row per child")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": WIDE_AND})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": WIDE_AND})
     bulk_load(c, WIDE_AND, ({"_id": f"w{i:05d}", "n": i % 1000} for i in range(WIDE_AND_DOCS)))
     leaves = [{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "n", "value": 0}] * (WIDE_AND_CHILDREN - 1)
     leaves.append({"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "n", "value": 999})
     steps = [{"type": "FILTER", "operator": {"conjunctionType": "AND", "operators": leaves}}, {"type": "COUNT"}]
 
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": WIDE_AND, "aggregationSteps": steps},
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": WIDE_AND, "aggregationSteps": steps},
                timeout=300.0)
     check_status(f"AND of {WIDE_AND_CHILDREN} children over {WIDE_AND_DOCS} docs (OK)", r, "OK")
     check("the AND keeps only the documents every child matched", bu.count_of(r) == WIDE_AND_DOCS // 1000,
           detail=f"count={bu.count_of(r)}")
-    check_status("the server stays alive afterwards (LIST_DATABASES)", c.send({"type": "LIST_DATABASES"}), "OK")
+    check_status("the server stays alive afterwards (LIST_PROJECTS)", c.send({"type": "LIST_PROJECTS"}), "OK")
     test_unindexed_conjunction_reads_the_collection_once(c)
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": WIDE_AND})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": WIDE_AND})
 
 
 def three_leg(conjunction: str) -> dict:
@@ -2532,13 +2533,13 @@ def check_colliding_groups(c: Conn, coll, values, label):
     distinct = agg(c, coll, [{"type": "DISTINCT", "fieldName": "k"}])
     check(f"{label}: DISTINCT agrees", len(distinct.get("results") or []) == len(values),
           detail=f"rows={len(distinct.get('results') or [])}")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
 
 
 def test_colliding_values_group_exactly_and_fast(c: Conn):
     section(f"GROUP_BY over {2 ** COLLIDING_BLOCKS} values sharing one hash code stays exact and fast")
     for coll in (COLLIDING_STRINGS, COLLIDING_OBJECTS):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     keys = colliding_strings(COLLIDING_BLOCKS)
     check_colliding_groups(c, COLLIDING_STRINGS, keys, "strings")
     check_colliding_groups(c, COLLIDING_OBJECTS, [{key: 1} for key in keys], "objects")
@@ -2546,7 +2547,7 @@ def test_colliding_values_group_exactly_and_fast(c: Conn):
 
 def test_self_pair_documents_dedupe_fast(c: Conn):
     section(f"DISTINCT and GROUP_BY over {SELF_PAIR_DOCS} self-pair and swapped-pair documents stay fast")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": SELF_PAIRS})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": SELF_PAIRS})
     half = SELF_PAIR_DOCS // 2
     bulk_load(c, SELF_PAIRS, ({"_id": f"s{i:05d}", f"k{i}": f"k{i}", "v": {f"k{i}": f"k{i}"}} for i in range(half)))
     bulk_load(c, SELF_PAIRS, ({"_id": f"w{i:05d}", f"a{i}": f"b{i}", "v": {f"b{i}": f"a{i}"}} for i in range(half)))
@@ -2560,7 +2561,7 @@ def test_self_pair_documents_dedupe_fast(c: Conn):
         check(f"{label}: every document is its own row", bu.count_of(answer) == SELF_PAIR_DOCS,
               detail=f"count={bu.count_of(answer)}")
         check(f"{label} answered in {elapsed:.2f}s, under {COLLIDING_BUDGET_S:.0f}s", elapsed < COLLIDING_BUDGET_S)
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": SELF_PAIRS})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": SELF_PAIRS})
 
 
 def test_materialising_steps_obey_the_deadline():
@@ -2573,8 +2574,8 @@ def test_materialising_steps_obey_the_deadline():
     try:
         with Conn(port=DEADLINE_PORT) as c:
             check_status("authenticate", c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD), "OK")
-            c.send({"type": "CREATE_DATABASE", "databaseName": DB})
-            c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
+            c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+            c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
             bulk_load(c, COLL, ({"_id": f"t{i:06d}", "kind": f"k{i % 50}", "n": i} for i in range(50_000)))
             build_index(c, COLL, "kind")
             check_code("an index-built GROUP_BY is cut at the deadline",
@@ -2583,7 +2584,7 @@ def test_materialising_steps_obey_the_deadline():
                        agg(c, COLL, [three_leg("NOR"), {"type": "COUNT"}]), "ERROR", "408-6")
             check_code("an unbounded SORT is cut at the deadline",
                        agg(c, COLL, [{"type": "SORT", "fieldName": "kind", "ascending": True}]), "ERROR", "408-6")
-            c.send({"type": "DROP_DATABASE", "databaseName": DB})
+            c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
     finally:
         bu.stop_server(proc, port=DEADLINE_PORT)
 
@@ -2600,8 +2601,8 @@ def test_a_large_entry_range_top_k_is_sorted_once():
     try:
         with Conn(port=LARGE_ENTRY_PORT) as c:
             check_status("authenticate", c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD), "OK")
-            c.send({"type": "CREATE_DATABASE", "databaseName": DB})
-            c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+            c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+            c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
             bulk_load(c, coll, ({"_id": f"a{i:07d}", "ts": 1, "cat": "crowd"} for i in range(LARGE_ENTRY_CROWD)))
             bulk_load(c, coll, ({"_id": f"z{i:07d}", "ts": 1, "cat": "x"} for i in range(LARGE_ENTRY_MATCHING)))
             build_index(c, coll, "ts", "cat")
@@ -2616,7 +2617,7 @@ def test_a_large_entry_range_top_k_is_sorted_once():
             check("the walk sorts the large entry once, so it stays within 10x the forced scan plus 20 ms",
                   index_time < 10 * scan_time + 0.02,
                   detail=f"scan_best={scan_time * 1000:.2f}ms  indexed_best={index_time * 1000:.2f}ms")
-            c.send({"type": "DROP_DATABASE", "databaseName": DB})
+            c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
     finally:
         bu.stop_server(proc, port=LARGE_ENTRY_PORT)
         if bu.failure_count():
@@ -2639,7 +2640,7 @@ MANY_RIGHT_DOCS = 3000
 def test_join_by_index_with_many_distinct_values(c: Conn):
     section(f"JOIN by index with {MANY_VALUES} distinct local values reads the remote index once")
     for coll in (MANY_LEFT, MANY_RIGHT):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     bulk_load(c, MANY_LEFT, ({"_id": f"l{i:05d}", "ref": f"key-{i}" if i % 10 else f"KEY-{i}"}
                              for i in range(MANY_VALUES)))
     bulk_load(c, MANY_RIGHT, ({"_id": f"r{i:05d}", "key": f"key-{i % (MANY_VALUES + 200)}",
@@ -2659,7 +2660,7 @@ def test_join_by_index_with_many_distinct_values(c: Conn):
     matched = sum(1 for row in (indexed.get("results") or []) if row.get("joined"))
     check(f"every local value with a remote match joined ({matched} of {MANY_VALUES})", matched >= MANY_VALUES * 0.9)
     for coll in (MANY_LEFT, MANY_RIGHT):
-        c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
 
 
 LAZY = "idxagg_lazy"
@@ -2689,7 +2690,7 @@ def lazy_window(skip, limit) -> list:
 
 
 def setup_lazy_sources(c):
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": LAZY})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": LAZY})
     bulk_load(c, LAZY, ({"_id": f"z{i:06d}", "cat": f"c{i % LAZY_CATEGORIES}", "region": f"r{i % 7}",
                          "ts": (i * 7919) % LAZY_DOCS} for i in range(LAZY_DOCS)))
     build_index(c, LAZY, "cat", "ts")
@@ -2839,7 +2840,7 @@ def lazy_sources_suite(c):
     test_latest_n_reads_only_its_rows(c)
     test_unindexed_filter_sort_indexed_limit(c)
     test_range_sort_skip_limit_fetches_only_the_page(c)
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": LAZY})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": LAZY})
 
 
 GROUP_SHAPES = "idxagg_group_shapes"
@@ -2891,7 +2892,7 @@ def check_sized_groups(c, field, label):
 def test_group_by_and_distinct_shapes(c):
     section(f"GROUP_BY + COUNT, GROUP_BY + MAP(SIZE, REMOVE) and an unindexed DISTINCT over {GROUP_SHAPES_DOCS} "
             f"documents")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": GROUP_SHAPES})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": GROUP_SHAPES})
     bulk_load(c, GROUP_SHAPES, (shape_doc(i) for i in range(GROUP_SHAPES_DOCS)))
     build_index(c, GROUP_SHAPES, "cat", "sparse")
     wait_for_background()
@@ -2913,7 +2914,7 @@ def test_group_by_and_distinct_shapes(c):
           detail=f"rows={canonical_rows(rows)}")
     check("an unindexed DISTINCT counts what it answers",
           bu.count_of(agg(c, GROUP_SHAPES, distinct + [{"type": "COUNT"}])) == len(GROUP_SHAPES_KINDS))
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": GROUP_SHAPES})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": GROUP_SHAPES})
 
 
 def main():

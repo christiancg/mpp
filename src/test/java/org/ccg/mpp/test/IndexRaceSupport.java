@@ -20,12 +20,12 @@ public final class IndexRaceSupport {
     private IndexRaceSupport() {
     }
 
-    public static <T> void readWhileTheIndexerChurns(String dbName, String collName, String fieldName,
+    public static <T> void readWhileTheIndexerChurns(String projectName, String collName, String fieldName,
             Class<T> indexType, Read read) throws Exception {
-        shareTheCachedIndex(dbName, collName, fieldName, indexType);
+        shareTheCachedIndex(projectName, collName, fieldName, indexType);
         final var stop = new AtomicBoolean();
         final var writerFailure = new AtomicReference<Throwable>();
-        final var writer = new Thread(() -> churn(dbName, collName, fieldName, indexType, stop, writerFailure),
+        final var writer = new Thread(() -> churn(projectName, collName, fieldName, indexType, stop, writerFailure),
                 "index-churn");
         writer.start();
         try {
@@ -41,24 +41,25 @@ public final class IndexRaceSupport {
         }
     }
 
-    private static <T> void shareTheCachedIndex(String dbName, String collName, String fieldName, Class<T> indexType)
-            throws Exception {
-        rl.lockRead(dbName, collName);
+    private static <T> void shareTheCachedIndex(String projectName, String collName, String fieldName,
+            Class<T> indexType) throws Exception {
+        rl.lockRead(projectName, collName);
         try {
-            cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, indexType);
+            cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, indexType);
         } finally {
-            rl.releaseRead(dbName, collName);
+            rl.releaseRead(projectName, collName);
         }
     }
 
-    private static <T> void churn(String dbName, String collName, String fieldName, Class<T> indexType,
+    private static <T> void churn(String projectName, String collName, String fieldName, Class<T> indexType,
             AtomicBoolean stop, AtomicReference<Throwable> failure) {
         var generation = 0;
         while (!stop.get()) {
             try {
-                rl.lockIndex(dbName, collName, fieldName);
+                rl.lockIndex(projectName, collName, fieldName);
                 try {
-                    final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, indexType);
+                    final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName,
+                            indexType);
                     if (entries != null) {
                         for (final var entry : entries) {
                             entry.getIds().add("churn-" + generation);
@@ -67,7 +68,7 @@ public final class IndexRaceSupport {
                         generation++;
                     }
                 } finally {
-                    rl.releaseIndex(dbName, collName, fieldName);
+                    rl.releaseIndex(projectName, collName, fieldName);
                 }
                 LockSupport.parkNanos(PAUSE_BETWEEN_CHURNS_NANOS);
             } catch (Exception e) {

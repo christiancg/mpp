@@ -22,7 +22,7 @@ public class StartupWarningsLimitsTest {
             ConfigKey.MAX_FAILED_AUTH_ATTEMPTS, ConfigKey.AUTH_FAILURE_DELAY_BASE_MS, ConfigKey.TRANSACTION_MAX_OPS,
             ConfigKey.TRANSACTION_MAX_AGE_MS, ConfigKey.MAX_LISTENS_PER_CONNECTION, ConfigKey.MAX_LISTENS,
             ConfigKey.MAX_FILTER_OPERANDS, ConfigKey.AGGREGATE_TIMEOUT_MS, ConfigKey.MAX_CONCURRENT_SCRIPTS,
-            ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER, ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_DATABASE,
+            ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER, ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT,
             ConfigKey.MAX_CONCURRENT_PASSWORD_CHECKS, ConfigKey.MAX_MEMORY);
     private final Configuration config = Configuration.getInstance();
     private final Map<ConfigKey, String> original = new EnumMap<>(ConfigKey.class);

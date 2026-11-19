@@ -55,8 +55,8 @@ public class MessageProcessorAuthLimitTest {
     }
 
     @Test
-    public void list_databases_before_authentication_answers_401_1() throws Exception {
-        final var answer = send("{\"type\":\"LIST_DATABASES\"}");
+    public void list_projects_before_authentication_answers_401_1() throws Exception {
+        final var answer = send("{\"type\":\"LIST_PROJECTS\"}");
 
         assertTrue(answer.contains("401-1"), answer);
         assertTrue(answer.contains("UNAUTHENTICATED"), answer);
@@ -82,7 +82,7 @@ public class MessageProcessorAuthLimitTest {
         final var authenticated = send(authenticate(PASSWORD));
         assertTrue(authenticated.contains("\"OK\""), authenticated);
 
-        final var listed = send("{\"type\":\"LIST_DATABASES\"}");
+        final var listed = send("{\"type\":\"LIST_PROJECTS\"}");
         assertTrue(listed.contains("\"OK\""), listed);
 
         final var closed = send("{\"type\":\"CLOSE_CONNECTION\"}");

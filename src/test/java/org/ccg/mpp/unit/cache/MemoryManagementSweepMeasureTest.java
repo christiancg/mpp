@@ -35,7 +35,7 @@ import org.mockito.ArgumentCaptor;
 
 public class MemoryManagementSweepMeasureTest {
     private static final long MAX_BYTES = 1000L;
-    private static final String DB = "sweepDb";
+    private static final String PROJECT = "sweepProject";
     private static final String COLL = "sweepColl";
     private static final String INDEX_KEY = Cache.getIndexIdentifier("status", String.class);
     private static final int IDS = 20;
@@ -77,7 +77,7 @@ public class MemoryManagementSweepMeasureTest {
     private void rememberedBytes(long bytes) {
         when(userCache.footprintBytes()).thenReturn(bytes);
         when(userCache.listCacheableResources(Measure.REMEMBERED))
-                .thenReturn(List.of(new CacheableResource(AccessKind.COLLECTION, "userDb", "coll", null, bytes)));
+                .thenReturn(List.of(new CacheableResource(AccessKind.COLLECTION, "userProject", "coll", null, bytes)));
     }
 
     @Test
@@ -123,9 +123,10 @@ public class MemoryManagementSweepMeasureTest {
     private static void measuredIndexIn(UserCache cache) {
         final var list = new CountingList();
         for (var i = 0; i < IDS; i++) {
-            list.add(new FieldIndexEntry<>(DB, COLL, "value-" + i, Set.of("id-" + i)));
+            list.add(new FieldIndexEntry<>(PROJECT, COLL, "value-" + i, Set.of("id-" + i)));
         }
-        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(DB, COLL), INDEX_KEY, list);
+        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(PROJECT, COLL), INDEX_KEY,
+                list);
         WALKS.set(0);
         cache.listCacheableResources(Measure.FULL);
         assertTrue(WALKS.getAndSet(0) > 0, "an index with no remembered measure is measured");
@@ -147,7 +148,7 @@ public class MemoryManagementSweepMeasureTest {
         memoryManagement.runEvictionSweep();
 
         assertEquals(0, WALKS.get(), "an index nothing changed is charged its remembered size");
-        assertNotNull(cache.residentFieldIndex(DB, COLL, INDEX_KEY));
+        assertNotNull(cache.residentFieldIndex(PROJECT, COLL, INDEX_KEY));
     }
 
     @Test
@@ -155,11 +156,11 @@ public class MemoryManagementSweepMeasureTest {
         final var cache = new UserCache();
         measuredIndexIn(cache);
 
-        cache.rememberFieldIndexBatch(DB, COLL, INDEX_KEY, IDS, 0L, IDS / 10 - 1);
+        cache.rememberFieldIndexBatch(PROJECT, COLL, INDEX_KEY, IDS, 0L, IDS / 10 - 1);
         cache.listCacheableResources(Measure.FULL);
         assertEquals(0, WALKS.get(), "less than a tenth of the ids changed");
 
-        cache.rememberFieldIndexBatch(DB, COLL, INDEX_KEY, IDS, 0L, 1);
+        cache.rememberFieldIndexBatch(PROJECT, COLL, INDEX_KEY, IDS, 0L, 1);
         cache.listCacheableResources(Measure.FULL);
         assertTrue(WALKS.getAndSet(0) > 0, "a tenth of the ids changed");
 
@@ -179,7 +180,7 @@ public class MemoryManagementSweepMeasureTest {
         memoryManagement.runEvictionSweep();
 
         assertTrue(WALKS.get() > 0, "an over-budget sweep ranks measured sizes");
-        assertNull(cache.residentFieldIndex(DB, COLL, INDEX_KEY));
+        assertNull(cache.residentFieldIndex(PROJECT, COLL, INDEX_KEY));
     }
 
     @Test
@@ -247,7 +248,8 @@ public class MemoryManagementSweepMeasureTest {
 
         holdCollectionLockWhile(true, memoryManagement::runEvictionSweep);
 
-        assertNull(cache.residentFieldIndex(DB, COLL, INDEX_KEY), "a lock released within the budget is waited for");
+        assertNull(cache.residentFieldIndex(PROJECT, COLL, INDEX_KEY),
+                "a lock released within the budget is waited for");
     }
 
     @Test
@@ -259,7 +261,7 @@ public class MemoryManagementSweepMeasureTest {
 
         holdCollectionLockWhile(false, memoryManagement::runEvictionSweep);
 
-        assertNotNull(cache.residentFieldIndex(DB, COLL, INDEX_KEY), "the sweep's lock wait is budgeted");
+        assertNotNull(cache.residentFieldIndex(PROJECT, COLL, INDEX_KEY), "the sweep's lock wait is budgeted");
     }
 
     @Test
@@ -268,8 +270,8 @@ public class MemoryManagementSweepMeasureTest {
         final var locks = mock(ResourceLocking.class);
         when(locks.tryLockWrite(anyString(), anyString(), anyLong())).thenReturn(false);
         when(userCache.listCacheableResources(Measure.FULL_FORCED))
-                .thenReturn(List.of(new CacheableResource(AccessKind.PK_INDEX, "userDb", "coll", null, MAX_BYTES),
-                        new CacheableResource(AccessKind.COLLECTION, "userDb", "coll", null, MAX_BYTES)));
+                .thenReturn(List.of(new CacheableResource(AccessKind.PK_INDEX, "userProject", "coll", null, MAX_BYTES),
+                        new CacheableResource(AccessKind.COLLECTION, "userProject", "coll", null, MAX_BYTES)));
         rememberedBytes(MAX_BYTES * 2);
         TestUtils.setPrivateField(memoryManagement, "locks", locks);
         try {
@@ -278,7 +280,7 @@ public class MemoryManagementSweepMeasureTest {
             TestUtils.setPrivateField(memoryManagement, "locks", realLocks);
         }
 
-        verify(locks, times(1)).tryLockWrite(eq("userDb"), eq("coll"), anyLong());
+        verify(locks, times(1)).tryLockWrite(eq("userProject"), eq("coll"), anyLong());
     }
 
     private static void holdCollectionLockWhile(boolean releaseOnceTheSweepWaits, Runnable body) throws Exception {
@@ -287,12 +289,12 @@ public class MemoryManagementSweepMeasureTest {
         final var held = new CountDownLatch(1);
         final var holder = Thread.ofPlatform().start(() -> {
             try {
-                assertTrue(locks.tryLockWrite(DB, COLL, 10_000L));
+                assertTrue(locks.tryLockWrite(PROJECT, COLL, 10_000L));
                 try {
                     held.countDown();
                     holdUntil(releaseOnceTheSweepWaits, sweeper);
                 } finally {
-                    locks.releaseWrite(DB, COLL);
+                    locks.releaseWrite(PROJECT, COLL);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

@@ -11,13 +11,13 @@ namespace Mpp.Client;
 public sealed class Indexes
 {
     private readonly ClientContext _context;
-    private readonly string _database;
+    private readonly string _project;
     private readonly string _collection;
 
-    internal Indexes(ClientContext context, string database, string collection)
+    internal Indexes(ClientContext context, string project, string collection)
     {
         _context = context;
-        _database = database;
+        _project = project;
         _collection = collection;
     }
 
@@ -34,23 +34,23 @@ public sealed class Indexes
         {
             throw new ArgumentException("CreateAsync needs at least one field", nameof(fields));
         }
-        await _context.Channel.SendAsync(Operation.CreateIndex, RequestEncoder.CreateIndex(_database, _collection, fields), ct)
+        await _context.Channel.SendAsync(Operation.CreateIndex, RequestEncoder.CreateIndex(_project, _collection, fields), ct)
             .ConfigureAwait(false);
     }
 
     public async Task DropAsync(string field, CancellationToken ct = default) =>
-        await _context.Channel.SendAsync(Operation.DropIndex, RequestEncoder.DropIndex(_database, _collection, field), ct)
+        await _context.Channel.SendAsync(Operation.DropIndex, RequestEncoder.DropIndex(_project, _collection, field), ct)
             .ConfigureAwait(false);
 
     public async Task<ReindexResult> ReindexAsync(params string[] fields) =>
         await ReindexAsync(fields, CancellationToken.None).ConfigureAwait(false);
 
     public async Task<ReindexResult> ReindexAsync(IReadOnlyList<string> fields, CancellationToken ct = default) =>
-        Result(await _context.Channel.SendAsync(Operation.Reindex, RequestEncoder.Reindex(_database, _collection, fields), ct)
+        Result(await _context.Channel.SendAsync(Operation.Reindex, RequestEncoder.Reindex(_project, _collection, fields), ct)
             .ConfigureAwait(false));
 
     public async Task<ReindexResult> ReindexPrimaryKeyAsync(CancellationToken ct = default) =>
-        Result(await _context.Channel.SendAsync(Operation.Reindex, RequestEncoder.ReindexPrimaryKey(_database, _collection), ct)
+        Result(await _context.Channel.SendAsync(Operation.Reindex, RequestEncoder.ReindexPrimaryKey(_project, _collection), ct)
             .ConfigureAwait(false));
 
     private static ReindexResult Result(JsonObject reply) => new(

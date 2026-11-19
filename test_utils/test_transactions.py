@@ -15,7 +15,7 @@ TRIGGER_SERVER_PORT = int(os.environ.get("TXN_TRIGGER_TEST_PORT", "9448"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "txn_test_db"
+PROJECT = "txn_test_project"
 COLL = "orders"
 JOIN_COLL = "order_configs"
 PURGE_COLL = "purges"
@@ -49,35 +49,35 @@ def rollback_txn(c) -> dict:
     return c.send({"type": "ROLLBACK_TRANSACTION"})
 
 
-def save(c, obj, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": obj})
+def save(c, obj, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": obj})
 
 
-def bulk_save(c, objs, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "BULK_SAVE", "databaseName": db, "collectionName": coll, "objects": objs})
+def bulk_save(c, objs, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "BULK_SAVE", "projectName": project, "collectionName": coll, "objects": objs})
 
 
-def find_by_id(c, _id, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": _id})
+def find_by_id(c, _id, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": _id})
 
 
-def delete(c, _id, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "_id": _id})
+def delete(c, _id, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "DELETE", "projectName": project, "collectionName": coll, "_id": _id})
 
 
-def aggregate(c, steps=None, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+def aggregate(c, steps=None, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll,
                        "aggregationSteps": steps or []})
 
 
 def setup_fixtures(c):
-    c.send({"type": "CREATE_DATABASE", "databaseName": DB})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": JOIN_COLL})
+    c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": JOIN_COLL})
 
 
 def teardown_fixtures(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
 
 
 def test_commit_and_read_your_writes(c):
@@ -107,7 +107,7 @@ def test_save_reports_whether_it_inserted(c):
     section("The inserted flag is the same inside and outside a transaction")
     coll = "inserted_flag"
     check_status("create the collection",
-                 c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                 c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
 
     outside = save(c, {"_id": "ins1", "total": 1}, coll=coll)
     check("a non-transactional SAVE of a new id reports inserted", outside.get("inserted") is True,
@@ -132,15 +132,15 @@ def test_save_reports_whether_it_inserted(c):
     check_status("COMMIT_TRANSACTION again", commit_txn(c), "OK")
 
 
-def insert(c, obj, coll=COLL, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "failOnUpdate": True, "object": obj})
+def insert(c, obj, coll=COLL, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "failOnUpdate": True, "object": obj})
 
 
 def test_insert_inside_a_transaction(c):
     section("SAVE with failOnUpdate inside a transaction")
     coll = "insert_only"
     check_status("create the collection",
-                 c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                 c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("seed a committed document", save(c, {"_id": "kept", "total": 1}, coll=coll), "OK")
 
     check_status("START_TRANSACTION", start_txn(c), "OK")
@@ -216,7 +216,7 @@ REDUCE_COLL = "txn_reduce_order"
 
 def test_reduce_inside_a_transaction_folds_in_scan_order(c):
     section("A REDUCE source inside a transaction folds in the same defined order as outside it")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REDUCE_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REDUCE_COLL})
     for doc_id in ("delta", "alpha", "charlie", "bravo", "echo", "foxtrot"):
         check_status(f"seed {doc_id}", save(c, {"_id": doc_id}, coll=REDUCE_COLL), "OK")
     fold = [{"type": "REDUCE", "script": "export default (acc, doc) => acc + '|' + doc._id;",
@@ -264,8 +264,8 @@ def test_buffered_delete_reads_as_not_found(c):
         check_status("rolled-back delete leaves the document in place", find_by_id(oc, "del1"), "OK")
 
 
-def delete_where(c, condition, coll=PURGE_COLL, db=DB) -> dict:
-    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "condition": condition})
+def delete_where(c, condition, coll=PURGE_COLL, project=PROJECT) -> dict:
+    return c.send({"type": "DELETE", "projectName": project, "collectionName": coll, "condition": condition})
 
 
 def kind_is(kind: str) -> dict:
@@ -275,7 +275,7 @@ def kind_is(kind: str) -> dict:
 def test_delete_by_condition_inside_a_transaction(c):
     section("DELETE with a condition inside a transaction")
 
-    check_status("CREATE_COLLECTION purges", c.send({"type": "CREATE_COLLECTION", "databaseName": DB,
+    check_status("CREATE_COLLECTION purges", c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                      "collectionName": PURGE_COLL}), "OK")
     check_status("seed four stale and one fresh document", bulk_save(
         c, [{"_id": f"p{i}", "kind": "stale" if i < 4 else "fresh"} for i in range(5)], coll=PURGE_COLL), "OK")
@@ -290,7 +290,8 @@ def test_delete_by_condition_inside_a_transaction(c):
                  "NOT_FOUND")
     with authed_conn() as oc:
         check_status("another client's dirty read still sees p1 before the commit", oc.send(
-            {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": PURGE_COLL, "_id": "p1", "dirtyRead": True}),
+            {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": PURGE_COLL, "_id": "p1",
+             "dirtyRead": True}),
                      "OK")
     check_status("COMMIT_TRANSACTION", commit_txn(c), "OK")
 
@@ -314,8 +315,8 @@ def test_a_rolled_back_delete_by_condition_keeps_everything(c):
         check_status("r2 survives the rollback", find_by_id(oc, "r2", coll=PURGE_COLL), "OK")
 
 
-def save_where(c, condition, patch, coll=PURGE_COLL, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "condition": condition,
+def save_where(c, condition, patch, coll=PURGE_COLL, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "condition": condition,
                    "object": patch})
 
 
@@ -335,7 +336,7 @@ def test_update_by_condition_inside_a_transaction(c):
     check("the buffered document reads as claimed inside the transaction", inside.get("kind") == "claimed",
           f"got {inside}")
     with authed_conn() as oc:
-        outside = oc.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": PURGE_COLL, "_id": "t1",
+        outside = oc.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": PURGE_COLL, "_id": "t1",
                            "dirtyRead": True}).get("object") or {}
         check("another client's dirty read still sees t1 pending before the commit",
               outside.get("kind") == "pending", f"got {outside}")
@@ -432,20 +433,20 @@ def test_ddl_forbidden_during_transaction(c):
 
     check_status("START_TRANSACTION", start_txn(c), "OK")
     check_code("CREATE_COLLECTION during txn → 409-6",
-               c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": "nope"}),
+               c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": "nope"}),
                "ERROR", "409-6")
     check_code("CREATE_INDEX during txn → 409-6",
-               c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL, "fieldName": "x"}),
+               c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL, "fieldName": "x"}),
                "ERROR", "409-6")
     check_code("LISTEN during txn → 409-6",
-               c.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL, "aggregationSteps": []}),
+               c.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL, "aggregationSteps": []}),
                "ERROR", "409-6")
     check_status("ROLLBACK_TRANSACTION", rollback_txn(c), "OK")
 
     check_status("CREATE_COLLECTION works again after the transaction ends",
-          c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": "after_txn"}),
+          c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": "after_txn"}),
           "OK")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": "after_txn"})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": "after_txn"})
 
 
 def test_table_locking_blocks_other_clients(c):
@@ -455,7 +456,7 @@ def test_table_locking_blocks_other_clients(c):
     check_status("SAVE buffered (acquires the collection write lock)", save(c, {"_id": "lock1", "v": 1}), "OK")
 
     with authed_conn() as bc:
-        send_only(bc, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "lock1"})
+        send_only(bc, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "lock1"})
         blocked = bc.recv(timeout=1.5)
         check("other client's read blocks while the transaction holds the table",
                    blocked is None, f"unexpectedly got a response: {blocked!r}")
@@ -490,7 +491,7 @@ def test_lock_timeout_aborts_and_refuses_retries(c):
     check_status("holder: COMMIT_TRANSACTION", commit_txn(c), "OK")
 
     with authed_conn() as reader:
-        orphan = reader.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "to-waiter"})
+        orphan = reader.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "to-waiter"})
         check("the refused write never landed as a standalone document",
               orphan.get("status") == "NOT_FOUND", f"got {orphan}")
 
@@ -499,9 +500,9 @@ def test_crossed_read_and_write_sets_do_not_hang(c: Conn):
     section("Two transactions whose read and write sets cross time out instead of deadlocking")
     other = "orders_crossed"
     check_status("create the second collection",
-                 c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": other}), "OK")
+                 c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": other}), "OK")
     check_status("seed the second collection", c.send(
-        {"type": "SAVE", "databaseName": DB, "collectionName": other, "object": {"_id": "seed", "v": 0}}), "OK")
+        {"type": "SAVE", "projectName": PROJECT, "collectionName": other, "object": {"_id": "seed", "v": 0}}), "OK")
 
     with authed_conn() as t1, authed_conn() as t2:
         check_status("T1: START_TRANSACTION", start_txn(t1), "OK")
@@ -524,16 +525,16 @@ def test_crossed_read_and_write_sets_do_not_hang(c: Conn):
 
     with authed_conn() as after:
         check_status("the collections are usable once both transactions are gone",
-                     after.send({"type": "SAVE", "databaseName": DB, "collectionName": other,
+                     after.send({"type": "SAVE", "projectName": PROJECT, "collectionName": other,
                                  "object": {"_id": "after", "v": 1}}), "OK")
         check_status("and so is the first one",
-                     after.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                     after.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                  "object": {"_id": "after", "v": 1}}), "OK")
 
 
 def create_user(c, username: str, password: str, level: str) -> dict:
     return c.send({"type": "CREATE_USER", "username": username, "password": password, "admin": False,
-                   "globalPermissions": [], "databasePermissions": {DB: level}, "collectionPermissions": {}})
+                   "globalPermissions": [], "projectPermissions": {PROJECT: level}, "collectionPermissions": {}})
 
 
 def test_a_non_admin_user_can_use_transactions(c):
@@ -578,7 +579,7 @@ def test_a_commit_after_the_write_grant_is_revoked_is_refused(c):
         check_status("SAVE inside it", save(writer, {"_id": "revoked_commit", "v": 1}), "OK")
         check_status("The admin lowers the grant to READ",
                      c.send({"type": "CHANGE_PERMISSIONS", "username": "txn_revoked", "admin": False,
-                             "globalPermissions": [], "databasePermissions": {DB: "READ"},
+                             "globalPermissions": [], "projectPermissions": {PROJECT: "READ"},
                              "collectionPermissions": {}}), "OK")
         check_code("COMMIT_TRANSACTION -> 403-1", commit_txn(writer), "FORBIDDEN", "403-1")
     check_status("The buffered write never landed", find_by_id(c, "revoked_commit"), "NOT_FOUND")
@@ -626,7 +627,7 @@ def count_of(c, coll, steps) -> int:
 def test_a_many_write_transaction_commits_every_write(c):
     section("A 500-write transaction over two collections (inserts, updates, deletes) commits every write")
     for coll in MANY_COLLS:
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
         check_status(f"seed {coll}", bulk_save(c, [{"_id": f"m{i}", "v": 1} for i in range(150)], coll=coll), "OK")
     check_status("START_TRANSACTION", start_txn(c), "OK")
     buffered = 0
@@ -660,9 +661,9 @@ def filter_grp(value) -> dict:
 
 def test_an_indexed_filter_inside_a_transaction_reads_your_writes(c):
     section("An indexed FILTER inside a transaction answers through the index and sees the buffered writes")
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": INDEXED_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": INDEXED_COLL})
     check_status("seed", bulk_save(c, [{"_id": f"ix{i}", "grp": i % 4} for i in range(40)], coll=INDEXED_COLL), "OK")
-    check_status("CREATE_INDEX grp", c.send({"type": "CREATE_INDEX", "databaseName": DB,
+    check_status("CREATE_INDEX grp", c.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                              "collectionName": INDEXED_COLL, "fieldName": "grp"}), "OK")
     committed = {f"ix{i}" for i in range(40) if i % 4 == 1}
     check_status("START_TRANSACTION", start_txn(c), "OK")
@@ -672,7 +673,7 @@ def test_an_indexed_filter_inside_a_transaction_reads_your_writes(c):
     delete(c, "ix5", coll=INDEXED_COLL)
     expected = (committed - {"ix1", "ix5"}) | {"ix_new", "ix2"}
 
-    analyzed = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": INDEXED_COLL, "analyze": True,
+    analyzed = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": INDEXED_COLL, "analyze": True,
                        "aggregationSteps": [filter_grp(1)]})
     check("the FILTER saw the buffered insert, updates and delete", set(result_ids(analyzed)) == expected,
           f"got {result_ids(analyzed)}")
@@ -693,18 +694,18 @@ def test_an_indexed_join_inside_a_transaction_reads_your_writes(c):
     section("A JOIN on an indexed remote field inside a transaction sees the buffered remote writes")
     left, right = "txn_ijoin_left", "txn_ijoin_right"
     for coll in (left, right):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     check_status("seed the left side", bulk_save(c, [{"_id": "l1", "k": "k1"}, {"_id": "l2", "k": "k2"}],
                                                  coll=left), "OK")
     check_status("seed the right side", bulk_save(c, [{"_id": "r-a", "k": "k1"}, {"_id": "r-b", "k": "k2"}],
                                                   coll=right), "OK")
-    check_status("CREATE_INDEX k on the right side", c.send({"type": "CREATE_INDEX", "databaseName": DB,
+    check_status("CREATE_INDEX k on the right side", c.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                                              "collectionName": right, "fieldName": "k"}), "OK")
     steps = [{"type": "JOIN", "joinCollection": right, "localField": "k", "remoteField": "k", "asField": "m"}]
     check_status("START_TRANSACTION", start_txn(c), "OK")
     save(c, {"_id": "r-new", "k": "k1"}, coll=right)
     save(c, {"_id": "r-b", "k": "k3"}, coll=right)
-    joined = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": left, "analyze": True,
+    joined = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": left, "analyze": True,
                      "aggregationSteps": steps})
     by_id = {row.get("_id"): sorted(d.get("_id") for d in (row.get("m") or [])) for row in joined.get("results") or []}
     check("a buffered insert joins", by_id.get("l1") == ["r-a", "r-new"], f"got {by_id}")
@@ -730,7 +731,7 @@ def test_auto_rollback_on_disconnect():
         check_status("the uncommitted write did not survive the disconnect", find_by_id(c, "disc1"), "NOT_FOUND")
         check_status("the collection is writable again (lock was released)",
               save(c, {"_id": "disc2", "v": 2}), "OK")
-        c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "disc2"})
+        c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "disc2"})
 
 
 def test_a_committed_transaction_survives_the_disconnect():
@@ -751,7 +752,7 @@ def test_a_committed_transaction_survives_the_disconnect():
         check_status("the collection is writable again (lock was released)",
                      save(c, {"_id": "disc4", "v": 4}), "OK")
         for stale in ("disc3", "disc4"):
-            c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": stale})
+            c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": stale})
 
 
 BULKY_DOCS = 20
@@ -766,7 +767,7 @@ def test_a_client_that_stops_reading_mid_transaction_releases_its_locks():
     slow = bu.non_reading_conn()
     check_status("START_TRANSACTION", start_txn(slow), "OK")
     check_status("SAVE buffered (takes the collection write lock)", save(slow, {"_id": "unread-1", "v": 1}), "OK")
-    bulky = {"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+    bulky = {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
              "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "kind",
                                                                    "value": "bulky"}}]}
     for _ in range(UNREAD_AGGREGATES):
@@ -774,7 +775,7 @@ def test_a_client_that_stops_reading_mid_transaction_releases_its_locks():
             break
 
     with authed_conn() as (other):
-        send_only(other, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": "unread-1"})
+        send_only(other, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": "unread-1"})
         unblocked = other.recv(timeout=30.0)
         check_code("another connection gets the collection back, without the rolled-back write",
                    unblocked or {}, "NOT_FOUND", "404-2")
@@ -902,10 +903,10 @@ def test_transactional_deletes_count_deleted_document_bytes():
             check_status("roll it back", rollback_txn(c), "OK")
 
             check_status("store the audit procedure",
-                         c.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": "on_delete",
+                         c.send({"type": "SAVE_PROCEDURE", "projectName": PROJECT, "name": "on_delete",
                                  "script": "return 1;"}), "OK")
             check_status("install a delete trigger",
-                         c.send({"type": "SAVE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                         c.send({"type": "SAVE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                                  "name": "audit_deletes", "events": ["DELETED"],
                                  "procedureName": "on_delete"}), "OK")
             check_status("start a transaction with the delete trigger", start_txn(c), "OK")

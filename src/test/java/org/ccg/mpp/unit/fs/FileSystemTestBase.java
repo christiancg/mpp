@@ -39,9 +39,9 @@ public abstract class FileSystemTestBase {
         FileSystem fs = new FileSystem();
         TestUtils.setDbPath(fs, TestGlobals.PATH);
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
         return fs;
     }
 
@@ -50,7 +50,7 @@ public abstract class FileSystemTestBase {
         data.addProperty(Globals.PK_FIELD, id);
         data.addProperty("v", "short");
         DbEntry e = new DbEntry();
-        e.setDatabaseName(TestGlobals.DB);
+        e.setProjectName(TestGlobals.PROJECT);
         e.setCollectionName(TestGlobals.COLL);
         e.set_id(id);
         e.setData(data);
@@ -64,7 +64,7 @@ public abstract class FileSystemTestBase {
         data.addProperty("v", newValue);
         IndexedDbEntry u = new IndexedDbEntry();
         u.setIndex(idx);
-        u.setDatabaseName(TestGlobals.DB);
+        u.setProjectName(TestGlobals.PROJECT);
         u.setCollectionName(TestGlobals.COLL);
         u.set_id(id);
         u.setData(data);
@@ -72,7 +72,7 @@ public abstract class FileSystemTestBase {
     }
 
     static String readValueFromDisk(FileSystem fs, String id) throws Exception {
-        final var disk = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var disk = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         final var pk = disk.stream().filter(p -> p.getValue().equals(id)).findFirst().orElseThrow();
         assertTrue(pk.getPosition() >= 0, "PK index position for '" + id + "' must not be negative");
         return fs.getById(pk).getData().get("v").asJsonString().getValue();

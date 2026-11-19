@@ -14,7 +14,7 @@ pytestmark = pytest.mark.it
 
 async def test_many_concurrent_writers_share_a_small_pool(server: ServerProcess) -> None:
     async with await AsyncMppClient.connect(settings_for(server, pool_size=4)) as client:
-        shop = client.database("pool_async")
+        shop = client.project("pool_async")
         await shop.create()
         notes = shop.collection("notes")
         await notes.create()
@@ -24,7 +24,7 @@ async def test_many_concurrent_writers_share_a_small_pool(server: ServerProcess)
 
 def test_many_threads_share_one_sync_client(server: ServerProcess) -> None:
     with MppClient.connect(settings_for(server, pool_size=4)) as client:
-        shop = client.database("pool_sync")
+        shop = client.project("pool_sync")
         shop.create()
         notes = shop.collection("notes")
         notes.create()
@@ -35,7 +35,7 @@ def test_many_threads_share_one_sync_client(server: ServerProcess) -> None:
 
 async def test_closing_the_client_while_requests_run_fails_them_cleanly(server: ServerProcess) -> None:
     client = await AsyncMppClient.connect(settings_for(server, pool_size=2, shutdown_timeout=0.5))
-    shop = client.database("pool_close")
+    shop = client.project("pool_close")
     await shop.create()
     notes = shop.collection("notes")
     await notes.create()

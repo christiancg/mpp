@@ -9,13 +9,13 @@ import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class SimpleJsInternalErrorTest {
     private static final String INTERNAL_ERROR = "InternalError";
 
-    private static final class UnmappedFailureDatabaseAccess extends FakeDatabaseAccess {
+    private static final class UnmappedFailureProjectAccess extends FakeProjectAccess {
         @Override
         public JsonObject findById(String db, String coll, String id) {
             throw new IndexOutOfBoundsException("Index 2 out of bounds for length 2");
@@ -23,7 +23,7 @@ public class SimpleJsInternalErrorTest {
     }
 
     private static ScriptResult run(String source) {
-        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), new UnmappedFailureDatabaseAccess(),
+        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), new UnmappedFailureProjectAccess(),
                 null, ResourceLimits.unlimited()));
     }
 

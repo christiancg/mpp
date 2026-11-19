@@ -35,21 +35,21 @@ final class ConditionalDelete {
     }
 
     static ConditionalDelete prepare(DeleteRequest request, String actingUser) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, dbName, collName);
+        final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, projectName, collName);
         if (ownershipError != null) {
             return refused(request, ownershipError);
         }
-        final var hooked = BeforeHookContext.hasHooksFor(dbName, collName, EventType.DELETED);
-        final var triggered = TriggerHelper.firesOnDelete(dbName, collName, request.getTriggerDepth());
+        final var hooked = BeforeHookContext.hasHooksFor(projectName, collName, EventType.DELETED);
+        final var triggered = TriggerHelper.firesOnDelete(projectName, collName, request.getTriggerDepth());
         final var ids = new ArrayList<String>();
         final var documents = new ArrayList<DbEntry>();
         try (var context = PipelineContext.fromConfiguration(null)) {
             final var held = new HeldRows(context);
             final var limit = configuration.intValue(ConfigKey.DELETE_MAX_MATCHES);
-            try (var matches = context.watch(
-                    FilterOperatorHelper.processOperator(request.getCondition(), null, dbName, collName, context))) {
+            try (var matches = context.watch(FilterOperatorHelper.processOperator(request.getCondition(), null,
+                    projectName, collName, context))) {
                 final var iterator = matches.iterator();
                 while (iterator.hasNext()) {
                     final var document = iterator.next();
@@ -60,7 +60,7 @@ final class ConditionalDelete {
                     ids.add(document.get(Globals.PK_FIELD).asJsonString().getValue());
                     if (hooked || triggered) {
                         held.hold(document);
-                        documents.add(DbEntry.fromJsonObject(dbName, collName, document));
+                        documents.add(DbEntry.fromJsonObject(projectName, collName, document));
                     }
                 }
             }
@@ -70,7 +70,9 @@ final class ConditionalDelete {
         } catch (AggregateLimitException limit) {
             return refused(request, new OperationResponse(OperationType.DELETE, limit.getErrorCode()));
         }
-        final var hookError = hooked ? BeforeHookHelper.beforeDeleteAll(dbName, collName, documents, actingUser) : null;
+        final var hookError = hooked
+                ? BeforeHookHelper.beforeDeleteAll(projectName, collName, documents, actingUser)
+                : null;
         if (hookError != null) {
             return refused(request, hookError);
         }
@@ -89,7 +91,7 @@ final class ConditionalDelete {
         if (ids.isEmpty()) {
             return new DeleteManyResponse(0);
         }
-        reserved = ClusterWriteHelper.deleteReserved(request.getDatabaseName(), request.getCollectionName(), ids);
+        reserved = ClusterWriteHelper.deleteReserved(request.getProjectName(), request.getCollectionName(), ids);
         if (reserved == null) {
             return new OperationResponse(OperationType.DELETE, ErrorCode.NOT_COLLECTION_OWNER);
         }
@@ -97,7 +99,7 @@ final class ConditionalDelete {
     }
 
     OperationResponse replicated(OperationResponse response) {
-        return ClusterWriteHelper.afterDeleteMany(request.getDatabaseName(), request.getCollectionName(), reserved,
+        return ClusterWriteHelper.afterDeleteMany(request.getProjectName(), request.getCollectionName(), reserved,
                 response);
     }
 }

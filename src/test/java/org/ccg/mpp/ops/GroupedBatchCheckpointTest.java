@@ -47,7 +47,7 @@ public class GroupedBatchCheckpointTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         triggerExecutor.stop();
@@ -72,9 +72,9 @@ public class GroupedBatchCheckpointTest {
 
     private void installAfterTrigger() throws Exception {
         final var procedure = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", "return 1;"), ACTOR);
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "return 1;"), ACTOR);
         assertEquals(OperationStatus.OK, procedure.getStatus(), procedure.getMessage());
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_AFTER, false, true, ACTOR, 1L, 1L, 1L,
                         ACTOR)));

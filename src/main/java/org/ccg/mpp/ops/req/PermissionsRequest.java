@@ -17,12 +17,12 @@ public abstract class PermissionsRequest extends OperationRequest {
     protected String username;
     protected Boolean admin;
     protected JsonArray globalPermissions;
-    protected JsonObject databasePermissions;
+    protected JsonObject projectPermissions;
     protected JsonObject collectionPermissions;
     protected JsonObject scriptPermissions;
 
-    protected PermissionsRequest(OperationType type, String databaseName, String collectionName) {
-        super(type, databaseName, collectionName);
+    protected PermissionsRequest(OperationType type, String projectName, String collectionName) {
+        super(type, projectName, collectionName);
     }
 
     public Boolean getAdmin() {
@@ -39,11 +39,11 @@ public abstract class PermissionsRequest extends OperationRequest {
         return result;
     }
 
-    public Map<String, PermissionLevel> getDatabasePermissions() {
-        if (databasePermissions == null)
+    public Map<String, PermissionLevel> getProjectPermissions() {
+        if (projectPermissions == null)
             return new HashMap<>();
         final var result = new HashMap<String, PermissionLevel>();
-        for (var entry : databasePermissions.entrySet()) {
+        for (var entry : projectPermissions.entrySet()) {
             result.put(entry.getKey(), PermissionLevel.valueOf(entry.getValue().asJsonString().getValue()));
         }
         return result;
@@ -60,8 +60,8 @@ public abstract class PermissionsRequest extends OperationRequest {
         return collectionPermissions;
     }
 
-    public JsonObject getRawDatabasePermissions() {
-        return databasePermissions;
+    public JsonObject getRawProjectPermissions() {
+        return projectPermissions;
     }
 
     public JsonObject getRawScriptPermissions() {
@@ -91,9 +91,9 @@ public abstract class PermissionsRequest extends OperationRequest {
         perms.forEach((k, v) -> this.collectionPermissions.add(k, new JsonString(v.name())));
     }
 
-    public void setDatabasePermissions(Map<String, PermissionLevel> perms) {
-        this.databasePermissions = new JsonObject();
-        perms.forEach((k, v) -> this.databasePermissions.add(k, new JsonString(v.name())));
+    public void setProjectPermissions(Map<String, PermissionLevel> perms) {
+        this.projectPermissions = new JsonObject();
+        perms.forEach((k, v) -> this.projectPermissions.add(k, new JsonString(v.name())));
     }
 
     public void setGlobalPermissions(Set<GlobalPermissionType> perms) {

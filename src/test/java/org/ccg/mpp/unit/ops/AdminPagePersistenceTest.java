@@ -29,7 +29,7 @@ public class AdminPagePersistenceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -39,9 +39,9 @@ public class AdminPagePersistenceTest {
     }
 
     private File pagesFolder() {
-        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.DB,
+        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.PROJECT,
                 TestGlobals.COLL);
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_DB_NAME + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECT_NAME + Globals.FILE_SEPARATOR
                 + Globals.ADMIN_PAGES_FOLDER + Globals.FILE_SEPARATOR + pagesCollName);
     }
 
@@ -62,7 +62,7 @@ public class AdminPagePersistenceTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("payload", "value");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.setPage(page);
         return entry;
     }
@@ -70,8 +70,9 @@ public class AdminPagePersistenceTest {
     @Test
     public void test_first_touch_page_is_persisted_after_an_in_memory_pre_seed() throws Exception {
         final var entry = entryOnPage("p1", 0L);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0L, entry.byteSize());
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(entry), true);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0L, entry.byteSize());
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(entry),
+                true);
         PageRowWriteBack.flushAll();
 
         assertTrue(persistedBytes() > 0,
@@ -82,15 +83,16 @@ public class AdminPagePersistenceTest {
     @Test
     public void test_persisted_page_row_describes_its_own_page() throws Exception {
         final var first = entryOnPage("p1", 0L);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0L, first.byteSize());
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(first), true);
-
-        final var second = entryOnPage("p2", 1L);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 1L, second.byteSize());
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(second),
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0L, first.byteSize());
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(first),
                 true);
 
-        final var entries = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var second = entryOnPage("p2", 1L);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 1L, second.byteSize());
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(second),
+                true);
+
+        final var entries = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(entries.stream().anyMatch(e -> e.getPage() == 0L), "page 0 must still describe page 0");
         assertTrue(entries.stream().anyMatch(e -> e.getPage() == 1L), "page 1 must still describe page 1");
     }
@@ -100,14 +102,14 @@ public class AdminPagePersistenceTest {
         final var onPageZero = entryOnPage("d0", 0L);
         final var onPageThree = entryOnPage("d3", 3L);
         for (final var entry : List.of(onPageZero, onPageThree)) {
-            cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, entry.getPage(), entry.byteSize());
-            AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(entry),
-                    true);
+            cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, entry.getPage(), entry.byteSize());
+            AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
+                    List.of(entry), true);
         }
         final var before = sizeOfPage(3L);
 
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.DELETED, List.of(onPageThree),
-                true);
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.DELETED,
+                List.of(onPageThree), true);
 
         assertTrue(sizeOfPage(3L) < before, "deleting a document on page 3 must decrement page 3");
         assertTrue(sizeOfPage(0L) > 0, "page 0 must not absorb another page's decrement");
@@ -119,29 +121,29 @@ public class AdminPagePersistenceTest {
         for (long page = 0; page < 4; page++) {
             final var entry = entryOnPage("n" + page, page);
             entries.add(entry);
-            cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, page, entry.byteSize());
-            AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(entry),
-                    true);
+            cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, page, entry.byteSize());
+            AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
+                    List.of(entry), true);
         }
 
         for (final var entry : entries) {
-            AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.DELETED, List.of(entry),
-                    true);
+            AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.DELETED,
+                    List.of(entry), true);
         }
 
-        for (final var pageEntry : cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL)) {
+        for (final var pageEntry : cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL)) {
             assertTrue(pageEntry.getPageSize() >= 0,
                     "page " + pageEntry.getPage() + " went negative: " + pageEntry.getPageSize());
         }
     }
 
     private long sizeOfPage(long page) {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(e -> e.getPage() == page)
-                .mapToLong(AdminPageEntry::getPageSize).findFirst().orElse(0L);
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
+                .filter(e -> e.getPage() == page).mapToLong(AdminPageEntry::getPageSize).findFirst().orElse(0L);
     }
 
     private File storagePageZero() {
-        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.DB,
+        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.PROJECT,
                 TestGlobals.COLL);
         return new File(pagesFolder(), pagesCollName + Globals.FILE_PAGE_SEPARATOR + 0 + Globals.DB_FILE_EXTENSION);
     }
@@ -166,15 +168,18 @@ public class AdminPagePersistenceTest {
     @Test
     public void test_a_new_page_is_published_without_touching_the_storage_page() throws Exception {
         final var seed = entryOnPage("seed", 0L);
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(seed), false);
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(seed),
+                false);
         PageRowWriteBack.flushAll();
         final var newPage = entryOnPage("newPage", 7L);
 
-        withAnUnwritableStoragePage(() -> assertDoesNotThrow(() -> AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB,
-                TestGlobals.COLL, EventType.CREATED, List.of(newPage), false)));
+        withAnUnwritableStoragePage(
+                () -> assertDoesNotThrow(() -> AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT,
+                        TestGlobals.COLL, EventType.CREATED, List.of(newPage), false)));
 
         assertTrue(
-                cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().anyMatch(e -> e.getPage() == 7L),
+                cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
+                        .anyMatch(e -> e.getPage() == 7L),
                 "a user collection's row is published in memory and written back later; startup rebuilds the rows"
                         + " from the page files, so a row that never reached disk is not under-counted");
     }
@@ -182,14 +187,15 @@ public class AdminPagePersistenceTest {
     @Test
     public void test_a_touched_page_delta_is_published_without_touching_the_storage_page() throws Exception {
         final var entry = entryOnPage("tracked", 2L);
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(entry),
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(entry),
                 false);
         PageRowWriteBack.flushAll();
         final var sizeBefore = sizeOfPage(2L);
         final var countBefore = countOfPage(2L);
 
-        withAnUnwritableStoragePage(() -> assertDoesNotThrow(() -> AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB,
-                TestGlobals.COLL, EventType.DELETED, List.of(entry), false)));
+        withAnUnwritableStoragePage(
+                () -> assertDoesNotThrow(() -> AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT,
+                        TestGlobals.COLL, EventType.DELETED, List.of(entry), false)));
 
         assertEquals(sizeBefore - entry.byteSize(), sizeOfPage(2L));
         assertEquals(countBefore - 1, countOfPage(2L));
@@ -198,15 +204,15 @@ public class AdminPagePersistenceTest {
     @Test
     public void test_a_successful_batch_publishes_both_new_and_touched_pages() throws Exception {
         final var tracked = entryOnPage("tracked", 4L);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 4L, tracked.byteSize());
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(tracked),
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 4L, tracked.byteSize());
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, List.of(tracked),
                 true);
         final var sizeBefore = sizeOfPage(4L);
         final var countBefore = countOfPage(4L);
 
         final var alsoOnFour = entryOnPage("second", 4L);
         final var onFive = entryOnPage("third", 5L);
-        AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 List.of(alsoOnFour, onFive), false);
 
         assertEquals(sizeBefore + alsoOnFour.byteSize(), sizeOfPage(4L),
@@ -217,19 +223,19 @@ public class AdminPagePersistenceTest {
     }
 
     private long countOfPage(long page) {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(e -> e.getPage() == page)
-                .mapToLong(AdminPageEntry::getEntryCount).findFirst().orElse(0L);
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
+                .filter(e -> e.getPage() == page).mapToLong(AdminPageEntry::getEntryCount).findFirst().orElse(0L);
     }
 
     @Test
     public void test_page_list_is_not_partial_after_two_pages() throws Exception {
         for (long page = 0; page < 2; page++) {
             final var entry = entryOnPage("p" + page, page);
-            cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, page, entry.byteSize());
-            AdminPageHelper.baseUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, List.of(entry),
-                    true);
+            cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, page, entry.byteSize());
+            AdminPageHelper.baseUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
+                    List.of(entry), true);
         }
-        final var entries = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var entries = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         assertFalse(entries.isEmpty());
         assertTrue(entries.size() >= 2, "both touched pages must be tracked");
     }

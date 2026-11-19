@@ -7,9 +7,9 @@ from mpp._async.admin import (
 )
 from mpp._async.client import AsyncMppClient
 from mpp._async.collection import AsyncCollection
-from mpp._async.database import AsyncDatabase
 from mpp._async.indexes import AsyncIndexes
 from mpp._async.procedures import AsyncProcedures
+from mpp._async.project import AsyncProject
 from mpp._async.query import AsyncQuery
 from mpp._async.schedules import AsyncSchedules
 from mpp._async.schema import AsyncSchema
@@ -21,8 +21,8 @@ from mpp._internal.dataclass_mapping import DataclassCodec
 from mpp._sync.admin import Admin, DistributedTransactions, Scripts, TriggerRuns, Users
 from mpp._sync.client import MppClient
 from mpp._sync.collection import Collection
-from mpp._sync.database import Database
 from mpp._sync.indexes import Indexes, Schema, Triggers
+from mpp._sync.project import Project
 from mpp._sync.query import Query
 from mpp._sync.scripting import Procedures, Schedules
 from mpp._sync.subscription import Subscription
@@ -137,11 +137,11 @@ __all__ = [
     "AsVector",
     "AsyncAdmin",
     "AsyncCollection",
-    "AsyncDatabase",
     "AsyncDistributedTransactions",
     "AsyncIndexes",
     "AsyncMppClient",
     "AsyncProcedures",
+    "AsyncProject",
     "AsyncQuery",
     "AsyncSchedules",
     "AsyncSchema",
@@ -165,7 +165,6 @@ __all__ = [
     "Credentials",
     "CustomType",
     "DataPermission",
-    "Database",
     "DataclassCodec",
     "DistanceFilter",
     "DistributedTransactions",
@@ -209,6 +208,7 @@ __all__ = [
     "ProcedureDefinition",
     "ProcedureInfo",
     "Procedures",
+    "Project",
     "Query",
     "QueryBuilder",
     "ReindexResult",

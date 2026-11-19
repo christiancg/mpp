@@ -22,7 +22,7 @@ import org.ccg.mpp.ops.req.agg.step.JoinAggregationStep;
 
 public class ListenManager implements DirtySink {
     public static final String COLLECTION_DROPPED = "a collection it reads was dropped";
-    public static final String DATABASE_DROPPED = "the database it reads was dropped";
+    public static final String PROJECT_DROPPED = "the project it reads was dropped";
     public static final String ACCESS_REVOKED = "the listening user can no longer read it";
 
     record EndedListen(ListenRegistration registration, String reason) {
@@ -173,12 +173,12 @@ public class ListenManager implements DirtySink {
         }
     }
 
-    public void forgetCollection(String dbName, String collName) {
-        applyTracker.forget(keyOf(dbName, collName));
+    public void forgetCollection(String projectName, String collName) {
+        applyTracker.forget(keyOf(projectName, collName));
     }
 
-    public void forgetDatabase(String dbName) {
-        applyTracker.forgetPrefix(dbName + "|");
+    public void forgetProject(String projectName) {
+        applyTracker.forgetPrefix(projectName + "|");
     }
 
     public void unregisterAllForClient(UUID clientId) {
@@ -198,8 +198,8 @@ public class ListenManager implements DirtySink {
         }
     }
 
-    public void endAllForCollection(String dbName, String collName, String reason) {
-        final var listenIds = collectionToListens.get(keyOf(dbName, collName));
+    public void endAllForCollection(String projectName, String collName, String reason) {
+        final var listenIds = collectionToListens.get(keyOf(projectName, collName));
         if (listenIds == null || listenIds.isEmpty()) {
             return;
         }
@@ -208,8 +208,8 @@ public class ListenManager implements DirtySink {
         }
     }
 
-    public void endAllForDatabase(String dbName, String reason) {
-        final var prefix = dbName + "|";
+    public void endAllForProject(String projectName, String reason) {
+        final var prefix = projectName + "|";
         final var toRemove = new HashSet<UUID>();
         for (var entry : collectionToListens.entrySet()) {
             if (entry.getKey().startsWith(prefix)) {
@@ -261,12 +261,12 @@ public class ListenManager implements DirtySink {
     }
 
     @Override
-    public void markDirty(String dbName, String collName) {
-        enqueueDirty(keyOf(dbName, collName));
+    public void markDirty(String projectName, String collName) {
+        enqueueDirty(keyOf(projectName, collName));
     }
 
-    static String keyOf(String dbName, String collName) {
-        return dbName + "|" + collName;
+    static String keyOf(String projectName, String collName) {
+        return projectName + "|" + collName;
     }
 
     void enqueueDirty(String key) {
@@ -333,11 +333,11 @@ public class ListenManager implements DirtySink {
 
     private static Set<String> collectKeys(AggregateRequest request) {
         final var keys = new HashSet<String>();
-        keys.add(request.getDatabaseName() + "|" + request.getCollectionName());
+        keys.add(request.getProjectName() + "|" + request.getCollectionName());
         if (request.getAggregationSteps() != null) {
             for (var step : request.getAggregationSteps()) {
                 if (step instanceof JoinAggregationStep joinStep) {
-                    keys.add(request.getDatabaseName() + "|" + joinStep.getJoinCollection());
+                    keys.add(request.getProjectName() + "|" + joinStep.getJoinCollection());
                 }
             }
         }

@@ -32,21 +32,21 @@ public final class OverlayRead {
 
     public static List<JsonObject> runPipeline(AggregateRequest request, Transaction transaction,
             PipelineContext context) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var overlay = transaction.overlayFor(Cache.getCollectionIdentifier(dbName, collName));
+        final var overlay = transaction.overlayFor(Cache.getCollectionIdentifier(projectName, collName));
         final var steps = request.getAggregationSteps();
         final var first = steps == null || steps.isEmpty() ? null : steps.getFirst();
         if (first instanceof FilterAggregationStep filter && !OperatorPredicate.holdsRanking(filter.getOperator())) {
             final var operator = filter.getOperator();
-            final var committed = FilterOperatorHelper.processOperator(operator, null, dbName, collName, context);
-            final var matching = bufferedMatches(overlay, operator, dbName, collName, context);
+            final var committed = FilterOperatorHelper.processOperator(operator, null, projectName, collName, context);
+            final var matching = bufferedMatches(overlay, operator, projectName, collName, context);
             return AggregationOperationHelper.processAggregation(request,
                     reconcile(overlay, committed, matching::contains), 1, transaction, context);
         }
         final var committed = startsWithReduce(request)
-                ? context.scan(cache.streamCollectionInScanOrder(dbName, collName)).map(DbEntry::getData)
-                : context.source(null, dbName, collName);
+                ? context.scan(cache.streamCollectionInScanOrder(projectName, collName)).map(DbEntry::getData)
+                : context.source(null, projectName, collName);
         return AggregationOperationHelper.processAggregation(request, reconcile(overlay, committed, _ -> true),
                 transaction, context);
     }
@@ -96,12 +96,12 @@ public final class OverlayRead {
         return merged;
     }
 
-    private static Set<String> bufferedMatches(Map<String, JsonObject> overlay, BaseOperator operator, String dbName,
-            String collName, PipelineContext context) throws IOException {
+    private static Set<String> bufferedMatches(Map<String, JsonObject> overlay, BaseOperator operator,
+            String projectName, String collName, PipelineContext context) throws IOException {
         final var buffered = overlay.values().stream().filter(document -> !Transaction.isTombstone(document)).toList();
         context.scanned(buffered.size());
         final var matching = new HashSet<String>();
-        try (var matches = FilterOperatorHelper.processOperator(operator, buffered.stream(), dbName, collName,
+        try (var matches = FilterOperatorHelper.processOperator(operator, buffered.stream(), projectName, collName,
                 context)) {
             matches.forEach(document -> matching.add(idOf(document)));
         }

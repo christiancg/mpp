@@ -2,7 +2,7 @@ The entry point: a pool of authenticated connections to one MPP server (or clust
 
 ```java
 try (MppClient client = MppClient.connect(settings)) {
-    Collection<Document> orders = client.database("shop").collection("orders");
+    Collection<Document> orders = client.project("shop").collection("orders");
     orders.save(Document.of("_id", "o-1", "status", "active"));
 }
 ```
@@ -22,22 +22,22 @@ Creates a client and opens one connection to check the address and credentials.
 
 @return the settings the client was created with
 
-## database(String)
+## project(String)
 
-@param name the database's name, 3-64 characters from `A-Z a-z 0-9 _ -`
-@return the database
+@param name the project's name, 3-64 characters from `A-Z a-z 0-9 _ -`
+@return the project
 
-## listDatabases()
+## listProjects()
 
-@return the names of the databases the user can see
+@return the names of the projects the user can see
 
 ## serverInfo()
 
 @return the server's state and, once authenticated, its version
 
-## databaseStats()
+## projectStats()
 
-@return the server's memory usage and per-database totals
+@return the server's memory usage and per-project totals
 
 ## changePassword(String, String)
 
@@ -48,7 +48,7 @@ Changes the password of the user the client authenticates as.
 
 ## codecFor(Class)
 
-The codec `Database.collection(name, Class)` uses, built with this client's Jackson settings
+The codec `Project.collection(name, Class)` uses, built with this client's Jackson settings
 (custom value types, temporal zone, the caller's mapper). Integrations such as Spring Data reuse it so a class is
 stored the same way everywhere.
 

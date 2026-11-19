@@ -52,7 +52,7 @@ public class AggregateResultBudgetTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var left = new StringBuilder(LEFT_DOCUMENTS * 32);
         for (var i = 0; i < LEFT_DOCUMENTS; i++) {
             left.append(i == 0 ? "" : ",").append("{\"_id\":\"d").append(i).append("\",\"n\":").append(i)
@@ -60,7 +60,7 @@ public class AggregateResultBudgetTest {
         }
         assertEquals(OperationStatus.OK,
                 run(write("BULK_SAVE", TestGlobals.COLL, "\"objects\":[" + left + "]")).getStatus());
-        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB
+        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + JOINED + "\"}").getStatus());
         final var joined = new StringBuilder(JOINED_DOCUMENTS * 10_100);
         for (var i = 0; i < JOINED_DOCUMENTS; i++) {
@@ -89,21 +89,22 @@ public class AggregateResultBudgetTest {
     private static void drainPending() throws Exception {
         final var collection = FAN_IN_REMOTE;
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        for (final var id : pending.idsFor(TestGlobals.DB, collection)) {
-            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.DB, collection, Set.of(id));
-            EventProcessorHelper
-                    .processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, collection, entries.getFirst()));
+        for (final var id : pending.idsFor(TestGlobals.PROJECT, collection)) {
+            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.PROJECT, collection,
+                    Set.of(id));
+            EventProcessorHelper.processEvent(
+                    new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, collection, entries.getFirst()));
         }
-        assertTrue(pending.idsFor(TestGlobals.DB, collection).isEmpty());
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, collection).isEmpty());
     }
 
     private static String write(String type, String collection, String payload) {
-        return "{\"type\":\"" + type + "\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"" + type + "\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + collection + "\"," + payload + "}";
     }
 
     private static String aggregate(String steps) {
-        return "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[" + steps + "]}";
     }
 
@@ -142,7 +143,7 @@ public class AggregateResultBudgetTest {
     @Test
     public void anIndexedJoinFanInIsCharged() throws Exception {
         final var remote = FAN_IN_REMOTE;
-        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB
+        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + remote + "\"}").getStatus());
         final var fanIn = new StringBuilder(200 * 10_100);
         for (var i = 0; i < 200; i++) {
@@ -231,12 +232,12 @@ public class AggregateResultBudgetTest {
                 return super.getRegistration(id);
             }
         };
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         final var listenId = manager.register(clientId, request, STALE_HASH);
         manager.markDelivered(listenId);
-        final var sentinelRequest = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var sentinelRequest = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         sentinelRequest.setAggregationSteps(List.of(new LimitAggregationStep(1)));
         final var sentinelId = manager.register(clientId, sentinelRequest, STALE_HASH);
         final var queue = new LinkedBlockingQueue<UUID>();

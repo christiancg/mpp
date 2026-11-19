@@ -33,11 +33,11 @@ public class ReplicatedTxNotificationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createCollectionFile(TestGlobals.DB, SECOND_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, SECOND_COLL);
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createCollectionFile(TestGlobals.PROJECT, SECOND_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, SECOND_COLL);
         AdminOperationHelper
-                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.DB, SECOND_COLL));
+                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.PROJECT, SECOND_COLL));
     }
 
     @AfterAll
@@ -48,8 +48,8 @@ public class ReplicatedTxNotificationTest {
 
     @BeforeEach
     void reset() {
-        listenManager.endAllForCollection(TestGlobals.DB, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
-        listenManager.endAllForCollection(TestGlobals.DB, SECOND_COLL, ListenManager.COLLECTION_DROPPED);
+        listenManager.endAllForCollection(TestGlobals.PROJECT, TestGlobals.COLL, ListenManager.COLLECTION_DROPPED);
+        listenManager.endAllForCollection(TestGlobals.PROJECT, SECOND_COLL, ListenManager.COLLECTION_DROPPED);
         queuedListenIds().clear();
     }
 
@@ -63,7 +63,7 @@ public class ReplicatedTxNotificationTest {
     }
 
     private UUID listenOn(String collName) {
-        final var request = new AggregateRequest(TestGlobals.DB, collName);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, collName);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         return listenManager.getRegistration(listenManager.register(UUID.randomUUID(), request, "hash")).groupId();
@@ -76,7 +76,7 @@ public class ReplicatedTxNotificationTest {
     }
 
     private static ReplicationPayload upsert(String collName, String id, String version) {
-        return new ReplicationPayload(TestGlobals.DB, collName, ReplicationOp.UPSERT, List.of(doc(id)), null,
+        return new ReplicationPayload(TestGlobals.PROJECT, collName, ReplicationOp.UPSERT, List.of(doc(id)), null,
                 List.of(version));
     }
 
@@ -122,7 +122,7 @@ public class ReplicatedTxNotificationTest {
         final var tracker = TestUtils.getPrivateField(listenManager, "applyTracker", Object.class);
         final var anyActive = tracker.getClass().getDeclaredMethod("anyActive", Collection.class);
         anyActive.setAccessible(true);
-        return (boolean) anyActive.invoke(tracker, Set.of(TestGlobals.DB + "|" + TestGlobals.COLL));
+        return (boolean) anyActive.invoke(tracker, Set.of(TestGlobals.PROJECT + "|" + TestGlobals.COLL));
     }
 
     @Test

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
 public class PkPointLookupTest {
     private static final com.sun.management.ThreadMXBean THREADS = (com.sun.management.ThreadMXBean) ManagementFactory
             .getThreadMXBean();
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String COLL = TestGlobals.COLL;
 
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
@@ -48,7 +48,7 @@ public class PkPointLookupTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
     }
 
@@ -65,9 +65,9 @@ public class PkPointLookupTest {
             final var data = new JsonObject();
             data.addProperty("_id", id(i));
             data.addProperty("n", i);
-            entries.add(DbEntry.fromJsonObject(DB, COLL, data));
+            entries.add(DbEntry.fromJsonObject(PROJECT, COLL, data));
         }
-        fs.bulkInsertIntoCollection(DB, COLL, entries);
+        fs.bulkInsertIntoCollection(PROJECT, COLL, entries);
     }
 
     private static String id(int i) {
@@ -75,25 +75,25 @@ public class PkPointLookupTest {
     }
 
     private void admitPkIndex() throws Exception {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            assertNotNull(userCache.getPkIndexAndLoadIfNecessary(DB, COLL));
+            assertNotNull(userCache.getPkIndexAndLoadIfNecessary(PROJECT, COLL));
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
-        assertTrue(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(DB, COLL)));
+        assertTrue(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(PROJECT, COLL)));
     }
 
     private Thread holdWriteLock(CountDownLatch held, long millis, Runnable whileHeld) {
         return Thread.ofPlatform().start(() -> {
             try {
-                locks.lock(DB, COLL);
+                locks.lock(PROJECT, COLL);
                 try {
                     whileHeld.run();
                     held.countDown();
                     Thread.sleep(millis);
                 } finally {
-                    locks.release(DB, COLL);
+                    locks.release(PROJECT, COLL);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -103,7 +103,8 @@ public class PkPointLookupTest {
 
     private void addRowInMemoryOnly() {
         try {
-            userCache.getPkIndexAndLoadIfNecessary(DB, COLL).add(new PkIndexEntry(DB, COLL, "zz-late", 0L, 1L, 0L));
+            userCache.getPkIndexAndLoadIfNecessary(PROJECT, COLL)
+                    .add(new PkIndexEntry(PROJECT, COLL, "zz-late", 0L, 1L, 0L));
         } catch (java.io.IOException e) {
             throw new AssertionError(e);
         }
@@ -114,17 +115,17 @@ public class PkPointLookupTest {
         insert(1000);
         admitPkIndex();
         for (var warm = 0; warm < 2000; warm++) {
-            assertNotNull(userCache.pkRowFor(DB, COLL, id(warm % 1000)));
+            assertNotNull(userCache.pkRowFor(PROJECT, COLL, id(warm % 1000)));
         }
         final var thread = Thread.currentThread().threadId();
         final var before = THREADS.getThreadAllocatedBytes(thread);
         for (var call = 0; call < 100; call++) {
-            userCache.pkRowFor(DB, COLL, id(call));
+            userCache.pkRowFor(PROJECT, COLL, id(call));
         }
         final var perCall = (THREADS.getThreadAllocatedBytes(thread) - before) / 100;
 
         assertTrue(perCall < 2048, "a resident lock-free point lookup allocated " + perCall + " bytes");
-        assertEquals(id(7), userCache.pkRowFor(DB, COLL, id(7)).getValue());
+        assertEquals(id(7), userCache.pkRowFor(PROJECT, COLL, id(7)).getValue());
     }
 
     @Test
@@ -135,7 +136,7 @@ public class PkPointLookupTest {
         final var writer = holdWriteLock(held, 20L, this::addRowInMemoryOnly);
         assertTrue(held.await(5, TimeUnit.SECONDS));
 
-        final var found = userCache.pkRowFor(DB, COLL, "zz-late");
+        final var found = userCache.pkRowFor(PROJECT, COLL, "zz-late");
         writer.join(5_000L);
 
         assertNotNull(found, "the reader waited out the writer and read the list it had just changed");
@@ -150,8 +151,8 @@ public class PkPointLookupTest {
         assertTrue(held.await(5, TimeUnit.SECONDS));
         try {
             final var startedAt = System.nanoTime();
-            final var late = userCache.pkRowFor(DB, COLL, "zz-late");
-            final var existing = userCache.pkRowFor(DB, COLL, id(3));
+            final var late = userCache.pkRowFor(PROJECT, COLL, "zz-late");
+            final var existing = userCache.pkRowFor(PROJECT, COLL, id(3));
             final var waitedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
 
             assertNull(late, "the disk does not hold a row the writer has not committed");
@@ -166,18 +167,18 @@ public class PkPointLookupTest {
     @Test
     public void aNonResidentLockFreeLookupNeverAdmitsAndAllocatesLittle() throws Exception {
         insert(100_000);
-        assertNotNull(userCache.pkRowFor(DB, COLL, id(1)));
+        assertNotNull(userCache.pkRowFor(PROJECT, COLL, id(1)));
         final var thread = Thread.currentThread().threadId();
         final var before = THREADS.getThreadAllocatedBytes(thread);
 
-        final var found = userCache.pkRowFor(DB, COLL, id(99_999));
+        final var found = userCache.pkRowFor(PROJECT, COLL, id(99_999));
         final var allocated = THREADS.getThreadAllocatedBytes(thread) - before;
 
         assertEquals(id(99_999), found.getValue());
-        assertNull(userCache.pkRowFor(DB, COLL, "absent"));
-        assertFalse(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(DB, COLL)));
+        assertNull(userCache.pkRowFor(PROJECT, COLL, "absent"));
+        assertFalse(userCache.pkIndexes().containsKey(Cache.getCollectionIdentifier(PROJECT, COLL)));
         assertTrue(allocated < 2L << 20, "a point scan of 100k rows allocated " + allocated + " bytes");
-        assertEquals(100_000, userCache.pkCountForCoverage(DB, COLL));
+        assertEquals(100_000, userCache.pkCountForCoverage(PROJECT, COLL));
     }
 
     @Test
@@ -187,32 +188,33 @@ public class PkPointLookupTest {
         final var cache = new UserCache();
         final var spied = spy(fs);
         TestUtils.setPrivateField(cache, "fs", spied);
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            assertEquals(id(5), cache.pkRowFor(DB, COLL, id(5)).getValue());
-            assertNotNull(cache.sizes().refusedPk(Cache.getCollectionIdentifier(DB, COLL)));
-            assertEquals(id(6), cache.pkRowFor(DB, COLL, id(6)).getValue());
-            assertNull(cache.pkRowFor(DB, COLL, "absent"));
-            assertEquals(1000, cache.pkCountForCoverage(DB, COLL));
-            assertEquals(1000, cache.pkIndexSize(DB, COLL));
+            assertEquals(id(5), cache.pkRowFor(PROJECT, COLL, id(5)).getValue());
+            assertNotNull(cache.sizes().refusedPk(Cache.getCollectionIdentifier(PROJECT, COLL)));
+            assertEquals(id(6), cache.pkRowFor(PROJECT, COLL, id(6)).getValue());
+            assertNull(cache.pkRowFor(PROJECT, COLL, "absent"));
+            assertEquals(1000, cache.pkCountForCoverage(PROJECT, COLL));
+            assertEquals(1000, cache.pkIndexSize(PROJECT, COLL));
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
 
-        verify(spied, never()).readWholePkIndexFile(DB, COLL);
-        verify(spied, atLeastOnce()).pkRowsFor(org.mockito.ArgumentMatchers.eq(DB),
+        verify(spied, never()).readWholePkIndexFile(PROJECT, COLL);
+        verify(spied, atLeastOnce()).pkRowsFor(org.mockito.ArgumentMatchers.eq(PROJECT),
                 org.mockito.ArgumentMatchers.eq(COLL), anyCollection());
     }
 
     @Test
     public void anUnrecognisedPkIndexIsAnErrorNotAMissingEntry() throws Exception {
         insert(10);
-        Files.writeString(new java.io.File(TestGlobals.PATH + "/" + DB + "/" + COLL + "/" + COLL + "-pk.idx").toPath(),
+        Files.writeString(
+                new java.io.File(TestGlobals.PATH + "/" + PROJECT + "/" + COLL + "/" + COLL + "-pk.idx").toPath(),
                 "garbage\nmore garbage\n", StandardCharsets.UTF_8);
         final var processor = IocContainer.get(OperationProcessor.class);
         final AtomicReference<String> codes = new AtomicReference<>("");
         for (final var dirty : new boolean[]{true, false}) {
-            final var request = new FindByIdRequest(DB, COLL);
+            final var request = new FindByIdRequest(PROJECT, COLL);
             request.set_id(id(1));
             request.setDirtyRead(dirty);
             codes.set(codes.get() + processor.processMessage(request).getErrorCode() + ";");

@@ -89,10 +89,10 @@ def user(row: Document) -> UserInfo:
         username=_text(row, "_id"),
         admin=_flag(row, "admin", fallback=False),
         global_permissions=_list(row, "globalPermissions"),
-        database_permissions=_grants(row, "databasePermissions"),
+        project_permissions=_grants(row, "projectPermissions"),
         collection_permissions=_grants(row, "collectionPermissions"),
         script_permissions=_grants(row, "scriptPermissions"),
-        owned_databases=_list(row, "ownedDatabases"),
+        owned_projects=_list(row, "ownedProjects"),
         raw=row,
     )
 
@@ -113,7 +113,7 @@ def script_run(row: Document) -> ScriptRun:
         run_id=_text(row, "runId"),
         node=_optional_text(row, "node"),
         kind=_text(row, "kind"),
-        database=_optional_text(row, "database"),
+        project=_optional_text(row, "project"),
         name=_optional_text(row, "name"),
         username=_optional_text(row, "username"),
         age_ms=_number(row, "ageMs"),
@@ -125,7 +125,7 @@ def trigger_run(row: Document) -> TriggerRun:
     return TriggerRun(
         run_id=_text(row, "runId"),
         status=_text(row, "status"),
-        database=_optional_text(row, "database"),
+        project=_optional_text(row, "project"),
         collection=_optional_text(row, "collection"),
         trigger=_optional_text(row, "trigger"),
         procedure=_optional_text(row, "procedure"),

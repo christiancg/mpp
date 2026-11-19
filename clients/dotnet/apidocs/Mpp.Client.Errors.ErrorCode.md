@@ -51,7 +51,7 @@ Code `400-15` (`SCRIPT_RESULT_TOO_LARGE`). Script result exceeds the maximum all
 Code `400-16` (`INVALID_SCHEDULE`). The schedule definition is not valid.
 
 ## TooManySchedules
-Code `400-17` (`TOO_MANY_SCHEDULES`). The database already has the maximum number of schedules.
+Code `400-17` (`TOO_MANY_SCHEDULES`). The project already has the maximum number of schedules.
 
 ## ProcedureImportNotFound
 Code `400-18` (`PROCEDURE_IMPORT_NOT_FOUND`). The procedure imports a procedure that does not exist.
@@ -102,7 +102,7 @@ Code `400-32` (`TOO_MANY_TRIGGERS`). The collection has the maximum number of tr
 Code `400-33` (`TOO_MANY_SCHEDULES_FOR_USER`). The user has the maximum number of schedules.
 
 ## TooManyProcedures
-Code `400-34` (`TOO_MANY_PROCEDURES`). The database has the maximum number of procedures.
+Code `400-34` (`TOO_MANY_PROCEDURES`). The project has the maximum number of procedures.
 
 ## ScheduleIntervalTooSmall
 Code `400-35` (`SCHEDULE_INTERVAL_TOO_SMALL`). The schedule interval is below the allowed minimum.
@@ -119,11 +119,11 @@ Code `400-38` (`TOO_MANY_LISTENS_FOR_USER`). The user has the maximum number of 
 ## SchemaTooManyPatterns
 Code `400-39` (`SCHEMA_TOO_MANY_PATTERNS`). The schema has more regular expressions than allowed.
 
-## TooManyCollectionsForDatabase
-Code `400-40` (`TOO_MANY_COLLECTIONS_FOR_DATABASE`). The database has the maximum number of collections.
+## TooManyCollectionsForProject
+Code `400-40` (`TOO_MANY_COLLECTIONS_FOR_PROJECT`). The project has the maximum number of collections.
 
-## TooManyDatabases
-Code `400-41` (`TOO_MANY_DATABASES`). The server has the maximum number of databases.
+## TooManyProjects
+Code `400-41` (`TOO_MANY_PROJECTS`). The server has the maximum number of projects.
 
 ## TooManyIndexesForCollection
 Code `400-42` (`TOO_MANY_INDEXES_FOR_COLLECTION`). The collection has the maximum number of indexes.
@@ -162,7 +162,7 @@ Code `403-3` (`FAULT_INJECTION_DISABLED`). Fault injection is disabled on this s
 Code `403-4` (`PROCEDURE_BOUND_BY_OTHER_DEFINER`). Procedure is bound by a trigger or schedule that runs as another user.
 
 ## DefinitionOwnedByOtherDefiner
-Code `403-5` (`DEFINITION_OWNED_BY_OTHER_DEFINER`). The trigger or schedule belongs to another user; only that user, a database owner or an admin may change it.
+Code `403-5` (`DEFINITION_OWNED_BY_OTHER_DEFINER`). The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it.
 
 ## SourceRequiresManage
 Code `403-6` (`SOURCE_REQUIRES_MANAGE`). Procedure source requires script MANAGE.
@@ -176,8 +176,8 @@ Code `404-2` (`ENTRY_NOT_FOUND`). Entry not found.
 ## NoResults
 Code `404-3` (`NO_RESULTS`). No results.
 
-## DatabaseNotFound
-Code `404-4` (`DATABASE_NOT_FOUND`). Database not found.
+## ProjectNotFound
+Code `404-4` (`PROJECT_NOT_FOUND`). Project not found.
 
 ## NoUsersFound
 Code `404-5` (`NO_USERS_FOUND`). No users found.
@@ -224,8 +224,8 @@ Code `408-6` (`AGGREGATE_TIMEOUT`). The aggregation exceeded its time budget.
 ## UserAlreadyExists
 Code `409-1` (`USER_ALREADY_EXISTS`). User already exists.
 
-## DatabaseAlreadyExists
-Code `409-2` (`DATABASE_ALREADY_EXISTS`). Database already exists.
+## ProjectAlreadyExists
+Code `409-2` (`PROJECT_ALREADY_EXISTS`). Project already exists.
 
 ## TransactionAlreadyActive
 Code `409-3` (`TRANSACTION_ALREADY_ACTIVE`). A transaction is already in progress for this connection.
@@ -317,17 +317,17 @@ Code `500-9` (`ERROR_AGGREGATING`). Error while processing aggregation.
 ## ErrorDeleting
 Code `500-10` (`ERROR_DELETING`). Error while deleting entry.
 
-## ErrorCreatingDatabase
-Code `500-11` (`ERROR_CREATING_DATABASE`). Error while creating database.
+## ErrorCreatingProject
+Code `500-11` (`ERROR_CREATING_PROJECT`). Error while creating project.
 
-## ErrorUpdatingDatabaseOwners
-Code `500-12` (`ERROR_UPDATING_DATABASE_OWNERS`). Error updating database owners.
+## ErrorUpdatingProjectOwners
+Code `500-12` (`ERROR_UPDATING_PROJECT_OWNERS`). Error updating project owners.
 
-## ErrorDroppingDatabase
-Code `500-13` (`ERROR_DROPPING_DATABASE`). Error while dropping database.
+## ErrorDroppingProject
+Code `500-13` (`ERROR_DROPPING_PROJECT`). Error while dropping project.
 
-## ErrorListingDatabases
-Code `500-14` (`ERROR_LISTING_DATABASES`). Error while listing databases.
+## ErrorListingProjects
+Code `500-14` (`ERROR_LISTING_PROJECTS`). Error while listing projects.
 
 ## ErrorCreatingCollection
 Code `500-15` (`ERROR_CREATING_COLLECTION`). Error while creating collection.
@@ -351,7 +351,7 @@ Code `500-20` (`ERROR_DROPPING_INDEX`). Error while dropping index.
 Code `500-21` (`ERROR_REINDEXING`). Error while reindexing.
 
 ## ErrorGatheringStats
-Code `500-22` (`ERROR_GATHERING_STATS`). Error while gathering database stats.
+Code `500-22` (`ERROR_GATHERING_STATS`). Error while gathering project stats.
 
 ## ErrorListen
 Code `500-23` (`ERROR_LISTEN`). Error while processing listen operation.
@@ -480,7 +480,7 @@ Whether the server marks a request refused with this code as safe to send again.
 The server's default message for the code, or null when it has none.
 
 ## Name
-The code's name in the catalogue, such as `DATABASE_ALREADY_EXISTS`.
+The code's name in the catalogue, such as `PROJECT_ALREADY_EXISTS`.
 
 ## Status
 The status the server puts on a reply with this code.

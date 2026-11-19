@@ -15,8 +15,8 @@ NUM_ENTRIES_PER_THREAD = 1000
 
 BULK_CREATION = False
 
-base_message_individual = {"type": "SAVE", "databaseName": "test", "collectionName": "testCollection"}
-base_message_bulk = {"type": "BULK_SAVE", "databaseName": "test", "collectionName": "testCollection"}
+base_message_individual = {"type": "SAVE", "projectName": "test", "collectionName": "testCollection"}
+base_message_bulk = {"type": "BULK_SAVE", "projectName": "test", "collectionName": "testCollection"}
 
 def random_int(size = 4):
     return random.randint(1, 10**size)
@@ -66,34 +66,35 @@ def thread_function(thread_number):
             one_by_one_creation(s, f)
         print(f"Finished sending from {thread_number}")
 
-def setup_database():
+def setup_project():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
         f = s.makefile('rb')
         authenticate(s, f)
 
-        list_db_msg = json.dumps({"type": "LIST_DATABASES"})
-        s.sendall(list_db_msg.encode() + b'\n')
+        list_project_msg = json.dumps({"type": "LIST_PROJECTS"})
+        s.sendall(list_project_msg.encode() + b'\n')
         response = json.loads(f.readline().decode())
-        databases = response.get("databases", [])
+        projects = response.get("projects", [])
 
-        if "test" not in databases:
-            print("Creating database 'test'...")
-            create_db_msg = json.dumps({"type": "CREATE_DATABASE", "databaseName": "test"})
-            s.sendall(create_db_msg.encode() + b'\n')
+        if "test" not in projects:
+            print("Creating project 'test'...")
+            create_project_msg = json.dumps({"type": "CREATE_PROJECT", "projectName": "test"})
+            s.sendall(create_project_msg.encode() + b'\n')
             response = f.readline().decode()
-            print(f"CREATE_DATABASE response: {response.strip()}")
+            print(f"CREATE_PROJECT response: {response.strip()}")
         else:
-            print("Database 'test' already exists")
+            print("Project 'test' already exists")
 
-        list_coll_msg = json.dumps({"type": "LIST_COLLECTIONS", "databaseName": "test"})
+        list_coll_msg = json.dumps({"type": "LIST_COLLECTIONS", "projectName": "test"})
         s.sendall(list_coll_msg.encode() + b'\n')
         response = json.loads(f.readline().decode())
         collections = response.get("collections") or []
 
         if "testCollection" not in collections:
             print("Creating collection 'testCollection'...")
-            create_coll_msg = json.dumps({"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "testCollection"})
+            create_coll_msg = json.dumps({"type": "CREATE_COLLECTION", "projectName": "test",
+                                          "collectionName": "testCollection"})
             s.sendall(create_coll_msg.encode() + b'\n')
             response = f.readline().decode()
             print(f"CREATE_COLLECTION response: {response.strip()}")
@@ -103,9 +104,9 @@ def setup_database():
 start = datetime.now()
 start_time = start.strftime("%H:%M:%S")
 print(f"Started at {start_time!r}")
-print("Setting up database and collection...")
-setup_database()
-print("Database setup complete, starting data creation...")
+print("Setting up project and collection...")
+setup_project()
+print("Project setup complete, starting data creation...")
 threads = []
 for i in range(0,NUM_THREADS):
     x = threading.Thread(target=thread_function, args=(i,))

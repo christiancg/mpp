@@ -136,7 +136,7 @@ public class ClusterServerIntegrationTest {
     @Test
     public void test_digest_request_is_handled() throws Exception {
         final var request = message(ClusterMessageType.DIGEST, SECRET, node("K", 9990), null);
-        request.setAntiEntropy(new AntiEntropyPayload("someDb", "someColl"));
+        request.setAntiEntropy(new AntiEntropyPayload("someProject", "someColl"));
         final var response = pool.request(serverAddress(), request, 3000);
         assertTrue(
                 response.getType() == ClusterMessageType.DIGEST_ACK || response.getType() == ClusterMessageType.ERROR);
@@ -145,7 +145,7 @@ public class ClusterServerIntegrationTest {
     @Test
     public void test_pull_request_is_handled() throws Exception {
         final var request = message(ClusterMessageType.PULL, SECRET, node("L", 9990), null);
-        final var payload = new AntiEntropyPayload("someDb", "someColl");
+        final var payload = new AntiEntropyPayload("someProject", "someColl");
         payload.setIds(List.of("a"));
         request.setAntiEntropy(payload);
         final var response = pool.request(serverAddress(), request, 3000);

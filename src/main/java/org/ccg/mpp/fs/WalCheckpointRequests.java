@@ -12,7 +12,7 @@ final class WalCheckpointRequests {
     private static final Map<String, Request> requested = new ConcurrentHashMap<>();
     private static volatile BooleanSupplier listener = NOBODY_LISTENS;
 
-    record Request(String dbName, String collName) {
+    record Request(String projectName, String collName) {
     }
 
     private WalCheckpointRequests() {
@@ -22,8 +22,8 @@ final class WalCheckpointRequests {
         listener = onFirstRequest == null ? NOBODY_LISTENS : onFirstRequest;
     }
 
-    static void request(String logPath, String dbName, String collName) {
-        if (requested.putIfAbsent(logPath, new Request(dbName, collName)) == null && !listener.getAsBoolean()) {
+    static void request(String logPath, String projectName, String collName) {
+        if (requested.putIfAbsent(logPath, new Request(projectName, collName)) == null && !listener.getAsBoolean()) {
             requested.remove(logPath);
         }
     }

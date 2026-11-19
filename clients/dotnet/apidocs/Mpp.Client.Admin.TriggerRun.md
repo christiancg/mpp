@@ -2,7 +2,7 @@ A pending or dead trigger run.
 
 @param RunId the id `TriggerRuns.ResolveAsync` takes
 @param Status `PENDING`, `DEAD` or `STAGED`
-@param Database the database
+@param Project the project
 @param Collection the collection
 @param Trigger the trigger's name
 @param Procedure the procedure it runs
@@ -16,7 +16,7 @@ Creates the description.
 
 @param RunId the run's id
 @param Status `PENDING`, `DEAD` or `STAGED`
-@param Database the database
+@param Project the project
 @param Collection the collection
 @param Trigger the trigger's name
 @param Procedure the procedure it runs
@@ -31,8 +31,8 @@ The attempts made so far.
 ## Collection
 The collection, or null.
 
-## Database
-The database, or null.
+## Project
+The project, or null.
 
 ## Event
 The write event that fired the trigger, or null.

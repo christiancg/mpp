@@ -60,10 +60,10 @@ public class AggregationSortIndexLazinessTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         userCache = IocContainer.get(Cache.class).userCache();
         processor = new OperationProcessor();
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var obj = new JsonObject();
@@ -71,46 +71,46 @@ public class AggregationSortIndexLazinessTest {
             obj.addProperty(FIELD, (i * 37) % DOCUMENTS);
             documents.add(obj);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, COLL);
         bulk.setObjects(documents);
         processor.processMessage(bulk);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, FIELD));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, FIELD));
         drainBackgroundWrites();
     }
 
     private void drainBackgroundWrites() throws IOException, InterruptedException {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        for (final var id : pending.idsFor(TestGlobals.DB, COLL)) {
-            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.DB, COLL, Set.of(id));
+        for (final var id : pending.idsFor(TestGlobals.PROJECT, COLL)) {
+            final var entries = IocContainer.get(Cache.class).getEntriesByIds(TestGlobals.PROJECT, COLL, Set.of(id));
             if (!entries.isEmpty()) {
-                EventProcessorHelper
-                        .processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, COLL, entries.getFirst()));
+                EventProcessorHelper.processEvent(
+                        new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, COLL, entries.getFirst()));
             }
         }
-        assertTrue(pending.idsFor(TestGlobals.DB, COLL).isEmpty(), "the pending overlay must be drained");
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, COLL).isEmpty(), "the pending overlay must be drained");
     }
 
     @AfterEach
     public void tearDown() throws NoSuchFieldException, IllegalAccessException, IOException, InterruptedException {
-        processor.processMessage(new DropCollectionRequest(TestGlobals.DB, COLL));
+        processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, COLL));
         TestUtils.standardTearDown();
     }
 
     private List<JsonObject> run(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAggregationSteps(List.of(steps));
         final var response = processor.processMessage(request);
         return response instanceof AggregateResponse aggregate ? aggregate.getResults() : List.of();
     }
 
     private int cachedDocuments() {
-        final var cached = userCache.getCachedCollection(TestGlobals.DB, COLL);
+        final var cached = userCache.getCachedCollection(TestGlobals.PROJECT, COLL);
         return cached == null ? 0 : cached.size();
     }
 
     @Test
     public void test_a_small_limit_fetches_only_the_first_chunk() {
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
         assertEquals(0, cachedDocuments());
 
         final var results = run(new SortAggregationStep(FIELD, true), new LimitAggregationStep(3));
@@ -124,7 +124,7 @@ public class AggregationSortIndexLazinessTest {
 
     @Test
     public void test_no_limit_fetches_every_document() {
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var results = run(new SortAggregationStep(FIELD, true));
 
@@ -134,7 +134,7 @@ public class AggregationSortIndexLazinessTest {
 
     @Test
     public void test_a_limit_spanning_two_chunks_stops_after_the_second() {
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var results = run(new SortAggregationStep(FIELD, true), new LimitAggregationStep(CHUNK + 1));
 
@@ -147,7 +147,7 @@ public class AggregationSortIndexLazinessTest {
     public void test_the_limited_result_matches_the_head_of_the_full_sort() {
         final var full = run(new SortAggregationStep(FIELD, true)).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var limited = run(new SortAggregationStep(FIELD, true), new LimitAggregationStep(10)).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
@@ -180,20 +180,20 @@ public class AggregationSortIndexLazinessTest {
         final var document = new JsonObject();
         document.add(Globals.PK_FIELD, new JsonString(id));
         document.add(FIELD, value);
-        final var request = new SaveRequest(TestGlobals.DB, COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, COLL);
         request.setObject(document);
         processor.processMessage(request);
     }
 
     private void forgetPendingWrites() {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        pending.clear(TestGlobals.DB, COLL, pending.idsFor(TestGlobals.DB, COLL), 0L);
-        assertTrue(pending.idsFor(TestGlobals.DB, COLL).isEmpty());
+        pending.clear(TestGlobals.PROJECT, COLL, pending.idsFor(TestGlobals.PROJECT, COLL), 0L);
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, COLL).isEmpty());
     }
 
     @Test
     public void test_a_range_top_k_fetches_only_the_bound() {
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var top = ids(between(100, 600), new SortAggregationStep(FIELD, true), new LimitAggregationStep(5));
 
@@ -268,7 +268,7 @@ public class AggregationSortIndexLazinessTest {
         for (var i = 0; i < 5; i++) {
             save("label" + i, new JsonString("v" + i));
         }
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, "label"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, "label"));
         final var steps = new BaseAggregationStep[]{
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.GREATER_THAN, "label", new JsonNumber(1))),
@@ -284,7 +284,7 @@ public class AggregationSortIndexLazinessTest {
         final var head = ids(between(100, 600), sort, new LimitAggregationStep(3));
         save(head.getFirst(), new JsonNumber(450));
 
-        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.DB, COLL).isEmpty());
+        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.PROJECT, COLL).isEmpty());
         assertEquals(scanned(between(100, 600), sort, new LimitAggregationStep(3)),
                 ids(between(100, 600), sort, new LimitAggregationStep(3)));
     }
@@ -295,7 +295,7 @@ public class AggregationSortIndexLazinessTest {
                 List.of(new FieldOperator(FieldOperatorType.GREATER_THAN_EQUALS, FIELD, new JsonNumber(100)),
                         new FieldOperator(FieldOperatorType.SMALLER_THAN, FIELD, new JsonNumber(600))));
 
-        assertNull(RangeIdWalk.open(TestGlobals.DB, COLL, bounds, true, 5, ReadObserver.NONE),
+        assertNull(RangeIdWalk.open(TestGlobals.PROJECT, COLL, bounds, true, 5, ReadObserver.NONE),
                 "a dirty read or a LISTEN re-run holds no collection lock, so a walk paging past writers must decline");
     }
 
@@ -322,7 +322,7 @@ public class AggregationSortIndexLazinessTest {
 
     @Test
     public void test_an_indexed_filter_limit_fetches_only_the_first_chunk() {
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var limited = ids(bound(FieldOperatorType.GREATER_THAN_EQUALS, 0), new LimitAggregationStep(3));
 
@@ -341,7 +341,7 @@ public class AggregationSortIndexLazinessTest {
             save(stale, new JsonNumber(5000));
         }
         forgetPendingWrites();
-        userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+        userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
         final var limited = ids(bound(FieldOperatorType.SMALLER_THAN, 100), new LimitAggregationStep(3));
 
@@ -367,7 +367,7 @@ public class AggregationSortIndexLazinessTest {
         final var filters = List.of(bound(FieldOperatorType.EQUALS, 9999), bound(FieldOperatorType.GREATER_THAN, 0),
                 new FilterAggregationStep(new FieldOperator(FieldOperatorType.IN, FIELD, in)));
         for (final var filter : filters) {
-            userCache.evictCollectionDocuments(TestGlobals.DB, COLL);
+            userCache.evictCollectionDocuments(TestGlobals.PROJECT, COLL);
 
             final var limited = ids(filter, new LimitAggregationStep(4));
 
@@ -383,7 +383,7 @@ public class AggregationSortIndexLazinessTest {
         save("g2", new JsonNumber(9999));
         save("late", new JsonNumber(9999));
         save("g4", new JsonNumber(1));
-        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.DB, COLL).isEmpty());
+        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.PROJECT, COLL).isEmpty());
 
         final var limited = ids(bound(FieldOperatorType.EQUALS, 9999), new LimitAggregationStep(50));
 
@@ -404,7 +404,7 @@ public class AggregationSortIndexLazinessTest {
 
     @Test
     public void test_analyze_counts_the_documents_an_indexed_filter_limit_fetched() {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(
                 List.of(bound(FieldOperatorType.GREATER_THAN_EQUALS, 0), new LimitAggregationStep(5)));
@@ -417,7 +417,7 @@ public class AggregationSortIndexLazinessTest {
 
     @Test
     public void test_analyze_reports_the_index_and_the_documents_fetched() {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(
                 List.of(between(100, 600), new SortAggregationStep(FIELD, true), new LimitAggregationStep(5)));

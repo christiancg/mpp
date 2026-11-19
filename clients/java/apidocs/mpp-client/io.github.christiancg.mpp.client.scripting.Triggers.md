@@ -5,7 +5,7 @@ The triggers of one collection. Obtained from `Collection.triggers()`.
 Internal: use `Collection.triggers()`.
 
 @param context the client's internal context
-@param database the database
+@param project the project
 @param collection the collection
 
 ## save(TriggerDefinition)

@@ -29,7 +29,7 @@ public class AdminPageSelectionTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
     }
 
@@ -43,10 +43,10 @@ public class AdminPageSelectionTest {
     }
 
     private void page(long number, long size) {
-        final var entry = new AdminPageEntry(TestGlobals.DB, COLL, number);
+        final var entry = new AdminPageEntry(TestGlobals.PROJECT, COLL, number);
         entry.setPageSize(size);
         entry.setEntryCount(1);
-        cache.addAdminPageEntries(TestGlobals.DB, COLL, entry);
+        cache.addAdminPageEntries(TestGlobals.PROJECT, COLL, entry);
     }
 
     @Test
@@ -55,7 +55,7 @@ public class AdminPageSelectionTest {
         page(1, 0);
         page(2, 0);
 
-        assertEquals(1L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100));
+        assertEquals(1L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100));
     }
 
     @Test
@@ -64,7 +64,7 @@ public class AdminPageSelectionTest {
         page(0, maxPageSize() - 10);
         page(1, 0);
 
-        assertEquals(1L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100),
+        assertEquals(1L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100),
                 "first fit must be by page number, not by the order pages were added");
     }
 
@@ -73,12 +73,12 @@ public class AdminPageSelectionTest {
         page(0, maxPageSize());
         page(1, maxPageSize());
 
-        assertEquals(2L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100));
+        assertEquals(2L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100));
     }
 
     @Test
     public void test_an_empty_collection_starts_at_page_zero() {
-        assertEquals(0L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100));
+        assertEquals(0L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100));
     }
 
     @Test
@@ -86,7 +86,8 @@ public class AdminPageSelectionTest {
         final var size = (int) (maxPageSize() / 4);
         final var sizes = new int[]{size, size, size, size, size, size};
 
-        assertArrayEquals(new long[]{0L, 0L, 0L, 0L, 1L, 1L}, cache.selectPagesForInsert(TestGlobals.DB, COLL, sizes),
+        assertArrayEquals(new long[]{0L, 0L, 0L, 0L, 1L, 1L},
+                cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, sizes),
                 "the pending overlay must fill a page before allocating the next one");
     }
 
@@ -95,7 +96,7 @@ public class AdminPageSelectionTest {
         page(0, maxPageSize() / 2);
         final var sizes = new int[]{(int) (maxPageSize() / 2), 100};
 
-        assertArrayEquals(new long[]{0L, 1L}, cache.selectPagesForInsert(TestGlobals.DB, COLL, sizes),
+        assertArrayEquals(new long[]{0L, 1L}, cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, sizes),
                 "a committed page already filled by pending bytes must be skipped");
     }
 
@@ -103,9 +104,9 @@ public class AdminPageSelectionTest {
     public void test_a_pending_only_page_beyond_the_committed_ones_is_considered() {
         page(0, maxPageSize());
 
-        assertEquals(1L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100),
+        assertEquals(1L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100),
                 "without the overlay the next free page is 1");
-        assertArrayEquals(new long[]{1L, 1L}, cache.selectPagesForInsert(TestGlobals.DB, COLL, new int[]{10, 100}),
+        assertArrayEquals(new long[]{1L, 1L}, cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, new int[]{10, 100}),
                 "a page known only to the overlay must still be a first-fit candidate");
     }
 
@@ -131,8 +132,8 @@ public class AdminPageSelectionTest {
             try {
                 started.await();
                 for (var i = 0; i < 400; i++) {
-                    cache.selectPageForInsert(TestGlobals.DB, COLL, 1);
-                    cache.getAdminPageEntry(TestGlobals.DB, COLL, 5);
+                    cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 1);
+                    cache.getAdminPageEntry(TestGlobals.PROJECT, COLL, 5);
                 }
             } catch (Throwable t) {
                 failure.set(t);
@@ -146,12 +147,12 @@ public class AdminPageSelectionTest {
         reader.join(TimeUnit.SECONDS.toMillis(20));
 
         assertNull(failure.get(), "page selection must tolerate a concurrent page being added");
-        assertEquals(400, cache.getAdminPageEntries(TestGlobals.DB, COLL).size());
+        assertEquals(400, cache.getAdminPageEntries(TestGlobals.PROJECT, COLL).size());
     }
 
     private static java.io.File pageFile(long number) {
         final var folder = new java.io.File(
-                TestGlobals.PATH + java.io.File.separator + TestGlobals.DB + java.io.File.separator + COLL);
+                TestGlobals.PATH + java.io.File.separator + TestGlobals.PROJECT + java.io.File.separator + COLL);
         return new java.io.File(folder, COLL + Globals.FILE_PAGE_SEPARATOR + number + Globals.DB_FILE_EXTENSION);
     }
 
@@ -172,9 +173,9 @@ public class AdminPageSelectionTest {
         page(0, maxPageSize() * 3 / 4 + 1);
         firstPageFileOfLength(maxPageSize());
 
-        assertEquals(1L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100),
+        assertEquals(1L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100),
                 "live room alone is not enough while the file is full and too little of it is dead");
-        assertEquals(1L, cache.selectPagesForInsert(TestGlobals.DB, COLL, new int[]{100})[0]);
+        assertEquals(1L, cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, new int[]{100})[0]);
     }
 
     @Test
@@ -182,9 +183,9 @@ public class AdminPageSelectionTest {
         page(0, maxPageSize() / 2);
         firstPageFileOfLength(maxPageSize());
 
-        assertEquals(0L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100),
+        assertEquals(0L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100),
                 "the appender vacuums a page that is a quarter dead before appending to it");
-        assertEquals(0L, cache.selectPagesForInsert(TestGlobals.DB, COLL, new int[]{100})[0]);
+        assertEquals(0L, cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, new int[]{100})[0]);
     }
 
     private record CountingLengths(FileSystem realFs, FileSystem spyFs, List<Long> asked) {
@@ -201,7 +202,7 @@ public class AdminPageSelectionTest {
                 asked.add(page);
                 return real.applyAsLong(page);
             };
-        }).when(spyFs).pageFileLengthsOf(TestGlobals.DB, COLL);
+        }).when(spyFs).pageFileLengthsOf(TestGlobals.PROJECT, COLL);
         TestUtils.setPrivateField(pageCache, "fs", spyFs);
         return new CountingLengths(realFs, spyFs, asked);
     }
@@ -218,7 +219,7 @@ public class AdminPageSelectionTest {
         page(2, 0);
         final var counting = countingLengths();
         try {
-            assertEquals(2L, cache.selectPageForInsert(TestGlobals.DB, COLL, 100));
+            assertEquals(2L, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100));
 
             assertEquals(List.of(2L), counting.asked());
             Mockito.verify(counting.spyFs(), Mockito.never()).pageFileLength(Mockito.anyString(), Mockito.anyString(),
@@ -235,17 +236,17 @@ public class AdminPageSelectionTest {
             page(number, maxPageSize() * 3 / 4 + 1);
             pageFileOfLength(number, maxPageSize());
         }
-        assertEquals(pages, cache.selectPageForInsert(TestGlobals.DB, COLL, 100), "every page file is full");
+        assertEquals(pages, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100), "every page file is full");
         final var counting = countingLengths();
         try {
             for (var number = 0; number < pages; number++) {
                 assertTrue(pageFile(number).delete());
             }
 
-            assertEquals(pages, cache.selectPageForInsert(TestGlobals.DB, COLL, 100),
+            assertEquals(pages, cache.selectPageForInsert(TestGlobals.PROJECT, COLL, 100),
                     "a stat would find every page gone and pick page 0, so the remembered lengths answered");
             assertEquals(pages, counting.asked().size());
-            assertEquals(pages, cache.selectPagesForInsert(TestGlobals.DB, COLL, new int[]{100})[0]);
+            assertEquals(pages, cache.selectPagesForInsert(TestGlobals.PROJECT, COLL, new int[]{100})[0]);
             Mockito.verify(counting.spyFs(), Mockito.never()).pageFileLength(Mockito.anyString(), Mockito.anyString(),
                     Mockito.anyLong());
             Mockito.verify(counting.spyFs(), Mockito.never()).pageFileLengths(Mockito.anyString(), Mockito.anyString());

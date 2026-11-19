@@ -39,12 +39,12 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
     }
 
     private PkIndexEntry localEntry() throws Exception {
-        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(entry -> entry.getValue().equals(ID)).findFirst().orElseThrow();
     }
 
     private int localCount() throws Exception {
-        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size();
+        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size();
     }
 
     private PeerConnectionPool peer(List<DigestEntry> digest, int failingPull) throws Exception {
@@ -52,7 +52,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(invocation -> {
             final ClusterMessage message = invocation.getArgument(1);
             final var response = new ClusterMessage();
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             if (message.getType() == ClusterMessageType.DIGEST) {
                 response.setType(ClusterMessageType.DIGEST_ACK);
                 payload.setNodeId(HIGHER_NODE_ID);
@@ -93,7 +93,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
         injectPeer(peer(List.of(new DigestEntry(ID, local.getVersion(), false, local.getLength())), 0),
                 node(HIGHER_NODE_ID, 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(0, pulls.get(), "an identical copy at the same version must not be re-pulled and rewritten");
     }
@@ -105,7 +105,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
         injectPeer(peer(List.of(new DigestEntry(ID, local.getVersion(), false, local.getLength() + 1)), 0),
                 node(HIGHER_NODE_ID, 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(1, pulls.get(), "two different copies at one version still converge on the higher node id");
     }
@@ -114,7 +114,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
     public void test_pulls_are_sent_in_batches() throws Exception {
         injectPeer(peer(remoteOnlyDigestBeyondOneBatch(), 0), node(HIGHER_NODE_ID, 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(2, pulls.get(), "one unbounded PULL can outlast the ack timeout on a large collection");
         assertEquals(BEYOND_ONE_BATCH, localCount(), "every batch must be applied");
@@ -124,14 +124,14 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
     public void test_a_failed_batch_does_not_stop_the_others() throws Exception {
         injectPeer(peer(remoteOnlyDigestBeyondOneBatch(), 1), node(HIGHER_NODE_ID, 5001));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(2, pulls.get());
         assertEquals(1, localCount(), "the batch after the failed one must still be pulled and applied");
     }
 
     private void save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.addProperty("payload", id + "-value");
@@ -141,7 +141,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
     }
 
     private PkIndexEntry byId(String id) throws Exception {
-        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(e -> e.getValue().equals(id)).findFirst().orElseThrow();
     }
 
@@ -150,7 +150,7 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
         save("a");
         save("b");
 
-        final var pull = service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a", "b"));
+        final var pull = service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a", "b"));
 
         assertEquals(2, pull.getDocuments().size());
         for (final var document : pull.getDocuments()) {
@@ -166,12 +166,12 @@ public class AntiEntropyPullGateTest extends AntiEntropyTestBase {
         save("b");
         final var target = byId("a");
         final var other = byId("b");
-        cache.evictEntry(TestGlobals.DB, TestGlobals.COLL, "a");
+        cache.evictEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a");
         target.setPosition(other.getPosition());
         target.setLength(other.getLength());
         target.setPage(other.getPage());
 
-        assertThrows(Exception.class, () -> service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a")),
+        assertThrows(Exception.class, () -> service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a")),
                 "a stale offset must fail the pull rather than ship another document's body to a peer");
     }
 }

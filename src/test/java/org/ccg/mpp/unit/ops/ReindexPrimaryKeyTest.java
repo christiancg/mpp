@@ -76,7 +76,7 @@ public class ReindexPrimaryKeyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(PageOccupancyReconciler.class, "taskManager",
                 BackgroundTaskManager.class);
         stubTaskManager = new BackgroundTaskManager();
@@ -86,7 +86,7 @@ public class ReindexPrimaryKeyTest {
     @AfterEach
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -96,29 +96,29 @@ public class ReindexPrimaryKeyTest {
         object.addProperty("_id", id);
         object.addProperty(TAG, "tag-" + id);
         object.addProperty(OTHER, "other-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private void index(String field) {
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, field)).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, field)).getStatus());
     }
 
     private OperationResponse reindex(String... fieldNames) {
         return processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of(fieldNames), true));
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of(fieldNames), true));
     }
 
     private OperationStatus find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
 
     private File collectionFile(String name) {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + name);
     }
 
@@ -127,17 +127,17 @@ public class ReindexPrimaryKeyTest {
     }
 
     private List<PkIndexEntry> pkRows() throws IOException {
-        return new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL));
+        return new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private void writePk(List<PkIndexEntry> rows) throws IOException {
         Files.write(pkFile().toPath(), rows.stream().map(PkIndexEntry::toFileEntry).toList(), StandardCharsets.UTF_8);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private void writeGarbagePk() throws IOException {
         Files.writeString(pkFile().toPath(), GARBAGE, StandardCharsets.UTF_8);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private byte[] tagIndexBytes() throws IOException {
@@ -145,7 +145,7 @@ public class ReindexPrimaryKeyTest {
     }
 
     private Set<String> tagIndexIds() throws IOException {
-        return fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, TAG, String.class).stream()
+        return fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, TAG, String.class).stream()
                 .flatMap(entry -> entry.getIds().stream()).collect(Collectors.toSet());
     }
 
@@ -154,7 +154,7 @@ public class ReindexPrimaryKeyTest {
     }
 
     private List<String> idsTaggedLikeB() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(
                 new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, TAG, new JsonString("tag-b")))));
         final var response = (AggregateResponse) processor.processMessage(request);
@@ -221,7 +221,7 @@ public class ReindexPrimaryKeyTest {
 
         reindex();
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("b"));
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("b"));
         assertEquals(List.of("b"), queuedIds());
         assertEquals(List.of("b"), idsTaggedLikeB(), "the pending overlay answers before the worker runs");
         IndexRepairPass.run(QueuedRepairs.of(stubTaskManager).getFirst());
@@ -238,13 +238,13 @@ public class ReindexPrimaryKeyTest {
         final var ghost = pkRows().stream().filter(row -> row.getValue().equals("ghost")).findFirst().orElseThrow();
         fs.deleteFromCollection(ghost.detachedCopy());
         final var rows = pkRows();
-        rows.add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "ghost", 0, 1, 0, ghost.getVersion()));
+        rows.add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "ghost", 0, 1, 0, ghost.getVersion()));
         writePk(rows);
         assertTrue(tagIndexIds().contains("ghost"));
 
         reindex();
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("ghost"));
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("ghost"));
         assertEquals(List.of("ghost"), queuedIds());
         IndexRepairPass.run(QueuedRepairs.of(stubTaskManager).getFirst());
         assertEquals(Set.of("a", "b"), tagIndexIds());
@@ -276,14 +276,14 @@ public class ReindexPrimaryKeyTest {
     public void test_primary_key_reindex_rebuilds_page_rows_even_when_sizes_agree() throws Exception {
         save("a");
         save("b");
-        final var planted = new AdminPageEntry(TestGlobals.DB, TestGlobals.COLL, 0);
+        final var planted = new AdminPageEntry(TestGlobals.PROJECT, TestGlobals.COLL, 0);
         planted.setEntryCount(99);
         planted.setPageSize(collectionFile("-0.dat").length());
-        AdminPageHelper.replacePageEntries(TestGlobals.DB, TestGlobals.COLL, List.of(planted));
+        AdminPageHelper.replacePageEntries(TestGlobals.PROJECT, TestGlobals.COLL, List.of(planted));
 
         reindex();
 
-        assertEquals(2, cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        assertEquals(2, cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(row -> row.getPage() == 0).findFirst().orElseThrow().getEntryCount());
     }
 
@@ -309,8 +309,8 @@ public class ReindexPrimaryKeyTest {
     public void test_primary_key_reindex_clears_the_dirty_marker_after_a_full_field_rebuild() throws Exception {
         save("a");
         index(TAG);
-        pendingIndexWrites.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("a"));
-        final var identifier = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a"));
+        final var identifier = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(TestUtils.dirtyIndexCollections().contains(identifier));
         writeGarbagePk();
 
@@ -326,7 +326,7 @@ public class ReindexPrimaryKeyTest {
         final var pkBefore = Files.readAllBytes(pkFile().toPath());
         final var modifiedBefore = pkFile().lastModified();
 
-        final var response = processor.processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null));
+        final var response = processor.processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null));
 
         assertFalse(response instanceof PrimaryKeyReindexResponse);
         assertArrayEquals(pkBefore, Files.readAllBytes(pkFile().toPath()));
@@ -342,13 +342,13 @@ public class ReindexPrimaryKeyTest {
         final var release = new CountDownLatch(1);
         final var holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 held.countDown();
                 release.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 200L);
@@ -356,7 +356,7 @@ public class ReindexPrimaryKeyTest {
         try {
             assertTrue(held.await(5, TimeUnit.SECONDS));
             final var response = IndexOperationHelper
-                    .processReindex(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null, true), true);
+                    .processReindex(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null, true), true);
             assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), response.getErrorCode());
         } finally {
             release.countDown();
@@ -370,7 +370,7 @@ public class ReindexPrimaryKeyTest {
         save("a");
         save("b");
         final var intent = StaleWriteIntent.writeVacuumIntent(new File(TestGlobals.PATH).getAbsolutePath(),
-                TestGlobals.DB, TestGlobals.COLL, 0L);
+                TestGlobals.PROJECT, TestGlobals.COLL, 0L);
         save("c");
         final var page = Files.readAllBytes(collectionFile("-0.dat").toPath());
 
@@ -380,8 +380,8 @@ public class ReindexPrimaryKeyTest {
         assertTrue(response.getMessage().contains(intent), response.getMessage());
         assertArrayEquals(page, Files.readAllBytes(collectionFile("-0.dat").toPath()),
                 "a stale tail must never be replayed over records written since");
-        assertEquals(1,
-                IntentLogs.openIntents(new File(TestGlobals.PATH).getAbsolutePath(), TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(1, IntentLogs.openIntents(new File(TestGlobals.PATH).getAbsolutePath(), TestGlobals.PROJECT,
+                TestGlobals.COLL));
         assertEquals(OperationStatus.OK, find("c"));
     }
 
@@ -401,7 +401,7 @@ public class ReindexPrimaryKeyTest {
         TestUtils.setPrivateField(faultInjector, "halt", (IntConsumer) _ -> observed.add(observation.getAsBoolean()));
         try {
             faultInjector.arm(FaultPoint.PK_INDEX_REPLACED, FaultAction.HALT,
-                    Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                    Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
             assertEquals(OperationStatus.OK, reindex().getStatus());
             return observed;
         } finally {
@@ -425,14 +425,14 @@ public class ReindexPrimaryKeyTest {
         save("b");
         index(TAG);
         writePk(pkRows().stream().filter(row -> !row.getValue().equals("b")).toList());
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        fs.indexMarkers().clearDirty(TestGlobals.DB, TestGlobals.COLL);
-        assertFalse(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("b"));
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.indexMarkers().clearDirty(TestGlobals.PROJECT, TestGlobals.COLL);
+        assertFalse(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("b"));
 
-        final var observed = observeWhenThePkIndexIsReplaced(
-                () -> pkIndexNames("b") && pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("b")
-                        && TestUtils.dirtyIndexCollections()
-                                .contains(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+        final var observed = observeWhenThePkIndexIsReplaced(() -> pkIndexNames("b")
+                && pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("b")
+                && TestUtils.dirtyIndexCollections()
+                        .contains(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         assertEquals(List.of(true), observed,
                 "a kill right after the new pk.idx lands must find the changed ids pending and the dirty marker set");
@@ -446,11 +446,11 @@ public class ReindexPrimaryKeyTest {
         writeGarbagePk();
 
         final var observed = observeWhenThePkIndexIsReplaced(
-                () -> pkIndexNames("a") && fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, TAG)
-                        && fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, OTHER));
+                () -> pkIndexNames("a") && fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, TAG)
+                        && fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, OTHER));
 
         assertEquals(List.of(true), observed,
                 "a kill right after the new pk.idx lands must leave every field declined until REINDEX");
-        assertFalse(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, TAG));
+        assertFalse(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, TAG));
     }
 }

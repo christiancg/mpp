@@ -1,13 +1,15 @@
-# MPP — Micro Project Platform
+# MPP — Micro Project Engine
 
-MPP (Micro Project Platform) is built around a non-relational database written completely in Java. Its main focus is to be lightweight, small, fast and easy to start.
-Database speed (measured in IOPS) is not paramount.
+MPP (Micro Project Engine) hosts small projects: each project holds collections of JSON documents, with the indexes,
+schemas, scripts, triggers and schedules that go with them, all on a non-relational storage engine written completely
+in Java. Its main focus is to be lightweight, small, fast and easy to start.
+Raw speed (measured in IOPS) is not paramount.
 
 ## Motivation
 
-I like learning new stuff and always had some complaints about things I would like to do in the most common database systems. At the same time, I wondered how do databases work internally. What's a better way to learn that building a new database engine?
+I like learning new stuff and always had some complaints about things I would like to do in the most common database systems. At the same time, I wondered how do databases work internally. What's a better way to learn that building a new storage engine, and then growing it into a home for small projects?
 
-As such, this DB is not intended to be the fastest one out there, the most reliable or even the simplest: it's a learning exercise that could be helpful for someone in some cases.
+As such, MPP is not intended to be the fastest one out there, the most reliable or even the simplest: it's a learning exercise that could be helpful for someone in some cases.
 
 ## Philosophy
 
@@ -15,7 +17,7 @@ As such, this DB is not intended to be the fastest one out there, the most relia
 - Fast start-up times: currently less than a second
 - Small size: a couple of megabytes
 - If there's some feature that you might need some time in the distant future, then you actually don't need it
-- There's no need to support everything already supported by other DBs
+- There's no need to support everything already supported by other engines
 
 ## Design choices
 
@@ -26,10 +28,10 @@ As such, this DB is not intended to be the fastest one out there, the most relia
   - Only alphanumeric characters allowed and the following symbols are allowed: "_" and "-"
 - All numbers are treated as a double (just for simplicity)
 - Disk space is cheap: there's no compressing of special codification of files to save space
-- Database and collection names must follow the next rules:
+- Project and collection names must follow the next rules:
   - Between 3 and 64 characters
   - Only alphanumeric characters allowed and the following symbols are allowed: "_" and "-"
-- Indexes are updated in the background and admin collections also. This is to make the DB a little bit more agile.
+- Indexes are updated in the background and admin collections also. This is to make MPP a little bit more agile.
 - No composed indexes (at least for now), but an aggregation pipeline can use many indexes (in fact will use all of them if possible)
 - Each collection is split in pages, one file per page. Inserts reuse the space freed by deletes before creating a new page.
 
@@ -110,7 +112,7 @@ starting one:
 java -jar mpp.jar --shell [connection]
 java -jar mpp.jar --exec '<json>' [--exec '<json>' ...] [connection]
 java -jar mpp.jar --exec [connection] < commands.jsonl
-java -jar mpp.jar --dump [--databases a,b | --collections db.coll,...] [--compress] [connection] > backup.ldump
+java -jar mpp.jar --dump [--projects a,b | --collections project.coll,...] [--compress] [connection] > backup.ldump
 java -jar mpp.jar --restore [connection] < backup.ldump
 java -jar mpp.jar --health [connection]
 ```
@@ -129,13 +131,13 @@ certificate, only for the dev self-signed one).
 Exit codes are `0` for success, `1` when a request failed, `2` for a usage error and `3` when the server can't be
 reached or refused the login.
 
-A dump is just a list of ordinary requests (`CREATE_DATABASE`, `CREATE_COLLECTION`, `BULK_SAVE`, `SAVE_SCHEMA`,
-`CREATE_INDEX`, procedures, triggers and schedules), so restoring is replaying it. Each database is read from one
+A dump is just a list of ordinary requests (`CREATE_PROJECT`, `CREATE_COLLECTION`, `BULK_SAVE`, `SAVE_SCHEMA`,
+`CREATE_INDEX`, procedures, triggers and schedules), so restoring is replaying it. Each project is read from one
 snapshot while writes go on, so the dump is a consistent cut. Users, permissions and runtime state are not dumped.
 
 Restore merges into whatever the target already has: documents with the same `_id` and definitions with the same name
 are overwritten, and nothing else is deleted. The target's schema, before hooks and triggers apply to what is restored.
-To replace instead of merge, drop the collection or database first. What a dump or restore can do depends on the
+To replace instead of merge, drop the collection or project first. What a dump or restore can do depends on the
 permissions of `--user`.
 
 From Docker, override the command (add `-i` to feed a restore):
@@ -152,14 +154,14 @@ There are official clients for Java (with Spring Data and Spring Boot), TypeScri
 ```java
 try (MppClient client = MppClient.connect(ClientSettings.builder()
         .host("localhost", 8989).credentials("admin", password).build())) {
-    List<Document> active = client.database("shop").collection("orders").query()
+    List<Document> active = client.project("shop").collection("orders").query()
             .filter(field("status").eq("active")).sort("total", Order.DESC).limit(10).toList();
 }
 ```
 
 ```ts
 await using client = await MppClient.connect({ credentials: { username: "admin", password } });
-const active = await client.database("shop").collection("orders").query()
+const active = await client.project("shop").collection("orders").query()
     .filter(field("status").eq("active")).sort("total", Order.DESC).limit(10).toArray();
 ```
 

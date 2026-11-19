@@ -27,17 +27,18 @@ final class AdminPageCache {
     private final Map<String, List<AdminPageEntry>> pages = new ConcurrentHashMap<>();
     private final Map<String, List<PkIndexEntry>> pagesPkIndexes = new ConcurrentHashMap<>();
 
-    void loadAdminPagesForCollection(String dbName, String collName) throws IOException {
-        final var pagesCollName = AdminPageEntry.pagesCollectionName(dbName, collName);
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    void loadAdminPagesForCollection(String projectName, String collName) throws IOException {
+        final var pagesCollName = AdminPageEntry.pagesCollectionName(projectName, collName);
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         final var pkIdx = readPagesPkIndexOrEmpty(pagesCollName);
         pagesPkIndexes.put(pagesCollectionKey(pagesCollName), new ArrayList<>(pkIdx));
         final var pageEntries = new ArrayList<AdminPageEntry>();
         final var idPrefix = collId + Globals.COLL_IDENTIFIER_SEPARATOR;
-        try (var pagesStream = fs.streamPages(Globals.ADMIN_PAGES_DB_NAME, pagesCollName)) {
-            pagesStream.forEach(map -> map.values().stream()
-                    .filter(e -> e.get_id() != null && e.get_id().startsWith(idPrefix))
-                    .map(e -> AdminPageEntry.fromJsonObject(dbName, collName, e.getData())).forEach(pageEntries::add));
+        try (var pagesStream = fs.streamPages(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName)) {
+            pagesStream.forEach(
+                    map -> map.values().stream().filter(e -> e.get_id() != null && e.get_id().startsWith(idPrefix))
+                            .map(e -> AdminPageEntry.fromJsonObject(projectName, collName, e.getData()))
+                            .forEach(pageEntries::add));
         }
         pages.put(collId, new CopyOnWriteArrayList<>(pageEntries));
         rebuildInMemoryPagesFromPkIndex(pagesCollName, pkIdx);
@@ -45,7 +46,7 @@ final class AdminPageCache {
 
     private List<PkIndexEntry> readPagesPkIndexOrEmpty(String pagesCollName) {
         try {
-            return fs.readWholePkIndexFile(Globals.ADMIN_PAGES_DB_NAME, pagesCollName);
+            return fs.readWholePkIndexFile(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName);
         } catch (IOException e) {
             logger.error("Could not read the page rows of " + pagesCollName + "; starting with none, and the"
                     + " startup reconciliation rebuilds them from the page files", e);
@@ -59,7 +60,7 @@ final class AdminPageCache {
         for (var e : byPage.entrySet()) {
             final var pageNum = e.getKey();
             final var pkList = e.getValue();
-            final var entry = new AdminPageEntry(Globals.ADMIN_PAGES_DB_NAME, collName, pageNum);
+            final var entry = new AdminPageEntry(Globals.ADMIN_PAGES_PROJECT_NAME, collName, pageNum);
             entry.setEntryCount(pkList.size());
             entry.setPageSize(pkList.stream().mapToLong(PkIndexEntry::getLength).sum());
             entries.add(entry);
@@ -73,60 +74,60 @@ final class AdminPageCache {
     }
 
     private static String pagesCollectionKey(String pagesCollName) {
-        return Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_DB_NAME, pagesCollName);
+        return Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName);
     }
 
-    List<AdminPageEntry> getAdminPageEntries(String dbName, String collName) {
-        return pages.get(Cache.getCollectionIdentifier(dbName, collName));
+    List<AdminPageEntry> getAdminPageEntries(String projectName, String collName) {
+        return pages.get(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    AdminPageEntry getAdminPageEntry(String dbName, String collName, long page) {
-        final var entries = pages.get(Cache.getCollectionIdentifier(dbName, collName));
+    AdminPageEntry getAdminPageEntry(String projectName, String collName, long page) {
+        final var entries = pages.get(Cache.getCollectionIdentifier(projectName, collName));
         if (entries == null)
             return null;
         return findPage(entries, page);
     }
 
-    void addAdminPageEntries(String dbName, String collName, AdminPageEntry adminPageEntry) {
-        pageList(dbName, collName).add(adminPageEntry);
+    void addAdminPageEntries(String projectName, String collName, AdminPageEntry adminPageEntry) {
+        pageList(projectName, collName).add(adminPageEntry);
     }
 
-    void addAdminPageEntries(String dbName, String collName, List<AdminPageEntry> adminPageEntries) {
+    void addAdminPageEntries(String projectName, String collName, List<AdminPageEntry> adminPageEntries) {
         if (!adminPageEntries.isEmpty()) {
-            pageList(dbName, collName).addAll(adminPageEntries);
+            pageList(projectName, collName).addAll(adminPageEntries);
         }
     }
 
-    private List<AdminPageEntry> pageList(String dbName, String collName) {
-        return pages.computeIfAbsent(Cache.getCollectionIdentifier(dbName, collName),
+    private List<AdminPageEntry> pageList(String projectName, String collName) {
+        return pages.computeIfAbsent(Cache.getCollectionIdentifier(projectName, collName),
                 _ -> new CopyOnWriteArrayList<>());
     }
 
-    void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta) {
-        updatePageSizeInMemory(dbName, collName, page, bytesDelta, 1);
+    void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta) {
+        updatePageSizeInMemory(projectName, collName, page, bytesDelta, 1);
     }
 
-    void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta, int addedEntries) {
-        underAdminPagesLock(dbName, collName, page, bytesDelta,
-                () -> applyPageSizeDelta(dbName, collName, page, bytesDelta, addedEntries));
+    void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta, int addedEntries) {
+        underAdminPagesLock(projectName, collName, page, bytesDelta,
+                () -> applyPageSizeDelta(projectName, collName, page, bytesDelta, addedEntries));
     }
 
-    void updatePageSizeForUpdateInMemory(String dbName, String collName, long page, long bytesDelta) {
-        underAdminPagesLock(dbName, collName, page, bytesDelta,
-                () -> applyPageSizeDeltaKeepingCount(dbName, collName, page, bytesDelta));
+    void updatePageSizeForUpdateInMemory(String projectName, String collName, long page, long bytesDelta) {
+        underAdminPagesLock(projectName, collName, page, bytesDelta,
+                () -> applyPageSizeDeltaKeepingCount(projectName, collName, page, bytesDelta));
     }
 
-    private void underAdminPagesLock(String dbName, String collName, long page, long bytesDelta, Runnable apply) {
-        final var pagesCollName = AdminPageEntry.pagesCollectionName(dbName, collName);
+    private void underAdminPagesLock(String projectName, String collName, long page, long bytesDelta, Runnable apply) {
+        final var pagesCollName = AdminPageEntry.pagesCollectionName(projectName, collName);
         var reinterrupt = false;
         try {
-            locks.lock(Globals.ADMIN_PAGES_DB_NAME, pagesCollName);
+            locks.lock(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName);
         } catch (InterruptedException e) {
             reinterrupt = true;
             if (!acquireDespiteInterruption(pagesCollName)) {
                 Thread.currentThread().interrupt();
-                logger.error("Dropped a page size delta of " + bytesDelta + " for " + dbName + "|" + collName + " page "
-                        + page + ": nothing recomputes page sizes before a restart, so first-fit"
+                logger.error("Dropped a page size delta of " + bytesDelta + " for " + projectName + "|" + collName
+                        + " page " + page + ": nothing recomputes page sizes before a restart, so first-fit"
                         + " may overfill that page past maxPageSize");
                 return;
             }
@@ -134,7 +135,7 @@ final class AdminPageCache {
         try {
             apply.run();
         } finally {
-            locks.release(Globals.ADMIN_PAGES_DB_NAME, pagesCollName);
+            locks.release(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName);
             if (reinterrupt) {
                 Thread.currentThread().interrupt();
             }
@@ -144,7 +145,7 @@ final class AdminPageCache {
     private boolean acquireDespiteInterruption(String pagesCollName) {
         final var deadline = System.currentTimeMillis() + INTERRUPTED_LOCK_BUDGET_MS;
         while (System.currentTimeMillis() < deadline) {
-            if (locks.tryLockWrite(Globals.ADMIN_PAGES_DB_NAME, pagesCollName)) {
+            if (locks.tryLockWrite(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollName)) {
                 return true;
             }
             Thread.onSpinWait();
@@ -152,22 +153,22 @@ final class AdminPageCache {
         return false;
     }
 
-    private void applyPageSizeDelta(String dbName, String collName, long page, long bytesDelta, int addedEntries) {
-        final var pageEntries = pageList(dbName, collName);
+    private void applyPageSizeDelta(String projectName, String collName, long page, long bytesDelta, int addedEntries) {
+        final var pageEntries = pageList(projectName, collName);
         final var existing = findPage(pageEntries, page);
         if (existing != null) {
             existing.setPageSize(existing.getPageSize() + bytesDelta);
             existing.setEntryCount(existing.getEntryCount() + addedEntries);
         } else if (addedEntries >= 0) {
-            final var newEntry = new AdminPageEntry(dbName, collName, page);
+            final var newEntry = new AdminPageEntry(projectName, collName, page);
             newEntry.setPageSize(bytesDelta);
             newEntry.setEntryCount(addedEntries);
             pageEntries.add(newEntry);
         }
     }
 
-    private void applyPageSizeDeltaKeepingCount(String dbName, String collName, long page, long bytesDelta) {
-        final var existing = findPage(pageList(dbName, collName), page);
+    private void applyPageSizeDeltaKeepingCount(String projectName, String collName, long page, long bytesDelta) {
+        final var existing = findPage(pageList(projectName, collName), page);
         if (existing != null) {
             existing.setPageSize(existing.getPageSize() + bytesDelta);
         }
@@ -182,24 +183,25 @@ final class AdminPageCache {
         return null;
     }
 
-    List<PkIndexEntry> getAdminPagePkIndexes(String dbName, String collName) {
-        return pagesPkIndexes.computeIfAbsent(Cache.getCollectionIdentifier(dbName, collName), _ -> new ArrayList<>());
+    List<PkIndexEntry> getAdminPagePkIndexes(String projectName, String collName) {
+        return pagesPkIndexes.computeIfAbsent(Cache.getCollectionIdentifier(projectName, collName),
+                _ -> new ArrayList<>());
     }
 
-    void removeAdminPageEntries(String dbName, String collName) {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    void removeAdminPageEntries(String projectName, String collName) {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         pages.remove(collId);
         pagesPkIndexes.remove(collId);
     }
 
-    long selectPageForInsert(String dbName, String collName, int entryByteSize) {
-        return selectPageForInsert(pageList(dbName, collName), entryByteSize, Map.of(),
-                fs.pageFileLengthsOf(dbName, collName));
+    long selectPageForInsert(String projectName, String collName, int entryByteSize) {
+        return selectPageForInsert(pageList(projectName, collName), entryByteSize, Map.of(),
+                fs.pageFileLengthsOf(projectName, collName));
     }
 
-    long[] selectPagesForInsert(String dbName, String collName, int[] entryByteSizes) {
-        final var placement = new BatchPagePlacement(pageList(dbName, collName), fs.pageFileLengthsOf(dbName, collName),
-                configuration.getMaxPageSize(), entryByteSizes);
+    long[] selectPagesForInsert(String projectName, String collName, int[] entryByteSizes) {
+        final var placement = new BatchPagePlacement(pageList(projectName, collName),
+                fs.pageFileLengthsOf(projectName, collName), configuration.getMaxPageSize(), entryByteSizes);
         final var targets = new long[entryByteSizes.length];
         for (var index = 0; index < entryByteSizes.length; index++) {
             targets[index] = placement.place(entryByteSizes[index]);

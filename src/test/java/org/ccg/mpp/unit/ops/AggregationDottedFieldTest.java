@@ -37,9 +37,9 @@ public class AggregationDottedFieldTest extends FilterResolutionSupport {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("a", inner);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, collName, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, collName, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, collName, entry);
     }
 
     private static FilterAggregationStep equalsX() {

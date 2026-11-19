@@ -17,14 +17,14 @@ public class ListenValidatorTest {
 
     @Test
     public void validate_listen_validRequest_returnsOk() {
-        final var req = new ListenRequest("myDb", "myColl");
+        final var req = new ListenRequest("myProject", "myColl");
         req.setAggregationSteps(List.of());
 
         assertTrue(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void validate_listen_nullDb_returnsFail() {
+    public void validate_listen_nullProject_returnsFail() {
         final var req = new ListenRequest(null, "coll");
         req.setAggregationSteps(List.of());
 
@@ -41,14 +41,14 @@ public class ListenValidatorTest {
 
     @Test
     public void validate_listen_nullSteps_returnsFail() {
-        final var req = new ListenRequest("myDb", "myColl");
+        final var req = new ListenRequest("myProject", "myColl");
 
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
     @Test
     public void validate_listen_withFilterStep_returnsOk() {
-        final var req = new ListenRequest("myDb", "myColl");
+        final var req = new ListenRequest("myProject", "myColl");
         final var op = new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"));
         req.setAggregationSteps(List.of(new FilterAggregationStep(op)));
 
@@ -57,7 +57,7 @@ public class ListenValidatorTest {
 
     @Test
     public void validate_listen_withValuelessFilterStep_returnsFail() {
-        final var req = new ListenRequest("myDb", "myColl");
+        final var req = new ListenRequest("myProject", "myColl");
         final var op = new FieldOperator(FieldOperatorType.EQUALS, "status", null);
         req.setAggregationSteps(List.of(new FilterAggregationStep(op)));
 

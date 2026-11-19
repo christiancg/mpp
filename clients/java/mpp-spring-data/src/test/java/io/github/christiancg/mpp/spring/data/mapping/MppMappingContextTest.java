@@ -34,17 +34,17 @@ public class MppMappingContextTest {
     }
 
     @Test
-    public void test_collection_and_database_names() {
+    public void test_collection_and_project_names() {
         assertEquals("widgets", entity(Widget.class).collection());
-        assertEquals("shop", entity(Widget.class).database());
+        assertEquals("shop", entity(Widget.class).project());
         assertEquals("plain", entity(Plain.class).collection());
-        assertEquals("fallback", entity(Plain.class).database());
-        assertEquals("fallback", context.defaultDatabase());
+        assertEquals("fallback", entity(Plain.class).project());
+        assertEquals("fallback", context.defaultProject());
         assertThrows(MappingException.class, () -> entity(Invalid.ShortCollection.class).collection());
         assertThrows(MappingException.class,
-                () -> new MppMappingContext(null).getRequiredPersistentEntity(Invalid.NoDatabase.class).database());
+                () -> new MppMappingContext(null).getRequiredPersistentEntity(Invalid.NoProject.class).project());
         assertThrows(MappingException.class,
-                () -> new MppMappingContext("").getRequiredPersistentEntity(Invalid.NoDatabase.class).database());
+                () -> new MppMappingContext("").getRequiredPersistentEntity(Invalid.NoProject.class).project());
     }
 
     @Test

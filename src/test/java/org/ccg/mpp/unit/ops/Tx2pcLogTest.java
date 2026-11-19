@@ -34,7 +34,7 @@ public class Tx2pcLogTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -68,7 +68,7 @@ public class Tx2pcLogTest {
         for (final var id : List.of("prepared-a", "prepared-b")) {
             final var document = new JsonObject();
             document.add(Globals.PK_FIELD, new JsonString(id));
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(document);
             request.set_id(id);
             TransactionOperationHelper.bufferSave(request, transaction);
@@ -154,7 +154,7 @@ public class Tx2pcLogTest {
             Tx2pcLog.recordOutcome(dtxIds.getLast(), index % 2 == 0, null);
         }
         final var reloaded = new ConcurrentHashMap<String, PkIndexEntry>();
-        for (final var row : IocContainer.get(FileSystem.class).readWholePkIndexFile(Globals.ADMIN_DB_NAME,
+        for (final var row : IocContainer.get(FileSystem.class).readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME,
                 Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME)) {
             reloaded.put(row.getValue(), row);
         }

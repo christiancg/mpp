@@ -45,25 +45,25 @@ public class UserCacheAdmissionTest {
             UserCache cache = IocContainer.get(UserCache.class);
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
-            cache.addEntryToCache("userDb", "c1", DbEntry.fromJsonObject("userDb", "c1", obj));
+            cache.addEntryToCache("userProject", "c1", DbEntry.fromJsonObject("userProject", "c1", obj));
             final var collectionMap = CacheResidents.documentsByCollection(cache);
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
         }
     }
 
     @Test
-    public void test_addEntryToCache_never_admits_a_reserved_database() {
+    public void test_addEntryToCache_never_admits_a_reserved_project() {
         UserCache cache = IocContainer.get(UserCache.class);
-        for (final var reserved : List.of(Globals.ADMIN_DB_NAME, Globals.ADMIN_PAGES_DB_NAME)) {
+        for (final var reserved : List.of(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PAGES_PROJECT_NAME)) {
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
-            cache.addEntryToCache(reserved, "databases", DbEntry.fromJsonObject(reserved, "databases", obj));
+            cache.addEntryToCache(reserved, "projects", DbEntry.fromJsonObject(reserved, "projects", obj));
             cache.addEntriesToCache(reserved, "collections",
                     List.of(DbEntry.fromJsonObject(reserved, "collections", obj)));
             final var collectionMap = CacheResidents.documentsByCollection(cache);
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier(reserved, "databases")));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier(reserved, "projects")));
             assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier(reserved, "collections")));
             assertTrue(cache.isCachingDisabled(reserved));
         }
@@ -78,9 +78,9 @@ public class UserCacheAdmissionTest {
             UserCache cache = IocContainer.get(UserCache.class);
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
-            cache.addEntriesToCache("userDb", "c1", List.of(DbEntry.fromJsonObject("userDb", "c1", obj)));
+            cache.addEntriesToCache("userProject", "c1", List.of(DbEntry.fromJsonObject("userProject", "c1", obj)));
             final var collectionMap = CacheResidents.documentsByCollection(cache);
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
         }
@@ -98,8 +98,8 @@ public class UserCacheAdmissionTest {
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
             obj.addProperty("v", "x".repeat(128));
-            cache.addEntryToCache("userDb", "c1", DbEntry.fromJsonObject("userDb", "c1", obj));
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")),
+            cache.addEntryToCache("userProject", "c1", DbEntry.fromJsonObject("userProject", "c1", obj));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")),
                     "entry should not be admitted when it exceeds the cap");
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
@@ -117,8 +117,8 @@ public class UserCacheAdmissionTest {
             collectionMap.clear();
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
-            cache.addEntryToCache("userDb", "c1", DbEntry.fromJsonObject("userDb", "c1", obj));
-            assertTrue(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")),
+            cache.addEntryToCache("userProject", "c1", DbEntry.fromJsonObject("userProject", "c1", obj));
+            assertTrue(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")),
                     "small entry should be admitted under a generous cap");
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
@@ -140,9 +140,9 @@ public class UserCacheAdmissionTest {
             final var obj2 = new JsonObject();
             obj2.addProperty(Globals.PK_FIELD, "id2");
             obj2.addProperty("v", "y".repeat(128));
-            cache.addEntriesToCache("userDb", "c1", List.of(DbEntry.fromJsonObject("userDb", "c1", obj1),
-                    DbEntry.fromJsonObject("userDb", "c1", obj2)));
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")));
+            cache.addEntriesToCache("userProject", "c1", List.of(DbEntry.fromJsonObject("userProject", "c1", obj1),
+                    DbEntry.fromJsonObject("userProject", "c1", obj2)));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
         }
@@ -163,12 +163,12 @@ public class UserCacheAdmissionTest {
             try {
                 final var stub = new DbEntry();
                 stub.set_id("id1");
-                final var pk = new PkIndexEntry("userDb", "c1", "id1", 0, 10, 0);
+                final var pk = new PkIndexEntry("userProject", "c1", "id1", 0, 10, 0);
                 when(fsMock.getById(pk)).thenReturn(stub);
-                final var result = cache.getById("userDb", "c1", pk);
+                final var result = cache.getById("userProject", "c1", pk);
                 assertEquals("id1", result.get_id());
                 final var collectionMap = CacheResidents.documentsByCollection(cache);
-                assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "c1")));
+                assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "c1")));
             } finally {
                 fsField.set(cache, originalFs);
             }
@@ -195,12 +195,12 @@ public class UserCacheAdmissionTest {
                 final var obj = new JsonObject();
                 obj.addProperty(Globals.PK_FIELD, "id1");
                 obj.addProperty("v", "x".repeat(128));
-                final var entry = DbEntry.fromJsonObject("userDb", "c1", obj);
-                final var pk = new PkIndexEntry("userDb", "c1", "id1", 0, 10, 0);
+                final var entry = DbEntry.fromJsonObject("userProject", "c1", obj);
+                final var pk = new PkIndexEntry("userProject", "c1", "id1", 0, 10, 0);
                 when(fsMock.getById(pk)).thenReturn(entry);
-                final var result = cache.getById("userDb", "c1", pk);
+                final var result = cache.getById("userProject", "c1", pk);
                 assertEquals("id1", result.get_id());
-                final var collection = collectionMap.get(Cache.getCollectionIdentifier("userDb", "c1"));
+                final var collection = collectionMap.get(Cache.getCollectionIdentifier("userProject", "c1"));
                 assertTrue(collection == null || !collection.containsKey("id1"),
                         "oversized entry must not be admitted to the cache");
             } finally {
@@ -225,15 +225,15 @@ public class UserCacheAdmissionTest {
             final var seed = new JsonObject();
             seed.addProperty(Globals.PK_FIELD, "seed");
             seed.addProperty("v", "z".repeat(200));
-            existing.put("seed", DbEntry.fromJsonObject("userDb", "old", seed));
-            collectionMap.put(Cache.getCollectionIdentifier("userDb", "old"), existing);
+            existing.put("seed", DbEntry.fromJsonObject("userProject", "old", seed));
+            collectionMap.put(Cache.getCollectionIdentifier("userProject", "old"), existing);
             // Admission check is pure: it does not run a sweep — the async sweep thread does that.
             // So "new" is refused while the cache is over cap.
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id1");
-            cache.addEntryToCache("userDb", "new", DbEntry.fromJsonObject("userDb", "new", obj));
-            assertTrue(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "old")));
-            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userDb", "new")));
+            cache.addEntryToCache("userProject", "new", DbEntry.fromJsonObject("userProject", "new", obj));
+            assertTrue(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "old")));
+            assertFalse(collectionMap.containsKey(Cache.getCollectionIdentifier("userProject", "new")));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", original);
         }
@@ -256,15 +256,16 @@ public class UserCacheAdmissionTest {
         final var savedMaxMemory = TestUtils.getPrivateField(config, "maxMemoryBytes", Long.class);
         TestUtils.setPrivateField(config, "maxMemoryBytes", 1L);
 
-        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
-        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0)));
+        final var collId = Cache.getCollectionIdentifier("userProject", "c1");
+        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userProject", "c1", "id1", 0, 50, 0)));
         final var readObj = new JsonObject();
         readObj.addProperty(Globals.PK_FIELD, "id1");
-        when(fsMock.getByIndexEntries(anyList())).thenReturn(List.of(DbEntry.fromJsonObject("userDb", "c1", readObj)));
+        when(fsMock.getByIndexEntries(anyList()))
+                .thenReturn(List.of(DbEntry.fromJsonObject("userProject", "c1", readObj)));
 
         final List<DbEntry> result;
         try {
-            result = cache.getEntriesByIds("userDb", "c1", Set.of("id1"));
+            result = cache.getEntriesByIds("userProject", "c1", Set.of("id1"));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", savedMaxMemory);
         }
@@ -284,14 +285,14 @@ public class UserCacheAdmissionTest {
             FileSystem fsMock = mock(FileSystem.class);
             TestUtils.setPrivateField(cache, "fs", fsMock);
 
-            final var collId = Cache.getCollectionIdentifier("userDb", "c1");
-            injectPkIndex(cache, collId, List.of(new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0)));
+            final var collId = Cache.getCollectionIdentifier("userProject", "c1");
+            injectPkIndex(cache, collId, List.of(new PkIndexEntry("userProject", "c1", "id1", 0, 50, 0)));
             final var readObj = new JsonObject();
             readObj.addProperty(Globals.PK_FIELD, "id1");
             when(fsMock.getByIndexEntries(anyList()))
-                    .thenReturn(List.of(DbEntry.fromJsonObject("userDb", "c1", readObj)));
+                    .thenReturn(List.of(DbEntry.fromJsonObject("userProject", "c1", readObj)));
 
-            final var result = cache.getEntriesByIds("userDb", "c1", Set.of("id1"));
+            final var result = cache.getEntriesByIds("userProject", "c1", Set.of("id1"));
 
             assertEquals(1, result.size());
             verify(fsMock).getByIndexEntries(anyList());
@@ -306,7 +307,7 @@ public class UserCacheAdmissionTest {
         final var obj = new JsonObject();
         obj.addProperty(Globals.PK_FIELD, id);
         obj.addProperty("v", v);
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
     }
 
     @Test
@@ -317,13 +318,13 @@ public class UserCacheAdmissionTest {
         CacheResidents.documentsByCollection(cache).clear();
         try {
             TestUtils.setPrivateField(config, "maxMemoryBytes", 100_000_000L);
-            cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL, cacheEntry("a", 1));
+            cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, cacheEntry("a", 1));
             TestUtils.setPrivateField(config, "maxMemoryBytes", 1L);
-            cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL, cacheEntry("a", 2));
-            final var refreshed = cache.getCachedCollection(TestGlobals.DB, TestGlobals.COLL).get("a");
+            cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, cacheEntry("a", 2));
+            final var refreshed = cache.getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL).get("a");
             assertEquals(2, refreshed.getData().get("v").asJsonNumber().asInteger());
-            cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL, cacheEntry("b", 9));
-            assertNull(cache.getCachedCollection(TestGlobals.DB, TestGlobals.COLL).get("b"));
+            cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, cacheEntry("b", 9));
+            assertNull(cache.getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL).get("b"));
         } finally {
             TestUtils.setPrivateField(config, "maxMemoryBytes", originalMax);
         }
@@ -337,10 +338,11 @@ public class UserCacheAdmissionTest {
         CacheResidents.documentsByCollection(cache).clear();
         try {
             TestUtils.setPrivateField(config, "maxMemoryBytes", 100_000_000L);
-            cache.addEntriesToCache(TestGlobals.DB, TestGlobals.COLL, List.of(cacheEntry("a", 1)));
+            cache.addEntriesToCache(TestGlobals.PROJECT, TestGlobals.COLL, List.of(cacheEntry("a", 1)));
             TestUtils.setPrivateField(config, "maxMemoryBytes", 1L);
-            cache.addEntriesToCache(TestGlobals.DB, TestGlobals.COLL, List.of(cacheEntry("a", 2), cacheEntry("b", 9)));
-            final var cached = cache.getCachedCollection(TestGlobals.DB, TestGlobals.COLL);
+            cache.addEntriesToCache(TestGlobals.PROJECT, TestGlobals.COLL,
+                    List.of(cacheEntry("a", 2), cacheEntry("b", 9)));
+            final var cached = cache.getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL);
             assertEquals(2, cached.get("a").getData().get("v").asJsonNumber().asInteger());
             assertNull(cached.get("b"));
         } finally {

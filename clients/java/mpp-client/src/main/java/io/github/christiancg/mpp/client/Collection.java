@@ -16,8 +16,8 @@ public final class Collection<T> {
         this.ops = ops;
     }
 
-    public String databaseName() {
-        return ops.database();
+    public String projectName() {
+        return ops.project();
     }
 
     public String name() {
@@ -69,21 +69,21 @@ public final class Collection<T> {
     }
 
     public Indexes indexes() {
-        return new Indexes(ops.context(), ops.database(), ops.collection());
+        return new Indexes(ops.context(), ops.project(), ops.collection());
     }
 
     public Schema schema() {
-        return new Schema(ops.context(), ops.database(), ops.collection());
+        return new Schema(ops.context(), ops.project(), ops.collection());
     }
 
     public Triggers triggers() {
-        return new Triggers(ops.context(), ops.database(), ops.collection());
+        return new Triggers(ops.context(), ops.project(), ops.collection());
     }
 
     public Subscription listen(Query<T> query, ListenHandler<T> handler) {
         @SuppressWarnings("resource")
         final var listens = ops.context().listens();
-        return listens.listen(ops.database(), ops.collection(), query.steps(), ops.codec(),
+        return listens.listen(ops.project(), ops.collection(), query.steps(), ops.codec(),
                 Objects.requireNonNull(handler, "handler"));
     }
 
@@ -94,8 +94,8 @@ public final class Collection<T> {
     private void send(Operation operation) {
         final var encoder = ops.context().encoder();
         final var request = operation == Operation.CREATE_COLLECTION
-                ? encoder.createCollection(ops.database(), ops.collection())
-                : encoder.dropCollection(ops.database(), ops.collection());
+                ? encoder.createCollection(ops.project(), ops.collection())
+                : encoder.dropCollection(ops.project(), ops.collection());
         ops.context().channel().send(operation, request);
     }
 }

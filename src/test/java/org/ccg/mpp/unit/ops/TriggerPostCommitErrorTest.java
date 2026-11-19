@@ -51,10 +51,11 @@ public class TriggerPostCommitErrorTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, AUDIT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, AUDIT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.DB, AUDIT_COLL));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, AUDIT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, AUDIT_COLL);
+        AdminOperationHelper
+                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.PROJECT, AUDIT_COLL));
         TriggerTestSupport.createDefiner(DEFINER);
     }
 
@@ -95,7 +96,7 @@ public class TriggerPostCommitErrorTest {
 
     private void storeProcedureThatWritesThenExhaustsItsBudget(String collName) throws Exception {
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "audit",
+                new SaveProcedureRequest(TestGlobals.PROJECT, "audit",
                         "import db from 'db'; import args from 'args';" + " db.save(db.name, '" + collName
                                 + "', { _id: args.id, hits: 1 });"
                                 + " setInterval(() => { for (let i = 0; i < 2000; i++) { } }, 0);" + " return 'ok';"),
@@ -103,14 +104,14 @@ public class TriggerPostCommitErrorTest {
     }
 
     private void installTrigger() {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, false, true, DEFINER, 1L, 1L, 1L, DEFINER)));
     }
 
     private static void registerFencedCollectionWithoutItsFolder() throws Exception {
         AdminOperationHelper
-                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.DB, FENCED_COLL));
+                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.PROJECT, FENCED_COLL));
     }
 
     private static void releaseTheFence() throws Exception {
@@ -118,7 +119,7 @@ public class TriggerPostCommitErrorTest {
             TxCommitLog.clearLocalCommit(txId);
         }
         TestUtils.releaseAllLocks();
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, FENCED_COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, FENCED_COLL);
     }
 
     private static AdminTriggerRunEntry runRecord(String runId) throws Exception {
@@ -127,12 +128,13 @@ public class TriggerPostCommitErrorTest {
     }
 
     private String recordedRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(entry(id))));
+        return TriggerRunLog
+                .record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit",
+                        EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(entry(id))));
     }
 
     private JsonObject auditRow(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, AUDIT_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, AUDIT_COLL);
         request.set_id(id);
         final var response = new org.ccg.mpp.ops.OperationProcessor().processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
@@ -152,7 +154,7 @@ public class TriggerPostCommitErrorTest {
         installTrigger();
         final var runId = recordedRunFor("post-commit");
 
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", false, List.of(entry("post-commit")), DEFINER, 0, runId, 1));
         settle();
 
@@ -167,7 +169,7 @@ public class TriggerPostCommitErrorTest {
         installTrigger();
         final var runId = recordedRunFor("once");
 
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", false, List.of(entry("once")), DEFINER, 0, runId, 1));
         settle();
 
@@ -180,15 +182,16 @@ public class TriggerPostCommitErrorTest {
     @Test
     public void test_a_failure_before_the_commit_is_still_retried() throws Exception {
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "audit", "throw new Error('nothing committed');"), DEFINER);
+                new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "throw new Error('nothing committed');"),
+                DEFINER);
         installTrigger();
-        final var saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         saveRequest.setObject(entry("uncommitted").getData());
         saveRequest.set_id("uncommitted");
         SaveOperationHelper.executeSave(saveRequest);
         final var runId = recordedRunFor("uncommitted");
 
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", false, List.of(entry("uncommitted")), DEFINER, 0, runId, 1));
         settle();
 
@@ -201,14 +204,14 @@ public class TriggerPostCommitErrorTest {
         registerFencedCollectionWithoutItsFolder();
         storeProcedureThatWritesThenExhaustsItsBudget(FENCED_COLL);
         installTrigger();
-        final var saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         saveRequest.setObject(entry("fenced").getData());
         saveRequest.set_id("fenced");
         SaveOperationHelper.executeSave(saveRequest);
         final var runId = recordedRunFor("fenced");
         try {
-            TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
-                    "audit", false, List.of(entry("fenced")), DEFINER, 0, runId, 1));
+            TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL,
+                    "audit", "audit", false, List.of(entry("fenced")), DEFINER, 0, runId, 1));
             settle();
 
             assertTrue(requeued.isEmpty(),

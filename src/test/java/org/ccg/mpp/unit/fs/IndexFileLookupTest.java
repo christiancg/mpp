@@ -41,7 +41,7 @@ public class IndexFileLookupTest extends FileSystemTestBase {
     }
 
     private static File indexFile(Class<?> type) {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-" + FIELD + "-"
                 + IndexKind.fileLabel(type) + Globals.INDEX_FILE_EXTENSION);
     }
@@ -54,11 +54,11 @@ public class IndexFileLookupTest extends FileSystemTestBase {
     private <T> void writeIndex(Class<T> type, List<FieldIndexEntry<T>> entries) {
         final var sorted = new ArrayList<>(entries);
         sorted.sort(FieldIndexLoader.orderFor(type));
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, FIELD, Map.of(type, (List) sorted));
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Map.of(type, (List) sorted));
     }
 
     private static <T> FieldIndexEntry<T> entry(T value, String... ids) {
-        return new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, value, new HashSet<>(List.of(ids)));
+        return new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, value, new HashSet<>(List.of(ids)));
     }
 
     private static void writeLines(File file, String... lines) throws IOException {
@@ -70,7 +70,7 @@ public class IndexFileLookupTest extends FileSystemTestBase {
     }
 
     private <T> List<FieldIndexEntry<T>> fullLoad(Class<T> type) throws IOException {
-        return fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, type);
+        return fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, type);
     }
 
     private static long idCount(List<? extends FieldIndexEntry<?>> entries) {
@@ -242,9 +242,10 @@ public class IndexFileLookupTest extends FileSystemTestBase {
                 IndexFileLookup.rangeCount(indexFile(String.class), String.class, List.of(new Bound("a", true, true))));
         writeIndex(Number.class, List.of(entry(1.0, "a")));
         assertEquals(Set.of(), IndexFileLookup.equalsIds(indexFile(Number.class), Number.class, 2));
-        assertNotNull(fs.indexFiles().equalsIds(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class, List.of(1)));
+        assertNotNull(
+                fs.indexFiles().equalsIds(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Number.class, List.of(1)));
         assertNull(IndexFileLookup.equalsIds(indexFile(Number.class), Number.class, "a string operand"));
-        assertNull(fs.indexFiles().equalsIds(TestGlobals.DB, TestGlobals.COLL, Globals.PK_FIELD, Number.class,
+        assertNull(fs.indexFiles().equalsIds(TestGlobals.PROJECT, TestGlobals.COLL, Globals.PK_FIELD, Number.class,
                 List.of(1)));
     }
 }

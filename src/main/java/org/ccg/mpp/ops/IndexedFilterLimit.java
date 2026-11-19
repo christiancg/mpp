@@ -26,7 +26,7 @@ final class IndexedFilterLimit {
     private record MatchingIds(Iterator<String> ids, boolean exact) {
     }
 
-    static IndexedSource.Fast tryLazy(List<BaseAggregationStep> steps, String dbName, String collName,
+    static IndexedSource.Fast tryLazy(List<BaseAggregationStep> steps, String projectName, String collName,
             PipelineContext context) throws IOException {
         if (steps.isEmpty() || !(steps.getFirst() instanceof FilterAggregationStep filter)
                 || !(filter.getOperator() instanceof FieldOperator operator)
@@ -34,13 +34,14 @@ final class IndexedFilterLimit {
             return null;
         }
         final var bound = AggregationOperationHelper.boundAfterRowWise(steps, 0);
-        if (bound <= 0 || !locks.holdsCollectionLock(dbName, collName)) {
+        if (bound <= 0 || !locks.holdsCollectionLock(projectName, collName)) {
             return null;
         }
-        if (isComplement(operator) && ScanPreference.prefersScan(operator, dbName, collName, context)) {
-            return new IndexedSource.Fast(context.watch(retested(context.source(null, dbName, collName), operator)), 1);
+        if (isComplement(operator) && ScanPreference.prefersScan(operator, projectName, collName, context)) {
+            return new IndexedSource.Fast(
+                    context.watch(retested(context.source(null, projectName, collName), operator)), 1);
         }
-        final var matching = matchingIds(operator, dbName, collName, bound, context);
+        final var matching = matchingIds(operator, projectName, collName, bound, context);
         if (matching == null) {
             return null;
         }
@@ -49,8 +50,8 @@ final class IndexedFilterLimit {
         if (dropsSkip) {
             drop(matching.ids(), skip, context);
         }
-        return new IndexedSource.Fast(context.watch(retested(SortOperatorHelper.fetchInOrder(matching.ids(), dbName,
-                collName, dropsSkip ? bound - skip : bound, context), operator)), dropsSkip ? 2 : 1);
+        return new IndexedSource.Fast(context.watch(retested(SortOperatorHelper.fetchInOrder(matching.ids(),
+                projectName, collName, dropsSkip ? bound - skip : bound, context), operator)), dropsSkip ? 2 : 1);
     }
 
     private static Stream<JsonObject> retested(Stream<JsonObject> documents, FieldOperator operator) {
@@ -75,14 +76,14 @@ final class IndexedFilterLimit {
         }
     }
 
-    private static MatchingIds matchingIds(FieldOperator operator, String dbName, String collName, long bound,
+    private static MatchingIds matchingIds(FieldOperator operator, String projectName, String collName, long bound,
             PipelineContext context) throws IOException {
-        final var walk = IndexWindowWalk.open(operator, dbName, collName, (int) Math.min(bound, FIRST_PAGE_LIMIT),
+        final var walk = IndexWindowWalk.open(operator, projectName, collName, (int) Math.min(bound, FIRST_PAGE_LIMIT),
                 context);
         if (walk != null) {
             return new MatchingIds(walk, walk.startedWithoutPendingIds());
         }
-        final var ids = FilterOperatorHelper.indexMatchingIds(operator, dbName, collName, context);
+        final var ids = FilterOperatorHelper.indexMatchingIds(operator, projectName, collName, context);
         return ids == null
                 ? null
                 : new MatchingIds(ids.iterator(), !FilterOperatorHelper.hitsAreUnconfirmedCandidates(operator));

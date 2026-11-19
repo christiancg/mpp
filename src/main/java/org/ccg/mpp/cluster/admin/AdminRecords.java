@@ -10,7 +10,7 @@ import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.fs.FileSystem;
@@ -68,17 +68,17 @@ public final class AdminRecords {
 
     private static List<AdminRecordKey> liveKeys() {
         final var keys = new ArrayList<AdminRecordKey>();
-        for (final var dbName : cache.getUserDatabaseNames()) {
-            keys.add(AdminRecordKey.database(dbName));
-            for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
-                keys.add(AdminRecordKey.collection(dbName, collName));
-                keys.add(AdminRecordKey.schema(dbName, collName));
-                keys.add(AdminRecordKey.triggers(dbName, collName));
+        for (final var projectName : cache.getUserProjectNames()) {
+            keys.add(AdminRecordKey.project(projectName));
+            for (final var collName : cache.getCollectionNamesForProject(projectName)) {
+                keys.add(AdminRecordKey.collection(projectName, collName));
+                keys.add(AdminRecordKey.schema(projectName, collName));
+                keys.add(AdminRecordKey.triggers(projectName, collName));
             }
-            listed(dbName, Globals.PROCEDURES_FOLDER, () -> fs.metadataFiles().listProcedureNames(dbName))
-                    .forEach(name -> keys.add(AdminRecordKey.procedure(dbName, name)));
-            listed(dbName, Globals.SCHEDULES_FOLDER, () -> fs.metadataFiles().listScheduleNames(dbName))
-                    .forEach(name -> keys.add(AdminRecordKey.schedule(dbName, name)));
+            listed(projectName, Globals.PROCEDURES_FOLDER, () -> fs.metadataFiles().listProcedureNames(projectName))
+                    .forEach(name -> keys.add(AdminRecordKey.procedure(projectName, name)));
+            listed(projectName, Globals.SCHEDULES_FOLDER, () -> fs.metadataFiles().listScheduleNames(projectName))
+                    .forEach(name -> keys.add(AdminRecordKey.schedule(projectName, name)));
         }
         for (final var user : cache.getAllAdminUserEntries()) {
             keys.add(AdminRecordKey.user(user.get_id()));
@@ -130,14 +130,14 @@ public final class AdminRecords {
     public static AdminRecord live(AdminRecordKey key) {
         try {
             return switch (key.kind()) {
-                case DATABASE ->
-                    row(key, cache.getAdminDbEntry(key.dbName()), cache.getPkIndexAdminDbEntry(key.dbName()));
+                case PROJECT -> row(key, cache.getAdminProjectEntry(key.projectName()),
+                        cache.getPkIndexAdminProjectEntry(key.projectName()));
                 case COLLECTION -> collection(key);
                 case USER -> row(key, cache.getAdminUserEntry(key.name()), cache.getPkIndexAdminUserEntry(key.name()));
-                case SCHEMA -> stored(key, StoredDefinitions.schema(key.dbName(), key.name()));
-                case TRIGGERS -> stored(key, StoredDefinitions.triggers(key.dbName(), key.name()));
-                case PROCEDURE -> stored(key, StoredDefinitions.procedure(key.dbName(), key.name()));
-                case SCHEDULE -> stored(key, StoredDefinitions.schedule(key.dbName(), key.name()));
+                case SCHEMA -> stored(key, StoredDefinitions.schema(key.projectName(), key.name()));
+                case TRIGGERS -> stored(key, StoredDefinitions.triggers(key.projectName(), key.name()));
+                case PROCEDURE -> stored(key, StoredDefinitions.procedure(key.projectName(), key.name()));
+                case SCHEDULE -> stored(key, StoredDefinitions.schedule(key.projectName(), key.name()));
             };
         } catch (IOException | RuntimeException unreadable) {
             logger.warning("Leaving " + key.id() + " out of the admin records: it could not be read: "
@@ -147,14 +147,16 @@ public final class AdminRecords {
     }
 
     private static AdminRecord collection(AdminRecordKey key) {
-        final var entry = cache.getAdminCollectionEntry(key.dbName(), key.name());
+        final var entry = cache.getAdminCollectionEntry(key.projectName(), key.name());
         if (entry == null) {
             return null;
         }
         final var body = entry.getData().deepCopy();
         body.addProperty(Globals.PK_FIELD, entry.get_id());
-        return new AdminRecord(key, AdminOperationHelper.versionOf(
-                cache.getPkIndexAdminCollEntry(Cache.getCollectionIdentifier(key.dbName(), key.name()))), body);
+        return new AdminRecord(key,
+                AdminOperationHelper.versionOf(
+                        cache.getPkIndexAdminCollEntry(Cache.getCollectionIdentifier(key.projectName(), key.name()))),
+                body);
     }
 
     private static AdminRecord row(AdminRecordKey key, DbEntry entry, PkIndexEntry pk) {
@@ -174,11 +176,11 @@ public final class AdminRecords {
         List<String> names() throws IOException;
     }
 
-    private static List<String> listed(String dbName, String folder, Listing listing) {
+    private static List<String> listed(String projectName, String folder, Listing listing) {
         try {
             return listing.names();
         } catch (IOException unlistable) {
-            logger.warning("Leaving the " + folder + " of " + dbName + " out of the admin records: it could not be"
+            logger.warning("Leaving the " + folder + " of " + projectName + " out of the admin records: it could not be"
                     + " listed: " + unlistable.getMessage());
             return List.of();
         }
@@ -203,13 +205,14 @@ public final class AdminRecords {
         final var key = record.key();
         final var body = record.body();
         switch (key.kind()) {
-            case DATABASE -> AdminOperationHelper.saveDatabaseEntry(AdminDbEntry.fromJsonObject(body));
+            case PROJECT -> AdminOperationHelper.saveProjectEntry(AdminProjectEntry.fromJsonObject(body));
             case COLLECTION -> AdminOperationHelper.saveCollectionEntry(AdminCollEntry.fromJsonObject(body));
             case USER -> AdminOperationHelper.saveUserEntry(AdminUserEntry.fromJsonObject(body));
-            case SCHEMA -> StoredDefinitions.writeSchema(key.dbName(), key.name(), AdminStamp.unwrappedSchema(body));
-            case TRIGGERS -> StoredDefinitions.writeTriggers(key.dbName(), key.name(), body);
-            case PROCEDURE -> StoredDefinitions.writeProcedure(key.dbName(), key.name(), body);
-            default -> StoredDefinitions.writeSchedule(key.dbName(), key.name(), body);
+            case SCHEMA ->
+                StoredDefinitions.writeSchema(key.projectName(), key.name(), AdminStamp.unwrappedSchema(body));
+            case TRIGGERS -> StoredDefinitions.writeTriggers(key.projectName(), key.name(), body);
+            case PROCEDURE -> StoredDefinitions.writeProcedure(key.projectName(), key.name(), body);
+            default -> StoredDefinitions.writeSchedule(key.projectName(), key.name(), body);
         }
     }
 }

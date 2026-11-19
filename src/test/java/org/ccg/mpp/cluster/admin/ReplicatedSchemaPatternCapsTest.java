@@ -41,7 +41,7 @@ public class ReplicatedSchemaPatternCapsTest extends AdminRecordTestBase {
         final var body = new JsonObject();
         body.add("schema", schema);
         body.addProperty("writeVersion", Long.toString(version));
-        return new AdminRecord(AdminRecordKey.schema(TestGlobals.DB, TestGlobals.COLL), version, body);
+        return new AdminRecord(AdminRecordKey.schema(TestGlobals.PROJECT, TestGlobals.COLL), version, body);
     }
 
     private static Map<?, ?> compiledPatterns() throws Exception {
@@ -57,8 +57,8 @@ public class ReplicatedSchemaPatternCapsTest extends AdminRecordTestBase {
         final var result = AdminRecordMerge.apply(List.of(overCapSchema(clock.next())), true);
 
         assertTrue(result.complete());
-        assertNotNull(StoredDefinitions.schema(TestGlobals.DB, TestGlobals.COLL));
-        final var schema = cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        assertNotNull(StoredDefinitions.schema(TestGlobals.PROJECT, TestGlobals.COLL));
+        final var schema = cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(schema);
         final var document = new JsonObject();
         document.add("name", new JsonString("replicated-over-cap-abc"));

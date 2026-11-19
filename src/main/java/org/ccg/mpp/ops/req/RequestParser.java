@@ -78,9 +78,9 @@ public final class RequestParser {
                 case FIND_BY_ID -> eJson.fromJson(root, FindByIdRequest.class);
                 case AGGREGATE -> parseAggregationRequest(root);
                 case DELETE -> parseDeleteRequest(root);
-                case CREATE_DATABASE -> eJson.fromJson(root, CreateDatabaseRequest.class);
-                case DROP_DATABASE -> eJson.fromJson(root, DropDatabaseRequest.class);
-                case LIST_DATABASES -> eJson.fromJson(root, ListDatabasesRequest.class);
+                case CREATE_PROJECT -> eJson.fromJson(root, CreateProjectRequest.class);
+                case DROP_PROJECT -> eJson.fromJson(root, DropProjectRequest.class);
+                case LIST_PROJECTS -> eJson.fromJson(root, ListProjectsRequest.class);
                 case CREATE_COLLECTION -> eJson.fromJson(root, CreateCollectionRequest.class);
                 case LIST_COLLECTIONS -> eJson.fromJson(root, ListCollectionsRequest.class);
                 case DROP_COLLECTION -> eJson.fromJson(root, DropCollectionRequest.class);
@@ -96,10 +96,10 @@ public final class RequestParser {
                 case CREATE_USER -> eJson.fromJson(root, CreateUserRequest.class);
                 case DELETE_USER -> eJson.fromJson(root, DeleteUserRequest.class);
                 case CHANGE_PERMISSIONS -> eJson.fromJson(root, ChangePermissionsRequest.class);
-                case SET_DATABASE_OWNERS -> eJson.fromJson(root, SetDatabaseOwnersRequest.class);
+                case SET_PROJECT_OWNERS -> eJson.fromJson(root, SetProjectOwnersRequest.class);
                 case LIST_USERS -> parseListUsersRequest(root);
                 case SET_PASSWORD -> eJson.fromJson(root, SetPasswordRequest.class);
-                case GET_DATABASE_STATS -> eJson.fromJson(root, GetDatabaseStatsRequest.class);
+                case GET_PROJECT_STATS -> eJson.fromJson(root, GetProjectStatsRequest.class);
                 case LISTEN -> parseListenRequest(root);
                 case STOP_LISTEN -> eJson.fromJson(root, StopListenRequest.class);
                 case START_TRANSACTION -> eJson.fromJson(root, StartTransactionRequest.class);

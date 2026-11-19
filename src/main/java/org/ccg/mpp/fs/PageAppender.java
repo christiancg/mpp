@@ -25,7 +25,7 @@ final class PageAppender {
         this.vacuum = vacuum;
     }
 
-    <T extends DbEntry> List<IndexedDbEntry> bulkInsert(String dbName, String collName, List<T> entries,
+    <T extends DbEntry> List<IndexedDbEntry> bulkInsert(String projectName, String collName, List<T> entries,
             Function<? super T, Long> storagePageResolver, Function<? super T, byte[]> encodedLines)
             throws IOException {
         final var groups = entries.stream()
@@ -33,18 +33,19 @@ final class PageAppender {
         final var locks = new ArrayList<Lock>(groups.size());
         try {
             for (final var group : groups.entrySet()) {
-                locks.add(FileLocks.lockWrite(paths.collectionPage(dbName, collName, group.getKey())));
-                vacuum.vacuumIfNeeded(dbName, collName, group.getKey(), appendedBytes(group.getValue()), null, null);
+                locks.add(FileLocks.lockWrite(paths.collectionPage(projectName, collName, group.getKey())));
+                vacuum.vacuumIfNeeded(projectName, collName, group.getKey(), appendedBytes(group.getValue()), null,
+                        null);
             }
-            final var plan = new WalPlan(paths, pkIndexStore, dbName, collName);
+            final var plan = new WalPlan(paths, pkIndexStore, projectName, collName);
             final var indexEntries = new ArrayList<IndexedDbEntry>(entries.size());
             for (final var group : groups.entrySet()) {
                 for (final var entry : group.getValue()) {
                     final var line = encodedLines.apply(entry);
-                    final var pkEntry = new PkIndexEntry(dbName, collName, entry.get_id(),
+                    final var pkEntry = new PkIndexEntry(projectName, collName, entry.get_id(),
                             plan.append(group.getKey(), line), line.length, group.getKey(), entry.getVersion());
                     plan.insertRow(pkEntry);
-                    indexEntries.add(indexed(dbName, collName, entry, pkEntry));
+                    indexEntries.add(indexed(projectName, collName, entry, pkEntry));
                 }
             }
             plan.commit();
@@ -56,7 +57,7 @@ final class PageAppender {
         }
     }
 
-    <T extends DbEntry> List<IndexedDbEntry> bulkInsertAndDelete(String dbName, String collName, List<T> inserts,
+    <T extends DbEntry> List<IndexedDbEntry> bulkInsertAndDelete(String projectName, String collName, List<T> inserts,
             Function<? super T, Long> pageOf, Function<? super T, byte[]> lines, List<PkIndexEntry> deletes)
             throws IOException {
         final var groups = inserts.stream().collect(Collectors.groupingBy(pageOf, TreeMap::new, Collectors.toList()));
@@ -69,17 +70,17 @@ final class PageAppender {
         final var locks = new ArrayList<Lock>(pages.size());
         try {
             for (final var page : pages) {
-                locks.add(FileLocks.lockWrite(paths.collectionPage(dbName, collName, page)));
+                locks.add(FileLocks.lockWrite(paths.collectionPage(projectName, collName, page)));
             }
             final var vacuumed = new HashMap<Long, VacuumedPage>();
             for (final var group : groups.entrySet()) {
-                final var moved = vacuum.vacuumIfNeeded(dbName, collName, group.getKey(),
+                final var moved = vacuum.vacuumIfNeeded(projectName, collName, group.getKey(),
                         appendedBytes(group.getValue()), null, null);
                 if (moved != null) {
                     vacuumed.put(group.getKey(), moved);
                 }
             }
-            final var plan = new WalPlan(paths, pkIndexStore, dbName, collName);
+            final var plan = new WalPlan(paths, pkIndexStore, projectName, collName);
             for (var index = 0; index < positions.length; index++) {
                 final var row = deletes.get(index);
                 final var moved = vacuumed.get(row.getPage());
@@ -87,7 +88,7 @@ final class PageAppender {
                         ? positions[index]
                         : RecordReplacer.positionAfter(moved, row.getValue(), positions[index]);
                 RecordReplacer.requireWithinPage(row, position,
-                        PageLengths.lengthOf(paths.collectionPage(dbName, collName, row.getPage())));
+                        PageLengths.lengthOf(paths.collectionPage(projectName, collName, row.getPage())));
                 plan.deleteRow(row.getValue());
                 plan.blank(row.getValue(), row.getPage(), position, row.getLength());
             }
@@ -95,10 +96,10 @@ final class PageAppender {
             for (final var group : groups.entrySet()) {
                 for (final var entry : group.getValue()) {
                     final var line = lines.apply(entry);
-                    final var pkEntry = new PkIndexEntry(dbName, collName, entry.get_id(),
+                    final var pkEntry = new PkIndexEntry(projectName, collName, entry.get_id(),
                             plan.append(group.getKey(), line), line.length, group.getKey(), entry.getVersion());
                     plan.insertRow(pkEntry);
-                    indexEntries.add(indexed(dbName, collName, entry, pkEntry));
+                    indexEntries.add(indexed(projectName, collName, entry, pkEntry));
                 }
             }
             plan.commit(null, FaultPoint.PK_ROW_COMMITTED);
@@ -118,11 +119,11 @@ final class PageAppender {
         return bytes;
     }
 
-    private static IndexedDbEntry indexed(String dbName, String collName, DbEntry entry, PkIndexEntry pkEntry) {
+    private static IndexedDbEntry indexed(String projectName, String collName, DbEntry entry, PkIndexEntry pkEntry) {
         final var indexedEntry = new IndexedDbEntry();
         indexedEntry.setIndex(pkEntry);
         indexedEntry.setCollectionName(collName);
-        indexedEntry.setDatabaseName(dbName);
+        indexedEntry.setProjectName(projectName);
         indexedEntry.set_id(entry.get_id());
         indexedEntry.setData(entry.getData());
         indexedEntry.setVersion(entry.getVersion());
@@ -130,16 +131,16 @@ final class PageAppender {
     }
 
     PkIndexEntry insert(DbEntry entry, byte[] line) throws IOException {
-        final var dbName = entry.getDatabaseName();
+        final var projectName = entry.getProjectName();
         final var collName = entry.getCollectionName();
         final var page = entry.getPage();
-        final var file = paths.collectionPage(dbName, collName, page);
+        final var file = paths.collectionPage(projectName, collName, page);
         final var lock = FileLocks.lockWrite(file);
         try {
-            vacuum.vacuumIfNeeded(dbName, collName, page, line.length, null, null);
-            final var plan = new WalPlan(paths, pkIndexStore, dbName, collName).onPage(page, file);
-            final var row = new PkIndexEntry(dbName, collName, entry.get_id(), plan.append(page, line), line.length,
-                    page, entry.getVersion());
+            vacuum.vacuumIfNeeded(projectName, collName, page, line.length, null, null);
+            final var plan = new WalPlan(paths, pkIndexStore, projectName, collName).onPage(page, file);
+            final var row = new PkIndexEntry(projectName, collName, entry.get_id(), plan.append(page, line),
+                    line.length, page, entry.getVersion());
             plan.insertRow(row);
             plan.commit();
             return row;

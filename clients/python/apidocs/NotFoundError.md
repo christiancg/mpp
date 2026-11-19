@@ -1,3 +1,3 @@
 # NotFoundError
 
-The database, collection, document or other target does not exist (`404-*`).
+The project, collection, document or other target does not exist (`404-*`).

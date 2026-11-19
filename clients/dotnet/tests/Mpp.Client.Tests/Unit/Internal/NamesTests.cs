@@ -12,7 +12,7 @@ public sealed class NamesTests
     [InlineData("A_b-9")]
     public void ValidNamesPass(string name)
     {
-        Assert.Equal(name, Names.Database(name));
+        Assert.Equal(name, Names.Project(name));
         Assert.Equal(name, Names.Collection(name));
     }
 
@@ -23,7 +23,7 @@ public sealed class NamesTests
     [InlineData(null)]
     public void InvalidNamesAreRefusedBeforeAnyRequest(string? name)
     {
-        Assert.Throws<ArgumentException>(() => Names.Database(name));
+        Assert.Throws<ArgumentException>(() => Names.Project(name));
         Assert.Throws<ArgumentException>(() => Names.Collection(name));
     }
 

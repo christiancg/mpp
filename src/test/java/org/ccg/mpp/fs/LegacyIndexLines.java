@@ -30,9 +30,9 @@ public final class LegacyIndexLines {
         }
     }
 
-    public void updateHashIndexFiles(String dbName, String collName, String fieldName, IndexKind kind,
+    public void updateHashIndexFiles(String projectName, String collName, String fieldName, IndexKind kind,
             FieldIndexEntry<String> insertedEntry, FieldIndexEntry<String> removedEntry) throws IOException {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, kind.label());
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, kind.label());
         if (removedEntry != null) {
             removeIndexLine(indexFile, FieldIndexEntry.fileKeyOf(removedEntry.getValue()), removedEntry);
         }
@@ -41,20 +41,20 @@ public final class LegacyIndexLines {
         }
     }
 
-    public <T, K> void updateIndexFiles(String dbName, String collName, String fieldName,
+    public <T, K> void updateIndexFiles(String projectName, String collName, String fieldName,
             FieldIndexEntry<T> insertedEntry, FieldIndexEntry<K> removedEntry) throws IOException {
         if (removedEntry != null) {
-            removeIndexLine(indexFileFor(dbName, collName, fieldName, removedEntry),
+            removeIndexLine(indexFileFor(projectName, collName, fieldName, removedEntry),
                     FieldIndexEntry.fileKeyOf(removedEntry.getValue()), removedEntry);
         }
         if (insertedEntry != null) {
-            upsertIndexLine(indexFileFor(dbName, collName, fieldName, insertedEntry),
+            upsertIndexLine(indexFileFor(projectName, collName, fieldName, insertedEntry),
                     FieldIndexEntry.fileKeyOf(insertedEntry.getValue()), insertedEntry);
         }
     }
 
-    private File indexFileFor(String dbName, String collName, String fieldName, FieldIndexEntry<?> entry) {
-        return paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(entry.getValue().getClass()));
+    private File indexFileFor(String projectName, String collName, String fieldName, FieldIndexEntry<?> entry) {
+        return paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(entry.getValue().getClass()));
     }
 
     private static void removeIndexLine(File indexFile, String value, FieldIndexEntry<?> entry) throws IOException {

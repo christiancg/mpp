@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 final class WalLogState {
     private static final Map<String, WalLogState> states = new ConcurrentHashMap<>();
 
-    final String dbName;
+    final String projectName;
     final String collName;
     final String path;
     final Set<Long> touchedPages = new HashSet<>();
@@ -31,8 +31,8 @@ final class WalLogState {
     volatile long checkpointRetryAtMillis;
     private volatile boolean seeded;
 
-    private WalLogState(String dbName, String collName, String path) {
-        this.dbName = dbName;
+    private WalLogState(String projectName, String collName, String path) {
+        this.projectName = projectName;
         this.collName = collName;
         this.path = path;
     }
@@ -64,12 +64,12 @@ final class WalLogState {
         return states.values();
     }
 
-    static WalLogState of(File log, String path, String dbName, String collName) throws IOException {
+    static WalLogState of(File log, String path, String projectName, String collName) throws IOException {
         final var known = states.get(path);
         if (known != null && known.seeded) {
             return known;
         }
-        final var state = states.computeIfAbsent(path, _ -> new WalLogState(dbName, collName, path));
+        final var state = states.computeIfAbsent(path, _ -> new WalLogState(projectName, collName, path));
         if (!state.seeded) {
             state.reseed(log);
         }

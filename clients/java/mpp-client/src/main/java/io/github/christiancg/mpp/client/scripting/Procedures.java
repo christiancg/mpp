@@ -12,36 +12,36 @@ import tools.jackson.databind.node.ObjectNode;
 
 public final class Procedures {
     private final ClientContext context;
-    private final String database;
+    private final String project;
 
-    public Procedures(ClientContext context, String database) {
+    public Procedures(ClientContext context, String project) {
         this.context = context;
-        this.database = database;
+        this.project = project;
     }
 
     public long save(ProcedureDefinition procedure) {
-        return context.channel().send(Operation.SAVE_PROCEDURE, context.scripts().saveProcedure(database, procedure))
+        return context.channel().send(Operation.SAVE_PROCEDURE, context.scripts().saveProcedure(project, procedure))
                 .path("version").asLong(0);
     }
 
     public void delete(String name) {
-        context.channel().send(Operation.DELETE_PROCEDURE, context.scripts().deleteProcedure(database, name));
+        context.channel().send(Operation.DELETE_PROCEDURE, context.scripts().deleteProcedure(project, name));
     }
 
     public List<ProcedureInfo> list() {
-        return procedures(context.scripts().listProcedures(database));
+        return procedures(context.scripts().listProcedures(project));
     }
 
     public List<ProcedureInfo> list(boolean includeSource) {
-        return procedures(context.scripts().listProcedures(database, includeSource));
+        return procedures(context.scripts().listProcedures(project, includeSource));
     }
 
     public ScriptResult call(String name) {
-        return run(context.scripts().callProcedure(database, name));
+        return run(context.scripts().callProcedure(project, name));
     }
 
     public ScriptResult call(String name, Document args) {
-        return run(context.scripts().callProcedure(database, name, args));
+        return run(context.scripts().callProcedure(project, name, args));
     }
 
     private List<ProcedureInfo> procedures(ObjectNode request) {

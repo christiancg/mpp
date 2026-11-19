@@ -78,7 +78,7 @@ public class ConditionalDeleteClusterTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalEnabled = config.isClusterEnabled();
         originalExpected = config.getClusterExpectedSize();
         originalReplicator = TestUtils.getPrivateField(coordinator, "replicator", Replicator.class);
@@ -123,7 +123,7 @@ public class ConditionalDeleteClusterTest {
     }
 
     private void seed() {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < 6; i++) {
             final var document = new JsonObject();
@@ -137,21 +137,21 @@ public class ConditionalDeleteClusterTest {
 
     private void installDeletedTrigger() throws Exception {
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", "return 1;"), ACTOR).getStatus());
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "return 1;"), ACTOR).getStatus());
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.DELETED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_AFTER, false, true, ACTOR, 1L, 1L, 1L,
                         ACTOR)));
     }
 
     private OperationResponse deleteWhereNBelowThree() {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.SMALLER_THAN, "n", new JsonNumber(3)));
         return processor.processMessage(request);
     }
 
     private Set<String> stored() {
-        return new TreeSet<>(cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).keySet());
+        return new TreeSet<>(cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).keySet());
     }
 
     private List<TriggerEvent> awaitDispatches() {
@@ -170,7 +170,7 @@ public class ConditionalDeleteClusterTest {
         assertEquals(ErrorCode.ERROR_DELETING.getCode(), response.getErrorCode());
         assertEquals(Set.of("c0", "c1", "c2", "c3", "c4", "c5"), stored(),
                 "the tombstones were never durable, so not one delete may land");
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(DOOMED.stream().noneMatch(tombstones::containsKey), String.valueOf(tombstones));
         verify(replicator, never()).broadcast(any());
         assertEquals(List.of(), awaitDispatches());
@@ -184,7 +184,7 @@ public class ConditionalDeleteClusterTest {
 
         assertEquals(3L, assertInstanceOf(DeleteManyResponse.class, response).getDeletedCount());
         assertEquals(Set.of("c3", "c4", "c5"), stored());
-        assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).keySet().containsAll(DOOMED));
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).keySet().containsAll(DOOMED));
         final var payload = ArgumentCaptor.forClass(ReplicationPayload.class);
         verify(replicator).broadcast(payload.capture());
         assertEquals(ReplicationOp.DELETE, payload.getValue().getOp());

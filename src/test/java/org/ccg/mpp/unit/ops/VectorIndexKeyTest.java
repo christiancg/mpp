@@ -37,7 +37,7 @@ public class VectorIndexKeyTest extends FilterResolutionSupport {
     public void test_key_is_signature_and_hash() throws IOException, InterruptedException {
         seed();
 
-        final var indexFile = Path.of(TestGlobals.PATH, TestGlobals.DB, TestGlobals.COLL,
+        final var indexFile = Path.of(TestGlobals.PATH, TestGlobals.PROJECT, TestGlobals.COLL,
                 TestGlobals.COLL + "-" + FIELD + "-JsonVector.idx");
         final var lines = Files.readAllLines(indexFile, StandardCharsets.UTF_8);
         assertEquals(3, lines.size());
@@ -52,7 +52,7 @@ public class VectorIndexKeyTest extends FilterResolutionSupport {
         assertEquals(String.format("%016x", FIRST.contentHash()), firstKey.substring(4));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith(firstKey + '\u001f' + "first")));
 
-        final var resident = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var resident = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 JsonVector.class);
         assertEquals(3, resident.size());
         for (final var entry : resident) {
@@ -74,7 +74,7 @@ public class VectorIndexKeyTest extends FilterResolutionSupport {
     @Test
     public void test_equals_retests_candidates() throws IOException, InterruptedException {
         seed();
-        final var resident = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var resident = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 JsonVector.class);
         for (final var entry : resident) {
             if (entry.getValue().indexKey().equals(FIRST.indexKey())) {
@@ -94,14 +94,15 @@ public class VectorIndexKeyTest extends FilterResolutionSupport {
     public void test_readers_that_need_values_decline_a_vector_index() throws IOException, InterruptedException {
         seed();
 
-        assertNull(IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD, ReadObserver.NONE));
-        assertNull(IndexHelper.getDistinctIndexValues(TestGlobals.DB, TestGlobals.COLL, FIELD, ReadObserver.NONE));
-        assertNull(IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD, (_, _) -> 0, 10,
+        assertNull(
+                IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ReadObserver.NONE));
+        assertNull(IndexHelper.getDistinctIndexValues(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ReadObserver.NONE));
+        assertNull(IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, (_, _) -> 0, 10,
                 ReadObserver.NONE));
         final var distinct = new DistinctAggregationStep(FIELD);
         assertEquals(3, rows(distinct).size());
         final var greater = new ArrayList<String>();
-        for (final var stored : cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL,
+        for (final var stored : cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL,
                 Set.of("first", "second", "third"))) {
             final var vector = new JsonVector(stored.getData().get(FIELD).asJsonString().getValue());
             if (FIRST.compareToCustom(vector) < 0) {

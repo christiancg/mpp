@@ -41,7 +41,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class UserCacheFootprintTest {
-    private static final String DB = "footprintDb";
+    private static final String PROJECT = "footprintProject";
     private static final String COLL = "footprintColl";
 
     @BeforeEach
@@ -58,7 +58,7 @@ public class UserCacheFootprintTest {
         final var data = new JsonObject();
         data.addProperty("payload", payload);
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(DB);
+        dbEntry.setProjectName(PROJECT);
         dbEntry.setCollectionName(COLL);
         dbEntry.set_id(id);
         dbEntry.setData(data);
@@ -68,7 +68,7 @@ public class UserCacheFootprintTest {
     private static long trackedCollectionBytes(UserCache cache) {
         var total = 0L;
         for (final var resource : cache.listCacheableResources()) {
-            if (resource.kind() == AccessKind.COLLECTION && DB.equals(resource.dbName())) {
+            if (resource.kind() == AccessKind.COLLECTION && PROJECT.equals(resource.projectName())) {
                 total += resource.estimatedSizeBytes();
             }
         }
@@ -76,7 +76,7 @@ public class UserCacheFootprintTest {
     }
 
     private static long recomputedCollectionBytes(UserCache cache) {
-        final var cached = cache.getCachedCollection(DB, COLL);
+        final var cached = cache.getCachedCollection(PROJECT, COLL);
         if (cached == null) {
             return 0L;
         }
@@ -96,7 +96,7 @@ public class UserCacheFootprintTest {
     public void test_tracked_footprint_matches_after_inserts() {
         final var cache = new UserCache();
         for (var i = 0; i < 25; i++) {
-            cache.addEntryToCache(DB, COLL, entry("id" + i, "payload-" + i));
+            cache.addEntryToCache(PROJECT, COLL, entry("id" + i, "payload-" + i));
         }
         assertTrue(trackedCollectionBytes(cache) > 0);
         assertTrackedMatchesRecomputed(cache);
@@ -105,10 +105,10 @@ public class UserCacheFootprintTest {
     @Test
     public void test_tracked_footprint_matches_after_replacing_an_entry_with_a_bigger_one() {
         final var cache = new UserCache();
-        cache.addEntryToCache(DB, COLL, entry("id1", "small"));
+        cache.addEntryToCache(PROJECT, COLL, entry("id1", "small"));
         final var before = trackedCollectionBytes(cache);
 
-        cache.addEntryToCache(DB, COLL, entry("id1", "a considerably longer payload than before"));
+        cache.addEntryToCache(PROJECT, COLL, entry("id1", "a considerably longer payload than before"));
 
         assertTrue(trackedCollectionBytes(cache) > before);
         assertTrackedMatchesRecomputed(cache);
@@ -117,10 +117,10 @@ public class UserCacheFootprintTest {
     @Test
     public void test_tracked_footprint_matches_after_replacing_an_entry_with_a_smaller_one() {
         final var cache = new UserCache();
-        cache.addEntryToCache(DB, COLL, entry("id1", "a considerably longer payload than before"));
+        cache.addEntryToCache(PROJECT, COLL, entry("id1", "a considerably longer payload than before"));
         final var before = trackedCollectionBytes(cache);
 
-        cache.addEntryToCache(DB, COLL, entry("id1", "small"));
+        cache.addEntryToCache(PROJECT, COLL, entry("id1", "small"));
 
         assertTrue(trackedCollectionBytes(cache) < before);
         assertTrackedMatchesRecomputed(cache);
@@ -133,7 +133,7 @@ public class UserCacheFootprintTest {
         for (var i = 0; i < 30; i++) {
             entries.add(entry("bulk" + i, "payload-" + i));
         }
-        cache.addEntriesToCache(DB, COLL, entries);
+        cache.addEntriesToCache(PROJECT, COLL, entries);
         assertTrackedMatchesRecomputed(cache);
     }
 
@@ -141,11 +141,11 @@ public class UserCacheFootprintTest {
     public void test_tracked_footprint_matches_after_evicting_one_entry() {
         final var cache = new UserCache();
         for (var i = 0; i < 10; i++) {
-            cache.addEntryToCache(DB, COLL, entry("id" + i, "payload-" + i));
+            cache.addEntryToCache(PROJECT, COLL, entry("id" + i, "payload-" + i));
         }
         final var before = trackedCollectionBytes(cache);
 
-        cache.evictEntry(DB, COLL, "id3");
+        cache.evictEntry(PROJECT, COLL, "id3");
 
         assertTrue(trackedCollectionBytes(cache) < before);
         assertTrackedMatchesRecomputed(cache);
@@ -155,9 +155,9 @@ public class UserCacheFootprintTest {
     public void test_tracked_footprint_is_zero_after_evicting_the_collection() {
         final var cache = new UserCache();
         for (var i = 0; i < 10; i++) {
-            cache.addEntryToCache(DB, COLL, entry("id" + i, "payload-" + i));
+            cache.addEntryToCache(PROJECT, COLL, entry("id" + i, "payload-" + i));
         }
-        cache.evictCollection(DB, COLL);
+        cache.evictCollection(PROJECT, COLL);
 
         assertEquals(0L, trackedCollectionBytes(cache));
         assertTrackedMatchesRecomputed(cache);
@@ -168,10 +168,10 @@ public class UserCacheFootprintTest {
         final var cache = new UserCache();
         for (var round = 0; round < 8; round++) {
             for (var i = 0; i < 12; i++) {
-                cache.addEntryToCache(DB, COLL, entry("id" + i, "payload-" + round + "-" + "x".repeat(round)));
+                cache.addEntryToCache(PROJECT, COLL, entry("id" + i, "payload-" + round + "-" + "x".repeat(round)));
             }
             if (round % 3 == 0) {
-                cache.evictEntry(DB, COLL, "id" + round);
+                cache.evictEntry(PROJECT, COLL, "id" + round);
             }
             assertTrackedMatchesRecomputed(cache);
         }
@@ -195,9 +195,9 @@ public class UserCacheFootprintTest {
         FIELD_INDEX_ITERATIONS.set(0);
         final var published = new IterationCountingList();
         for (var i = 0; i < 3; i++) {
-            published.add(new FieldIndexEntry<>(DB, COLL, "value-" + i, Set.of("id" + i, "other" + i)));
+            published.add(new FieldIndexEntry<>(PROJECT, COLL, "value-" + i, Set.of("id" + i, "other" + i)));
         }
-        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(DB, COLL),
+        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(PROJECT, COLL),
                 Cache.getIndexIdentifier(FIELD, String.class), published);
         FIELD_INDEX_ITERATIONS.set(0);
         return published;
@@ -217,10 +217,10 @@ public class UserCacheFootprintTest {
         final var release = new CountDownLatch(1);
         final var writer = new Thread(() -> {
             try {
-                locks.lockIndex(DB, COLL, FIELD);
+                locks.lockIndex(PROJECT, COLL, FIELD);
                 held.countDown();
                 release.await();
-                locks.releaseIndex(DB, COLL, FIELD);
+                locks.releaseIndex(PROJECT, COLL, FIELD);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -251,12 +251,12 @@ public class UserCacheFootprintTest {
         final var cache = new UserCache();
         final var published = publishFieldIndex(cache);
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lockIndex(DB, COLL, FIELD);
+        locks.lockIndex(PROJECT, COLL, FIELD);
         try {
             assertTrue(fieldIndexBytes(cache) > published.size() * COUNT_ONLY_BYTES_PER_ENTRY,
                     "the worker loading an index measures it in full under its own write lock");
         } finally {
-            locks.releaseIndex(DB, COLL, FIELD);
+            locks.releaseIndex(PROJECT, COLL, FIELD);
         }
     }
 
@@ -289,10 +289,11 @@ public class UserCacheFootprintTest {
         final var cache = new UserCache();
         publishFieldIndex(cache);
 
-        final var iterations = withFiniteBudget(() -> cache.addEntryToCache(DB, COLL, entry("admitted", "payload")));
+        final var iterations = withFiniteBudget(
+                () -> cache.addEntryToCache(PROJECT, COLL, entry("admitted", "payload")));
 
         assertEquals(0, iterations, "admission sums remembered sizes and must not walk a resident index");
-        assertNotNull(cache.getCachedCollection(DB, COLL).get("admitted"));
+        assertNotNull(cache.getCachedCollection(PROJECT, COLL).get("admitted"));
     }
 
     @Test
@@ -310,7 +311,7 @@ public class UserCacheFootprintTest {
             assertTrue(withFiniteBudget(() -> userCache.listCacheableResources(Measure.FULL_FORCED)) > 0);
             assertEquals(0, withFiniteBudget(() -> userCache.listCacheableResources(Measure.REMEMBERED)));
         } finally {
-            userCache.evictCollection(DB, COLL);
+            userCache.evictCollection(PROJECT, COLL);
         }
     }
 
@@ -328,7 +329,7 @@ public class UserCacheFootprintTest {
             assertEquals(0, withFiniteBudget(memoryManagement::runEvictionSweep),
                     "a cache far below its budget has nothing to evict, so the sweep must not walk its indexes");
         } finally {
-            userCache.evictCollection(DB, COLL);
+            userCache.evictCollection(PROJECT, COLL);
         }
     }
 
@@ -342,17 +343,17 @@ public class UserCacheFootprintTest {
         cache.listCacheableResources(Measure.FULL);
         final var remembered = rememberedBytesOf(cache);
 
-        withBudget(remembered, () -> cache.rememberFieldIndexBatch(DB, COLL, indexKey, published.size(), 0L, 0));
+        withBudget(remembered, () -> cache.rememberFieldIndexBatch(PROJECT, COLL, indexKey, published.size(), 0L, 0));
         assertEquals(0, signals.get(), "a cache at its budget is not over it");
 
         cache.onOverBudget(signals::incrementAndGet);
-        withBudget(remembered,
-                () -> cache.rememberFieldIndexBatch(DB, COLL, indexKey, published.size(), 64L * published.size(), 1));
+        withBudget(remembered, () -> cache.rememberFieldIndexBatch(PROJECT, COLL, indexKey, published.size(),
+                64L * published.size(), 1));
         assertEquals(1, signals.get(), "a batch that grows the cache past its budget wakes the sweep");
 
         cache.onOverBudget(null);
-        withBudget(remembered,
-                () -> cache.rememberFieldIndexBatch(DB, COLL, indexKey, published.size(), 64L * published.size(), 1));
+        withBudget(remembered, () -> cache.rememberFieldIndexBatch(PROJECT, COLL, indexKey, published.size(),
+                64L * published.size(), 1));
         assertEquals(1, signals.get(), "with no sweep running nothing is signalled");
     }
 
@@ -388,7 +389,7 @@ public class UserCacheFootprintTest {
 
         for (final var budget : List.of(Globals.CACHE_UNLIMITED, Globals.CACHE_DISABLED)) {
             withBudget(budget, () -> {
-                cache.rememberFieldIndexBatch(DB, COLL, indexKey, published.size(), 1L << 20, 1);
+                cache.rememberFieldIndexBatch(PROJECT, COLL, indexKey, published.size(), 1L << 20, 1);
                 cache.signalIfOverBudget();
             });
         }
@@ -398,14 +399,15 @@ public class UserCacheFootprintTest {
 
     @Test
     public void anInsertGrowingTheResidentPkIndexPastTheCapSignalsTheSweep() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var userCache = IocContainer.get(UserCache.class);
         final var signals = new AtomicInteger();
         userCache.onOverBudget(signals::incrementAndGet);
         try {
             withFiniteBudget(() -> save("first"));
             assertEquals(0, signals.get());
-            assertNotNull(userCache.getCachedCollection(TestGlobals.DB, TestGlobals.COLL), "the first save is cached");
+            assertNotNull(userCache.getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL),
+                    "the first save is cached");
 
             userCache.onOverBudget(signals::incrementAndGet);
             withBudget(1L, () -> save("second"));
@@ -413,12 +415,12 @@ public class UserCacheFootprintTest {
             assertTrue(signals.get() > 0, "the insert grew a resident pk index past the budget");
         } finally {
             userCache.onOverBudget(null);
-            userCache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+            userCache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     private static void save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         request.setObject(object);
@@ -429,39 +431,40 @@ public class UserCacheFootprintTest {
     private static long rememberedStatusBytes(UserCache cache, Measure measure) {
         return cache.listCacheableResources(measure).stream()
                 .filter(resource -> resource.kind() == AccessKind.FIELD_INDEX
-                        && TestGlobals.DB.equals(resource.dbName())
+                        && TestGlobals.PROJECT.equals(resource.projectName())
                         && Cache.getIndexIdentifier(FIELD, String.class).equals(resource.indexKey()))
                 .mapToLong(CacheableResource::estimatedSizeBytes).sum();
     }
 
     @Test
     public void batchUpdatesRememberedAverage() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var userCache = IocContainer.get(UserCache.class);
         final var locks = IocContainer.get(ResourceLocking.class);
-        IocContainer.get(FileSystem.class).writeIndexFile(TestGlobals.DB, TestGlobals.COLL, FIELD, Map.of(String.class,
-                List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "v", new HashSet<>(Set.of("a"))))));
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(FileSystem.class).writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                Map.of(String.class, List.of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "v",
+                        new HashSet<>(Set.of("a"))))));
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            userCache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class);
+            userCache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         final var before = rememberedStatusBytes(userCache, Measure.REMEMBERED);
 
-        locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         try {
             final var ids = new ArrayList<String>();
             for (var i = 0; i < 50; i++) {
                 ids.add("a-rather-long-document-identifier-" + i);
             }
-            final var batch = FieldIndexBatch.open(TestGlobals.DB, TestGlobals.COLL, FIELD, ids);
+            final var batch = FieldIndexBatch.open(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ids);
             for (final var id : ids) {
                 batch.apply(id, new JsonString("v"));
             }
             batch.flush();
         } finally {
-            locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+            locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         }
 
         final var remembered = rememberedStatusBytes(userCache, Measure.REMEMBERED);

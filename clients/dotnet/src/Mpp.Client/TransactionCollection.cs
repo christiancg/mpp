@@ -19,7 +19,7 @@ public sealed class TransactionCollection<T>
         Ops = ops;
     }
 
-    public string DatabaseName => Ops.Database;
+    public string ProjectName => Ops.Project;
 
     public string Name => Ops.Collection;
 

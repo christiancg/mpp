@@ -7,21 +7,21 @@ from mpp.scripting_types import ScheduleDefinition, ScheduleInfo
 
 
 class AsyncSchedules:
-    def __init__(self, context: ClientContext, database: str) -> None:
+    def __init__(self, context: ClientContext, project: str) -> None:
         self._context = context
-        self._database = database
+        self._project = project
 
     async def save(self, definition: ScheduleDefinition) -> int:
         reply = await self._context.channel.send(
-            "SAVE_SCHEDULE", self._context.scripts.save_schedule(self._database, definition)
+            "SAVE_SCHEDULE", self._context.scripts.save_schedule(self._project, definition)
         )
         return int(number_of(reply.get("version")) or 0)
 
     async def delete(self, name: str) -> None:
-        await self._context.channel.send("DELETE_SCHEDULE", self._context.scripts.delete_schedule(self._database, name))
+        await self._context.channel.send("DELETE_SCHEDULE", self._context.scripts.delete_schedule(self._project, name))
 
     async def list(self, include_args: bool | None = None) -> list[ScheduleInfo]:
         reply = await self._context.channel.send(
-            "LIST_SCHEDULES", self._context.scripts.list_schedules(self._database, include_args)
+            "LIST_SCHEDULES", self._context.scripts.list_schedules(self._project, include_args)
         )
         return [schedule(row) for row in documents(reply, "schedules")]

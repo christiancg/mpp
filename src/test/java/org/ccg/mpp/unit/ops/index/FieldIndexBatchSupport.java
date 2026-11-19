@@ -35,7 +35,7 @@ import org.ccg.mpp.utils.JsonUtils;
 import org.ccg.mpp.utils.SaltedKey;
 
 final class FieldIndexBatchSupport {
-    static final String DB = TestGlobals.DB;
+    static final String PROJECT = TestGlobals.PROJECT;
     static final String COLL = TestGlobals.COLL;
     private static final Number[] NUMBERS = {0, -0.0, 0.0, 1, 1.0, 2, 2.5, -3, 1e20, 123456789012L, -0.5};
     private static final String[] STRINGS = {"a", "A", "b", "B", "ab", "AB", "Ab", "é", "É", "x\u001fy", "back\\slash",
@@ -111,29 +111,29 @@ final class FieldIndexBatchSupport {
                 object.add(field, value);
             }
         }
-        return DbEntry.fromJsonObject(DB, COLL, object);
+        return DbEntry.fromJsonObject(PROJECT, COLL, object);
     }
 
     void applyBatch(String fieldName, List<String> ids) throws IOException, InterruptedException {
-        locks.lockIndex(DB, COLL, fieldName);
+        locks.lockIndex(PROJECT, COLL, fieldName);
         try {
-            final var batch = FieldIndexBatch.open(DB, COLL, fieldName, ids);
+            final var batch = FieldIndexBatch.open(PROJECT, COLL, fieldName, ids);
             for (final var id : ids) {
                 final var doc = documentOf(id, fieldName);
                 batch.apply(id, doc == null ? null : JsonUtils.getFromPath(doc.getData(), fieldName));
             }
             batch.flush();
         } finally {
-            locks.releaseIndex(DB, COLL, fieldName);
+            locks.releaseIndex(PROJECT, COLL, fieldName);
         }
     }
 
     void applyBatchHoldingTheCollection(String fieldName, List<String> ids) throws IOException, InterruptedException {
-        locks.lockRead(DB, COLL);
+        locks.lockRead(PROJECT, COLL);
         try {
             applyBatch(fieldName, ids);
         } finally {
-            locks.releaseRead(DB, COLL);
+            locks.releaseRead(PROJECT, COLL);
         }
     }
 
@@ -146,13 +146,13 @@ final class FieldIndexBatchSupport {
     }
 
     static File indexFile(String fieldName, String typeLabel) {
-        return new File(TestGlobals.PATH + File.separator + DB + File.separator + COLL + File.separator + COLL + "-"
-                + fieldName + "-" + typeLabel + Globals.INDEX_FILE_EXTENSION);
+        return new File(TestGlobals.PATH + File.separator + PROJECT + File.separator + COLL + File.separator + COLL
+                + "-" + fieldName + "-" + typeLabel + Globals.INDEX_FILE_EXTENSION);
     }
 
     static File logFile(String fieldName, String typeLabel) {
-        return new File(TestGlobals.PATH + File.separator + DB + File.separator + COLL + File.separator + COLL + "-"
-                + fieldName + "-" + typeLabel + Globals.INDEX_LOG_FILE_EXTENSION);
+        return new File(TestGlobals.PATH + File.separator + PROJECT + File.separator + COLL + File.separator + COLL
+                + "-" + fieldName + "-" + typeLabel + Globals.INDEX_LOG_FILE_EXTENSION);
     }
 
     static boolean typeExists(String fieldName, String typeLabel) {
@@ -231,13 +231,13 @@ final class FieldIndexBatchSupport {
         final var fs = IocContainer.get(FileSystem.class);
         final var loaded = new TreeMap<String, List<? extends FieldIndexEntry<?>>>();
         for (final var type : IndexKind.scalarIndexClasses()) {
-            final var entries = fs.readWholeFieldIndexFiles(DB, COLL, fieldName, type);
+            final var entries = fs.readWholeFieldIndexFiles(PROJECT, COLL, fieldName, type);
             if (entries != null) {
                 loaded.put(IndexKind.fileLabel(type), entries);
             }
         }
         for (final var kind : IndexKind.HASH_KINDS) {
-            final var entries = fs.readWholeHashIndexFile(DB, COLL, fieldName, kind);
+            final var entries = fs.readWholeHashIndexFile(PROJECT, COLL, fieldName, kind);
             if (entries != null) {
                 loaded.put(kind.label(), entries);
             }
@@ -246,7 +246,7 @@ final class FieldIndexBatchSupport {
     }
 
     String lookupMismatch(String fieldName, int pool) throws IOException {
-        final var lookup = cache.fieldIndexLookup(DB, COLL, fieldName);
+        final var lookup = cache.fieldIndexLookup(PROJECT, COLL, fieldName);
         if (lookup == null) {
             return null;
         }
@@ -286,30 +286,30 @@ final class FieldIndexBatchSupport {
     }
 
     void admitEveryType(String fieldName) throws IOException, InterruptedException {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
             for (final var type : IndexKind.scalarIndexClasses()) {
-                cache.getFieldIndexAndLoadIfNecessary(DB, COLL, fieldName, type);
+                cache.getFieldIndexAndLoadIfNecessary(PROJECT, COLL, fieldName, type);
             }
             for (final var kind : IndexKind.HASH_KINDS) {
-                cache.getHashIndexAndLoadIfNecessary(DB, COLL, fieldName, kind);
+                cache.getHashIndexAndLoadIfNecessary(PROJECT, COLL, fieldName, kind);
             }
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
     List<FieldIndexEntry<?>> resident(String fieldName, Class<?> type) {
-        return cache.residentFieldIndex(DB, COLL, Cache.getIndexIdentifier(fieldName, type));
+        return cache.residentFieldIndex(PROJECT, COLL, Cache.getIndexIdentifier(fieldName, type));
     }
 
     List<FieldIndexEntry<?>> resident(String fieldName, IndexKind kind) {
-        return cache.residentFieldIndex(DB, COLL, Cache.getHashIndexIdentifier(fieldName, kind.label()));
+        return cache.residentFieldIndex(PROJECT, COLL, Cache.getHashIndexIdentifier(fieldName, kind.label()));
     }
 
     String residentMismatch(String fieldName) throws IOException {
         for (final var type : IndexKind.scalarIndexClasses()) {
-            final var fresh = fs.readWholeFieldIndexFiles(DB, COLL, fieldName, type);
+            final var fresh = fs.readWholeFieldIndexFiles(PROJECT, COLL, fieldName, type);
             final var mismatch = mismatchOf(type.getSimpleName(), resident(fieldName, type), fresh,
                     FieldIndexLoader.orderFor(type));
             if (mismatch != null) {
@@ -317,7 +317,7 @@ final class FieldIndexBatchSupport {
             }
         }
         for (final var kind : IndexKind.HASH_KINDS) {
-            final var fresh = fs.readWholeHashIndexFile(DB, COLL, fieldName, kind);
+            final var fresh = fs.readWholeHashIndexFile(PROJECT, COLL, fieldName, kind);
             final var mismatch = mismatchOf(kind.label(), resident(fieldName, kind), fresh,
                     FieldIndexLoader.hashOrder());
             if (mismatch != null) {

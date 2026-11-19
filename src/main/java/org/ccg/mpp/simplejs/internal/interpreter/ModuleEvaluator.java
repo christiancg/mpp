@@ -82,12 +82,12 @@ public final class ModuleEvaluator {
     }
 
     private JsValue createDbModule() {
-        final var database = host.database();
-        if (database == null) {
-            throw new JsThrowException(interp.intrinsics().makeError("Error", "Database access is not available"));
+        final var project = host.project();
+        if (project == null) {
+            throw new JsThrowException(interp.intrinsics().makeError("Error", "Project access is not available"));
         }
-        database.useIntrinsics(interp.intrinsics());
-        return DbModule.create(database, interp.ops(), interp.intrinsics(), host.limits());
+        project.useIntrinsics(interp.intrinsics());
+        return DbModule.create(project, interp.ops(), interp.intrinsics(), host.limits());
     }
 
     private JsValue resolveHostModule(String source, Coroutine coroutine) {

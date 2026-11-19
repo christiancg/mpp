@@ -25,28 +25,28 @@ final class DocumentTier {
                 _ -> new ResidentDocuments(cache.sizes().footprint().newCell(AccessKind.COLLECTION)));
     }
 
-    void addEntryToCache(String dbName, String collName, DbEntry entry) {
-        if (UserCache.isReservedDatabase(dbName)) {
+    void addEntryToCache(String projectName, String collName, DbEntry entry) {
+        if (UserCache.isReservedProject(projectName)) {
             return;
         }
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         final var existing = residents().get(collId);
         if (existing != null && existing.containsKey(entry.get_id())) {
             existing.put(entry);
             return;
         }
-        if (!cache.admits(dbName, AccessKind.COLLECTION, collName, null,
+        if (!cache.admits(projectName, AccessKind.COLLECTION, collName, null,
                 () -> CacheSizeEstimator.estimateCollectionEntry(entry))) {
             return;
         }
         residentFor(collId).put(entry);
     }
 
-    void addEntriesToCache(String dbName, String collName, List<DbEntry> entries) {
-        if (UserCache.isReservedDatabase(dbName)) {
+    void addEntriesToCache(String projectName, String collName, List<DbEntry> entries) {
+        if (UserCache.isReservedProject(projectName)) {
             return;
         }
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         final var existing = residents().get(collId);
         final var newEntries = new ArrayList<DbEntry>();
         for (var e : entries) {
@@ -56,7 +56,7 @@ final class DocumentTier {
                 newEntries.add(e);
             }
         }
-        if (newEntries.isEmpty() || !cache.admits(dbName, AccessKind.COLLECTION, collName, null,
+        if (newEntries.isEmpty() || !cache.admits(projectName, AccessKind.COLLECTION, collName, null,
                 () -> CacheSizeEstimator.estimateCollectionEntries(newEntries))) {
             return;
         }
@@ -66,61 +66,62 @@ final class DocumentTier {
         }
     }
 
-    DbEntry getById(String dbName, String collName, PkIndexEntry idxEntry) throws Exception {
-        if (cache.isCachingDisabled(dbName)) {
+    DbEntry getById(String projectName, String collName, PkIndexEntry idxEntry) throws Exception {
+        if (cache.isCachingDisabled(projectName)) {
             return cache.fs().getById(idxEntry);
         }
-        final var collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        final var collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         final var resident = residents().get(collectionIdentifier);
         final var hit = resident == null ? null : resident.get(idxEntry.getValue());
         if (hit != null) {
             return hit;
         }
         final var entry = cache.fs().getById(idxEntry);
-        if (cache.locks().holdsCollectionLock(dbName, collName) && cache.admits(dbName, AccessKind.COLLECTION, collName,
-                null, () -> CacheSizeEstimator.estimateCollectionEntry(entry))) {
+        if (cache.locks().holdsCollectionLock(projectName, collName) && cache.admits(projectName, AccessKind.COLLECTION,
+                collName, null, () -> CacheSizeEstimator.estimateCollectionEntry(entry))) {
             residentFor(collectionIdentifier).put(entry);
         }
         return entry;
     }
 
-    Map<String, DbEntry> getCachedCollection(String dbName, String collName) {
-        final var resident = residents().get(Cache.getCollectionIdentifier(dbName, collName));
+    Map<String, DbEntry> getCachedCollection(String projectName, String collName) {
+        final var resident = residents().get(Cache.getCollectionIdentifier(projectName, collName));
         return resident == null ? null : resident.documents();
     }
 
-    Map<String, DbEntry> admitWholeCollection(String dbName, String collName, Map<String, DbEntry> loaded) {
-        if (cache.isCachingDisabled(dbName)) {
+    Map<String, DbEntry> admitWholeCollection(String projectName, String collName, Map<String, DbEntry> loaded) {
+        if (cache.isCachingDisabled(projectName)) {
             return loaded;
         }
         final var asMap = loaded instanceof ConcurrentHashMap<String, DbEntry> concurrent
                 ? concurrent
                 : new ConcurrentHashMap<>(loaded);
-        return admitCollected(dbName, collName, asMap, CacheSizeEstimator.estimateCollectionSize(asMap), loaded);
+        return admitCollected(projectName, collName, asMap, CacheSizeEstimator.estimateCollectionSize(asMap), loaded);
     }
 
-    Map<String, DbEntry> admitCollected(String dbName, String collName, ConcurrentHashMap<String, DbEntry> collected,
-            long measuredBytes, Map<String, DbEntry> otherwise) {
-        if (cache.isCachingDisabled(dbName)
-                || !cache.admits(dbName, AccessKind.COLLECTION, collName, null, () -> measuredBytes)) {
+    Map<String, DbEntry> admitCollected(String projectName, String collName,
+            ConcurrentHashMap<String, DbEntry> collected, long measuredBytes, Map<String, DbEntry> otherwise) {
+        if (cache.isCachingDisabled(projectName)
+                || !cache.admits(projectName, AccessKind.COLLECTION, collName, null, () -> measuredBytes)) {
             return otherwise;
         }
         final var attached = ResidentDocuments.attach(collected,
                 cache.sizes().footprint().newCell(AccessKind.COLLECTION), measuredBytes);
-        final var replaced = residents().put(Cache.getCollectionIdentifier(dbName, collName), attached);
+        final var replaced = residents().put(Cache.getCollectionIdentifier(projectName, collName), attached);
         if (replaced != null) {
             replaced.retire();
         }
         return collected;
     }
 
-    List<DbEntry> getEntriesByIds(String dbName, String collName, Set<String> ids, PkRows pinned) throws IOException {
+    List<DbEntry> getEntriesByIds(String projectName, String collName, Set<String> ids, PkRows pinned)
+            throws IOException {
         if (ids == null || ids.isEmpty()) {
             return new ArrayList<>();
         }
         final var result = new ArrayList<DbEntry>(ids.size());
-        final var collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
-        final var cachingDisabled = cache.isCachingDisabled(dbName);
+        final var collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
+        final var cachingDisabled = cache.isCachingDisabled(projectName);
         final var resident = cachingDisabled ? null : residents().get(collectionIdentifier);
         final var missingIds = new ArrayList<String>();
         for (var id : ids) {
@@ -134,13 +135,13 @@ final class DocumentTier {
         if (missingIds.isEmpty()) {
             return result;
         }
-        final var toRead = cache.pkTier().rowsFor(dbName, collName, missingIds, pinned);
+        final var toRead = cache.pkTier().rowsFor(projectName, collName, missingIds, pinned);
         if (toRead.isEmpty()) {
             return result;
         }
         final var read = cache.fs().getByIndexEntries(toRead);
         result.addAll(read);
-        if (!cachingDisabled && cache.locks().holdsCollectionLock(dbName, collName) && cache.admits(dbName,
+        if (!cachingDisabled && cache.locks().holdsCollectionLock(projectName, collName) && cache.admits(projectName,
                 AccessKind.COLLECTION, collName, null, () -> CacheSizeEstimator.estimateCollectionEntries(read))) {
             final var target = residentFor(collectionIdentifier);
             for (var e : read) {
@@ -150,8 +151,8 @@ final class DocumentTier {
         return result;
     }
 
-    void evictEntry(String dbName, String collName, String pk) {
-        final var resident = residents().get(Cache.getCollectionIdentifier(dbName, collName));
+    void evictEntry(String projectName, String collName, String pk) {
+        final var resident = residents().get(Cache.getCollectionIdentifier(projectName, collName));
         if (resident != null) {
             resident.remove(pk);
         }

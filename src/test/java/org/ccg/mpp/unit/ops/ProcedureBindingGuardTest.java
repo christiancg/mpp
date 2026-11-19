@@ -59,12 +59,12 @@ public class ProcedureBindingGuardTest {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
 
         assertEquals(REFUSAL, saveProcedure(BOUND, "return 2;", INTRUDER).getErrorCode());
-        final var disable = new SaveProcedureRequest(TestGlobals.DB, BOUND, "return 1;");
+        final var disable = new SaveProcedureRequest(TestGlobals.PROJECT, BOUND, "return 1;");
         disable.setEnabled(false);
         assertEquals(REFUSAL, ProcedureOperationHelper.executeSave(disable, INTRUDER).getErrorCode());
         assertEquals(REFUSAL, ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, BOUND), INTRUDER).getErrorCode());
-        assertTrue(cache.getProcedure(TestGlobals.DB, BOUND).isEnabled());
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, BOUND), INTRUDER).getErrorCode());
+        assertTrue(cache.getProcedure(TestGlobals.PROJECT, BOUND).isEnabled());
     }
 
     @Test
@@ -90,9 +90,9 @@ public class ProcedureBindingGuardTest {
     }
 
     @Test
-    public void test_a_database_owner_and_an_admin_may_overwrite() throws Exception {
+    public void test_a_project_owner_and_an_admin_may_overwrite() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of("owner"));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of("owner"));
         assertEquals(OperationStatus.OK, TestUtils.createAdmin("root").getStatus());
 
         assertNull(refusal(BOUND, "owner"));
@@ -152,7 +152,7 @@ public class ProcedureBindingGuardTest {
 
         assertEquals(REFUSAL, refusal(BOUND, INTRUDER).getErrorCode());
         assertEquals(REFUSAL, saveProcedure("brand_new", "return 1;", INTRUDER).getErrorCode());
-        assertNull(cache.getProcedure(TestGlobals.DB, "brand_new"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "brand_new"));
     }
 
     @Test
@@ -165,7 +165,7 @@ public class ProcedureBindingGuardTest {
     @Test
     public void test_a_disabled_bound_procedure_still_counts() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
-        final var disable = new SaveProcedureRequest(TestGlobals.DB, BOUND, "return 1;");
+        final var disable = new SaveProcedureRequest(TestGlobals.PROJECT, BOUND, "return 1;");
         disable.setEnabled(false);
         assertEquals(OperationStatus.OK, ProcedureOperationHelper.executeSave(disable, DEFINER).getStatus());
 
@@ -189,8 +189,8 @@ public class ProcedureBindingGuardTest {
     @Test
     public void test_a_binding_whose_procedure_was_deleted_reaches_only_its_name() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, BOUND);
-        cache.removeProcedure(TestGlobals.DB, BOUND);
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, BOUND);
+        cache.removeProcedure(TestGlobals.PROJECT, BOUND);
 
         assertEquals(REFUSAL, refusal(BOUND, INTRUDER).getErrorCode());
         assertNull(refusal("other", INTRUDER));
@@ -200,14 +200,14 @@ public class ProcedureBindingGuardTest {
     public void test_the_refusal_names_no_definer() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
 
-        final var refused = ProcedureBindingGuard.refusal(OperationType.DELETE_PROCEDURE, TestGlobals.DB, BOUND,
+        final var refused = ProcedureBindingGuard.refusal(OperationType.DELETE_PROCEDURE, TestGlobals.PROJECT, BOUND,
                 INTRUDER);
 
         assertNotNull(refused);
         assertEquals(OperationType.DELETE_PROCEDURE, refused.getType());
         assertEquals(OperationStatus.FORBIDDEN, refused.getStatus());
         assertEquals("Procedure '" + BOUND + "' is bound by a trigger or schedule that runs as another user; only"
-                + " that user, a database owner or an admin may change it", refused.getMessage());
+                + " that user, a project owner or an admin may change it", refused.getMessage());
         assertFalse(refused.getMessage().contains(DEFINER));
         assertFalse(refused.getMessage().contains("audit"));
     }
@@ -215,8 +215,8 @@ public class ProcedureBindingGuardTest {
     @Test
     public void test_an_unreadable_definition_propagates_as_a_read_failure() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
-        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL, "{not json");
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().writeTriggers(TestGlobals.PROJECT, TestGlobals.COLL, "{not json");
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertThrows(MetadataReadException.class, () -> refusal(BOUND, INTRUDER));
     }

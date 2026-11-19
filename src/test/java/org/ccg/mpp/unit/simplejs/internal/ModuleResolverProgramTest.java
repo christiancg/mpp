@@ -15,7 +15,7 @@ import org.ccg.mpp.simplejs.host.ResolvedModule;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.ccg.mpp.unit.simplejs.host.ModuleHostBindings;
 import org.junit.jupiter.api.Test;
 
@@ -62,7 +62,7 @@ public class ModuleResolverProgramTest {
 
     @Test
     public void test_two_specifiers_same_module_id_share_instance() {
-        final var database = new FakeDatabaseAccess();
+        final var project = new FakeProjectAccess();
         final var source = "import db from 'db'; db.delete('d', 'c', 'once'); export default {};";
         final var resolver = resolverOf(Map.of("lib", new ResolvedModule("pkg:lib", source), "lib/index.js",
                 new ResolvedModule("pkg:lib", source)));
@@ -70,9 +70,9 @@ public class ModuleResolverProgramTest {
                 import a from 'lib';
                 import b from 'lib/index.js';
                 return a === b;
-                """, ModuleHostBindings.of(resolver, ResourceLimits.unlimited(), database));
+                """, ModuleHostBindings.of(resolver, ResourceLimits.unlimited(), project));
         assertTrue(result.getValue().asJsonBoolean().getValue());
-        assertEquals(1, database.calls.stream().filter(call -> call.equals("delete:d/c/once")).count());
+        assertEquals(1, project.calls.stream().filter(call -> call.equals("delete:d/c/once")).count());
     }
 
     @Test
@@ -104,16 +104,16 @@ public class ModuleResolverProgramTest {
 
     @Test
     public void test_resolver_module_can_import_db() {
-        final var database = new FakeDatabaseAccess();
+        final var project = new FakeProjectAccess();
         final var resolver = resolverOf(Map.of("store",
-                new ResolvedModule("pkg:store", "import db from 'db'; export default () => db.listDatabases();")));
+                new ResolvedModule("pkg:store", "import db from 'db'; export default () => db.listProjects();")));
         final var result = engine.run("""
                 import store from 'store';
                 store();
                 return 'ok';
-                """, ModuleHostBindings.of(resolver, ResourceLimits.unlimited(), database));
+                """, ModuleHostBindings.of(resolver, ResourceLimits.unlimited(), project));
         assertEquals("ok", text(result));
-        assertTrue(database.calls.contains("listDatabases"));
+        assertTrue(project.calls.contains("listProjects"));
     }
 
     @Test
@@ -206,11 +206,11 @@ public class ModuleResolverProgramTest {
     // the specifier resolved at all - before the fix these were a ReferenceError about a missing local.
     @Test
     public void test_reexport_from_a_builtin() {
-        final var database = new FakeDatabaseAccess();
-        final var host = ModuleHostBindings.of(resolverOf(Map.of()), ResourceLimits.unlimited(), database);
+        final var project = new FakeProjectAccess();
+        final var host = ModuleHostBindings.of(resolverOf(Map.of()), ResourceLimits.unlimited(), project);
         final var member = engine.run("export { findById } from 'db';", host);
         assertNull(member.getErrorName(), member.getErrorMessage());
-        final var defaulted = engine.run("export { default as database } from 'db';", host);
+        final var defaulted = engine.run("export { default as project } from 'db';", host);
         assertNull(defaulted.getErrorName(), defaulted.getErrorMessage());
     }
 
@@ -227,8 +227,8 @@ public class ModuleResolverProgramTest {
     // a resolved module's default import binds its default export.
     @Test
     public void test_builtin_default_import_binds_the_builtin_itself() {
-        final var database = new FakeDatabaseAccess();
-        final var host = ModuleHostBindings.of(resolverOf(Map.of()), ResourceLimits.unlimited(), database);
+        final var project = new FakeProjectAccess();
+        final var host = ModuleHostBindings.of(resolverOf(Map.of()), ResourceLimits.unlimited(), project);
         assertEquals("function", text(engine.run("import db from 'db'; return typeof db.findById;", host)));
         assertEquals("function", text(engine.run("import * as ns from 'db'; return typeof ns.findById;", host)));
         // A built-in is wrapped either way, so `default` is present and is the built-in itself.

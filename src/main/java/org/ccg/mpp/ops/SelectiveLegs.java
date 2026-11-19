@@ -35,8 +35,8 @@ final class SelectiveLegs {
     private SelectiveLegs() {
     }
 
-    static List<Set<String>> sets(ConjunctionOperator operator, String dbName, String collName, PipelineContext context,
-            Resolver resolver) throws IOException {
+    static List<Set<String>> sets(ConjunctionOperator operator, String projectName, String collName,
+            PipelineContext context, Resolver resolver) throws IOException {
         final var sets = new ArrayList<Set<String>>();
         final var counted = new ArrayList<Counted>();
         final var rangesByField = new LinkedHashMap<String, List<FieldOperator>>();
@@ -46,7 +46,7 @@ final class SelectiveLegs {
                 continue;
             }
             if (leg instanceof FieldOperator equality) {
-                final var count = equalsCount(equality, dbName, collName);
+                final var count = equalsCount(equality, projectName, collName);
                 if (count.isPresent()) {
                     counted.add(new Counted(equality.getField(), count.getAsLong(), () -> resolver.resolve(leg)));
                     continue;
@@ -56,22 +56,22 @@ final class SelectiveLegs {
         }
         for (final var range : rangesByField.entrySet()) {
             final var bounds = RangeBounds.fromLeaves(range.getKey(), range.getValue());
-            final Deferred deferred = () -> ConjunctionCandidates.rangeMatchingIds(bounds, range.getValue(), dbName,
-                    collName, context);
-            final var count = cache.hasNoIndex(dbName, collName, range.getKey())
+            final Deferred deferred = () -> ConjunctionCandidates.rangeMatchingIds(bounds, range.getValue(),
+                    projectName, collName, context);
+            final var count = cache.hasNoIndex(projectName, collName, range.getKey())
                     ? OptionalLong.empty()
-                    : cache.countInRange(dbName, collName, bounds);
+                    : cache.countInRange(projectName, collName, bounds);
             if (count.isPresent()) {
                 counted.add(new Counted(range.getKey(), count.getAsLong(), deferred));
             } else {
                 addIfResolved(sets, deferred.resolve());
             }
         }
-        resolveMostSelective(sets, counted, dbName, collName, context);
+        resolveMostSelective(sets, counted, projectName, collName, context);
         return sets;
     }
 
-    private static void resolveMostSelective(List<Set<String>> sets, List<Counted> counted, String dbName,
+    private static void resolveMostSelective(List<Set<String>> sets, List<Counted> counted, String projectName,
             String collName, PipelineContext context) throws IOException {
         if (counted.isEmpty()) {
             return;
@@ -83,20 +83,21 @@ final class SelectiveLegs {
         }
         for (final var leg : counted) {
             if (!sets.isEmpty() && leg.count() > reference * RESOLVE_WITHIN) {
-                context.indexUsed(leg.field(), AnalyzeContext.fieldLockId(dbName, collName, leg.field()));
+                context.indexUsed(leg.field(), AnalyzeContext.fieldLockId(projectName, collName, leg.field()));
             } else {
                 addIfResolved(sets, leg.deferred().resolve());
             }
         }
     }
 
-    private static OptionalLong equalsCount(FieldOperator field, String dbName, String collName) throws IOException {
+    private static OptionalLong equalsCount(FieldOperator field, String projectName, String collName)
+            throws IOException {
         if (field.getFieldOperatorType() != FieldOperatorType.EQUALS || JsonUtils.isPrimaryKeyPath(field.getField())
-                || cache.hasNoIndex(dbName, collName, field.getField())) {
+                || cache.hasNoIndex(projectName, collName, field.getField())) {
             return OptionalLong.empty();
         }
         final var value = CountOperatorHelper.scalarOperand(field.getValue());
-        return value == null ? OptionalLong.empty() : cache.countEquals(dbName, collName, field.getField(), value);
+        return value == null ? OptionalLong.empty() : cache.countEquals(projectName, collName, field.getField(), value);
     }
 
     private static void addIfResolved(List<Set<String>> sets, Set<String> ids) {

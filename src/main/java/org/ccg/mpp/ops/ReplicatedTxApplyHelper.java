@@ -18,12 +18,12 @@ public final class ReplicatedTxApplyHelper {
     }
 
     public static boolean apply(TxReplicationPayload payload, long timeoutMillis) {
-        if (payload == null || payload.getEntries().isEmpty() || payload.getEntries().stream()
-                .anyMatch(entry -> entry == null || !PeerNames.collection(entry.getDbName(), entry.getCollName()))) {
+        if (payload == null || payload.getEntries().isEmpty() || payload.getEntries().stream().anyMatch(
+                entry -> entry == null || !PeerNames.collection(entry.getProjectName(), entry.getCollName()))) {
             return false;
         }
         final var collIds = payload.getEntries().stream()
-                .map(entry -> Cache.getCollectionIdentifier(entry.getDbName(), entry.getCollName()))
+                .map(entry -> Cache.getCollectionIdentifier(entry.getProjectName(), entry.getCollName()))
                 .collect(Collectors.toSet());
         try {
             return applyUnderWriteLocks(payload, collIds, timeoutMillis);

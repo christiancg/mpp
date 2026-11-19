@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator
 import pytest
 
 from mpp import (
-    AsyncDatabase,
     AsyncMppClient,
+    AsyncProject,
     MppError,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -25,16 +25,16 @@ SERVER_CONFIG = {"triggersEnabled": "true", "triggerMaxAttempts": "1", "triggerR
 
 
 @pytest.fixture
-async def shop(client: AsyncMppClient) -> AsyncIterator[AsyncDatabase]:
-    database = client.database("script_it")
-    await database.create()
+async def shop(client: AsyncMppClient) -> AsyncIterator[AsyncProject]:
+    project = client.project("script_it")
+    await project.create()
     for name in ("orders", "audit", "notes"):
-        await database.collection(name).create()
-    yield database
-    await database.drop()
+        await project.collection(name).create()
+    yield project
+    await project.drop()
 
 
-async def test_run_script_returns_its_value_and_logs(shop: AsyncDatabase) -> None:
+async def test_run_script_returns_its_value_and_logs(shop: AsyncProject) -> None:
     result = await shop.run_script(
         'import args from "args";\nconsole.log("hi " + args.name);\nreturn { greeting: "hello " + args.name };',
         {"name": "Ana"},
@@ -44,7 +44,7 @@ async def test_run_script_returns_its_value_and_logs(shop: AsyncDatabase) -> Non
     assert (await shop.run_script("return 1 + 1;")).value == 2
 
 
-async def test_procedures_are_saved_listed_called_and_deleted(shop: AsyncDatabase) -> None:
+async def test_procedures_are_saved_listed_called_and_deleted(shop: AsyncProject) -> None:
     procedures = shop.procedures()
     version = await procedures.save(
         ProcedureDefinition("double_it", 'import args from "args";\nreturn args.n * 2;', description="doubles")
@@ -63,7 +63,7 @@ async def test_procedures_are_saved_listed_called_and_deleted(shop: AsyncDatabas
         await procedures.call("double_it")
 
 
-async def test_triggers_fire_test_reject_and_list(shop: AsyncDatabase) -> None:
+async def test_triggers_fire_test_reject_and_list(shop: AsyncProject) -> None:
     await shop.procedures().save(
         ProcedureDefinition(
             "audit_write",
@@ -98,7 +98,7 @@ async def test_triggers_fire_test_reject_and_list(shop: AsyncDatabase) -> None:
     assert await orders.triggers().list() == []
 
 
-async def test_dead_trigger_runs_are_listed_and_resolved(client: AsyncMppClient, shop: AsyncDatabase) -> None:
+async def test_dead_trigger_runs_are_listed_and_resolved(client: AsyncMppClient, shop: AsyncProject) -> None:
     await shop.procedures().save(ProcedureDefinition("always_fails", 'throw new Error("boom");'))
     notes = shop.collection("notes")
     await notes.triggers().save(TriggerDefinition("failing", "always_fails", (TriggerEvent.CREATED,)))
@@ -110,7 +110,7 @@ async def test_dead_trigger_runs_are_listed_and_resolved(client: AsyncMppClient,
     assert await runs.resolve(dead[0].run_id, TriggerRunDecision.DISCARD)
 
 
-async def test_schedules_are_saved_listed_and_deleted(shop: AsyncDatabase) -> None:
+async def test_schedules_are_saved_listed_and_deleted(shop: AsyncProject) -> None:
     await shop.procedures().save(ProcedureDefinition("noop", "return 0;"))
     schedules = shop.schedules()
     assert await schedules.save(ScheduleDefinition("hourly", "noop", cron="0 * * * *", args={"a": 1})) > 0
@@ -122,7 +122,7 @@ async def test_schedules_are_saved_listed_and_deleted(shop: AsyncDatabase) -> No
     assert await schedules.list() == []
 
 
-async def test_a_long_script_is_listed_and_cancelled(client: AsyncMppClient, shop: AsyncDatabase) -> None:
+async def test_a_long_script_is_listed_and_cancelled(client: AsyncMppClient, shop: AsyncProject) -> None:
     running = asyncio.create_task(shop.run_script("let i = 0;\nwhile (true) { i++; }"))
     scripts = await eventually(lambda: client.admin().scripts().list(), lambda listed: len(listed) > 0)
     assert await client.admin().scripts().cancel(scripts[0].run_id)

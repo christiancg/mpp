@@ -155,8 +155,8 @@ public class ClusterConnectionHandler implements Runnable {
     }
 
     private static String collectionOf(ReplicationPayload payload) {
-        return payload != null && PeerNames.collection(payload.getDbName(), payload.getCollName())
-                ? Cache.getCollectionIdentifier(payload.getDbName(), payload.getCollName())
+        return payload != null && PeerNames.collection(payload.getProjectName(), payload.getCollName())
+                ? Cache.getCollectionIdentifier(payload.getProjectName(), payload.getCollName())
                 : null;
     }
 
@@ -400,8 +400,8 @@ public class ClusterConnectionHandler implements Runnable {
         }
         return ClusterMessages.reply(ClusterMessageType.PULL_ACK, "Failed to build pull response", response -> {
             final var query = request.getAntiEntropy();
-            response.setAntiEntropy(antiEntropyService.buildPull(query.getDbName(), query.getCollName(), query.getIds(),
-                    query.incarnationValue()));
+            response.setAntiEntropy(antiEntropyService.buildPull(query.getProjectName(), query.getCollName(),
+                    query.getIds(), query.incarnationValue()));
         });
     }
 

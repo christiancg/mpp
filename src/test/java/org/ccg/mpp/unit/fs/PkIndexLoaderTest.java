@@ -16,7 +16,7 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
     public void lf_crlf_and_lone_cr_rows_and_empty_lines_all_load() throws Exception {
         write(row("c", 3) + "\r\n" + row("a", 1) + "\n\n" + row("b", 2) + "\r" + "\r\n" + row("d", 4) + "\n");
 
-        final var read = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var read = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("a", "b", "c", "d"), ids(read));
         assertEquals(List.of(1L, 2L, 3L, 4L), read.stream().map(PkIndexEntry::getVersion).toList());
@@ -27,7 +27,7 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
         final var content = row("b", 2) + "\n" + row("a", 1) + "\n";
         write(content);
 
-        fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(content, Files.readString(pkIndexFile().toPath(), StandardCharsets.UTF_8),
                 "a file with nothing to heal must be left byte for byte");
@@ -38,7 +38,7 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
         final var content = row("b", 1) + "\n" + row("a", 5) + "\n" + row("b", 2) + "\n" + row("b", 3) + "\n";
         write(content);
 
-        final var read = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var read = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("a", "b"), ids(read));
         assertEquals(3L, read.get(1).getVersion(), "the last occurrence in file order must win");
@@ -48,11 +48,11 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
 
     @Test
     public void a_healed_file_keeps_an_escaped_id_escaped() throws Exception {
-        final var escapedId = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x" + Globals.ID_SEPARATOR + "y", 0L,
-                10L, 0L, 7L).toFileEntry();
+        final var escapedId = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x" + Globals.ID_SEPARATOR + "y",
+                0L, 10L, 0L, 7L).toFileEntry();
         write(escapedId + "\nnot a row\n");
 
-        final var read = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var read = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of("x" + Globals.ID_SEPARATOR + "y"), ids(read));
         assertEquals(List.of(escapedId), Files.readAllLines(pkIndexFile().toPath(), StandardCharsets.UTF_8));
@@ -63,12 +63,12 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
         final var content = "nothing\nparses\n";
         write(content);
 
-        assertThrows(java.io.IOException.class, () -> fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL));
+        assertThrows(java.io.IOException.class, () -> fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(content, Files.readString(pkIndexFile().toPath(), StandardCharsets.UTF_8));
     }
 
     private static String row(String id, long version) {
-        return new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, id, 0L, 10L, 0L, version).toFileEntry();
+        return new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, id, 0L, 10L, 0L, version).toFileEntry();
     }
 
     private static List<String> ids(List<PkIndexEntry> rows) {
@@ -80,7 +80,7 @@ public class PkIndexLoaderTest extends FileSystemTestBase {
     }
 
     private static File pkIndexFile() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL
                 + File.separator + TestGlobals.COLL + "-pk.idx");
     }
 }

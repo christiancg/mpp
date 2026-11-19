@@ -18,7 +18,7 @@ public sealed class ConstantEncoderTests
 
     private static FieldFilter TaggedFilter(LinqHarness harness, System.Linq.Expressions.Expression<Func<Tagged, bool>> predicate)
     {
-        var tagged = new Database(harness.Context, "shop").Collection<Tagged>("tagged");
+        var tagged = new Project(harness.Context, "shop").Collection<Tagged>("tagged");
         return (FieldFilter)((FilterStep)tagged.AsQueryable().Where(predicate).ToQuery().Steps[0]).Filter;
     }
 

@@ -37,7 +37,7 @@ import org.ccg.mpp.cluster.msg.ClusterMessageType;
 import org.ccg.mpp.cluster.ownership.OwnershipManager;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ioc.IocContainer;
@@ -69,7 +69,7 @@ public class AdminAntiEntropyServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origEnabled = config.isClusterEnabled();
         origInterval = config.getAntiEntropyIntervalMs();
         origExpected = config.getClusterExpectedSize();
@@ -116,14 +116,14 @@ public class AdminAntiEntropyServiceTest {
         TestUtils.setPrivateField(membershipService, "members", members);
     }
 
-    private AdminRecord newDatabase() {
-        return newDatabase(clock.next());
+    private AdminRecord newProject() {
+        return newProject(clock.next());
     }
 
-    private static AdminRecord newDatabase(long version) {
-        final var body = new AdminDbEntry("newdb", new ArrayList<>(), new ArrayList<>()).getData().deepCopy();
+    private static AdminRecord newProject(long version) {
+        final var body = new AdminProjectEntry("newdb", new ArrayList<>(), new ArrayList<>()).getData().deepCopy();
         body.addProperty(Globals.PK_FIELD, "newdb");
-        return new AdminRecord(AdminRecordKey.database("newdb"), version, body);
+        return new AdminRecord(AdminRecordKey.project("newdb"), version, body);
     }
 
     private AdminRecord orphanCollection() {
@@ -166,11 +166,11 @@ public class AdminAntiEntropyServiceTest {
     @Test
     public void test_a_peer_snapshot_is_merged_and_completes_the_sync() throws Exception {
         membershipService.setAdminSyncing(true);
-        stubSnapshot(newDatabase());
+        stubSnapshot(newProject());
 
         service.reconcile();
 
-        assertNotNull(cache.getAdminDbEntry("newdb"));
+        assertNotNull(cache.getAdminProjectEntry("newdb"));
         assertTrue(service.hasCompletedAdminSync());
         assertFalse(syncingFlag());
         assertFalse(service.isSyncing());
@@ -178,11 +178,12 @@ public class AdminAntiEntropyServiceTest {
 
     @Test
     public void test_a_tombstone_from_a_peer_quarantines_the_local_record() throws Exception {
-        stubSnapshot(AdminRecord.tombstone(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL), clock.next()));
+        stubSnapshot(
+                AdminRecord.tombstone(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL), clock.next()));
 
         service.reconcile();
 
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -255,12 +256,12 @@ public class AdminAntiEntropyServiceTest {
     public void test_one_complete_peer_of_five_nodes_is_not_a_sync() throws Exception {
         TestUtils.setPrivateField(config, "clusterExpectedSize", 5);
         withPeers("p1", "p2", "p3", "p4");
-        when(mockPool.request(any(), any(), anyLong())).thenReturn(ack(newDatabase()))
+        when(mockPool.request(any(), any(), anyLong())).thenReturn(ack(newProject()))
                 .thenThrow(new RuntimeException("unreachable"));
 
         service.reconcile();
 
-        assertNotNull(cache.getAdminDbEntry("newdb"));
+        assertNotNull(cache.getAdminProjectEntry("newdb"));
         assertFalse(service.hasCompletedAdminSync());
         assertTrue(service.isSyncing());
     }
@@ -269,7 +270,7 @@ public class AdminAntiEntropyServiceTest {
     public void test_a_majority_of_complete_peers_is_a_sync() throws Exception {
         TestUtils.setPrivateField(config, "clusterExpectedSize", 5);
         withPeers("p1", "p2", "p3", "p4");
-        final var record = newDatabase();
+        final var record = newProject();
         when(mockPool.request(any(), any(), anyLong())).thenReturn(ack(record), ack(record))
                 .thenThrow(new RuntimeException("unreachable"));
 
@@ -283,7 +284,7 @@ public class AdminAntiEntropyServiceTest {
     public void test_an_incomplete_merge_does_not_count_toward_the_majority() throws Exception {
         TestUtils.setPrivateField(config, "clusterExpectedSize", 4);
         withPeers("p1", "p2", "p3");
-        when(mockPool.request(any(), any(), anyLong())).thenReturn(ack(newDatabase()), ack(orphanCollection()))
+        when(mockPool.request(any(), any(), anyLong())).thenReturn(ack(newProject()), ack(orphanCollection()))
                 .thenThrow(new RuntimeException("unreachable"));
 
         service.reconcile();
@@ -332,13 +333,13 @@ public class AdminAntiEntropyServiceTest {
     public void test_a_round_that_straddles_the_handover_does_not_sync() throws Exception {
         when(mockPool.request(any(), any(), anyLong())).thenAnswer(_ -> {
             becomeCoordinator(true);
-            return ack(newDatabase());
+            return ack(newProject());
         }).thenThrow(new RuntimeException("unreachable"));
 
         service.reconcile();
         drainRounds();
 
-        assertNotNull(cache.getAdminDbEntry("newdb"));
+        assertNotNull(cache.getAdminProjectEntry("newdb"));
         assertFalse(service.hasCompletedAdminSync());
         assertTrue(syncingFlag());
     }
@@ -348,7 +349,7 @@ public class AdminAntiEntropyServiceTest {
         becomeCoordinator(true);
         drainRounds();
         final var missed = clock.current() + 1_000_000;
-        stubSnapshot(newDatabase(missed));
+        stubSnapshot(newProject(missed));
 
         service.reconcile();
 
@@ -359,12 +360,12 @@ public class AdminAntiEntropyServiceTest {
     @Test
     public void test_reconcile_is_a_no_op_when_clustering_is_disabled() throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", false);
-        stubSnapshot(newDatabase());
+        stubSnapshot(newProject());
 
         service.reconcile();
         service.reconcileSoon();
 
-        assertNull(cache.getAdminDbEntry("newdb"));
+        assertNull(cache.getAdminProjectEntry("newdb"));
         assertFalse(service.isSyncing());
     }
 
@@ -375,8 +376,8 @@ public class AdminAntiEntropyServiceTest {
 
         final var ids = service.buildSnapshot().getRecords().stream().map(record -> record.key().id()).toList();
 
-        assertTrue(ids.contains(AdminRecordKey.database(TestGlobals.DB).id()));
-        assertTrue(ids.contains(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL).id()));
+        assertTrue(ids.contains(AdminRecordKey.project(TestGlobals.PROJECT).id()));
+        assertTrue(ids.contains(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL).id()));
         assertTrue(ids.contains(AdminRecordKey.user("snapuser").id()));
     }
 
@@ -395,7 +396,7 @@ public class AdminAntiEntropyServiceTest {
     @Test
     public void test_a_membership_change_runs_a_round() throws Exception {
         TestUtils.setPrivateField(config, "antiEntropyIntervalMs", 3600000L);
-        stubSnapshot(newDatabase());
+        stubSnapshot(newProject());
         service.start();
         try {
             service.onMembershipChanged(membershipService.membershipView());
@@ -404,7 +405,7 @@ public class AdminAntiEntropyServiceTest {
             executor.submit(() -> null).get(3, TimeUnit.SECONDS);
 
             assertTrue(service.hasCompletedAdminSync());
-            assertEquals("newdb", cache.getAdminDbEntry("newdb").get_id());
+            assertEquals("newdb", cache.getAdminProjectEntry("newdb").get_id());
         } finally {
             service.stop();
         }
@@ -418,10 +419,10 @@ public class AdminAntiEntropyServiceTest {
     @Test
     public void test_snapshot_ships_only_differing_buckets() throws Exception {
         for (var i = 0; i < 40; i++) {
-            AdminStamp.tombstoneAt(AdminRecordKey.database("gone" + i), clock.next());
+            AdminStamp.tombstoneAt(AdminRecordKey.project("gone" + i), clock.next());
         }
         final var local = new HashMap<>(AdminStamp.tombstones());
-        final var changed = AdminRecordKey.database("gone7").id();
+        final var changed = AdminRecordKey.project("gone7").id();
         final var peer = new HashMap<>(local);
         peer.put(changed, local.get(changed) - 1);
         final var digest = AdminTombstoneDigest.of(peer);
@@ -440,7 +441,7 @@ public class AdminAntiEntropyServiceTest {
         assertTrue(
                 service.buildSnapshot(AdminSnapshotPayload.request(same.bucketCount(), same.summaries())).getRecords()
                         .stream()
-                        .anyMatch(record -> record.rawKey().equals(AdminRecordKey.database(TestGlobals.DB).id())),
+                        .anyMatch(record -> record.rawKey().equals(AdminRecordKey.project(TestGlobals.PROJECT).id())),
                 "live records always travel");
 
         stubSnapshot();
@@ -452,12 +453,13 @@ public class AdminAntiEntropyServiceTest {
 
     @Test
     public void test_a_superseded_tombstone_travels_and_is_kept_so_the_digests_converge() throws Exception {
-        final var key = AdminRecordKey.database(TestGlobals.DB);
+        final var key = AdminRecordKey.project(TestGlobals.PROJECT);
         stubSnapshot(AdminRecord.tombstone(key, 2L));
 
         service.reconcile();
 
-        assertNotNull(cache.getAdminDbEntry(TestGlobals.DB), "an older tombstone never removes a newer record");
+        assertNotNull(cache.getAdminProjectEntry(TestGlobals.PROJECT),
+                "an older tombstone never removes a newer record");
         assertEquals(2L, AdminStamp.tombstones().get(key.id()));
         final var empty = AdminTombstoneDigest.of(new HashMap<>());
         assertTrue(shippedTombstones(AdminSnapshotPayload.request(empty.bucketCount(), empty.summaries()))

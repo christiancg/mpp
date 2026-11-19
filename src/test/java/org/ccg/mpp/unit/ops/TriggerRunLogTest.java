@@ -37,7 +37,7 @@ public class TriggerRunLogTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -57,7 +57,7 @@ public class TriggerRunLogTest {
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString(id));
         data.add("blob", new JsonString("x".repeat(payloadChars)));
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
     }
 
     private static final long THIRTY_DAYS_MS = 30L * 24 * 60 * 60 * 1000;
@@ -68,8 +68,8 @@ public class TriggerRunLogTest {
     }
 
     private static TriggerRunLog.TriggerRunDescriptor firedAt(long firedAt, EventType type, List<DbEntry> entries) {
-        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit", "recalc", type, false,
-                "alice", 0, firedAt, entries);
+        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc", type,
+                false, "alice", 0, firedAt, entries);
     }
 
     private static String deadLetter(long firedAt, String error) {
@@ -297,7 +297,7 @@ public class TriggerRunLogTest {
     public void test_a_run_owns_exactly_its_own_key_range() {
         final var cache = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.cache.Cache.class);
         for (final var id : List.of("abc|0", "abc|1", "abc|10", "abc|x|0", "abcd|0", "ab|0", "abc")) {
-            cache.putPkIndexTriggerRun(new org.ccg.mpp.data.PkIndexEntry(Globals.ADMIN_DB_NAME,
+            cache.putPkIndexTriggerRun(new org.ccg.mpp.data.PkIndexEntry(Globals.ADMIN_PROJECT_NAME,
                     Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, id, 0, 10, 0));
         }
         try {

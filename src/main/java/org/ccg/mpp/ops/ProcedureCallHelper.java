@@ -27,18 +27,19 @@ public final class ProcedureCallHelper {
         if (!configuration.isScriptsEnabled()) {
             return new OperationResponse(OperationType.CALL_PROCEDURE, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.CALL_PROCEDURE, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.CALL_PROCEDURE, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var name = request.getProcedureName();
-        final var definition = cache.getProcedure(dbName, name);
+        final var definition = cache.getProcedure(projectName, name);
         if (definition == null || !definition.isEnabled()) {
             return new OperationResponse(OperationType.CALL_PROCEDURE,
-                    "Procedure '" + name + "' not found in database '" + dbName + "'", ErrorCode.PROCEDURE_NOT_FOUND);
+                    "Procedure '" + name + "' not found in project '" + projectName + "'",
+                    ErrorCode.PROCEDURE_NOT_FOUND);
         }
-        return switch (ScriptOperationHelper.admit(username, dbName)) {
+        return switch (ScriptOperationHelper.admit(username, projectName)) {
             case ScriptAdmission.Refusal refusal ->
                 ScriptOperationHelper.concurrencyRefusal(OperationType.CALL_PROCEDURE, refusal.scope());
             case ScriptAdmission.Permit permit -> runAdmitted(permit, request, definition, username, clientId);
@@ -47,12 +48,14 @@ public final class ProcedureCallHelper {
 
     private static OperationResponse runAdmitted(ScriptAdmission.Permit permit, CallProcedureRequest request,
             ProcedureDefinition definition, String username, UUID clientId) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var name = request.getProcedureName();
         try (permit) {
-            final var compiled = compiledProcedures.get(dbName, name, definition.getVersion(), definition.getSource());
-            final var outcome = ScriptOperationHelper.runProcedure(compiled, request.getArgs(), dbName, username,
-                    clientId, "CALL_PROCEDURE user=" + username + " database=" + dbName + " procedure=" + name, name);
+            final var compiled = compiledProcedures.get(projectName, name, definition.getVersion(),
+                    definition.getSource());
+            final var outcome = ScriptOperationHelper.runProcedure(compiled, request.getArgs(), projectName, username,
+                    clientId, "CALL_PROCEDURE user=" + username + " project=" + projectName + " procedure=" + name,
+                    name);
             return toResponse(outcome.result(), outcome.runId());
         }
     }

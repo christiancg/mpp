@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class RecordReplacerBulkTest {
-    private static final String DB = "bulkDb";
+    private static final String PROJECT = "bulkProject";
     private static final String COLL = "bulkColl";
 
     @TempDir
@@ -40,7 +40,7 @@ public class RecordReplacerBulkTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         rf.fx.seed(1, "x", "y");
         maxPageSize = configuration.getMaxPageSize();
@@ -62,11 +62,12 @@ public class RecordReplacerBulkTest {
     }
 
     private int pkLines() throws Exception {
-        return Files.readAllLines(rf.fx.paths.pkIndexFile(DB, COLL).toPath(), StandardCharsets.UTF_8).size();
+        return Files.readAllLines(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath(), StandardCharsets.UTF_8).size();
     }
 
     private int loggedRecords() throws IOException {
-        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(DB, COLL).toPath())).records().size();
+        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath())).records()
+                .size();
     }
 
     @Test
@@ -74,7 +75,7 @@ public class RecordReplacerBulkTest {
         final var linesBefore = pkLines();
         final var recordsBefore = loggedRecords();
         TestUtils.setPrivateField(faultInjector, "enabled", true);
-        faultInjector.arm(FaultPoint.PAGE_COPY_APPENDED, FaultAction.PAUSE, DB + "|" + COLL);
+        faultInjector.arm(FaultPoint.PAGE_COPY_APPENDED, FaultAction.PAUSE, PROJECT + "|" + COLL);
         final var bulk = CompletableFuture.supplyAsync(() -> {
             try {
                 return rf.bulk(updates("a", "c", "y"));

@@ -51,27 +51,27 @@ public class MemoryManagementTest {
     @Test
     public void test_recordAccess_increments_counter() {
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "myDb", "myColl", null);
-        mm.recordAccess(AccessKind.COLLECTION, "myDb", "myColl", null);
-        final var counter = mm.getCounter(AccessKind.COLLECTION, "myDb", "myColl", null);
+        mm.recordAccess(AccessKind.COLLECTION, "myProject", "myColl", null);
+        mm.recordAccess(AccessKind.COLLECTION, "myProject", "myColl", null);
+        final var counter = mm.getCounter(AccessKind.COLLECTION, "myProject", "myColl", null);
         assertNotNull(counter);
         assertEquals(2L, counter.getAccessCount());
         assertTrue(counter.getLastAccessMillis() > 0L);
     }
 
     @Test
-    public void test_recordAccess_ignores_admin_db() {
+    public void test_recordAccess_ignores_admin_project() {
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, Globals.ADMIN_DB_NAME, "databases", null);
-        assertNull(mm.getCounter(AccessKind.COLLECTION, Globals.ADMIN_DB_NAME, "databases", null));
+        mm.recordAccess(AccessKind.COLLECTION, Globals.ADMIN_PROJECT_NAME, "projects", null);
+        assertNull(mm.getCounter(AccessKind.COLLECTION, Globals.ADMIN_PROJECT_NAME, "projects", null));
     }
 
     @Test
     public void test_recordAccess_skipped_when_caching_disabled() throws NoSuchFieldException, IllegalAccessException {
         setMaxMemory(-1L);
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "myDb", "myColl", null);
-        assertNull(mm.getCounter(AccessKind.COLLECTION, "myDb", "myColl", null));
+        mm.recordAccess(AccessKind.COLLECTION, "myProject", "myColl", null);
+        assertNull(mm.getCounter(AccessKind.COLLECTION, "myProject", "myColl", null));
     }
 
     @Test
@@ -128,9 +128,9 @@ public class MemoryManagementTest {
         seedCollectionCache("cold", 10);
         final var mm = IocContainer.get(MemoryManagement.class);
         for (int i = 0; i < 5; i++) {
-            mm.recordAccess(AccessKind.COLLECTION, "userDb", "hot", null);
+            mm.recordAccess(AccessKind.COLLECTION, "userProject", "hot", null);
         }
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "cold", null);
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "cold", null);
         mm.runEvictionSweep();
         final var remaining = cache.listCacheableResources();
         assertTrue(remaining.stream().noneMatch(r -> r.collName().equals("cold")), "cold should be evicted first");
@@ -142,16 +142,16 @@ public class MemoryManagementTest {
         final var cache = IocContainer.get(Cache.class);
         seedCollectionCache("lockedColl", 10);
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "lockedColl", null);
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "lockedColl", null);
         final var locks = IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
-        locks.lockRead("userDb", "lockedColl");
+        locks.lockRead("userProject", "lockedColl");
         try {
             mm.runEvictionSweep();
             final var remaining = cache.listCacheableResources();
             assertTrue(remaining.stream().anyMatch(r -> r.collName().equals("lockedColl")),
                     "a resource held by a reader must not be evicted");
         } finally {
-            locks.releaseRead("userDb", "lockedColl");
+            locks.releaseRead("userProject", "lockedColl");
         }
     }
 
@@ -163,8 +163,8 @@ public class MemoryManagementTest {
         seedPkIndex("coll");
         seedCollectionCache("coll", 10);
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "coll", null);
-        mm.recordAccess(AccessKind.PK_INDEX, "userDb", "coll", null);
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "coll", null);
+        mm.recordAccess(AccessKind.PK_INDEX, "userProject", "coll", null);
         final var pkBytes = cache.listCacheableResources().stream().filter(r -> r.kind() == AccessKind.PK_INDEX)
                 .mapToLong(CacheableResource::estimatedSizeBytes).sum();
         setMaxMemory(pkBytes);
@@ -256,17 +256,18 @@ public class MemoryManagementTest {
 
     @Test
     public void test_loadProfileFromAdmin_reads_existing_records() throws Exception {
-        org.ccg.mpp.ops.AdminOperationHelper.saveDatabaseEntry(new org.ccg.mpp.data.admin.AdminDbEntry("userDb"));
         org.ccg.mpp.ops.AdminOperationHelper
-                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry("userDb", "userColl"));
+                .saveProjectEntry(new org.ccg.mpp.data.admin.AdminProjectEntry("userProject"));
+        org.ccg.mpp.ops.AdminOperationHelper
+                .saveCollectionEntry(new org.ccg.mpp.data.admin.AdminCollEntry("userProject", "userColl"));
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "userColl", null);
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "userColl", null);
         org.ccg.mpp.ops.AdminOperationHelper
                 .flushCollectionUsage(java.util.List.of(new org.ccg.mpp.cache.UsageCounter(AccessKind.COLLECTION,
-                        "userDb", "userColl", null, 1L, System.currentTimeMillis())));
+                        "userProject", "userColl", null, 1L, System.currentTimeMillis())));
         TestUtils.resetUsageCounters(TestUtils.usageTrackerOf(mm));
         mm.loadProfileFromAdmin();
-        assertNotNull(mm.getCounter(AccessKind.COLLECTION, "userDb", "userColl", null));
+        assertNotNull(mm.getCounter(AccessKind.COLLECTION, "userProject", "userColl", null));
     }
 
     @Test
@@ -275,7 +276,7 @@ public class MemoryManagementTest {
         final var cache = IocContainer.get(Cache.class);
         seedFieldIndex("coll");
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.FIELD_INDEX, "userDb", "coll", "f|String");
+        mm.recordAccess(AccessKind.FIELD_INDEX, "userProject", "coll", "f|String");
         mm.runEvictionSweep();
         final var remaining = cache.listCacheableResources();
         assertTrue(remaining.stream().noneMatch(r -> r.kind() == AccessKind.FIELD_INDEX),
@@ -322,9 +323,9 @@ public class MemoryManagementTest {
         seedPkIndex("coll2");
         seedFieldIndex("coll3");
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "coll1", null);
-        mm.recordAccess(AccessKind.PK_INDEX, "userDb", "coll2", null);
-        mm.recordAccess(AccessKind.FIELD_INDEX, "userDb", "coll3", "f|String");
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "coll1", null);
+        mm.recordAccess(AccessKind.PK_INDEX, "userProject", "coll2", null);
+        mm.recordAccess(AccessKind.FIELD_INDEX, "userProject", "coll3", "f|String");
         mm.runEvictionSweep();
     }
 
@@ -412,9 +413,9 @@ public class MemoryManagementTest {
         seedCollectionCache("cold", 10);
         final var mm = IocContainer.get(MemoryManagement.class);
         for (int i = 0; i < 5; i++) {
-            mm.recordAccess(AccessKind.COLLECTION, "userDb", "hot", null);
+            mm.recordAccess(AccessKind.COLLECTION, "userProject", "hot", null);
         }
-        mm.recordAccess(AccessKind.COLLECTION, "userDb", "cold", null);
+        mm.recordAccess(AccessKind.COLLECTION, "userProject", "cold", null);
         setMaxMemory(1L);
         mm.ensureHeadroomForBytes(1L);
         final var remaining = cache.listCacheableResources();
@@ -424,8 +425,8 @@ public class MemoryManagementTest {
 
     private void seedFieldIndex(String collName) {
         CacheResidents.residentFieldIndex(IocContainer.get(org.ccg.mpp.cache.UserCache.class),
-                Cache.getCollectionIdentifier("userDb", collName), "f|String",
-                List.of(new FieldIndexEntry<>("userDb", collName, "value", new HashSet<>(List.of("id1")))));
+                Cache.getCollectionIdentifier("userProject", collName), "f|String",
+                List.of(new FieldIndexEntry<>("userProject", collName, "value", new HashSet<>(List.of("id1")))));
     }
 
     private void seedCollectionCache(String collName, int count) {
@@ -434,14 +435,14 @@ public class MemoryManagementTest {
             final var obj = new JsonObject();
             obj.addProperty(Globals.PK_FIELD, "id" + i);
             obj.addProperty("v", "x".repeat(64));
-            CacheResidents.residentDocument(userCache, Cache.getCollectionIdentifier("userDb", collName),
-                    DbEntry.fromJsonObject("userDb", collName, obj));
+            CacheResidents.residentDocument(userCache, Cache.getCollectionIdentifier("userProject", collName),
+                    DbEntry.fromJsonObject("userProject", collName, obj));
         }
     }
 
     private void seedPkIndex(String collName) {
         CacheResidents.residentPk(IocContainer.get(org.ccg.mpp.cache.UserCache.class),
-                Cache.getCollectionIdentifier("userDb", collName),
-                List.of(new PkIndexEntry("userDb", collName, "id0", 0, 10, 0)));
+                Cache.getCollectionIdentifier("userProject", collName),
+                List.of(new PkIndexEntry("userProject", collName, "id0", 0, 10, 0)));
     }
 }

@@ -19,9 +19,9 @@ import org.junit.jupiter.api.Test;
 public class ScriptAdmissionPoolsTest {
     private static final long DEADLINE_MS = 10_000L;
 
-    private static ScriptAdmission admission(int perUser, int perDatabase) {
+    private static ScriptAdmission admission(int perUser, int perProject) {
         final var admission = new ScriptAdmission(0, 0L);
-        admission.reconfigure(0, 0L, perUser, perDatabase);
+        admission.reconfigure(0, 0L, perUser, perProject);
         return admission;
     }
 
@@ -41,7 +41,7 @@ public class ScriptAdmissionPoolsTest {
         assertEquals(2, admission.tenantPools(), "a pool still holding a permit is kept");
         second.close();
 
-        assertEquals(0, admission.tenantPools(), "a deleted user or dropped database must leave nothing");
+        assertEquals(0, admission.tenantPools(), "a deleted user or dropped project must leave nothing");
     }
 
     @Test
@@ -114,15 +114,15 @@ public class ScriptAdmissionPoolsTest {
     }
 
     @Test
-    public void test_a_database_wait_that_times_out_gives_the_user_slice_back() {
+    public void test_a_project_wait_that_times_out_gives_the_user_slice_back() {
         final var admission = admission(2, 1);
         final var held = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquireSlices("bob", "busy"));
 
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_DATABASE),
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_PROJECT),
                 admission.acquireSlicesWithin("alice", "busy", 30L));
 
         assertEquals(2, admission.tenantPools(), "alice's user pool must be released and pruned");
-        assertEquals(1L, admission.getRejectedPerDatabase());
+        assertEquals(1L, admission.getRejectedPerProject());
         held.close();
         assertInstanceOf(ScriptAdmission.Permit.class, admission.acquireSlicesWithin("alice", "busy", 0L)).close();
         assertEquals(0, admission.tenantPools());

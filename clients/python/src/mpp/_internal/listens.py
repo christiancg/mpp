@@ -30,13 +30,13 @@ class Listens:
 
     async def listen(
         self,
-        database: str,
+        project: str,
         collection: str,
         steps: Sequence[PipelineStep],
         decode: Callable[[Document], Any],
         callbacks: Callbacks,
     ) -> AsyncSubscription:
-        request = self._encoder.listen(database, collection, steps)
+        request = self._encoder.listen(project, collection, steps)
         async with self._lock:
             return await self._register(request, decode, callbacks)
 

@@ -23,9 +23,9 @@ public class DataIT extends ServerIT {
 
     @BeforeAll
     public void createCollection() {
-        final var database = client.database("data_it");
-        database.create();
-        orders = database.collection("orders");
+        final var project = client.project("data_it");
+        project.create();
+        orders = project.collection("orders");
         orders.create();
     }
 

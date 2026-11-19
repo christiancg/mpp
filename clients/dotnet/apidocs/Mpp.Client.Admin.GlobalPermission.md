@@ -1,7 +1,7 @@
 A server-wide permission.
 
-## CreateDatabase
-May create databases.
+## CreateProject
+May create projects.
 
-## DropDatabase
-May drop databases.
+## DropProject
+May drop projects.

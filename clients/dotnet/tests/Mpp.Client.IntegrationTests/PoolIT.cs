@@ -12,10 +12,10 @@ public sealed class PoolIT(DefaultServer fixture) : IClassFixture<DefaultServer>
     [Fact]
     public async Task ManyConcurrentWritersShareASmallPool()
     {
-        await fixture.Client.Database("pool_it").CreateAsync();
-        await fixture.Client.Database("pool_it").Collection("events").CreateAsync();
+        await fixture.Client.Project("pool_it").CreateAsync();
+        await fixture.Client.Project("pool_it").Collection("events").CreateAsync();
         await using var client = await MppClient.ConnectAsync(fixture.Settings(settings => settings with { PoolSize = 4 }));
-        var events = client.Database("pool_it").Collection("events");
+        var events = client.Project("pool_it").Collection("events");
         await Task.WhenAll(Enumerable.Range(0, 32).Select(async writer =>
         {
             for (var index = 0; index < 25; index++)
@@ -36,7 +36,7 @@ public sealed class PoolIT(DefaultServer fixture) : IClassFixture<DefaultServer>
             {
                 for (var index = 0; index < 1000; index++)
                 {
-                    await client.ListDatabasesAsync();
+                    await client.ListProjectsAsync();
                 }
                 return true;
             }

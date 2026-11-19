@@ -33,17 +33,17 @@ public class AntiEntropyPayloadTest {
     @Test
     public void test_payload_accessors() {
         final var payload = new AntiEntropyPayload("db", "coll");
-        assertEquals("db", payload.getDbName());
+        assertEquals("db", payload.getProjectName());
         assertEquals("coll", payload.getCollName());
 
-        payload.setDbName("db2");
+        payload.setProjectName("project2");
         payload.setCollName("coll2");
         payload.setDigest(List.of(new DigestEntry("a", 1L, false)));
         payload.setIds(List.of("a"));
         payload.setDocuments(List.of(new JsonObject()));
         payload.setVersions(List.of("1"));
 
-        assertEquals("db2", payload.getDbName());
+        assertEquals("project2", payload.getProjectName());
         assertEquals("coll2", payload.getCollName());
         assertEquals(1, payload.getDigest().size());
         assertEquals(1, payload.getIds().size());
@@ -51,8 +51,8 @@ public class AntiEntropyPayloadTest {
         assertEquals(1, payload.getVersions().size());
 
         final var blank = new AntiEntropyPayload();
-        blank.setDbName("d");
-        assertEquals("d", blank.getDbName());
+        blank.setProjectName("d");
+        assertEquals("d", blank.getProjectName());
     }
 
     @Test
@@ -74,7 +74,7 @@ public class AntiEntropyPayloadTest {
 
     @Test
     public void test_requested_buckets_survive_the_wire_as_integers() {
-        final var payload = new AntiEntropyPayload("db_name", "coll_name");
+        final var payload = new AntiEntropyPayload("project_name", "coll_name");
         payload.setBucketCount(16);
         payload.setBuckets(List.of(1, 5, 15));
         final var eJson = new EJson();

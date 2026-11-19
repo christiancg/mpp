@@ -41,7 +41,7 @@ public class HeldOverheadChargingTest {
         final var before = pool.reservedBytes();
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             GroupByOperatorHelper.processGroupByStep(new GroupByAggregationStep(fieldName), rows(ROWS, 20).stream(),
-                    TestGlobals.DB, TestGlobals.COLL, GroupDemand.ORDERED_GROUPS, context).forEach(_ -> {
+                    TestGlobals.PROJECT, TestGlobals.COLL, GroupDemand.ORDERED_GROUPS, context).forEach(_ -> {
                     });
             return pool.reservedBytes() - before;
         }
@@ -71,7 +71,7 @@ public class HeldOverheadChargingTest {
         try (var context = PipelineContext.of(0L, 64 * 1024L, null)) {
             final var refused = assertThrows(AggregateLimitException.class,
                     () -> SortOperatorHelper.processSortStep(new SortAggregationStep("unique", true),
-                            rows(400, 1024).stream(), TestGlobals.DB, TestGlobals.COLL, 300, 0, context).rows()
+                            rows(400, 1024).stream(), TestGlobals.PROJECT, TestGlobals.COLL, 300, 0, context).rows()
                             .forEach(_ -> {
                             }));
             assertEquals(ErrorCode.AGGREGATE_RESULT_TOO_LARGE, refused.getErrorCode());
@@ -86,7 +86,7 @@ public class HeldOverheadChargingTest {
         final var before = pool.reservedBytes();
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final List<JsonObject> sorted = SortOperatorHelper.processSortStep(new SortAggregationStep("unique", false),
-                    rows.stream(), TestGlobals.DB, TestGlobals.COLL, bound, 0, context).rows().toList();
+                    rows.stream(), TestGlobals.PROJECT, TestGlobals.COLL, bound, 0, context).rows().toList();
 
             assertEquals(bound, sorted.size());
             assertEquals(999.0, sorted.getFirst().get("unique").asJsonNumber().getValue());
@@ -100,8 +100,8 @@ public class HeldOverheadChargingTest {
     public void aSmallBoundedSortIsAnswered() throws Exception {
         try (var context = PipelineContext.of(0L, 64 * 1024L, null)) {
             final var sorted = SortOperatorHelper.processSortStep(new SortAggregationStep("unique", true),
-                    Stream.of(rows(5, 10).toArray(JsonObject[]::new)), TestGlobals.DB, TestGlobals.COLL, 3, 0, context)
-                    .rows().toList();
+                    Stream.of(rows(5, 10).toArray(JsonObject[]::new)), TestGlobals.PROJECT, TestGlobals.COLL, 3, 0,
+                    context).rows().toList();
 
             assertEquals(3, sorted.size());
         }

@@ -7,14 +7,14 @@ import org.ccg.mpp.data.PkIndexEntry;
 
 public final class PkRowsSession {
     private final PkIndexStore store;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private boolean loaded;
     private List<PkIndexEntry> recognisedRows;
 
-    PkRowsSession(PkIndexStore store, String dbName, String collName) {
+    PkRowsSession(PkIndexStore store, String projectName, String collName) {
         this.store = store;
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
     }
 
@@ -22,8 +22,8 @@ public final class PkRowsSession {
         return store;
     }
 
-    String dbName() {
-        return dbName;
+    String projectName() {
+        return projectName;
     }
 
     String collName() {
@@ -32,7 +32,7 @@ public final class PkRowsSession {
 
     public Optional<List<PkIndexEntry>> recognised() throws IOException {
         if (!loaded) {
-            recognisedRows = store.readRecognisedPkIndex(dbName, collName).orElse(null);
+            recognisedRows = store.readRecognisedPkIndex(projectName, collName).orElse(null);
             loaded = true;
         }
         return Optional.ofNullable(recognisedRows);
@@ -40,7 +40,7 @@ public final class PkRowsSession {
 
     public List<PkIndexEntry> rows() throws IOException {
         final var rows = recognised();
-        return rows.isPresent() ? rows.get() : store.readWholePkIndexFile(dbName, collName);
+        return rows.isPresent() ? rows.get() : store.readWholePkIndexFile(projectName, collName);
     }
 
     public void invalidate() {

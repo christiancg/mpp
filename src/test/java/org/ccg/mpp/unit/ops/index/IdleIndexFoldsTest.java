@@ -51,7 +51,7 @@ public class IdleIndexFoldsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         realLogger = TestUtils.getPrivateStaticField(IdleIndexFolds.class, "logger", Logger.class);
     }
 
@@ -98,9 +98,10 @@ public class IdleIndexFoldsTest {
         assertEquals(1, IdleIndexFolds.runDue(markedBy + QUIET));
 
         assertFalse(logOf(FIELD).exists());
-        final var resident = cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL, identifier());
+        final var resident = cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, identifier());
         assertNotNull(resident, "the folded type stays resident");
-        assertEquals(byValue(realFs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class)),
+        assertEquals(
+                byValue(realFs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class)),
                 byValue(resident));
         assertEquals(0, IdleIndexFolds.runDue(markedBy + QUIET), "a folded type is no longer due");
     }
@@ -126,10 +127,10 @@ public class IdleIndexFoldsTest {
         final var release = new CountDownLatch(1);
         final var holder = Thread.ofPlatform().start(() -> {
             try {
-                locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 held.countDown();
                 release.await();
-                locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -149,7 +150,7 @@ public class IdleIndexFoldsTest {
     @Test
     public void test_an_evicted_type_is_forgotten_without_folding() throws Exception {
         markDue(List.of(FIELD));
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
         assertEquals(1, IdleIndexFolds.runDue(markedBy + QUIET));
 
@@ -160,12 +161,12 @@ public class IdleIndexFoldsTest {
     @Test
     public void test_a_log_moved_since_the_fold_was_planned_is_skipped() throws Exception {
         markDue(List.of(FIELD));
-        final var resident = cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL, identifier());
+        final var resident = cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, identifier());
         final var first = resident.getFirst();
         final var spied = spy(realFs);
         TestUtils.setPrivateStaticField(IdleIndexFolds.class, "fs", spied);
         doAnswer(invocation -> {
-            realFs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, FIELD, "String",
+            realFs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, "String",
                     List.of(new IndexLogChange(FieldIndexEntry.fileKeyOf(first.getValue()), List.copyOf(first.getIds()),
                             List.of())),
                     resident, false);
@@ -195,16 +196,16 @@ public class IdleIndexFoldsTest {
     }
 
     @Test
-    public void test_dropping_the_collection_or_database_forgets_its_due_folds() throws Exception {
+    public void test_dropping_the_collection_or_project_forgets_its_due_folds() throws Exception {
         markDue(List.of(FIELD));
-        IdleIndexFolds.forgetCollection(TestGlobals.DB, "otherColl");
-        IdleIndexFolds.forgetDatabase("otherDb");
+        IdleIndexFolds.forgetCollection(TestGlobals.PROJECT, "otherColl");
+        IdleIndexFolds.forgetProject("otherProject");
 
-        IdleIndexFolds.forgetCollection(TestGlobals.DB, TestGlobals.COLL);
+        IdleIndexFolds.forgetCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(0, IdleIndexFolds.runDue(markedBy + QUIET));
 
         fixture.saveRound(List.of(FIELD), 3);
-        IdleIndexFolds.forgetDatabase(TestGlobals.DB);
+        IdleIndexFolds.forgetProject(TestGlobals.PROJECT);
         assertEquals(0, IdleIndexFolds.runDue(System.currentTimeMillis() + QUIET));
         assertTrue(logOf(FIELD).exists());
     }

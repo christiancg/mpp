@@ -7,8 +7,8 @@ public class DeleteRequest extends OperationRequest {
     public String _id;
     public BaseOperator condition;
 
-    public DeleteRequest(String databaseName, String collectionName) {
-        super(OperationType.DELETE, databaseName, collectionName);
+    public DeleteRequest(String projectName, String collectionName) {
+        super(OperationType.DELETE, projectName, collectionName);
     }
 
     public String get_id() {

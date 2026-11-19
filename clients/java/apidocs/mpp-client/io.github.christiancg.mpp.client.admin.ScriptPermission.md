@@ -1,4 +1,4 @@
-A user's script access in one database.
+A user's script access in one project.
 
 ## NONE
 

@@ -7,7 +7,7 @@ public class ListTriggersRequest extends OperationRequest {
         super(OperationType.LIST_TRIGGERS, null, null);
     }
 
-    public ListTriggersRequest(String databaseName, String collectionName) {
-        super(OperationType.LIST_TRIGGERS, databaseName, collectionName);
+    public ListTriggersRequest(String projectName, String collectionName) {
+        super(OperationType.LIST_TRIGGERS, projectName, collectionName);
     }
 }

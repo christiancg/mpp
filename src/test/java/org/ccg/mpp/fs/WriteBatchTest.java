@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WriteBatchTest {
-    private static final String DB = "batchDb";
+    private static final String PROJECT = "batchProject";
     private static final String COLL = "batchColl";
     private static final String WAL = COLL + Globals.WAL_EXTENSION;
     private static final long SHIPPED_MAX_PAGE_SIZE = 2_097_152L;
@@ -37,7 +37,7 @@ public class WriteBatchTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
@@ -55,13 +55,13 @@ public class WriteBatchTest {
     }
 
     private void writeBatch(List<DbEntry> inserts, List<PkIndexEntry> deletes) throws IOException {
-        rf.appender.bulkInsertAndDelete(DB, COLL, inserts, DbEntry::getPage,
+        rf.appender.bulkInsertAndDelete(PROJECT, COLL, inserts, DbEntry::getPage,
                 entry -> ReplacerFixture.line(entry.get_id(), entry.get_id()), deletes);
     }
 
     private Map<String, String> scanned() throws IOException {
         final var values = new TreeMap<String, String>();
-        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(DB, COLL)) {
+        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(PROJECT, COLL)) {
             entries.forEach(entry -> values.merge(entry.get_id(), entry.getData().get("v").asJsonString().getValue(),
                     (first, second) -> first + "," + second));
         }
@@ -91,8 +91,8 @@ public class WriteBatchTest {
         try (var recorder = RecordingForcer.install(true)) {
             writeBatch(inserts(0, "x"), List.of(rf.fx.indexed("b")));
 
-            assertEquals(List.of(WAL),
-                    recorder.forcedNames().stream().filter(name -> !name.equals(COLL) && !name.equals(DB)).toList());
+            assertEquals(List.of(WAL), recorder.forcedNames().stream()
+                    .filter(name -> !name.equals(COLL) && !name.equals(PROJECT)).toList());
         }
     }
 
@@ -101,14 +101,14 @@ public class WriteBatchTest {
     @RequiresFileKeys
     public void test_a_mixed_batch_record_replays_whole() throws Exception {
         try (var power = PowerLossFixture.install()) {
-            rf = new ReplacerFixture(new File(tmp, "power"), DB, COLL);
+            rf = new ReplacerFixture(new File(tmp, "power"), PROJECT, COLL);
             for (final var id : List.of("a", "b", "c")) {
                 rf.appender.insert(rf.entry(id, "old-" + id, 0), ReplacerFixture.line(id, "old-" + id));
             }
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
             writeBatch(inserts(1, "x"), List.of(rf.fx.indexed("a")));
             power.powerLoss();
-            PowerLossFixture.restart(rf.fx.paths, DB, COLL);
+            PowerLossFixture.restart(rf.fx.paths, PROJECT, COLL);
 
             WalRedo.redoAll(rf.fx.paths);
 
@@ -143,7 +143,7 @@ public class WriteBatchTest {
 
     @Test
     public void test_a_delete_past_its_page_end_is_refused_before_anything_is_logged() throws Exception {
-        final var phantom = new PkIndexEntry(DB, COLL, "ghost", 10_000L, 24L, 0L, StorageFixture.OLD_VERSION);
+        final var phantom = new PkIndexEntry(PROJECT, COLL, "ghost", 10_000L, 24L, 0L, StorageFixture.OLD_VERSION);
 
         assertThrows(IOException.class, () -> writeBatch(inserts(1, "x"), List.of(phantom)));
 

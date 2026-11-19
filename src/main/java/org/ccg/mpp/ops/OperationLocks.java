@@ -18,53 +18,54 @@ public final class OperationLocks {
     private OperationLocks() {
     }
 
-    public static OperationResponse withCollectionLock(String dbName, String collName, OperationType type,
+    public static OperationResponse withCollectionLock(String projectName, String collName, OperationType type,
             ErrorCode errorCode, OperationResponse.Attempt attempt) {
-        return withCollectionLock(dbName, collName, type, errorCode, false, attempt);
+        return withCollectionLock(projectName, collName, type, errorCode, false, attempt);
     }
 
-    public static OperationResponse withCollectionLock(String dbName, String collName, OperationType type,
+    public static OperationResponse withCollectionLock(String projectName, String collName, OperationType type,
             ErrorCode errorCode, boolean bounded, OperationResponse.Attempt attempt) {
         try {
             return OperationResponse.respondOrError(type, errorCode, () -> {
-                if (!acquireWriteLock(dbName, collName, bounded)) {
+                if (!acquireWriteLock(projectName, collName, bounded)) {
                     return new OperationResponse(type, ErrorCode.TRANSACTION_LOCK_TIMEOUT);
                 }
                 return attempt.run();
             });
         } finally {
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
         }
     }
 
-    static OperationResponse withGroupedCollectionLock(String dbName, String collName, OperationType type,
+    static OperationResponse withGroupedCollectionLock(String projectName, String collName, OperationType type,
             ErrorCode errorCode, GroupCommit.Eligibility eligibility, GroupCommit.GroupedAttempt attempt) {
         if (!GroupCommit.enabled() || !GroupCommit.groupable(eligibility.groupable())) {
-            return withCollectionLock(dbName, collName, type, errorCode,
+            return withCollectionLock(projectName, collName, type, errorCode,
                     () -> attempt.prepare(WriteEffects.IMMEDIATE).commit());
         }
-        return GroupCommit.run(dbName, collName, new GroupCommit.GroupedWrite(type, errorCode, eligibility, attempt));
+        return GroupCommit.run(projectName, collName,
+                new GroupCommit.GroupedWrite(type, errorCode, eligibility, attempt));
     }
 
-    private static boolean acquireWriteLock(String dbName, String collName, boolean bounded)
+    private static boolean acquireWriteLock(String projectName, String collName, boolean bounded)
             throws InterruptedException {
         if (!bounded) {
-            locks.lock(dbName, collName);
+            locks.lock(projectName, collName);
             return true;
         }
-        return locks.tryLockWrite(dbName, collName, clusterConfig.replicationAckTimeoutMs());
+        return locks.tryLockWrite(projectName, collName, clusterConfig.replicationAckTimeoutMs());
     }
 
     public static long lockBudgetMillis(boolean bounded) {
         return bounded ? clusterConfig.replicationAckTimeoutMs() : configuration.getTransactionLockTimeoutMs();
     }
 
-    public static OperationResponse withDatabaseShared(String dbName, OperationType type, ErrorCode errorCode,
+    public static OperationResponse withProjectShared(String projectName, OperationType type, ErrorCode errorCode,
             OperationResponse.Attempt attempt) {
         final var held = new AtomicBoolean();
         try {
             return OperationResponse.respondOrError(type, errorCode, () -> {
-                if (!locks.tryLockDatabaseShared(dbName, lockBudgetMillis(false))) {
+                if (!locks.tryLockProjectShared(projectName, lockBudgetMillis(false))) {
                     return new OperationResponse(type, ErrorCode.TRANSACTION_LOCK_TIMEOUT);
                 }
                 held.set(true);
@@ -72,7 +73,7 @@ public final class OperationLocks {
             });
         } finally {
             if (held.get()) {
-                locks.releaseDatabaseShared(dbName);
+                locks.releaseProjectShared(projectName);
             }
         }
     }

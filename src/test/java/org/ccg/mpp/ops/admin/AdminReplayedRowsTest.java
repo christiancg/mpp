@@ -34,11 +34,11 @@ public class AdminReplayedRowsTest {
     }
 
     private static PkIndexEntry live(String coll, String id) {
-        return new PkIndexEntry(Globals.ADMIN_DB_NAME, coll, id, 0L, 10L, 1L, 1L);
+        return new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, coll, id, 0L, 10L, 1L, 1L);
     }
 
     private static PkIndexEntry deleted(String coll, String id) {
-        return new PkIndexEntry(Globals.ADMIN_DB_NAME, coll, id, 0L, 0L, 1L, 0L);
+        return new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, coll, id, 0L, 0L, 1L, 0L);
     }
 
     @Test
@@ -46,7 +46,7 @@ public class AdminReplayedRowsTest {
         final var coll = Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
         cache.putPkIndexTransaction(live(coll, "gone|1"));
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, coll,
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, coll,
                 List.of(live(coll, "tx|localcommit"), deleted(coll, "gone|1")));
 
         assertNotNull(cache.getPkIndexTransaction("tx|localcommit"));
@@ -59,13 +59,13 @@ public class AdminReplayedRowsTest {
         final var usage = Globals.ADMIN_COLLECTION_USAGE_NAME;
         final var runs = Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME;
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, usage, List.of(live(usage, "u1")));
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, runs, List.of(live(runs, "r1")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, usage, List.of(live(usage, "u1")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, runs, List.of(live(runs, "r1")));
 
         assertNotNull(cache.getPkIndexCollectionUsage("u1"));
         assertNotNull(cache.getPkIndexTriggerRun("r1"));
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, usage, List.of(deleted(usage, "u1")));
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, runs, List.of(deleted(runs, "r1")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, usage, List.of(deleted(usage, "u1")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, runs, List.of(deleted(runs, "r1")));
         assertNull(cache.getPkIndexCollectionUsage("u1"));
         assertNull(cache.getPkIndexTriggerRun("r1"));
     }
@@ -77,7 +77,7 @@ public class AdminReplayedRowsTest {
         final var spy = Mockito.spy(cache);
         TestUtils.setPrivateStaticField(AdminReplayedRows.class, "cache", spy);
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, coll,
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, coll,
                 List.of(deleted(coll, "tx|part"), live(coll, "tx|localcommit")));
 
         final var order = Mockito.inOrder(spy);
@@ -92,8 +92,8 @@ public class AdminReplayedRowsTest {
     public void theLastReplayedRowOfAnIdWins() {
         final var coll = Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, coll, List.of(deleted(coll, "again|1"), live(coll, "again|1"),
-                live(coll, "gone|2"), deleted(coll, "gone|2")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, coll, List.of(deleted(coll, "again|1"),
+                live(coll, "again|1"), live(coll, "gone|2"), deleted(coll, "gone|2")));
 
         assertNotNull(cache.getPkIndexTransaction("again|1"));
         assertNull(cache.getPkIndexTransaction("gone|2"));
@@ -107,12 +107,12 @@ public class AdminReplayedRowsTest {
         final var row = cache.getPkIndexAdminUserEntry("replayed_user");
         cache.removeAdminUserEntry("replayed_user");
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, coll, List.of(row));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, coll, List.of(row));
 
         assertNotNull(cache.getAdminUserEntry("replayed_user"), "a replayed insert is read back into the cache");
         final var session = clientTracker.addClient(TestUtils.clientSocket());
         clientTracker.setAuthenticatedUser(session, "replayed_user");
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, coll, List.of(deleted(coll, "replayed_user")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, coll, List.of(deleted(coll, "replayed_user")));
         assertNull(cache.getAdminUserEntry("replayed_user"), "a replayed DELETE_USER can no longer authenticate");
         assertNull(clientTracker.getAuthenticatedUsername(session), "nor keep a session it already opened");
         clientTracker.removeById(session);
@@ -120,27 +120,27 @@ public class AdminReplayedRowsTest {
     }
 
     @Test
-    public void replayedDatabaseAndCollectionDeletesLeaveTheCache() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    public void replayedProjectAndCollectionDeletesLeaveTheCache() throws Exception {
+        TestUtils.createTestProjectAndCollection();
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
                 List.of(deleted(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, collId)));
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME,
-                List.of(deleted(Globals.ADMIN_DATABASES_COLLECTION_NAME, TestGlobals.DB)));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME,
+                List.of(deleted(Globals.ADMIN_PROJECTS_COLLECTION_NAME, TestGlobals.PROJECT)));
 
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
     }
 
     @Test
     public void anUnreadableReplayedRecordAndPageRowsAreLeftToStartup() {
         final var before = cache.getTransactionPkIndexes().size();
 
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME,
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME,
                 List.of(live(Globals.ADMIN_USERS_COLLECTION_NAME, "someone")));
-        AdminReplayedRows.publish(Globals.ADMIN_PAGES_DB_NAME, "admin_users", List.of(live("admin_users", "1")));
-        AdminReplayedRows.publish(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, List.of());
+        AdminReplayedRows.publish(Globals.ADMIN_PAGES_PROJECT_NAME, "admin_users", List.of(live("admin_users", "1")));
+        AdminReplayedRows.publish(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, List.of());
 
         assertNull(cache.getAdminUserEntry("someone"));
         assertEquals(before, cache.getTransactionPkIndexes().size());

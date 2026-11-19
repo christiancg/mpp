@@ -32,7 +32,7 @@ public class FieldIndexBatchUnchangedValueTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
     }
 

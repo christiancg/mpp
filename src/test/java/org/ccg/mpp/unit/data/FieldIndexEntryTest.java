@@ -14,7 +14,7 @@ public class FieldIndexEntryTest {
     @Test
     public void test_to_file_entry_serialization() {
         Set<String> ids = new HashSet<>(Arrays.asList("id1", "id2"));
-        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testDB", "testCollection", "testValue", ids);
+        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testProject", "testCollection", "testValue", ids);
         final var result = entry.toFileEntry();
         assertTrue(result.equals("testValue" + Globals.ID_SEPARATOR + "id1" + Globals.ID_SEPARATOR + "id2")
                 || result.equals("testValue" + Globals.ID_SEPARATOR + "id2" + Globals.ID_SEPARATOR + "id1"));
@@ -23,18 +23,18 @@ public class FieldIndexEntryTest {
     // @NonNull on the parameter means passing null throws NullPointerException
     @Test
     public void test_compare_to_with_null_value() {
-        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testDB", "testCollection", null, new HashSet<>());
+        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testProject", "testCollection", null, new HashSet<>());
         assertThrows(NullPointerException.class, () -> entry.compareTo(null));
     }
 
     @Test
     public void test_parse_double_value() {
-        String databaseName = "testDB";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         String line = "123.45" + Globals.ID_SEPARATOR + "id1" + Globals.ID_SEPARATOR + "id2";
-        FieldIndexEntry<Double> entry = FieldIndexEntry.fromIndexFileEntry(databaseName, collectionName, line,
+        FieldIndexEntry<Double> entry = FieldIndexEntry.fromIndexFileEntry(projectName, collectionName, line,
                 Double.class);
-        assertEquals("testDB", entry.getDatabaseName());
+        assertEquals("testProject", entry.getProjectName());
         assertEquals("testCollection", entry.getCollectionName());
         assertEquals(123.45, entry.getValue());
         assertTrue(entry.getIds().contains("id1"));
@@ -43,14 +43,14 @@ public class FieldIndexEntryTest {
 
     @Test
     public void test_to_file_entry_with_pipe_in_value() {
-        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testDB", "testCollection", "val|ue", Set.of("id1"));
+        FieldIndexEntry<String> entry = new FieldIndexEntry<>("testProject", "testCollection", "val|ue", Set.of("id1"));
         assertEquals("val|ue" + Globals.ID_SEPARATOR + "id1", entry.toFileEntry());
     }
 
     @Test
     public void test_parse_string_value_with_pipe() {
         String line = "val|ue" + Globals.ID_SEPARATOR + "id1" + Globals.ID_SEPARATOR + "id2";
-        FieldIndexEntry<String> entry = FieldIndexEntry.fromIndexFileEntry("testDB", "testCollection", line,
+        FieldIndexEntry<String> entry = FieldIndexEntry.fromIndexFileEntry("testProject", "testCollection", line,
                 String.class);
         assertEquals("val|ue", entry.getValue());
         assertTrue(entry.getIds().contains("id1"));
@@ -60,7 +60,7 @@ public class FieldIndexEntryTest {
     @Test
     public void test_parse_string_value_with_multiple_pipes() {
         String line = "a|b|c" + Globals.ID_SEPARATOR + "id1";
-        FieldIndexEntry<String> entry = FieldIndexEntry.fromIndexFileEntry("testDB", "testCollection", line,
+        FieldIndexEntry<String> entry = FieldIndexEntry.fromIndexFileEntry("testProject", "testCollection", line,
                 String.class);
         assertEquals("a|b|c", entry.getValue());
         assertTrue(entry.getIds().contains("id1"));
@@ -68,10 +68,10 @@ public class FieldIndexEntryTest {
 
     @Test
     public void test_round_trip_with_pipe_in_value() {
-        FieldIndexEntry<String> original = new FieldIndexEntry<>("testDB", "testCollection", "foo|bar",
+        FieldIndexEntry<String> original = new FieldIndexEntry<>("testProject", "testCollection", "foo|bar",
                 Set.of("id1", "id2"));
         String line = original.toFileEntry();
-        FieldIndexEntry<String> parsed = FieldIndexEntry.fromIndexFileEntry("testDB", "testCollection", line,
+        FieldIndexEntry<String> parsed = FieldIndexEntry.fromIndexFileEntry("testProject", "testCollection", line,
                 String.class);
         assertEquals("foo|bar", parsed.getValue());
         assertEquals(original.getIds(), parsed.getIds());
@@ -135,17 +135,17 @@ public class FieldIndexEntryTest {
     @Test
     public void test_getters_and_setters() {
         final var fieldIndexEntry = new FieldIndexEntry<>("db", "collection", 5.5, Set.of("id1"));
-        assertEquals("db", fieldIndexEntry.getDatabaseName());
+        assertEquals("db", fieldIndexEntry.getProjectName());
         assertEquals("collection", fieldIndexEntry.getCollectionName());
         assertEquals(5.5, fieldIndexEntry.getValue());
         assertTrue(fieldIndexEntry.getIds().contains("id1"));
         fieldIndexEntry.setCollectionName("collection2");
-        fieldIndexEntry.setDatabaseName("db2");
+        fieldIndexEntry.setProjectName("project2");
         fieldIndexEntry.setValue(6.0);
         fieldIndexEntry.setIds(Set.of("id2"));
         assertEquals("collection2", fieldIndexEntry.getCollectionName());
         assertEquals(6.0, fieldIndexEntry.getValue());
-        assertEquals("db2", fieldIndexEntry.getDatabaseName());
+        assertEquals("project2", fieldIndexEntry.getProjectName());
         assertEquals(Set.of("id2"), fieldIndexEntry.getIds());
     }
 

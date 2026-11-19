@@ -19,7 +19,7 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.TriggerDeadLetterCap;
 import org.ccg.mpp.ops.req.AggregateRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.ccg.mpp.utils.ReflectionUtils;
@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class DroppedCollectionsTest {
-    private static final String KEY = TestGlobals.DB + "|" + TestGlobals.COLL;
+    private static final String KEY = TestGlobals.PROJECT + "|" + TestGlobals.COLL;
 
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
@@ -37,7 +37,7 @@ public class DroppedCollectionsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -59,7 +59,7 @@ public class DroppedCollectionsTest {
     }
 
     private UUID listen() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         return listenManager.register(UUID.randomUUID(), request, "hash");
     }
@@ -79,51 +79,53 @@ public class DroppedCollectionsTest {
         assertTrue(applyStates().containsKey(KEY));
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
 
         assertFalse(applyStates().containsKey(KEY), "a dropped collection keeps no apply state");
         assertFalse(collectionToListens().containsKey(KEY), "the ended listen leaves no empty set behind");
     }
 
     @Test
-    public void dropDatabaseForgetsEveryApplyStateOfIt() throws Exception {
+    public void dropProjectForgetsEveryApplyStateOfIt() throws Exception {
         applyOnce();
         listenManager.openBatch(List.of("otherdb|" + TestGlobals.COLL)).close();
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getStatus());
 
         assertFalse(applyStates().containsKey(KEY));
         assertTrue(applyStates().containsKey("otherdb|" + TestGlobals.COLL));
     }
 
     @Test
-    public void dropDatabaseEvictsProceduresLock() throws Exception {
-        final var proceduresKey = Cache.getCollectionIdentifier(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
-        locks.lock(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
-        locks.release(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
+    public void dropProjectEvictsProceduresLock() throws Exception {
+        final var proceduresKey = Cache.getCollectionIdentifier(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
+        locks.lock(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
+        locks.release(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
         final Map<String, ?> lockMap = TestUtils.getPrivateField(locks, "locks", new ReflectionUtils.TypeToken<>() {
         });
         assertTrue(lockMap.containsKey(proceduresKey));
-        final var remembered = Cache.canonicalNames(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
+        final var remembered = Cache.canonicalNames(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getStatus());
 
-        assertFalse(lockMap.containsKey(proceduresKey), "the dropped database's procedures lock is evicted");
-        assertNotSame(remembered, Cache.canonicalNames(TestGlobals.DB, Globals.PROCEDURES_FOLDER),
+        assertFalse(lockMap.containsKey(proceduresKey), "the dropped project's procedures lock is evicted");
+        assertNotSame(remembered, Cache.canonicalNames(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER),
                 "evicting the lock looks the identifier up again, so the drop forgets it afterwards");
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    public void dropDatabaseForgetsItsDeadLetterOverCapState() throws Exception {
+    public void dropProjectForgetsItsDeadLetterOverCapState() throws Exception {
         final Set<String> overCap = TestUtils.getPrivateStaticField(TriggerDeadLetterCap.class, "overCap", Set.class);
-        overCap.add(TestGlobals.DB);
+        overCap.add(TestGlobals.PROJECT);
         overCap.add("otherdb");
         try {
             assertEquals(OperationStatus.OK,
-                    processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getStatus());
+                    processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getStatus());
 
-            assertFalse(overCap.contains(TestGlobals.DB), "a dropped database leaves no over-cap state behind");
+            assertFalse(overCap.contains(TestGlobals.PROJECT), "a dropped project leaves no over-cap state behind");
             assertTrue(overCap.contains("otherdb"));
         } finally {
             overCap.clear();

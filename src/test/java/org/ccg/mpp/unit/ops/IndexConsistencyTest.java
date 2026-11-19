@@ -47,7 +47,7 @@ public class IndexConsistencyTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         cache = IocContainer.get(Cache.class);
         pending = IocContainer.get(PendingIndexWrites.class);
@@ -62,19 +62,19 @@ public class IndexConsistencyTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(STATUS, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex() throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, STATUS);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(STATUS));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, STATUS);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(STATUS));
     }
 
     private Set<String> filterIds(JsonBaseElement value) throws IOException {
         final var operator = new FieldOperator(FieldOperatorType.EQUALS, "status", value);
-        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL)
+        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).collect(Collectors.toSet());
     }
 
@@ -85,23 +85,24 @@ public class IndexConsistencyTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("2"));
         obj.addProperty("status", "active");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id("2");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, "2");
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "2");
 
         runEntityEvent(entry);
 
-        assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
         assertEquals(Set.of("1", "2"), filterIds(new JsonString("active")));
     }
 
     private void runEntityEvent(DbEntry entry) throws IOException, InterruptedException {
-        EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry));
+        EventProcessorHelper
+                .processEvent(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry));
     }
 
     private void saveViaProcessor(OperationProcessor processor, String id, String value) {
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty("status", value);
@@ -118,7 +119,7 @@ public class IndexConsistencyTest {
         enableIndex();
         addDoc("1", new JsonString("C"));
 
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "1");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "1");
 
         assertEquals(Set.of("1"), filterIds(new JsonString("C")));
         assertTrue(filterIds(new JsonString("B")).isEmpty());
@@ -128,9 +129,9 @@ public class IndexConsistencyTest {
     public void test_update_indexes_removes_when_doc_absent() throws IOException, InterruptedException {
         addDoc("1", new JsonString("active"));
         enableIndex();
-        TestUtils.uncacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, "1");
+        TestUtils.uncacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, "1");
 
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "1");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "1");
 
         assertTrue(filterIds(new JsonString("active")).isEmpty());
     }
@@ -141,8 +142,8 @@ public class IndexConsistencyTest {
         enableIndex();
         addDoc("1", new JsonString("new"));
 
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "1");
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "1");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "1");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "1");
 
         assertEquals(Set.of("1"), filterIds(new JsonString("new")));
         assertTrue(filterIds(new JsonString("old")).isEmpty());
@@ -153,9 +154,9 @@ public class IndexConsistencyTest {
         addDoc("p", new JsonString("present"));
         addDoc("g", new JsonString("gone"));
         enableIndex();
-        TestUtils.uncacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, "g");
+        TestUtils.uncacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, "g");
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("p", "g"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("p", "g"));
 
         assertEquals(Set.of("p"), filterIds(new JsonString("present")));
         assertTrue(filterIds(new JsonString("gone")).isEmpty());
@@ -169,7 +170,7 @@ public class IndexConsistencyTest {
         addDoc("2", new JsonString("shared"));
         addDoc("3", new JsonString("shared"));
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("2", "3"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("2", "3"));
 
         assertEquals(Set.of("2", "3"), filterIds(new JsonString("shared")));
         assertEquals(Set.of("1"), filterIds(new JsonString("old")));
@@ -184,7 +185,7 @@ public class IndexConsistencyTest {
         addDoc("3", new JsonString("shared"));
         addDoc("4", new JsonString("shared"));
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("2", "3", "4"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("2", "3", "4"));
 
         assertEquals(Set.of("2", "3", "4"), filterIds(new JsonString("shared")));
     }
@@ -197,7 +198,7 @@ public class IndexConsistencyTest {
         addDoc("2", new JsonString("shared"));
         addDoc("3", new JsonString("shared"));
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("2", "3"));
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("2", "3"));
 
         assertEquals(Set.of("1", "2", "3"), filterIds(new JsonString("shared")));
     }
@@ -207,12 +208,13 @@ public class IndexConsistencyTest {
     // are clean no-ops instead of throwing an NPE.
     @Test
     public void test_update_indexes_is_noop_for_missing_collection() {
-        assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.DB, "nonexistent_coll", "1"));
-        assertDoesNotThrow(() -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, "nonexistent_coll", List.of("1", "2")));
+        assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.PROJECT, "nonexistent_coll", "1"));
+        assertDoesNotThrow(
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, "nonexistent_coll", List.of("1", "2")));
     }
 
     private Set<String> indexesOf() {
-        return cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).getIndexes();
+        return cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).getIndexes();
     }
 
     // CREATE_INDEX builds the index files and registers the field as a known index synchronously
@@ -224,7 +226,8 @@ public class IndexConsistencyTest {
         saveViaProcessor(processor, "1", "active");
         saveViaProcessor(processor, "2", "inactive");
 
-        final var resp = processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status"));
+        final var resp = processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status"));
 
         assertEquals(OperationStatus.OK, resp.getStatus());
         assertTrue(indexesOf().contains("status"));
@@ -236,10 +239,11 @@ public class IndexConsistencyTest {
     public void test_drop_index_unregisters_field_synchronously() {
         final var processor = new OperationProcessor();
         saveViaProcessor(processor, "1", "active");
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status"));
         assertTrue(indexesOf().contains("status"));
 
-        final var resp = processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status"));
+        final var resp = processor
+                .processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status"));
 
         assertEquals(OperationStatus.OK, resp.getStatus());
         assertFalse(indexesOf().contains("status"));
@@ -255,14 +259,14 @@ public class IndexConsistencyTest {
         saveViaProcessor(processor, "b", "beta");
         saveViaProcessor(processor, "c", "gamma");
 
-        final var del = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var del = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         del.set_id("a");
         processor.processMessage(del);
         saveViaProcessor(processor, "b", "beta2");
 
         // Force positioned reads from disk for the survivors.
-        cache.evictEntry(TestGlobals.DB, TestGlobals.COLL, "b");
-        cache.evictEntry(TestGlobals.DB, TestGlobals.COLL, "c");
+        cache.evictEntry(TestGlobals.PROJECT, TestGlobals.COLL, "b");
+        cache.evictEntry(TestGlobals.PROJECT, TestGlobals.COLL, "c");
 
         assertEquals("gamma", readStatus(processor, "c"));
         assertEquals("beta2", readStatus(processor, "b"));
@@ -277,7 +281,7 @@ public class IndexConsistencyTest {
         saveViaProcessor(processor, "b", "beta");
         saveViaProcessor(processor, "c", "gamma");
 
-        final var bulk = new org.ccg.mpp.ops.req.BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new org.ccg.mpp.ops.req.BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("a"));
         obj.addProperty("status", "alpha2");
@@ -287,12 +291,12 @@ public class IndexConsistencyTest {
         assertEquals(OperationStatus.OK, resp.getStatus());
         assertEquals(List.of("a"), resp.getUpdated(), "smallest id must be treated as an update");
         assertTrue(resp.getInserted().isEmpty(), "must not insert a duplicate");
-        assertEquals(3, cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(3, cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size());
         assertEquals("alpha2", readStatus(processor, "a"));
     }
 
     private String readStatus(OperationProcessor processor, String id) {
-        final var req = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.set_id(id);
         final var resp = (org.ccg.mpp.ops.resp.FindByIdResponse) processor.processMessage(req);
         return resp.getObject().get("status").asJsonString().getValue();
@@ -304,14 +308,14 @@ public class IndexConsistencyTest {
         final var token = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(userCache, "fieldIndexMap", token);
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         final Map<String, List<FieldIndexEntry<?>>> inner = new ConcurrentHashMap<>();
         inner.put("mixed" + Globals.COLL_IDENTIFIER_SEPARATOR + "Double", new ArrayList<>());
         inner.put("mixed" + Globals.COLL_IDENTIFIER_SEPARATOR + "String", new ArrayList<>());
         inner.put("other" + Globals.COLL_IDENTIFIER_SEPARATOR + "Double", new ArrayList<>());
         fieldIndexMap.put(collId, inner);
 
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "mixed");
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "mixed");
 
         assertEquals(Set.of("other" + Globals.COLL_IDENTIFIER_SEPARATOR + "Double"), inner.keySet());
     }
@@ -322,12 +326,12 @@ public class IndexConsistencyTest {
         final var token = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(userCache, "fieldIndexMap", token);
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         final Map<String, List<FieldIndexEntry<?>>> inner = new ConcurrentHashMap<>();
         inner.put("only" + Globals.COLL_IDENTIFIER_SEPARATOR + "Double", new ArrayList<>());
         fieldIndexMap.put(collId, inner);
 
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "only");
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "only");
 
         assertFalse(fieldIndexMap.containsKey(collId));
     }
@@ -337,9 +341,9 @@ public class IndexConsistencyTest {
         addDoc("1", new JsonString("active"));
         enableIndex();
         final var operator = new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"));
-        final var first = cache.getIdsFromIndex(TestGlobals.DB, TestGlobals.COLL, "status", operator, "active");
+        final var first = cache.getIdsFromIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status", operator, "active");
         first.add("injected");
-        final var second = cache.getIdsFromIndex(TestGlobals.DB, TestGlobals.COLL, "status", operator, "active");
+        final var second = cache.getIdsFromIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status", operator, "active");
         assertEquals(Set.of("1"), second);
     }
 }

@@ -36,9 +36,9 @@ public class SelectiveLegsTest extends FilterResolutionSupport {
             object.add("label", new JsonString(i % 2 == 0 ? "even" : "odd"));
             object.add("uid", new JsonString("u" + i));
             object.add("tier", new JsonString("t" + i % 3));
-            final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+            final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
             entry.set_id("p" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
         for (final var field : List.of("price", "label", "uid", "tier")) {
             indexField(field);
@@ -58,12 +58,13 @@ public class SelectiveLegsTest extends FilterResolutionSupport {
     }
 
     private Set<String> candidates(ConjunctionOperator operator) throws IOException {
-        return ConjunctionCandidates.of(operator, TestGlobals.DB, TestGlobals.COLL, PipelineContext.withoutScripts());
+        return ConjunctionCandidates.of(operator, TestGlobals.PROJECT, TestGlobals.COLL,
+                PipelineContext.withoutScripts());
     }
 
     private Set<String> filtered(BaseOperator operator, AnalyzeContext analyze) throws IOException {
         return FilterOperatorHelper
-                .processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL,
+                .processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL,
                         PipelineContext.of(0L, Long.MAX_VALUE, analyze))
                 .map(row -> row.get(Globals.PK_FIELD).asJsonString().getValue())
                 .collect(Collectors.toCollection(TreeSet::new));

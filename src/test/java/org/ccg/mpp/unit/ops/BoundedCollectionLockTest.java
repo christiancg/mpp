@@ -30,7 +30,7 @@ public class BoundedCollectionLockTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -50,13 +50,13 @@ public class BoundedCollectionLockTest {
         release = new CountDownLatch(1);
         holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 held.countDown();
                 release.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         holder.start();
@@ -64,7 +64,7 @@ public class BoundedCollectionLockTest {
     }
 
     private static OperationResponse attemptWith(boolean bounded, AtomicBoolean ran) {
-        return OperationLocks.withCollectionLock(TestGlobals.DB, TestGlobals.COLL, OperationType.CREATE_INDEX,
+        return OperationLocks.withCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL, OperationType.CREATE_INDEX,
                 ErrorCode.ERROR_CREATING_INDEX, bounded, () -> {
                     ran.set(true);
                     return OperationResponse.ok(OperationType.CREATE_INDEX, "done");
@@ -111,8 +111,8 @@ public class BoundedCollectionLockTest {
     public void test_a_bounded_acquisition_releases_the_lock_it_took() {
         attemptWith(true, new AtomicBoolean(false));
 
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL),
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL),
                 "the collection must be free again once the bounded attempt returns");
-        locks.release(TestGlobals.DB, TestGlobals.COLL);
+        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 }

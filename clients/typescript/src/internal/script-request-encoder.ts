@@ -17,7 +17,7 @@ function permissions(granted: Permissions): JsonObject {
     return {
         admin: granted.admin ?? false,
         globalPermissions: [...(granted.global ?? [])],
-        databasePermissions: { ...granted.databases },
+        projectPermissions: { ...granted.projects },
         collectionPermissions: { ...granted.collections },
         scriptPermissions: { ...granted.scripts },
     };
@@ -42,13 +42,13 @@ export class ScriptRequestEncoder {
         this.#encoder = encoder;
     }
 
-    runScript(database: string, script: string, args: unknown): JsonObject {
-        return { ...request("RUN_SCRIPT", database), script, ...this.#args(args) };
+    runScript(project: string, script: string, args: unknown): JsonObject {
+        return { ...request("RUN_SCRIPT", project), script, ...this.#args(args) };
     }
 
-    saveProcedure(database: string, procedure: ProcedureDefinition): JsonObject {
+    saveProcedure(project: string, procedure: ProcedureDefinition): JsonObject {
         return {
-            ...request("SAVE_PROCEDURE", database),
+            ...request("SAVE_PROCEDURE", project),
             name: procedure.name,
             script: procedure.script,
             ...optional("description", procedure.description),
@@ -57,22 +57,22 @@ export class ScriptRequestEncoder {
         };
     }
 
-    deleteProcedure(database: string, name: string): JsonObject {
-        return { ...request("DELETE_PROCEDURE", database), name };
+    deleteProcedure(project: string, name: string): JsonObject {
+        return { ...request("DELETE_PROCEDURE", project), name };
     }
 
-    listProcedures(database: string, includeSource: boolean | undefined): JsonObject {
-        return { ...request("LIST_PROCEDURES", database), ...optional("includeSource", includeSource) };
+    listProcedures(project: string, includeSource: boolean | undefined): JsonObject {
+        return { ...request("LIST_PROCEDURES", project), ...optional("includeSource", includeSource) };
     }
 
-    callProcedure(database: string, name: string, args: unknown): JsonObject {
-        return { ...request("CALL_PROCEDURE", database), procedureName: name, ...this.#args(args) };
+    callProcedure(project: string, name: string, args: unknown): JsonObject {
+        return { ...request("CALL_PROCEDURE", project), procedureName: name, ...this.#args(args) };
     }
 
-    saveTrigger(database: string, collection: string, trigger: TriggerDefinition): JsonObject {
+    saveTrigger(project: string, collection: string, trigger: TriggerDefinition): JsonObject {
         checkTrigger(trigger);
         return {
-            ...request("SAVE_TRIGGER", database, collection),
+            ...request("SAVE_TRIGGER", project, collection),
             name: trigger.name,
             events: [...trigger.events],
             procedureName: trigger.procedureName,
@@ -84,33 +84,27 @@ export class ScriptRequestEncoder {
         };
     }
 
-    deleteTrigger(database: string, collection: string, name: string): JsonObject {
-        return { ...request("DELETE_TRIGGER", database, collection), name };
+    deleteTrigger(project: string, collection: string, name: string): JsonObject {
+        return { ...request("DELETE_TRIGGER", project, collection), name };
     }
 
-    listTriggers(database: string, collection: string | undefined): JsonObject {
-        return request("LIST_TRIGGERS", database, collection);
+    listTriggers(project: string, collection: string | undefined): JsonObject {
+        return request("LIST_TRIGGERS", project, collection);
     }
 
-    testTrigger(
-        database: string,
-        collection: string,
-        name: string,
-        event: TriggerEvent,
-        document: unknown,
-    ): JsonObject {
+    testTrigger(project: string, collection: string, name: string, event: TriggerEvent, document: unknown): JsonObject {
         return {
-            ...request("TEST_TRIGGER", database, collection),
+            ...request("TEST_TRIGGER", project, collection),
             name,
             event,
             document: this.#encoder.document(document),
         };
     }
 
-    saveSchedule(database: string, schedule: ScheduleDefinition): JsonObject {
+    saveSchedule(project: string, schedule: ScheduleDefinition): JsonObject {
         checkSchedule(schedule);
         return {
-            ...request("SAVE_SCHEDULE", database),
+            ...request("SAVE_SCHEDULE", project),
             name: schedule.name,
             procedureName: schedule.procedureName,
             ...optional("cron", schedule.cron),
@@ -123,12 +117,12 @@ export class ScriptRequestEncoder {
         };
     }
 
-    deleteSchedule(database: string, name: string): JsonObject {
-        return { ...request("DELETE_SCHEDULE", database), name };
+    deleteSchedule(project: string, name: string): JsonObject {
+        return { ...request("DELETE_SCHEDULE", project), name };
     }
 
-    listSchedules(database: string, includeArgs: boolean | undefined): JsonObject {
-        return { ...request("LIST_SCHEDULES", database), ...optional("includeArgs", includeArgs) };
+    listSchedules(project: string, includeArgs: boolean | undefined): JsonObject {
+        return { ...request("LIST_SCHEDULES", project), ...optional("includeArgs", includeArgs) };
     }
 
     listScripts(): JsonObject {

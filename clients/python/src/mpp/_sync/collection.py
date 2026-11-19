@@ -24,8 +24,8 @@ class Collection(Generic[T, R]):
         self._inner = inner
 
     @property
-    def database_name(self) -> str:
-        return self._inner.database_name
+    def project_name(self) -> str:
+        return self._inner.project_name
 
     @property
     def name(self) -> str:

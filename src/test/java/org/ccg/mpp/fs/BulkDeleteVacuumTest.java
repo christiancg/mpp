@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class BulkDeleteVacuumTest {
-    private static final String DB = "bulkDeleteDb";
+    private static final String PROJECT = "bulkDeleteProject";
     private static final String COLL = "bulkDeleteColl";
 
     @TempDir
@@ -31,7 +31,7 @@ public class BulkDeleteVacuumTest {
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
         shippedMaxPageSize = configuration.getMaxPageSize();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         rf.fx.seed(1, "d", "e", "f");
     }
@@ -46,7 +46,7 @@ public class BulkDeleteVacuumTest {
         for (final var id : ids) {
             rows.add(rf.fx.indexed(id));
         }
-        rf.appender.bulkInsertAndDelete(DB, COLL, List.of(), DbEntry::getPage, _ -> null, rows);
+        rf.appender.bulkInsertAndDelete(PROJECT, COLL, List.of(), DbEntry::getPage, _ -> null, rows);
         return rf.fx.indexedRows();
     }
 
@@ -61,7 +61,7 @@ public class BulkDeleteVacuumTest {
     public void test_a_page_emptied_by_the_batch_is_truncated_to_zero_bytes_and_kept() throws Exception {
         final var survivors = deleteInOneBatch("a", "b", "c");
 
-        rf.replacer.vacuumAfterDeletes(DB, COLL, List.of(0L, 0L), survivors, occupancyOf(survivors));
+        rf.replacer.vacuumAfterDeletes(PROJECT, COLL, List.of(0L, 0L), survivors, occupancyOf(survivors));
 
         assertTrue(rf.fx.page(0).exists());
         assertEquals(0L, rf.fx.page(0).length());
@@ -76,7 +76,7 @@ public class BulkDeleteVacuumTest {
         final var survivor = StorageFixture.record("f", "old-f").length();
         final var survivors = deleteInOneBatch("d", "e");
 
-        rf.replacer.vacuumAfterDeletes(DB, COLL, List.of(1L), survivors, occupancyOf(survivors));
+        rf.replacer.vacuumAfterDeletes(PROJECT, COLL, List.of(1L), survivors, occupancyOf(survivors));
 
         assertEquals(survivor, rf.fx.page(1).length());
         assertEquals(0L, rf.fx.indexed("f").getPosition());
@@ -89,7 +89,7 @@ public class BulkDeleteVacuumTest {
         final var lengthBefore = rf.fx.page(1).length();
         final var survivors = deleteInOneBatch("d");
 
-        rf.replacer.vacuumAfterDeletes(DB, COLL, List.of(1L), survivors, occupancyOf(survivors));
+        rf.replacer.vacuumAfterDeletes(PROJECT, COLL, List.of(1L), survivors, occupancyOf(survivors));
 
         assertEquals(lengthBefore, rf.fx.page(1).length());
         assertTrue(rf.vacuumed.isEmpty());
@@ -100,7 +100,7 @@ public class BulkDeleteVacuumTest {
         final var lengthBefore = rf.fx.page(0).length();
         final var survivors = deleteInOneBatch("a", "b", "c");
 
-        rf.replacer.vacuumAfterDeletes(DB, COLL, List.of(0L), survivors, _ -> null);
+        rf.replacer.vacuumAfterDeletes(PROJECT, COLL, List.of(0L), survivors, _ -> null);
 
         assertEquals(lengthBefore, rf.fx.page(0).length());
         assertTrue(rf.vacuumed.isEmpty());
@@ -111,7 +111,7 @@ public class BulkDeleteVacuumTest {
         final var lengthBefore = rf.fx.page(0).length();
         deleteInOneBatch("a", "b");
 
-        rf.replacer.vacuumAfterDeletes(DB, COLL, List.of(0L), List.of(), _ -> new PageOccupancy(0L, 0L));
+        rf.replacer.vacuumAfterDeletes(PROJECT, COLL, List.of(0L), List.of(), _ -> new PageOccupancy(0L, 0L));
 
         assertEquals(lengthBefore, rf.fx.page(0).length());
         assertTrue(rf.fx.everyRowReadsItsOwnRecord());

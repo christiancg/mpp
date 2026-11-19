@@ -3,7 +3,7 @@ import type { Document } from "../document.js";
 export const DataPermission = { READ: "READ", READ_WRITE: "READ_WRITE" } as const;
 export type DataPermission = (typeof DataPermission)[keyof typeof DataPermission];
 
-export const GlobalPermission = { CREATE_DATABASE: "CREATE_DATABASE", DROP_DATABASE: "DROP_DATABASE" } as const;
+export const GlobalPermission = { CREATE_PROJECT: "CREATE_PROJECT", DROP_PROJECT: "DROP_PROJECT" } as const;
 export type GlobalPermission = (typeof GlobalPermission)[keyof typeof GlobalPermission];
 
 export const ScriptPermission = { NONE: "NONE", RUN: "RUN", MANAGE: "MANAGE" } as const;
@@ -21,23 +21,23 @@ export type TriggerRunDecision = (typeof TriggerRunDecision)[keyof typeof Trigge
 export interface Permissions {
     readonly admin?: boolean;
     readonly global?: readonly GlobalPermission[];
-    readonly databases?: Readonly<Record<string, DataPermission>>;
+    readonly projects?: Readonly<Record<string, DataPermission>>;
     readonly collections?: Readonly<Record<string, DataPermission>>;
     readonly scripts?: Readonly<Record<string, ScriptPermission>>;
 }
 
-export function collectionKey(database: string, collection: string): string {
-    return `${database}|${collection}`;
+export function collectionKey(project: string, collection: string): string {
+    return `${project}|${collection}`;
 }
 
 export interface UserInfo {
     readonly username: string;
     readonly admin: boolean;
     readonly globalPermissions: readonly string[];
-    readonly databasePermissions: Document;
+    readonly projectPermissions: Document;
     readonly collectionPermissions: Document;
     readonly scriptPermissions: Document;
-    readonly ownedDatabases: readonly string[];
+    readonly ownedProjects: readonly string[];
     readonly raw: Document;
 }
 
@@ -54,7 +54,7 @@ export interface ScriptRun {
     readonly runId: string;
     readonly node: string | undefined;
     readonly kind: string;
-    readonly database: string | undefined;
+    readonly project: string | undefined;
     readonly name: string | undefined;
     readonly username: string | undefined;
     readonly ageMs: number;
@@ -64,7 +64,7 @@ export interface ScriptRun {
 export interface TriggerRun {
     readonly runId: string;
     readonly status: string;
-    readonly database: string | undefined;
+    readonly project: string | undefined;
     readonly collection: string | undefined;
     readonly trigger: string | undefined;
     readonly procedure: string | undefined;

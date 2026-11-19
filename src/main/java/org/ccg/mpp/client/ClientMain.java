@@ -14,7 +14,7 @@ public final class ClientMain {
             "Usage:%n" + "  java -jar mpp.jar --shell   [connection]%n"
                     + "  java -jar mpp.jar --exec '<json>' [--exec '<json>' ...] [connection]%n"
                     + "  java -jar mpp.jar --exec [connection]                          < commands%n"
-                    + "  java -jar mpp.jar --dump [--databases a,b | --collections db.coll,...] [--compress]"
+                    + "  java -jar mpp.jar --dump [--projects a,b | --collections project.coll,...] [--compress]"
                     + " [connection] > backup.ldump%n"
                     + "  java -jar mpp.jar --restore [connection]                       < backup.ldump%n"
                     + "  java -jar mpp.jar --health [connection]%n" + "%n" + "Connection:%n"

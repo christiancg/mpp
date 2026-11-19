@@ -42,11 +42,11 @@ public final class ReadPathHelper {
 
     public static OperationResponse processFindByIdOperation(FindByIdRequest findbyIdRequest,
             Transaction activeTransaction) {
-        final var dbName = findbyIdRequest.getDatabaseName();
+        final var projectName = findbyIdRequest.getProjectName();
         final var collName = findbyIdRequest.getCollectionName();
         final var id = findbyIdRequest.get_id();
         if (activeTransaction != null) {
-            final var overlay = activeTransaction.overlayFor(Cache.getCollectionIdentifier(dbName, collName));
+            final var overlay = activeTransaction.overlayFor(Cache.getCollectionIdentifier(projectName, collName));
             if (overlay != null && overlay.containsKey(id)) {
                 final var buffered = overlay.get(id);
                 if (Transaction.isTombstone(buffered)) {
@@ -55,26 +55,26 @@ public final class ReadPathHelper {
                 return new FindByIdResponse("Ok", buffered);
             }
         }
-        final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.FIND_BY_ID, dbName,
+        final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.FIND_BY_ID, projectName,
                 List.of(collName));
         if (notRegistered != null) {
             return notRegistered;
         }
         return OperationLocks.withPointReadLock(findbyIdRequest.isDirtyRead(),
-                Cache.getCollectionIdentifier(dbName, collName), OperationType.FIND_BY_ID, ErrorCode.ERROR_RETRIEVING,
-                activeTransaction != null, () -> {
-                    final var unregistered = CollectionReadinessGuard.checkRead(OperationType.FIND_BY_ID, dbName,
+                Cache.getCollectionIdentifier(projectName, collName), OperationType.FIND_BY_ID,
+                ErrorCode.ERROR_RETRIEVING, activeTransaction != null, () -> {
+                    final var unregistered = CollectionReadinessGuard.checkRead(OperationType.FIND_BY_ID, projectName,
                             List.of(collName));
                     if (unregistered != null) {
                         return unregistered;
                     }
-                    final var row = cache.pkRowFor(dbName, collName, id);
+                    final var row = cache.pkRowFor(projectName, collName, id);
                     if (row == null) {
                         return new OperationResponse(OperationType.FIND_BY_ID, ErrorCode.ENTRY_NOT_FOUND);
                     }
-                    final var entry = cache.getById(dbName, collName, row);
-                    CollectionAccessHelper.recordPkIndexAccess(dbName, collName);
-                    CollectionAccessHelper.recordCollectionAccess(dbName, collName);
+                    final var entry = cache.getById(projectName, collName, row);
+                    CollectionAccessHelper.recordPkIndexAccess(projectName, collName);
+                    CollectionAccessHelper.recordCollectionAccess(projectName, collName);
                     return new FindByIdResponse("Ok", entry.getData());
                 });
     }
@@ -82,7 +82,7 @@ public final class ReadPathHelper {
     public static OperationResponse processAggregateOperation(AggregateRequest aggregateRequest,
             Transaction activeTransaction) {
         final var overlay = activeTransaction != null
-                ? activeTransaction.overlayFor(Cache.getCollectionIdentifier(aggregateRequest.getDatabaseName(),
+                ? activeTransaction.overlayFor(Cache.getCollectionIdentifier(aggregateRequest.getProjectName(),
                         aggregateRequest.getCollectionName()))
                 : null;
         final var overlaid = overlay != null && !overlay.isEmpty();
@@ -98,7 +98,7 @@ public final class ReadPathHelper {
 
     private static List<String> lockIdsOf(AggregateRequest aggregateRequest, boolean pointHold) {
         return pointHold
-                ? List.of(Cache.getCollectionIdentifier(aggregateRequest.getDatabaseName(),
+                ? List.of(Cache.getCollectionIdentifier(aggregateRequest.getProjectName(),
                         aggregateRequest.getCollectionName()))
                 : AggregationOperationHelper.aggregateLockSet(aggregateRequest);
     }
@@ -124,9 +124,9 @@ public final class ReadPathHelper {
             boolean overlaid, boolean pointHold) {
         List<String> readLocks = List.of();
         final var analyzeContext = aggregateRequest.isAnalyze() ? new AnalyzeContext() : null;
-        final var dbName = aggregateRequest.getDatabaseName();
+        final var projectName = aggregateRequest.getProjectName();
         try {
-            final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.AGGREGATE, dbName,
+            final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.AGGREGATE, projectName,
                     AggregationOperationHelper.aggregateCollections(aggregateRequest));
             if (notRegistered != null) {
                 return notRegistered;
@@ -140,7 +140,7 @@ public final class ReadPathHelper {
                         OperationLocks.readRefusalOf(inTransaction, lockIds));
             }
             readLocks = acquired;
-            final var unregistered = CollectionReadinessGuard.checkRead(OperationType.AGGREGATE, dbName,
+            final var unregistered = CollectionReadinessGuard.checkRead(OperationType.AGGREGATE, projectName,
                     AggregationOperationHelper.aggregateCollections(aggregateRequest));
             if (unregistered != null) {
                 return unregistered;
@@ -153,7 +153,7 @@ public final class ReadPathHelper {
                 results = runPipeline(aggregateRequest, activeTransaction, overlaid,
                         pointHold ? context.holdingPoint() : context);
             }
-            CollectionAccessHelper.recordCollectionAccess(aggregateRequest.getDatabaseName(),
+            CollectionAccessHelper.recordCollectionAccess(aggregateRequest.getProjectName(),
                     aggregateRequest.getCollectionName());
             if (analyzeContext != null) {
                 // In analyze mode an empty result still answers with the analysis rather than NO_RESULTS.

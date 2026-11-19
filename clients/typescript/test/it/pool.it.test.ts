@@ -6,11 +6,11 @@ const it = serverIt();
 
 describe("the connection pool", () => {
     test("many concurrent writers share a small pool and every write lands", async () => {
-        await it.client.database("pool_it").create();
-        await it.client.database("pool_it").collection("events").create();
+        await it.client.project("pool_it").create();
+        await it.client.project("pool_it").collection("events").create();
         const pooled = await MppClient.connect(it.settings({ poolSize: 4 }));
         try {
-            const events = pooled.database("pool_it").collection("events");
+            const events = pooled.project("pool_it").collection("events");
             const writers = Array.from({ length: 32 }, async (_, writer) => {
                 for (let i = 0; i < 200; i++) {
                     await events.save({ _id: `t${writer}-${i}`, n: i });
@@ -26,10 +26,10 @@ describe("the connection pool", () => {
     });
 
     test("closing the client while requests run fails them cleanly", async () => {
-        await it.client.database("pool_close_it").create();
-        await it.client.database("pool_close_it").collection("events").create();
+        await it.client.project("pool_close_it").create();
+        await it.client.project("pool_close_it").collection("events").create();
         const closing = await MppClient.connect(it.settings({ poolSize: 2 }));
-        const events = closing.database("pool_close_it").collection("events");
+        const events = closing.project("pool_close_it").collection("events");
         const writers = Array.from({ length: 4 }, async (_, writer) => {
             let done = 0;
             try {

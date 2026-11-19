@@ -45,61 +45,61 @@ public class FileSystemWriteTest extends FileSystemTestBase {
     }
 
     @Test
-    public void test_creates_admin_database_successfully() throws IOException {
+    public void test_creates_admin_project_successfully() throws IOException {
         FileSystem fileSystem = new FileSystem();
         fileSystem.createBaseDbPath();
-        fileSystem.createAdminDatabase();
+        fileSystem.createAdminProject();
 
-        File adminDbFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_DB_NAME);
-        assertTrue(adminDbFolder.exists());
+        File adminProjectFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECT_NAME);
+        assertTrue(adminProjectFolder.exists());
 
-        File databasesCollection = new File(
-                adminDbFolder.getPath() + Globals.FILE_SEPARATOR + Globals.ADMIN_DATABASES_COLLECTION_NAME);
-        assertTrue(databasesCollection.exists());
+        File projectsCollection = new File(
+                adminProjectFolder.getPath() + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECTS_COLLECTION_NAME);
+        assertTrue(projectsCollection.exists());
 
         File collectionsCollection = new File(
-                adminDbFolder.getPath() + Globals.FILE_SEPARATOR + Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
+                adminProjectFolder.getPath() + Globals.FILE_SEPARATOR + Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
         assertTrue(collectionsCollection.exists());
     }
 
     @Test
-    public void test_creates_new_db_folder_successfully() throws Exception {
+    public void test_creates_new_project_folder_successfully() throws Exception {
         String testDbPath = System.getProperty("java.io.tmpdir");
         FileSystem fileSystem = new FileSystem();
         TestUtils.setDbPath(fileSystem, testDbPath);
 
-        boolean result = fileSystem.createDatabaseFolder(TestGlobals.DB);
+        boolean result = fileSystem.createProjectFolder(TestGlobals.PROJECT);
 
         assertTrue(result);
-        File dbFolder = new File(testDbPath + Globals.FILE_SEPARATOR + TestGlobals.DB);
-        assertTrue(dbFolder.exists());
-        assertTrue(dbFolder.delete());
+        File projectFolder = new File(testDbPath + Globals.FILE_SEPARATOR + TestGlobals.PROJECT);
+        assertTrue(projectFolder.exists());
+        assertTrue(projectFolder.delete());
     }
 
     @Test
     public void test_bulk_insert_multiple_entries_success() throws IOException {
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         List<DbEntry> entries = new ArrayList<>();
         JsonObject data1 = new JsonObject();
         data1.addProperty("field1", "value1");
-        DbEntry entry1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data1);
+        DbEntry entry1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data1);
 
         JsonObject data2 = new JsonObject();
         data2.addProperty("field2", "value2");
-        DbEntry entry2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data2);
+        DbEntry entry2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data2);
 
         entries.add(entry1);
         entries.add(entry2);
 
-        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
 
         assertNotNull(result);
         assertEquals(2, result.size());
-        assertEquals(TestGlobals.DB, result.getFirst().getDatabaseName());
+        assertEquals(TestGlobals.PROJECT, result.getFirst().getProjectName());
         assertEquals(TestGlobals.COLL, result.getFirst().getCollectionName());
         assertNotNull(result.getFirst().get_id());
         assertNotNull(result.getFirst().getIndex());
@@ -108,31 +108,31 @@ public class FileSystemWriteTest extends FileSystemTestBase {
     @Test
     public void test_bulk_insert_groups_entries_by_page() throws IOException {
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         List<DbEntry> entries = new ArrayList<>();
         JsonObject d1 = new JsonObject();
         d1.addProperty("f", "p0");
-        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d1);
+        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d1);
         e1.setPage(0);
         e1.set_id("p0-1");
 
         JsonObject d2 = new JsonObject();
         d2.addProperty("f", "p1");
-        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d2);
+        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d2);
         e2.setPage(1);
         e2.set_id("p1-1");
 
         entries.add(e1);
         entries.add(e2);
 
-        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
         assertEquals(2, result.size());
 
-        final var page0 = fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0);
-        final var page1 = fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 1);
+        final var page0 = fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0);
+        final var page1 = fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 1);
         assertEquals(1, page0.size(), "Page 0 should contain only its grouped entry");
         assertEquals(1, page1.size(), "Page 1 should contain only its grouped entry");
         assertTrue(page0.containsKey("p0-1"));
@@ -144,7 +144,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
 
         List<DbEntry> entries = new ArrayList<>();
 
-        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        List<IndexedDbEntry> result = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
 
         assertNotNull(result);
         assertTrue(result.isEmpty());
@@ -161,9 +161,9 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         data1.addProperty("_id", "2");
         data2.addProperty("field", "value");
 
-        final var newEntries = List.of(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data1),
-                DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data2));
-        List<IndexedDbEntry> entries = fileSystem.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL,
+        final var newEntries = List.of(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data1),
+                DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data2));
+        List<IndexedDbEntry> entries = fileSystem.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL,
                 newEntries);
 
         final var first = entries.get(0);
@@ -171,12 +171,12 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         final var second = entries.get(1);
         second.getData().addProperty("field", "changed");
 
-        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
 
         assertNotNull(result);
         assertEquals(2, result.size());
         assertTrue(result.stream().allMatch(e -> e.getData().get("field").asJsonString().getValue().equals("changed")));
-        assertEquals(TestGlobals.DB, result.getFirst().getDatabaseName());
+        assertEquals(TestGlobals.PROJECT, result.getFirst().getProjectName());
         assertEquals(TestGlobals.COLL, result.getFirst().getCollectionName());
     }
 
@@ -186,19 +186,20 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty("_id", "v1");
         data.addProperty("field", "value");
-        final var seed = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var seed = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         seed.setVersion(11L);
-        final var inserted = fileSystem.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, List.of(seed));
+        final var inserted = fileSystem.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, List.of(seed));
         final var updated = inserted.getFirst();
         updated.getData().addProperty("field", "changed");
         updated.setVersion(22L);
 
-        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, List.of(updated));
+        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, List.of(updated));
 
         assertEquals(22L, result.getFirst().getIndex().getVersion());
         assertEquals(22L, result.getFirst().toDbEntry().getVersion(),
                 "the published document must not differ from the pk index that describes it");
-        assertEquals(22L, fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).getFirst().getVersion());
+        assertEquals(22L,
+                fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().getVersion());
     }
 
     @Test
@@ -207,7 +208,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
 
         List<IndexedDbEntry> entries = new ArrayList<>();
 
-        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
 
         assertNotNull(result);
         assertTrue(result.isEmpty());
@@ -221,15 +222,15 @@ public class FileSystemWriteTest extends FileSystemTestBase {
             final var data = new JsonObject();
             data.addProperty("_id", id);
             data.addProperty("field", "orig-" + id);
-            toInsert.add(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data));
+            toInsert.add(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data));
         }
-        final var inserted = fileSystem.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, toInsert);
+        final var inserted = fileSystem.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, toInsert);
         // All three live on page 0; change each value to a DIFFERENT-length string to force shifts.
         for (var ie : inserted) {
             ie.getData().addProperty("field", "updated-value-for-" + ie.get_id() + "-longer");
         }
 
-        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, inserted);
+        final var result = fileSystem.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, inserted);
 
         for (var ie : result) {
             final var read = fileSystem.getById(ie.getIndex());
@@ -242,16 +243,17 @@ public class FileSystemWriteTest extends FileSystemTestBase {
     @Test
     public void test_update_file_length() throws IOException {
         final var fileSystem = fs;
-        final var file = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + "0.dat");
+        final var file = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
+                + Globals.FILE_PAGE_SEPARATOR + "0.dat");
         final var jsonObject = new JsonObject();
         jsonObject.addProperty("name", "test");
-        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, jsonObject);
+        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, jsonObject);
         final var inserted = fileSystem.insertIntoCollection(dbEntry);
         assertTrue(file.length() > 0);
         final var originalFileLength = file.length();
         jsonObject.addProperty("name", "updated");
-        final var dbEntryUpdated = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, jsonObject);
+        final var dbEntryUpdated = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, jsonObject);
         fileSystem.updateFromCollection(dbEntryUpdated, inserted);
         assertTrue(file.length() > originalFileLength);
     }
@@ -271,10 +273,10 @@ public class FileSystemWriteTest extends FileSystemTestBase {
                         final var obj = new JsonObject();
                         obj.addProperty("_id", "c-" + (base + i));
                         obj.addProperty("v", base + i);
-                        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+                        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
                         entry.setPage(0);
                         fileSystem.insertIntoCollection(entry);
-                        fileSystem.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0);
+                        fileSystem.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0);
                     } catch (Throwable t) {
                         errors.add(t);
                     }
@@ -286,7 +288,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         for (var t : threads)
             t.join(15000);
         assertTrue(errors.isEmpty(), "no errors expected under concurrent insert/read: " + errors);
-        final var page = fileSystem.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0);
+        final var page = fileSystem.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0);
         assertEquals(writers * perWriter, page.size());
     }
 
@@ -298,13 +300,14 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         final var updates = List.of(FileSystemTestBase.updateEntry(idxA, "a", "updated-value-for-a"),
                 FileSystemTestBase.updateEntry(idxB, "b", "updated-value-for-b"));
 
-        final var pageBFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB
+        final var pageBFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
                 + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
                 + Globals.FILE_PAGE_SEPARATOR + "1" + Globals.DB_FILE_EXTENSION);
         assertTrue(pageBFile.delete());
         assertTrue(pageBFile.mkdir(), "page b's path must be unwritable for this test to inject a failure");
 
-        assertThrows(IOException.class, () -> fs.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, updates));
+        assertThrows(IOException.class,
+                () -> fs.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, updates));
 
         assertEquals("short", FileSystemTestBase.readValueFromDisk(fs, "a"),
                 "the copy appended for the entry before the failing one is cut back");
@@ -320,7 +323,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
                 FileSystemTestBase.updateEntry(idxB, "b", "updated-longer-value-for-b"),
                 FileSystemTestBase.updateEntry(idxC, "c", "updated-longer-value-for-c"));
 
-        fs.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, updates);
+        fs.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, updates);
 
         assertEquals("updated-longer-value-for-a", FileSystemTestBase.readValueFromDisk(fs, "a"));
         assertEquals("updated-longer-value-for-b", FileSystemTestBase.readValueFromDisk(fs, "b"));
@@ -337,7 +340,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
                 FileSystemTestBase.updateEntry(idxB, "b", "updated-longer-value-for-b"),
                 FileSystemTestBase.updateEntry(idxC, "c", "updated-longer-value-for-c"));
 
-        fs.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL, updates);
+        fs.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL, updates);
 
         assertEquals("updated-longer-value-for-a", FileSystemTestBase.readValueFromDisk(fs, "a"));
         assertEquals("updated-longer-value-for-b", FileSystemTestBase.readValueFromDisk(fs, "b"));
@@ -345,7 +348,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
     }
 
     private static File pageFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + "0.dat");
     }
 
@@ -353,7 +356,7 @@ public class FileSystemWriteTest extends FileSystemTestBase {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("name", "value");
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
     }
 
     @Test
@@ -377,30 +380,30 @@ public class FileSystemWriteTest extends FileSystemTestBase {
     @Test
     public void test_quarantine_moves_the_collection_folder_aside() throws Exception {
         final var fileSystem = fs;
-        fileSystem.createDatabaseFolder(TestGlobals.DB);
-        fileSystem.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fileSystem.createProjectFolder(TestGlobals.PROJECT);
+        fileSystem.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
         final var data = new JsonObject();
         data.addProperty("pad", "x");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("kept");
         fileSystem.insertIntoCollection(entry);
 
-        assertTrue(fileSystem.folderQuarantine().moveCollectionAside(TestGlobals.DB, TestGlobals.COLL, 42L));
+        assertTrue(fileSystem.folderQuarantine().moveCollectionAside(TestGlobals.PROJECT, TestGlobals.COLL, 42L));
 
-        final var dbFolder = new File(TestGlobals.PATH + File.separator + TestGlobals.DB);
-        final var moved = dbFolder.listFiles((_, name) -> name.startsWith(TestGlobals.COLL + ".quarantined-42-"));
+        final var projectFolder = new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT);
+        final var moved = projectFolder.listFiles((_, name) -> name.startsWith(TestGlobals.COLL + ".quarantined-42-"));
         assertNotNull(moved);
         assertEquals(1, moved.length, "the documents are moved aside, never deleted");
         assertTrue(Objects.requireNonNull(moved[0].listFiles()).length > 0);
-        assertFalse(new File(dbFolder, TestGlobals.COLL).exists(),
+        assertFalse(new File(projectFolder, TestGlobals.COLL).exists(),
                 "the live path is cleared so the collection can be re-created empty at the new incarnation");
     }
 
     @Test
     public void test_quarantine_of_a_collection_with_no_folder_reports_nothing_moved() {
         final var fileSystem = fs;
-        fileSystem.createDatabaseFolder(TestGlobals.DB);
+        fileSystem.createProjectFolder(TestGlobals.PROJECT);
 
-        assertFalse(fileSystem.folderQuarantine().moveCollectionAside(TestGlobals.DB, "never_created", 7L));
+        assertFalse(fileSystem.folderQuarantine().moveCollectionAside(TestGlobals.PROJECT, "never_created", 7L));
     }
 }

@@ -61,14 +61,14 @@ public class TransactionBeforeHookTest {
     }
 
     private org.ccg.mpp.ops.resp.OperationResponse save(String id, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         return processor.processMessage(request, clientId);
     }
 
     private JsonObject find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         final var response = processor.processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
@@ -118,7 +118,7 @@ public class TransactionBeforeHookTest {
                 EventType.UPDATED);
         final var client = newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("t4"), document("t5")));
         assertEquals(OperationStatus.OK, processor.processMessage(request, client).getStatus());
         assertEquals(OperationStatus.OK, processor.processMessage(new CommitTransactionRequest(), client).getStatus());
@@ -132,7 +132,7 @@ public class TransactionBeforeHookTest {
                 EventType.CREATED, EventType.UPDATED);
         final var client = newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("t6"), document("t7")));
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(),
                 processor.processMessage(request, client).getErrorCode());
@@ -147,7 +147,7 @@ public class TransactionBeforeHookTest {
         installHook("lock", "lock", "export default (d) => { throw new Error('locked'); };", EventType.DELETED);
         final var client = newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("t8");
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(),
                 processor.processMessage(request, client).getErrorCode());
@@ -161,7 +161,7 @@ public class TransactionBeforeHookTest {
         installHook("ok", "okhook", "export default (d) => { };", EventType.DELETED);
         final var client = newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("t9");
         assertEquals(OperationStatus.OK, processor.processMessage(request, client).getStatus());
         assertEquals(OperationStatus.OK, processor.processMessage(new CommitTransactionRequest(), client).getStatus());
@@ -174,7 +174,7 @@ public class TransactionBeforeHookTest {
     }
 
     private void bulkRejectedAt(UUID client, String keptId, String vetoedId) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document(keptId), document(vetoedId)));
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(),
                 processor.processMessage(request, client).getErrorCode());
@@ -188,7 +188,7 @@ public class TransactionBeforeHookTest {
         try {
             bulkRejectedAt(client, "t19", "t20");
 
-            final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.set_id("t19");
             assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(request, client).getStatus(),
                     "an object from a refused bulk save must not be readable through the transaction's overlay");
@@ -205,7 +205,7 @@ public class TransactionBeforeHookTest {
         try {
             bulkRejectedAt(client, "t21", "t22");
 
-            final var retry = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var retry = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             retry.setObjects(List.of(document("t21")));
             final var response = (BulkSaveResponse) processor.processMessage(retry, client);
 
@@ -224,7 +224,7 @@ public class TransactionBeforeHookTest {
         processor.processMessage(new StartTransactionRequest(), client);
         final var object = new JsonObject();
         object.add("qty", new JsonNumber(1));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
 
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(),

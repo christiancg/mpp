@@ -10,28 +10,28 @@ public final class CollectionIdentifiers {
     private CollectionIdentifiers() {
     }
 
-    static String of(String dbName, String collName) {
-        return namesOf(dbName, collName).identifier();
+    static String of(String projectName, String collName) {
+        return namesOf(projectName, collName).identifier();
     }
 
-    static CollectionNames namesOf(String dbName, String collName) {
-        final var hit = MEMO.get(dbName, collName);
+    static CollectionNames namesOf(String projectName, String collName) {
+        final var hit = MEMO.get(projectName, collName);
         if (hit != null) {
             return hit;
         }
-        final var names = new CollectionNames(dbName, collName, concatenated(dbName, collName));
-        return dbName == null || collName == null ? names : MEMO.remember(dbName, collName, names);
+        final var names = new CollectionNames(projectName, collName, concatenated(projectName, collName));
+        return projectName == null || collName == null ? names : MEMO.remember(projectName, collName, names);
     }
 
-    public static void forget(String dbName, String collName) {
-        MEMO.forget(dbName, collName);
+    public static void forget(String projectName, String collName) {
+        MEMO.forget(projectName, collName);
     }
 
-    static void forgetDatabase(String dbName) {
-        MEMO.forgetAll(dbName);
+    static void forgetProject(String projectName) {
+        MEMO.forgetAll(projectName);
     }
 
-    private static String concatenated(String dbName, String collName) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName;
+    private static String concatenated(String projectName, String collName) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName;
     }
 }

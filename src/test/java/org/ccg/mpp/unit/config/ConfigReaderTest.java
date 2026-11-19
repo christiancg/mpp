@@ -128,7 +128,7 @@ public class ConfigReaderTest {
         expectedConfig.put("maxConcurrentScripts", "16");
         expectedConfig.put("scriptQueueWaitMs", "250");
         expectedConfig.put("maxConcurrentScriptsPerUser", "4");
-        expectedConfig.put("maxConcurrentScriptsPerDatabase", "8");
+        expectedConfig.put("maxConcurrentScriptsPerProject", "8");
         expectedConfig.put("scriptRunHistoryEnabled", "true");
         expectedConfig.put("scriptRunHistoryKinds", "CALL_PROCEDURE,TRIGGER,SCHEDULE");
         expectedConfig.put("scriptRunHistoryRetentionMs", "604800000");
@@ -146,9 +146,9 @@ public class ConfigReaderTest {
         expectedConfig.put("metadataCacheMaxEntries", "4096");
         expectedConfig.put("procedureCacheSize", "128");
         expectedConfig.put("procedureCacheMaxBytes", "16Mb");
-        expectedConfig.put("maxProceduresPerDatabase", "500");
-        expectedConfig.put("maxCollectionsPerDatabase", "1000");
-        expectedConfig.put("maxDatabases", "1000");
+        expectedConfig.put("maxProceduresPerProject", "500");
+        expectedConfig.put("maxCollectionsPerProject", "1000");
+        expectedConfig.put("maxProjects", "1000");
         expectedConfig.put("maxIndexesPerCollection", "64");
         expectedConfig.put("triggersEnabled", "false");
         expectedConfig.put("triggerThreads", "2");
@@ -179,7 +179,7 @@ public class ConfigReaderTest {
         expectedConfig.put("scheduleTickMs", "1000");
         expectedConfig.put("scheduleRefreshMs", "60000");
         expectedConfig.put("scheduleTimeoutMs", "30000");
-        expectedConfig.put("scheduleMaxPerDatabase", "100");
+        expectedConfig.put("scheduleMaxPerProject", "100");
         expectedConfig.put("scheduleMaxTotalPerUser", "500");
         expectedConfig.put("scheduleMinIntervalMs", "1000");
         expectedConfig.put("faultInjectionEnabled", "false");

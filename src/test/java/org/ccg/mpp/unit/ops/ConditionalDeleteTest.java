@@ -39,7 +39,7 @@ public class ConditionalDeleteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -50,7 +50,7 @@ public class ConditionalDeleteTest {
     }
 
     private void seed(String filler) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var document = new JsonObject();
@@ -69,12 +69,12 @@ public class ConditionalDeleteTest {
     }
 
     private OperationResponse deleteWhere(String condition) {
-        return send("{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return send("{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"condition\":" + condition + "}");
     }
 
     private Set<String> ids(String steps) {
-        final var response = send("{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB
+        final var response = send("{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":" + steps + "}");
         final var ids = new TreeSet<String>();
         if (response instanceof AggregateResponse aggregate) {
@@ -108,13 +108,13 @@ public class ConditionalDeleteTest {
     @Test
     public void test_no_match_answers_ok_with_zero_and_writes_nothing() throws Exception {
         seed("x");
-        final var rowsBefore = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size();
+        final var rowsBefore = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size();
 
         final var response = deleteWhere(equalsGroup("missing"));
 
         assertEquals(OperationStatus.OK, response.getStatus());
         assertEquals(0L, assertInstanceOf(DeleteManyResponse.class, response).getDeletedCount());
-        assertEquals(rowsBefore, cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(rowsBefore, cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 
     @Test
@@ -132,7 +132,7 @@ public class ConditionalDeleteTest {
     public void test_an_indexed_condition_and_a_scanned_one_delete_the_same_ids() {
         seed("x");
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "group")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "group")).getStatus());
 
         assertEquals(10L, assertInstanceOf(DeleteManyResponse.class, deleteWhere(equalsGroup("a"))).getDeletedCount());
 
@@ -166,21 +166,21 @@ public class ConditionalDeleteTest {
     @Test
     public void test_matches_on_several_pages_vacuum_the_emptied_ones() throws Exception {
         seed("y".repeat(200_000));
-        final var pages = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).size();
+        final var pages = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).size();
 
         final var response = deleteWhere("{\"fieldOperatorType\":\"SMALLER_THAN\",\"field\":\"n\",\"value\":20}");
 
         assertEquals(20L, assertInstanceOf(DeleteManyResponse.class, response).getDeletedCount());
         assertEquals(20, remaining().size());
-        final var live = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var live = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .mapToLong(AdminPageEntry::getPageSize).sum();
         assertEquals(20L * survivorBytes(), live, "the occupancy rows count only the survivors");
-        assertEquals(pages, cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).size(),
+        assertEquals(pages, cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).size(),
                 "an emptied page keeps its row at size 0");
     }
 
     private long survivorBytes() throws Exception {
-        return cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of("d20")).getFirst().byteSize();
+        return cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of("d20")).getFirst().byteSize();
     }
 
     @Test
@@ -195,7 +195,7 @@ public class ConditionalDeleteTest {
 
     @Test
     public void test_a_condition_on_an_unregistered_collection_answers_404_11() {
-        final var response = send("{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB
+        final var response = send("{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"neverCreated\",\"condition\":" + equalsGroup("a") + "}");
 
         assertEquals("404-11", response.getErrorCode());

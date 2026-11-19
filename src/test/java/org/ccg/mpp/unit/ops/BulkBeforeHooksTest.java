@@ -52,7 +52,7 @@ public class BulkBeforeHooksTest {
     @Test
     public void test_no_hooks_accepts_the_document_unchanged() {
         final var document = BeforeHookTestSupport.document("h1");
-        try (var hooks = BulkBeforeHooks.open(TestGlobals.DB, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
+        try (var hooks = BulkBeforeHooks.open(TestGlobals.PROJECT, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
                 SchemaValidationHelper.newBudget())) {
             final var created = hooks.apply(false, document, "h1", OperationType.BULK_SAVE);
             final var updated = hooks.apply(true, document, "h1", OperationType.BULK_SAVE);
@@ -68,7 +68,7 @@ public class BulkBeforeHooksTest {
                 EventType.CREATED);
         BeforeHookTestSupport.installHook("onUpdate", "onupdate", "export default (d) => ({ ...d, via: 'update' });",
                 EventType.UPDATED);
-        try (var hooks = BulkBeforeHooks.open(TestGlobals.DB, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
+        try (var hooks = BulkBeforeHooks.open(TestGlobals.PROJECT, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
                 SchemaValidationHelper.newBudget())) {
             final var created = hooks.apply(false, BeforeHookTestSupport.document("h2"), "h2", OperationType.BULK_SAVE);
             final var updated = hooks.apply(true, BeforeHookTestSupport.document("h3"), "h3", OperationType.BULK_SAVE);
@@ -79,7 +79,7 @@ public class BulkBeforeHooksTest {
 
     @Test
     public void test_bulk_save_routes_stored_ids_to_update_hooks_and_new_ids_to_create_hooks() throws Exception {
-        final var seed = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var seed = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         seed.set_id("stored");
         seed.setObject(BeforeHookTestSupport.document("stored"));
         assertEquals(OperationStatus.OK, IocContainer.get(OperationProcessor.class).processMessage(seed).getStatus());
@@ -87,15 +87,15 @@ public class BulkBeforeHooksTest {
                 EventType.CREATED);
         BeforeHookTestSupport.installHook("onUpdate", "onupdate", "export default (d) => ({ ...d, via: 'update' });",
                 EventType.UPDATED);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(BeforeHookTestSupport.document("fresh-a"), BeforeHookTestSupport.document("stored"),
                 BeforeHookTestSupport.document("fresh-z")));
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             assertNull(BeforeHookHelper.beforeBulkSave(bulk, BeforeHookTestSupport.ACTOR));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertEquals(List.of("create", "update", "create"),
@@ -107,7 +107,7 @@ public class BulkBeforeHooksTest {
         BeforeHookTestSupport.installHook("both", "both", "export default (d) => d;", EventType.CREATED,
                 EventType.UPDATED);
         final var before = runRegistry.size();
-        final var hooks = BulkBeforeHooks.open(TestGlobals.DB, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
+        final var hooks = BulkBeforeHooks.open(TestGlobals.PROJECT, TestGlobals.COLL, BeforeHookTestSupport.ACTOR,
                 SchemaValidationHelper.newBudget());
         assertEquals(before + 2, runRegistry.size());
 
@@ -126,7 +126,7 @@ public class BulkBeforeHooksTest {
             contexts.when(() -> BeforeHookContext.open(anyString(), anyString(), eq(EventType.UPDATED), any(), any()))
                     .thenThrow(new IllegalStateException("unreadable triggers"));
 
-            assertThrows(IllegalStateException.class, () -> BulkBeforeHooks.open(TestGlobals.DB, TestGlobals.COLL,
+            assertThrows(IllegalStateException.class, () -> BulkBeforeHooks.open(TestGlobals.PROJECT, TestGlobals.COLL,
                     BeforeHookTestSupport.ACTOR, SchemaValidationHelper.newBudget()));
         }
         assertEquals(before, runRegistry.size());

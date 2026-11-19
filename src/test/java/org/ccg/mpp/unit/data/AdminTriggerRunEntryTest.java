@@ -25,8 +25,8 @@ public class AdminTriggerRunEntryTest {
 
     private static AdminTriggerRunEntry entry(String runId, long chunkSeq, EventType type, List<String> ids,
             List<JsonObject> documents) {
-        return new AdminTriggerRunEntry(runId, chunkSeq, "node-1", "myDb", "myColl", "audit", "recalc", type, false,
-                "alice", 2, 1234L, ids, documents);
+        return new AdminTriggerRunEntry(runId, chunkSeq, "node-1", "myProject", "myColl", "audit", "recalc", type,
+                false, "alice", 2, 1234L, ids, documents);
     }
 
     private static JsonObject document() {
@@ -52,7 +52,7 @@ public class AdminTriggerRunEntryTest {
     public void test_getters_report_what_was_constructed() {
         final var record = entry("run", 1L, EventType.UPDATED, List.of("a", "b"), List.of());
         assertEquals("node-1", record.getNodeId());
-        assertEquals("myDb", record.getDbName());
+        assertEquals("myProject", record.getTargetProject());
         assertEquals("myColl", record.getCollName());
         assertEquals("audit", record.getTriggerName());
         assertEquals("recalc", record.getProcedureName());
@@ -63,7 +63,7 @@ public class AdminTriggerRunEntryTest {
         assertEquals(1234L, record.getFiredAt());
         assertEquals(List.of("a", "b"), record.getIds());
         assertTrue(record.getDocuments().isEmpty());
-        assertEquals(Globals.ADMIN_DB_NAME, record.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, record.getProjectName());
         assertEquals(Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, record.getCollectionName());
     }
 
@@ -103,7 +103,7 @@ public class AdminTriggerRunEntryTest {
 
     @Test
     public void test_a_null_acting_user_round_trips() {
-        final var original = new AdminTriggerRunEntry("run", 0L, "node-1", "myDb", "myColl", "audit", "recalc",
+        final var original = new AdminTriggerRunEntry("run", 0L, "node-1", "myProject", "myColl", "audit", "recalc",
                 EventType.CREATED, true, null, 0, 1L, List.of("a"), List.of());
         final var data = original.getData();
         data.addProperty(Globals.PK_FIELD, original.get_id());

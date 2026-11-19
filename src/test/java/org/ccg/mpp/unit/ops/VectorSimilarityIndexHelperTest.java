@@ -48,18 +48,18 @@ public class VectorSimilarityIndexHelperTest {
 
     private static void seedVectorIndex() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var cache = IocContainer.get(Cache.class);
         for (var i = 0; i < 40; i++) {
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("v" + i));
             object.add("embedding", new JsonVector("#vector(" + (i / 40.0) + ",1.0)"));
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
             entry.set_id("v" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "embedding");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("embedding"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "embedding");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("embedding"));
     }
 
     private static CustomOperator nearest() {
@@ -76,9 +76,9 @@ public class VectorSimilarityIndexHelperTest {
         seedVectorIndex();
         try {
             final var operator = nearest();
-            IndexRaceSupport.readWhileTheIndexerChurns(TestGlobals.DB, TestGlobals.COLL, "embedding", JsonVector.class,
-                    () -> VectorSimilarityIndexHelper.candidateIds(operator, TestGlobals.DB, TestGlobals.COLL,
-                            ReadObserver.NONE));
+            IndexRaceSupport.readWhileTheIndexerChurns(TestGlobals.PROJECT, TestGlobals.COLL, "embedding",
+                    JsonVector.class, () -> VectorSimilarityIndexHelper.candidateIds(operator, TestGlobals.PROJECT,
+                            TestGlobals.COLL, ReadObserver.NONE));
         } finally {
             TestUtils.standardTearDown();
         }
@@ -88,18 +88,18 @@ public class VectorSimilarityIndexHelperTest {
 
     private static void seedLargeVectorIndex() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var cache = IocContainer.get(Cache.class);
         for (var i = 0; i < LARGE_COLLECTION_SIZE; i++) {
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("v" + i));
             object.add("embedding", new JsonVector("#vector(" + (i / (double) LARGE_COLLECTION_SIZE) + ",1.0)"));
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
             entry.set_id("v" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "embedding");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("embedding"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "embedding");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("embedding"));
     }
 
     private static CustomOperator nearestAtTheValidatorCeiling() {
@@ -117,8 +117,8 @@ public class VectorSimilarityIndexHelperTest {
         try {
             final var operator = nearestAtTheValidatorCeiling();
 
-            final var candidates = VectorSimilarityIndexHelper.candidateIds(operator, TestGlobals.DB, TestGlobals.COLL,
-                    ReadObserver.NONE);
+            final var candidates = VectorSimilarityIndexHelper.candidateIds(operator, TestGlobals.PROJECT,
+                    TestGlobals.COLL, ReadObserver.NONE);
 
             assertNotNull(candidates);
             assertEquals(LARGE_COLLECTION_SIZE, candidates.size(),
@@ -136,7 +136,7 @@ public class VectorSimilarityIndexHelperTest {
 
     private static void seedNeighbourhood(double[] query) throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var cache = IocContainer.get(Cache.class);
         final var random = new Random(42);
         for (var i = 0; i < 400; i++) {
@@ -151,17 +151,17 @@ public class VectorSimilarityIndexHelperTest {
             components[i] += 1e-9 * (i + 1);
             cacheVector(cache, "near" + i, vectorOf(components));
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "embedding");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("embedding"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "embedding");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("embedding"));
     }
 
     private static void cacheVector(Cache cache, String id, JsonVector vector) throws Exception {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("embedding", vector);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private static List<String> nearestIds(JsonVector query, boolean exact) throws Exception {
@@ -169,7 +169,7 @@ public class VectorSimilarityIndexHelperTest {
         args.add("value", query);
         args.add("k", new JsonNumber(NEIGHBOURS));
         args.add("exact", JsonBoolean.of(exact));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(
                 List.of(new FilterAggregationStep(new CustomOperator("nearest", "embedding", query, args))));
         return AggregationOperationHelper.processAggregation(request).stream()
@@ -183,7 +183,7 @@ public class VectorSimilarityIndexHelperTest {
         try {
             final var query = vectorOf(components);
             final var candidates = VectorSimilarityIndexHelper.candidateIds(
-                    new CustomOperator("nearest", "embedding", query, nearestArgs(query)), TestGlobals.DB,
+                    new CustomOperator("nearest", "embedding", query, nearestArgs(query)), TestGlobals.PROJECT,
                     TestGlobals.COLL, ReadObserver.NONE);
 
             assertNotNull(candidates);

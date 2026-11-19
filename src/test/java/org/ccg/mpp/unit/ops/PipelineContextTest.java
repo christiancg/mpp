@@ -39,7 +39,7 @@ public class PipelineContextTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -122,15 +122,15 @@ public class PipelineContextTest {
 
     @Test
     public void sourceCountsScannedDocumentsOnlyWhenAnalyzing() throws Exception {
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document(), document(), document()));
         IocContainer.get(OperationProcessor.class).processMessage(bulk);
         final var analyze = new AnalyzeContext();
         try (var context = unbounded(analyze); var plain = unbounded(null)) {
-            assertEquals(3, context.source(null, TestGlobals.DB, TestGlobals.COLL).count());
-            assertEquals(3, plain.source(null, TestGlobals.DB, TestGlobals.COLL).count());
+            assertEquals(3, context.source(null, TestGlobals.PROJECT, TestGlobals.COLL).count());
+            assertEquals(3, plain.source(null, TestGlobals.PROJECT, TestGlobals.COLL).count());
             final var provided = Stream.of(document());
-            assertSame(provided, context.source(provided, TestGlobals.DB, TestGlobals.COLL));
+            assertSame(provided, context.source(provided, TestGlobals.PROJECT, TestGlobals.COLL));
         }
         assertEquals(3, analyze.getDocumentsScanned());
     }
@@ -139,11 +139,11 @@ public class PipelineContextTest {
     public void indexUsedRecordsTheFieldAndLock() {
         final var analyze = new AnalyzeContext();
         try (var context = unbounded(analyze)) {
-            context.indexUsed("status", "myDb|myColl|status");
+            context.indexUsed("status", "myProject|myColl|status");
             context.scanned(4);
         }
         assertEquals(List.of("status"), List.copyOf(analyze.getIndexesUsed()));
-        assertEquals(List.of("myDb|myColl|status"), analyze.getLocksAcquired());
+        assertEquals(List.of("myProject|myColl|status"), analyze.getLocksAcquired());
         assertEquals(4, analyze.getDocumentsScanned());
         try (var plain = unbounded(null)) {
             assertDoesNotThrow(() -> plain.indexUsed("status", "lock"));

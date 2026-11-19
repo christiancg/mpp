@@ -36,7 +36,7 @@ public class IndexHelperTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -46,7 +46,7 @@ public class IndexHelperTest {
 
     @Test
     public void test_create_index_with_primitive_values() throws Exception {
-        String dbName = TestGlobals.DB;
+        String projectName = TestGlobals.PROJECT;
         String collName = TestGlobals.COLL;
         String fieldName = "testField";
 
@@ -63,15 +63,15 @@ public class IndexHelperTest {
         obj3.addProperty(fieldName, true);
 
         Cache cache = IocContainer.get(Cache.class);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, adminCollPkIndexEntry);
-        TestUtils.cacheEntry(cache, dbName, collName, DbEntry.fromJsonObject(dbName, collName, obj1));
-        TestUtils.cacheEntry(cache, dbName, collName, DbEntry.fromJsonObject(dbName, collName, obj2));
-        TestUtils.cacheEntry(cache, dbName, collName, DbEntry.fromJsonObject(dbName, collName, obj3));
+        TestUtils.cacheEntry(cache, projectName, collName, DbEntry.fromJsonObject(projectName, collName, obj1));
+        TestUtils.cacheEntry(cache, projectName, collName, DbEntry.fromJsonObject(projectName, collName, obj2));
+        TestUtils.cacheEntry(cache, projectName, collName, DbEntry.fromJsonObject(projectName, collName, obj3));
 
-        IndexHelper.createIndex(dbName, collName, fieldName);
-        final var index = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Double.class);
+        IndexHelper.createIndex(projectName, collName, fieldName);
+        final var index = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Double.class);
 
         assertNotNull(index);
         assertEquals(1, index.size());
@@ -82,7 +82,7 @@ public class IndexHelperTest {
 
     @Test
     public void test_create_index_with_null_values() throws Exception {
-        String dbName = TestGlobals.DB;
+        String projectName = TestGlobals.PROJECT;
         String collName = TestGlobals.COLL;
         String fieldName = "testField";
 
@@ -95,14 +95,14 @@ public class IndexHelperTest {
         obj2.add(fieldName, JsonNull.INSTANCE);
 
         Cache cache = IocContainer.get(Cache.class);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var adminCollPkIndexEntry = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, adminCollPkIndexEntry);
-        TestUtils.cacheEntry(cache, dbName, collName, DbEntry.fromJsonObject(dbName, collName, obj1));
-        TestUtils.cacheEntry(cache, dbName, collName, DbEntry.fromJsonObject(dbName, collName, obj2));
+        TestUtils.cacheEntry(cache, projectName, collName, DbEntry.fromJsonObject(projectName, collName, obj1));
+        TestUtils.cacheEntry(cache, projectName, collName, DbEntry.fromJsonObject(projectName, collName, obj2));
 
-        IndexHelper.createIndex(dbName, collName, fieldName);
-        final var index = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Double.class);
+        IndexHelper.createIndex(projectName, collName, fieldName);
+        final var index = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Double.class);
 
         assertNotNull(index);
         assertEquals(1, index.size());
@@ -113,31 +113,31 @@ public class IndexHelperTest {
 
     @Test
     public void test_drop_index_success() throws IOException, InterruptedException {
-        String dbName = TestGlobals.DB;
+        String projectName = TestGlobals.PROJECT;
         String collName = TestGlobals.COLL;
         String fieldName = "testField";
-        IndexHelper.createIndex(dbName, collName, fieldName);
-        IndexHelper.dropIndex(dbName, collName, fieldName);
+        IndexHelper.createIndex(projectName, collName, fieldName);
+        IndexHelper.dropIndex(projectName, collName, fieldName);
         Cache cache = IocContainer.get(Cache.class);
-        final var index = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Double.class);
+        final var index = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Double.class);
         assertNull(index);
     }
 
     @Test
     public void test_drop_index_nonexistent_collection() throws InterruptedException {
-        String dbName = TestGlobals.DB;
+        String projectName = TestGlobals.PROJECT;
         String collName = "nonExistentColl";
         String fieldName = "testField";
-        final var result = IndexHelper.dropIndex(dbName, collName, fieldName);
+        final var result = IndexHelper.dropIndex(projectName, collName, fieldName);
         assertFalse(result);
     }
 
     @Test
     public void test_drop_index_existent_collection_but_no_index() throws InterruptedException {
-        String dbName = TestGlobals.DB;
+        String projectName = TestGlobals.PROJECT;
         String collName = TestGlobals.COLL;
         String fieldName = "testField";
-        final var result = IndexHelper.dropIndex(dbName, collName, fieldName);
+        final var result = IndexHelper.dropIndex(projectName, collName, fieldName);
         assertTrue(result);
     }
 
@@ -145,17 +145,17 @@ public class IndexHelperTest {
         JsonObject obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("data", value);
-        DbEntry e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         e.set_id(id);
         return e;
     }
 
     private void setupCollection(Cache cache, DbEntry... entries) throws IOException {
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var pk = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pk = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, pk);
         for (var entry : entries) {
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
     }
 
@@ -176,7 +176,7 @@ public class IndexHelperTest {
     // Reads the persisted hash index straight from disk. The hash index cache follows the same
     // eventually-consistent path as the scalar index cache, so verification reads the file state.
     private static List<FieldIndexEntry<String>> readHashIndex(IndexKind kind) throws IOException {
-        return IocContainer.get(FileSystem.class).readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, "data",
+        return IocContainer.get(FileSystem.class).readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 kind);
     }
 
@@ -186,7 +186,7 @@ public class IndexHelperTest {
         setupCollection(cache, entryWith("o1", objectValue(1)), entryWith("o2", objectValue(1)),
                 entryWith("o3", objectValue(2)), entryWith("a1", arrayValue()),
                 entryWith("s1", new JsonString("scalar")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
 
         final var objIndex = readHashIndex(IndexKind.OBJECT);
         assertNotNull(objIndex);
@@ -200,7 +200,7 @@ public class IndexHelperTest {
         assertEquals(1, arrIndex.size());
         assertTrue(arrIndex.getFirst().getIds().contains("a1"));
 
-        final var stringIndex = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var stringIndex = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 String.class);
         assertNotNull(stringIndex);
     }
@@ -210,19 +210,19 @@ public class IndexHelperTest {
         scriptValue.set(Globals.PK_FIELD, new JsString(id));
         scriptValue.set(LOC_FIELD, new JsString(value));
         final var document = (JsonObject) EJsonInterop.toHostEjson(scriptValue);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document);
         entry.set_id(id);
         return entry;
     }
 
     private static void cacheAndIndex(DbEntry entry) throws IOException, InterruptedException {
         final var cache = IocContainer.get(Cache.class);
-        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, entry.get_id(), 0, 100, 0));
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, LOC_FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(LOC_FIELD));
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, entry.get_id());
+        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL),
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, entry.get_id(), 0, 100, 0));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOC_FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(LOC_FIELD));
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, entry.get_id());
     }
 
     @Test
@@ -231,9 +231,9 @@ public class IndexHelperTest {
         cacheAndIndex(scriptWritten("g1", "#geo(3.0,4.0)"));
 
         final var cache = IocContainer.get(Cache.class);
-        final var geoFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, LOC_FIELD,
+        final var geoFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, LOC_FIELD,
                 JsonGeo.class);
-        final var stringFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, LOC_FIELD,
+        final var stringFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, LOC_FIELD,
                 String.class);
 
         assertNotNull(geoFamily);
@@ -247,7 +247,7 @@ public class IndexHelperTest {
         cacheAndIndex(scriptWritten("s1", "plain"));
 
         final var cache = IocContainer.get(Cache.class);
-        final var stringFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, LOC_FIELD,
+        final var stringFamily = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, LOC_FIELD,
                 String.class);
 
         assertNotNull(stringFamily);

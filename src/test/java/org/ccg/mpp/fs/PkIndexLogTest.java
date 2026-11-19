@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PkIndexLogTest {
-    private static final String DB = "logDb";
+    private static final String PROJECT = "logProject";
     private static final String COLL = "logColl";
 
     @TempDir
@@ -36,16 +36,16 @@ public class PkIndexLogTest {
     public void setUp() {
         paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(paths.collectionFolder(DB, COLL).mkdirs());
+        assertTrue(paths.collectionFolder(PROJECT, COLL).mkdirs());
         store = new PkIndexStore(paths);
     }
 
     private static PkIndexEntry row(String id, long position, long version) {
-        return new PkIndexEntry(DB, COLL, id, position, 10L, 0L, version);
+        return new PkIndexEntry(PROJECT, COLL, id, position, 10L, 0L, version);
     }
 
     private File pkIndexFile() {
-        return paths.pkIndexFile(DB, COLL);
+        return paths.pkIndexFile(PROJECT, COLL);
     }
 
     private List<String> lines() throws IOException {
@@ -53,14 +53,14 @@ public class PkIndexLogTest {
     }
 
     private List<String> folded() throws IOException {
-        return store.readWholePkIndexFile(DB, COLL).stream().map(PkIndexEntry::toFileEntry).toList();
+        return store.readWholePkIndexFile(PROJECT, COLL).stream().map(PkIndexEntry::toFileEntry).toList();
     }
 
     @Test
     public void lastRowWins() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1), row("b", 10, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1), row("b", 10, 1)));
 
-        store.appendReplacements(DB, COLL, List.of(row("a", 20, 2)));
+        store.appendReplacements(PROJECT, COLL, List.of(row("a", 20, 2)));
 
         assertEquals(List.of(row("a", 20, 2).toFileEntry(), row("b", 10, 1).toFileEntry()), folded());
         assertEquals(3, lines().size(), "a replacement is appended, never rewritten in place");
@@ -68,9 +68,9 @@ public class PkIndexLogTest {
 
     @Test
     public void aDeleteRowRemovesTheId() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1), row("b", 10, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1), row("b", 10, 1)));
 
-        PkRowWrites.deleteRows(paths, store, DB, COLL, List.of("a"));
+        PkRowWrites.deleteRows(paths, store, PROJECT, COLL, List.of("a"));
 
         assertEquals(List.of(row("b", 10, 1).toFileEntry()), folded());
         assertEquals(PkIndexEntry.toDeleteRow("a"), lines().getLast());
@@ -78,10 +78,10 @@ public class PkIndexLogTest {
 
     @Test
     public void anIdDeletedThenReinsertedIsLive() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1)));
-        PkRowWrites.deleteRows(paths, store, DB, COLL, List.of("a"));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1)));
+        PkRowWrites.deleteRows(paths, store, PROJECT, COLL, List.of("a"));
 
-        store.appendRows(DB, COLL, List.of(row("a", 30, 3)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 30, 3)));
 
         assertEquals(List.of(row("a", 30, 3).toFileEntry()), folded());
     }
@@ -92,13 +92,13 @@ public class PkIndexLogTest {
         for (var i = 0; i < 10; i++) {
             live.add(row("id-" + i, i * 10L, 1));
         }
-        store.appendRows(DB, COLL, live);
+        store.appendRows(PROJECT, COLL, live);
         for (var round = 0; round < Globals.PK_LOG_MIN_DEAD_ROWS - 1; round++) {
-            store.appendReplacements(DB, COLL, List.of(row("id-" + (round % 10), 1000L + round, 2)));
+            store.appendReplacements(PROJECT, COLL, List.of(row("id-" + (round % 10), 1000L + round, 2)));
         }
         assertEquals(10 + Globals.PK_LOG_MIN_DEAD_ROWS - 1, lines().size(), "below the threshold nothing compacts");
 
-        PkRowWrites.deleteRows(paths, store, DB, COLL, List.of("id-9"));
+        PkRowWrites.deleteRows(paths, store, PROJECT, COLL, List.of("id-9"));
 
         final var compacted = lines();
         assertEquals(9, compacted.size(), "reaching the threshold folds the log back to one row per live id");
@@ -123,11 +123,11 @@ public class PkIndexLogTest {
 
     @Test
     public void anUnterminatedLastRowIsDroppedEvenWhenItParses() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1)));
         final var whole = row("b", 10, 1_700_000_000_000L).toFileEntry();
         final var torn = whole.substring(0, whole.length() - 4);
         Files.writeString(pkIndexFile().toPath(), torn, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-        assertEquals(170_000_000L, PkIndexEntry.fromIndexFileEntry(DB, COLL, torn).getVersion(),
+        assertEquals(170_000_000L, PkIndexEntry.fromIndexFileEntry(PROJECT, COLL, torn).getVersion(),
                 "the torn row must still parse, as a wrong version, or this test covers nothing");
 
         assertEquals(List.of(row("a", 0, 1).toFileEntry()), folded());
@@ -136,11 +136,11 @@ public class PkIndexLogTest {
 
     @Test
     public void anAppendCutsATornTailInsteadOfJoiningIt() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1)));
         Files.writeString(pkIndexFile().toPath(), "b" + Globals.ID_SEPARATOR + "10", StandardCharsets.UTF_8,
                 StandardOpenOption.APPEND);
 
-        store.appendRows(DB, COLL, List.of(row("c", 20, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("c", 20, 1)));
 
         assertEquals(List.of(row("a", 0, 1).toFileEntry(), row("c", 20, 1).toFileEntry()), lines());
     }
@@ -159,9 +159,9 @@ public class PkIndexLogTest {
         Files.writeString(pkIndexFile().toPath(), "garbage" + Globals.NEWLINE + "more", StandardCharsets.UTF_8);
         final var before = Files.readAllBytes(pkIndexFile().toPath());
 
-        assertThrows(IOException.class, () -> store.readWholePkIndexFile(DB, COLL));
-        assertTrue(store.readRecognisedPkIndex(DB, COLL).isEmpty());
-        assertFalse(store.rewriteRows(DB, COLL, rows -> rows));
+        assertThrows(IOException.class, () -> store.readWholePkIndexFile(PROJECT, COLL));
+        assertTrue(store.readRecognisedPkIndex(PROJECT, COLL).isEmpty());
+        assertFalse(store.rewriteRows(PROJECT, COLL, rows -> rows));
 
         assertArrayEquals(before, Files.readAllBytes(pkIndexFile().toPath()));
     }
@@ -171,16 +171,16 @@ public class PkIndexLogTest {
         Files.writeString(pkIndexFile().toPath(), PkIndexEntry.toDeleteRow("gone") + Globals.NEWLINE,
                 StandardCharsets.UTF_8);
 
-        assertTrue(store.readWholePkIndexFile(DB, COLL).isEmpty());
+        assertTrue(store.readWholePkIndexFile(PROJECT, COLL).isEmpty());
     }
 
     @Test
     public void aFailedAppendLeavesTheFileByteIdentical() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1)));
         final var before = Files.readAllBytes(pkIndexFile().toPath());
         assertTrue(pkIndexFile().setWritable(false));
         try {
-            assertThrows(IOException.class, () -> store.appendReplacements(DB, COLL, List.of(row("a", 10, 2))));
+            assertThrows(IOException.class, () -> store.appendReplacements(PROJECT, COLL, List.of(row("a", 10, 2))));
         } finally {
             assertTrue(pkIndexFile().setWritable(true));
         }
@@ -190,7 +190,7 @@ public class PkIndexLogTest {
 
     @Test
     public void anAppendAfterAForgottenOutsideWriteFoldsTheFileFirst() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("a", 0, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("a", 0, 1)));
         final var outside = new StringBuilder();
         for (var i = 0; i < Globals.PK_LOG_MIN_DEAD_ROWS * 2; i++) {
             outside.append(row("a", i, i).toFileEntry()).append(Globals.NEWLINE);
@@ -198,7 +198,7 @@ public class PkIndexLogTest {
         Files.writeString(pkIndexFile().toPath(), outside, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         PkIndexStore.forgetState(pkIndexFile());
 
-        store.appendReplacements(DB, COLL, List.of(row("a", 99_999, 9)));
+        store.appendReplacements(PROJECT, COLL, List.of(row("a", 99_999, 9)));
 
         assertEquals(
                 List.of(row("a", Globals.PK_LOG_MIN_DEAD_ROWS * 2 - 1, Globals.PK_LOG_MIN_DEAD_ROWS * 2 - 1)
@@ -210,7 +210,7 @@ public class PkIndexLogTest {
 
     @Test
     public void anAppendToAFreshFileCreatesItWithoutABlankLine() throws IOException {
-        store.appendRows(DB, COLL, List.of(row("first", 0, 1)));
+        store.appendRows(PROJECT, COLL, List.of(row("first", 0, 1)));
 
         final var content = Files.readString(pkIndexFile().toPath(), StandardCharsets.UTF_8);
         assertEquals(row("first", 0, 1).toFileEntry() + Globals.NEWLINE, content);
@@ -218,7 +218,7 @@ public class PkIndexLogTest {
 
     @Test
     public void anEmptyAppendTouchesNothing() throws IOException {
-        store.appendRows(DB, COLL, List.of());
+        store.appendRows(PROJECT, COLL, List.of());
 
         assertFalse(pkIndexFile().exists());
     }
@@ -229,14 +229,14 @@ public class PkIndexLogTest {
         for (var i = 0; i < 10; i++) {
             rows.add(row("id-" + i, i * 10L, 1));
         }
-        store.appendRows(DB, COLL, rows);
+        store.appendRows(PROJECT, COLL, rows);
         for (var round = 0; round < Globals.PK_LOG_MIN_DEAD_ROWS - 1; round++) {
-            store.appendReplacements(DB, COLL, List.of(row("id-" + (round % 10), 1000L + round, 2)));
+            store.appendReplacements(PROJECT, COLL, List.of(row("id-" + (round % 10), 1000L + round, 2)));
         }
         try (var files = mockStatic(Files.class, CALLS_REAL_METHODS)) {
             files.when(() -> Files.readAllBytes(pkIndexFile().toPath())).thenThrow(new IOException("disk gone"));
 
-            assertDoesNotThrow(() -> PkRowWrites.deleteRows(paths, store, DB, COLL, List.of("id-9")),
+            assertDoesNotThrow(() -> PkRowWrites.deleteRows(paths, store, PROJECT, COLL, List.of("id-9")),
                     "the delete row landed, so a failed compaction must not report the append as failed");
         }
 

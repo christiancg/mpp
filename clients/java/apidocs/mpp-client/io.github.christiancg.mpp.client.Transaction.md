@@ -14,13 +14,13 @@ A transaction holds one connection. An idle one is rolled back by the server aft
 
 ## collection(String, String)
 
-@param database the database
+@param project the project
 @param collection the collection
 @return the collection inside this transaction
 
 ## collection(String, String, Class)
 
-@param database the database
+@param project the project
 @param collection the collection
 @param type the class documents map to
 @param <T> the mapped type
@@ -28,7 +28,7 @@ A transaction holds one connection. An idle one is rolled back by the server aft
 
 ## collection(String, String, DocumentCodec)
 
-@param database the database
+@param project the project
 @param collection the collection
 @param codec maps between documents and `T`
 @param <T> the mapped type

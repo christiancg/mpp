@@ -42,7 +42,7 @@ public final class Globals {
     public static final String SCHEDULES_FOLDER = ".schedules";
     public static final String SCHEDULE_FILE_EXTENSION = JSON_FILE_EXTENSION;
     public static final String COLLECTION_NAMES_LOCK = ".collection-names";
-    public static final String DATABASE_NAMES_LOCK = ".database-names";
+    public static final String PROJECT_NAMES_LOCK = ".project-names";
     public static final String TRIGGERS_FILE_NAME = "triggers";
     public static final String TRIGGERS_FILE_EXTENSION = JSON_FILE_EXTENSION;
     public static final String RW_PERMISSIONS = "rw";
@@ -56,17 +56,17 @@ public final class Globals {
     public static final String ID_SEPARATOR = "";
     public static final String STRING_LITERAL_PREFIX = "-";
     public static final String FILE_CONFIG_NAME = "mpp.cfg";
-    public static final String ADMIN_DB_NAME = "admin";
-    public static final String ADMIN_DATABASES_COLLECTION_NAME = "databases";
+    public static final String ADMIN_PROJECT_NAME = "admin";
+    public static final String ADMIN_PROJECTS_COLLECTION_NAME = "projects";
     public static final String ADMIN_COLLECTIONS_COLLECTION_NAME = "collections";
     public static final String ADMIN_USERS_COLLECTION_NAME = "users";
     public static final String ADMIN_PAGES_FOLDER = "pages";
-    public static final String ADMIN_PAGES_DB_NAME = "admin_pages";
+    public static final String ADMIN_PAGES_PROJECT_NAME = "admin_pages";
     public static final String ADMIN_PAGES_PER_COLLECTION_NAME = "%s_%s";
     public static final String ADMIN_COLLECTION_USAGE_NAME = "collection_usage";
     public static final String ADMIN_TRANSACTIONS_COLLECTION_NAME = "transactions";
     public static final String ADMIN_TRIGGER_RUNS_COLLECTION_NAME = "trigger_runs";
-    public static final List<String> ADMIN_COLLECTION_NAMES = List.of(ADMIN_DATABASES_COLLECTION_NAME,
+    public static final List<String> ADMIN_COLLECTION_NAMES = List.of(ADMIN_PROJECTS_COLLECTION_NAME,
             ADMIN_COLLECTIONS_COLLECTION_NAME, ADMIN_USERS_COLLECTION_NAME, ADMIN_COLLECTION_USAGE_NAME,
             ADMIN_TRANSACTIONS_COLLECTION_NAME, ADMIN_TRIGGER_RUNS_COLLECTION_NAME);
     public static final String SCRIPT_RUNS_COLLECTION_NAME = "script_runs";
@@ -78,8 +78,8 @@ public final class Globals {
     public static final String FILE_PAGE_SEPARATOR = "-";
     public static final String NEWLINE = "\n";
     public static final String CLOSE_CONNECTION_MESSAGE = "Bye!";
-    public static final int PROTOCOL_VERSION = 1;
-    public static final int STORAGE_FORMAT_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
+    public static final int STORAGE_FORMAT_VERSION = 2;
     public static final int UNSTAMPED_STORAGE_FORMAT_VERSION = 1;
     public static final String CUSTOM_JSON_REGEX = "^#[a-zA-Z0-9]{3,20}\\(.*\\)$";
     public static final double EARTH_RADIUS_METERS = 6371000.0;

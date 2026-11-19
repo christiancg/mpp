@@ -60,7 +60,7 @@ public class AdminEntryLandedTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -76,10 +76,10 @@ public class AdminEntryLandedTest {
 
     private static MockedStatic<AdminPageHelper> pageRowFailingWith(String collName, Exception failure) {
         final var mocked = mockStatic(AdminPageHelper.class, CALLS_REAL_METHODS);
-        mocked.when(() -> AdminPageHelper.baseUpdateEntryCount(eq(Globals.ADMIN_DB_NAME), eq(collName), any(),
+        mocked.when(() -> AdminPageHelper.baseUpdateEntryCount(eq(Globals.ADMIN_PROJECT_NAME), eq(collName), any(),
                 anyList(), anyBoolean())).thenThrow(failure);
-        mocked.when(() -> AdminPageHelper.baseUpdateEntryCountOfRefs(eq(Globals.ADMIN_DB_NAME), eq(collName), any(),
-                anyList())).thenThrow(failure);
+        mocked.when(() -> AdminPageHelper.baseUpdateEntryCountOfRefs(eq(Globals.ADMIN_PROJECT_NAME), eq(collName),
+                any(), anyList())).thenThrow(failure);
         return mocked;
     }
 
@@ -162,16 +162,17 @@ public class AdminEntryLandedTest {
     }
 
     private List<UsageCounter> usageEvent(String indexKey) {
-        memoryManagement.recordAccess(AccessKind.FIELD_INDEX, TestGlobals.DB, TestGlobals.COLL, indexKey);
-        return List.of(memoryManagement.getCounter(AccessKind.FIELD_INDEX, TestGlobals.DB, TestGlobals.COLL, indexKey));
+        memoryManagement.recordAccess(AccessKind.FIELD_INDEX, TestGlobals.PROJECT, TestGlobals.COLL, indexKey);
+        return List.of(
+                memoryManagement.getCounter(AccessKind.FIELD_INDEX, TestGlobals.PROJECT, TestGlobals.COLL, indexKey));
     }
 
     private static String usageId(String indexKey) {
-        return AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, indexKey);
+        return AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, indexKey);
     }
 
     private long usageRowsOnDisk(String id) throws IOException {
-        return fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME).stream()
+        return fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME).stream()
                 .filter(pk -> pk.getValue().equals(id)).count();
     }
 
@@ -197,8 +198,8 @@ public class AdminEntryLandedTest {
             assertDoesNotThrow(() -> AdminOperationHelper.flushCollectionUsage(event));
         }
 
-        final var onDisk = fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME).stream()
-                .filter(pk -> pk.getValue().equals(usageId("landedUpdatedUsage"))).findFirst().orElseThrow();
+        final var onDisk = fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME)
+                .stream().filter(pk -> pk.getValue().equals(usageId("landedUpdatedUsage"))).findFirst().orElseThrow();
         final var cached = cache.getPkIndexCollectionUsage(usageId("landedUpdatedUsage"));
         assertEquals(onDisk.getPosition(), cached.getPosition());
         assertEquals(onDisk.getLength(), cached.getLength());
@@ -234,7 +235,7 @@ public class AdminEntryLandedTest {
         final var clientId = clientTracker.registerForwardedClient(clientName);
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         request.setObject(object);
@@ -244,7 +245,7 @@ public class AdminEntryLandedTest {
     }
 
     private boolean isVisible(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse found && found.getObject() != null;
     }

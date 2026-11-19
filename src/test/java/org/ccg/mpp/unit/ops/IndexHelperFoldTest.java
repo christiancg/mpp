@@ -62,7 +62,7 @@ public class IndexHelperFoldTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
     }
 
@@ -91,25 +91,25 @@ public class IndexHelperFoldTest {
             doc.add(FIELD, new JsonString(PADDING + round + "-" + id));
             objects.add(doc);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             SaveOperationHelper.executeBulkSave(request);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         TestUtils.discardQueuedBackgroundEvents(taskManager);
     }
 
     private void indexTheField() throws Exception {
         saveRound(0);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
     }
 
     private static File logOf(String field) {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + "-" + field + "-String" + Globals.INDEX_LOG_FILE_EXTENSION);
     }
 
@@ -123,13 +123,13 @@ public class IndexHelperFoldTest {
         TestUtils.setPrivateStaticField(FieldIndexFolds.class, "fs", spied);
         final var parked = new CopyOnWriteArrayList<Parked>();
         doAnswer(invocation -> {
-            final var collectionHeld = locks.holdsCollectionLock(TestGlobals.DB, TestGlobals.COLL);
-            final var indexHeld = locks.holdsIndexLock(TestGlobals.DB, TestGlobals.COLL, FIELD);
+            final var collectionHeld = locks.holdsCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL);
+            final var indexHeld = locks.holdsIndexLock(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
             final var writerGotIn = CompletableFuture.supplyAsync(() -> {
                 try {
-                    final var got = locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL, 2_000L);
+                    final var got = locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL, 2_000L);
                     if (got) {
-                        locks.release(TestGlobals.DB, TestGlobals.COLL);
+                        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
                     }
                     return got;
                 } catch (InterruptedException e) {
@@ -143,7 +143,7 @@ public class IndexHelperFoldTest {
 
         for (var round = 1; round <= 6 && parked.isEmpty(); round++) {
             saveRound(round);
-            IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, ids());
+            IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ids());
         }
 
         assertEquals(1, parked.size(), "the log outgrew its threshold once");
@@ -152,7 +152,8 @@ public class IndexHelperFoldTest {
         assertTrue(parked.getFirst().writerGotIn(), "a writer acquires the collection while the fold is parked");
         assertFalse(logOf(FIELD).exists(), "the fold landed");
         final var indexed = new HashSet<String>();
-        for (final var entry : realFs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class)) {
+        for (final var entry : realFs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                String.class)) {
             assertEquals(1, entry.getIds().size());
             assertTrue(entry.getValue().endsWith("-" + entry.getIds().iterator().next()));
             indexed.addAll(entry.getIds());
@@ -163,7 +164,7 @@ public class IndexHelperFoldTest {
     private static List<FieldIndexEntry<?>> baseEntries(String suffix) {
         final var entries = new ArrayList<FieldIndexEntry<?>>(BASE_ENTRIES);
         for (var i = 0; i < BASE_ENTRIES; i++) {
-            entries.add(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL,
+            entries.add(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL,
                     String.format("a%05d%s%s", i, KEY_PADDING, suffix), new HashSet<>(Set.of("b" + i))));
         }
         return entries;
@@ -179,9 +180,9 @@ public class IndexHelperFoldTest {
 
     private PendingFold appendBetweenAnEighthAndAllOfTheBase(String field, boolean refused) throws Exception {
         final var base = baseEntries(field);
-        realFs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, field, Map.of(String.class, base));
-        return realFs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, field, "String", addedKeys(BASE_ENTRIES / 5),
-                base, refused);
+        realFs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, field, Map.of(String.class, base));
+        return realFs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, field, "String",
+                addedKeys(BASE_ENTRIES / 5), base, refused);
     }
 
     @Test
@@ -200,12 +201,12 @@ public class IndexHelperFoldTest {
     public void aRefusedTypeAppendsWithTheRefusedThreshold() throws Exception {
         indexTheField();
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         final var spied = spy(realFs);
         TestUtils.setPrivateStaticField(Class.forName(SLOT_CLASS), "fs", spied);
         saveRound(1);
 
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, ids());
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ids());
 
         verify(spied, atLeastOnce()).appendIndexLog(anyString(), anyString(), eq(FIELD), eq("String"), any(), any(),
                 eq(true));
@@ -213,9 +214,9 @@ public class IndexHelperFoldTest {
 
     @Test
     public void aFoldIsSkippedOnceAnotherAppendMovedTheLogOn() throws Exception {
-        final var first = realFs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, FIELD, "String",
+        final var first = realFs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, "String",
                 addedKeys(BASE_ENTRIES / 5), List.of(baseEntries("").getFirst()), false);
-        final var second = realFs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, FIELD, "String", addedKeys(1),
+        final var second = realFs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, "String", addedKeys(1),
                 List.of(baseEntries("").getFirst()), false);
 
         assertNotNull(first);
@@ -239,7 +240,7 @@ public class IndexHelperFoldTest {
 
     private void saveAndMaintain(int round) throws Exception {
         saveRound(round);
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, ids());
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ids());
     }
 
     private String identifier() {
@@ -251,7 +252,7 @@ public class IndexHelperFoldTest {
         indexTheField();
         final var folded = foldedLogLengths();
         saveAndMaintain(1);
-        assertNotNull(cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL, identifier()));
+        assertNotNull(cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, identifier()));
 
         saveAndMaintain(2);
 
@@ -272,7 +273,7 @@ public class IndexHelperFoldTest {
         assertTrue(folded.getFirst() >= Globals.RESIDENT_INDEX_FOLD_CEILING * Globals.FIELD_INDEX_LOG_MIN_BYTES,
                 "only a log at four times its base folds right after the batch");
         assertFalse(logOf(FIELD).exists());
-        assertFalse(locks.holdsCollectionLock(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.holdsCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -280,7 +281,7 @@ public class IndexHelperFoldTest {
         indexTheField();
         final var folded = foldedLogLengths();
         saveAndMaintain(1);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
         saveAndMaintain(2);
 
@@ -292,7 +293,7 @@ public class IndexHelperFoldTest {
     @Test
     public void test_a_refused_type_keeps_the_eighth_threshold() throws Exception {
         final var refused = appendBetweenAnEighthAndAllOfTheBase("refused", true);
-        final var logOnly = realFs.appendIndexLogOnly(TestGlobals.DB, TestGlobals.COLL, "logonly", "String",
+        final var logOnly = realFs.appendIndexLogOnly(TestGlobals.PROJECT, TestGlobals.COLL, "logonly", "String",
                 addedKeys(BASE_ENTRIES / 5), () -> null);
 
         assertNotNull(refused, "a refused type is due at an eighth of its base");
@@ -300,7 +301,7 @@ public class IndexHelperFoldTest {
         assertTrue(logOnly.pastResidentCeiling(), "a log-only fold is never deferred");
         indexTheField();
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         final var folded = foldedLogLengths();
 
         for (var round = 1; round <= 3 && folded.isEmpty(); round++) {
@@ -313,7 +314,7 @@ public class IndexHelperFoldTest {
 
     @Test
     public void aFoldWhoseSourceCannotBeReadKeepsTheLog() throws Exception {
-        final var pending = realFs.appendIndexLogOnly(TestGlobals.DB, TestGlobals.COLL, FIELD, "String",
+        final var pending = realFs.appendIndexLogOnly(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, "String",
                 addedKeys(BASE_ENTRIES / 5), () -> null);
         assertNotNull(pending);
 
@@ -321,6 +322,6 @@ public class IndexHelperFoldTest {
                 .runAfterUnlock(List.of(new DeferredFold(Cache.getIndexIdentifier(FIELD, String.class), pending)));
 
         assertTrue(logOf(FIELD).exists(), "the changes stay logged for the next append to fold");
-        assertFalse(locks.holdsIndexLock(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        assertFalse(locks.holdsIndexLock(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 }

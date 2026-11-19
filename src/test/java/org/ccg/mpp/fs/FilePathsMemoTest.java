@@ -24,8 +24,8 @@ public class FilePathsMemoTest {
         paths.useDbPath(ROOT);
     }
 
-    private static String expectedPage(String root, String physicalDatabase, String collection, long page) {
-        return new File(new File(root).getAbsolutePath() + Globals.FILE_SEPARATOR + physicalDatabase
+    private static String expectedPage(String root, String physicalProject, String collection, long page) {
+        return new File(new File(root).getAbsolutePath() + Globals.FILE_SEPARATOR + physicalProject
                 + Globals.FILE_SEPARATOR + collection + Globals.FILE_SEPARATOR + collection
                 + Globals.FILE_PAGE_SEPARATOR + page + Globals.DB_FILE_EXTENSION).getPath();
     }
@@ -40,7 +40,7 @@ public class FilePathsMemoTest {
         assertNotSame(first, rebuilt);
         assertEquals(first, rebuilt);
 
-        paths.forgetDatabase("shop");
+        paths.forgetProject("shop");
         assertNotSame(rebuilt, paths.pkIndexFile("shop", "orders"));
 
         paths.useDbPath("elsewhere");
@@ -85,11 +85,11 @@ public class FilePathsMemoTest {
     }
 
     @Test
-    public void the_admin_pages_database_keeps_its_physical_translation() {
-        final var physical = Globals.ADMIN_DB_NAME + Globals.FILE_SEPARATOR + Globals.ADMIN_PAGES_FOLDER;
+    public void the_admin_pages_project_keeps_its_physical_translation() {
+        final var physical = Globals.ADMIN_PROJECT_NAME + Globals.FILE_SEPARATOR + Globals.ADMIN_PAGES_FOLDER;
 
-        final var first = paths.collectionPage(Globals.ADMIN_PAGES_DB_NAME, "shop_orders", 0);
-        final var again = paths.collectionPage(Globals.ADMIN_PAGES_DB_NAME, "shop_orders", 0);
+        final var first = paths.collectionPage(Globals.ADMIN_PAGES_PROJECT_NAME, "shop_orders", 0);
+        final var again = paths.collectionPage(Globals.ADMIN_PAGES_PROJECT_NAME, "shop_orders", 0);
 
         assertEquals(expectedPage(ROOT, physical, "shop_orders", 0), first.getPath());
         assertEquals(first, again);
@@ -120,17 +120,17 @@ public class FilePathsMemoTest {
     }
 
     @Test
-    public void forgetting_a_collection_or_a_database_releases_its_prefixes_and_rebuilds_them_on_use() {
+    public void forgetting_a_collection_or_a_project_releases_its_prefixes_and_rebuilds_them_on_use() {
         paths.collectionPage("shop", "orders", 0);
         paths.collectionPage("shop", "items", 0);
         paths.collectionPage("other", "orders", 0);
 
         paths.forgetCollection("shop", "orders");
         assertEquals(2, paths.rememberedPrefixCount());
-        paths.forgetDatabase("shop");
+        paths.forgetProject("shop");
         assertEquals(1, paths.rememberedPrefixCount());
         paths.forgetCollection("missing", "orders");
-        paths.forgetDatabase("missing");
+        paths.forgetProject("missing");
 
         assertEquals(1, paths.rememberedPrefixCount());
         assertEquals(expectedPage(ROOT, "shop", "orders", 7), paths.collectionPage("shop", "orders", 7).getPath());
@@ -155,10 +155,10 @@ public class FilePathsMemoTest {
     }
 
     @Test
-    public void a_reset_after_a_database_was_forgotten_keeps_the_count_exact() {
+    public void a_reset_after_a_project_was_forgotten_keeps_the_count_exact() {
         paths.collectionPage("shop", "orders", 0);
-        paths.forgetDatabase("shop");
-        paths.forgetDatabase("shop");
+        paths.forgetProject("shop");
+        paths.forgetProject("shop");
         paths.forgetCollection("shop", "orders");
 
         assertEquals(0, paths.rememberedPrefixCount());

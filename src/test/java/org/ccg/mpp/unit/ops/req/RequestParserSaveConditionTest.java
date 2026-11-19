@@ -15,7 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 public class RequestParserSaveConditionTest {
-    private static final String PREFIX = "{\"type\":\"SAVE\",\"databaseName\":\"shop\",\"collectionName\":\"orders\"";
+    private static final String PREFIX = "{\"type\":\"SAVE\",\"projectName\":\"shop\",\"collectionName\":\"orders\"";
 
     @BeforeAll
     public static void setUp() throws Exception {

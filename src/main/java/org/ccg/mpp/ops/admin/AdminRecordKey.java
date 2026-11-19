@@ -11,47 +11,47 @@ import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
 
-public record AdminRecordKey(Kind kind, String dbName, String name) {
+public record AdminRecordKey(Kind kind, String projectName, String name) {
     private static final String SEPARATOR = "|";
 
     public enum Kind {
-        DATABASE, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE;
+        PROJECT, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE;
 
         String label() {
             return name().toLowerCase(Locale.ROOT);
         }
     }
 
-    public static AdminRecordKey database(String dbName) {
-        return new AdminRecordKey(Kind.DATABASE, dbName, dbName);
+    public static AdminRecordKey project(String projectName) {
+        return new AdminRecordKey(Kind.PROJECT, projectName, projectName);
     }
 
-    public static AdminRecordKey collection(String dbName, String collName) {
-        return new AdminRecordKey(Kind.COLLECTION, dbName, collName);
+    public static AdminRecordKey collection(String projectName, String collName) {
+        return new AdminRecordKey(Kind.COLLECTION, projectName, collName);
     }
 
     public static AdminRecordKey user(String username) {
         return new AdminRecordKey(Kind.USER, "", username);
     }
 
-    public static AdminRecordKey schema(String dbName, String collName) {
-        return new AdminRecordKey(Kind.SCHEMA, dbName, collName);
+    public static AdminRecordKey schema(String projectName, String collName) {
+        return new AdminRecordKey(Kind.SCHEMA, projectName, collName);
     }
 
-    public static AdminRecordKey triggers(String dbName, String collName) {
-        return new AdminRecordKey(Kind.TRIGGERS, dbName, collName);
+    public static AdminRecordKey triggers(String projectName, String collName) {
+        return new AdminRecordKey(Kind.TRIGGERS, projectName, collName);
     }
 
-    public static AdminRecordKey procedure(String dbName, String name) {
-        return new AdminRecordKey(Kind.PROCEDURE, dbName, name);
+    public static AdminRecordKey procedure(String projectName, String name) {
+        return new AdminRecordKey(Kind.PROCEDURE, projectName, name);
     }
 
-    public static AdminRecordKey schedule(String dbName, String name) {
-        return new AdminRecordKey(Kind.SCHEDULE, dbName, name);
+    public static AdminRecordKey schedule(String projectName, String name) {
+        return new AdminRecordKey(Kind.SCHEDULE, projectName, name);
     }
 
     public String id() {
-        return kind.label() + SEPARATOR + dbName + SEPARATOR + name;
+        return kind.label() + SEPARATOR + projectName + SEPARATOR + name;
     }
 
     public static AdminRecordKey parse(String id) {
@@ -60,12 +60,12 @@ public record AdminRecordKey(Kind kind, String dbName, String name) {
     }
 
     public static List<AdminRecordKey> touchedBy(OperationRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         return switch (request) {
-            case SaveProcedureRequest save -> List.of(procedure(dbName, save.getName()));
-            case DeleteProcedureRequest delete -> List.of(procedure(dbName, delete.getName()));
-            case SaveScheduleRequest save -> List.of(schedule(dbName, save.getName()));
-            case DeleteScheduleRequest delete -> List.of(schedule(dbName, delete.getName()));
+            case SaveProcedureRequest save -> List.of(procedure(projectName, save.getName()));
+            case DeleteProcedureRequest delete -> List.of(procedure(projectName, delete.getName()));
+            case SaveScheduleRequest save -> List.of(schedule(projectName, save.getName()));
+            case DeleteScheduleRequest delete -> List.of(schedule(projectName, delete.getName()));
             case PermissionsRequest permissions -> List.of(user(permissions.getUsername()));
             case DeleteUserRequest delete -> List.of(user(delete.getUsername()));
             case SetPasswordRequest password -> List.of(user(password.getUsername()));
@@ -74,13 +74,14 @@ public record AdminRecordKey(Kind kind, String dbName, String name) {
     }
 
     private static List<AdminRecordKey> touchedByType(OperationRequest request) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         return switch (request.getType()) {
-            case CREATE_DATABASE, DROP_DATABASE, SET_DATABASE_OWNERS -> List.of(database(dbName));
-            case CREATE_COLLECTION, DROP_COLLECTION, CREATE_INDEX, DROP_INDEX -> List.of(collection(dbName, collName));
-            case SAVE_SCHEMA, DELETE_SCHEMA -> List.of(schema(dbName, collName));
-            case SAVE_TRIGGER, DELETE_TRIGGER -> List.of(triggers(dbName, collName));
+            case CREATE_PROJECT, DROP_PROJECT, SET_PROJECT_OWNERS -> List.of(project(projectName));
+            case CREATE_COLLECTION, DROP_COLLECTION, CREATE_INDEX, DROP_INDEX ->
+                List.of(collection(projectName, collName));
+            case SAVE_SCHEMA, DELETE_SCHEMA -> List.of(schema(projectName, collName));
+            case SAVE_TRIGGER, DELETE_TRIGGER -> List.of(triggers(projectName, collName));
             default -> List.of();
         };
     }

@@ -26,13 +26,13 @@ final class PageLengths {
 
     static final class CollectionPages implements LongUnaryOperator {
         private final FilePaths paths;
-        private final String dbName;
+        private final String projectName;
         private final String collName;
         private final Pages pages;
 
-        private CollectionPages(FilePaths paths, String dbName, String collName, Pages pages) {
+        private CollectionPages(FilePaths paths, String projectName, String collName, Pages pages) {
             this.paths = paths;
-            this.dbName = dbName;
+            this.projectName = projectName;
             this.collName = collName;
             this.pages = pages;
         }
@@ -40,16 +40,18 @@ final class PageLengths {
         @Override
         public long applyAsLong(long page) {
             if (page > MAX_TRACKED_PAGE) {
-                return Math.max(statted(paths.collectionPage(dbName, collName, page)), 0L);
+                return Math.max(statted(paths.collectionPage(projectName, collName, page)), 0L);
             }
             final var known = pages.known(page);
-            return known == UNKNOWN ? pages.seed(page, paths.collectionPage(dbName, collName, page)) : lengthIn(known);
+            return known == UNKNOWN
+                    ? pages.seed(page, paths.collectionPage(projectName, collName, page))
+                    : lengthIn(known);
         }
     }
 
-    static CollectionPages of(FilePaths paths, String dbName, String collName) {
-        final var address = Objects.requireNonNull(addressOf(paths.collectionPage(dbName, collName, 0L)));
-        return new CollectionPages(paths, dbName, collName, pagesOf(address.collection()));
+    static CollectionPages of(FilePaths paths, String projectName, String collName) {
+        final var address = Objects.requireNonNull(addressOf(paths.collectionPage(projectName, collName, 0L)));
+        return new CollectionPages(paths, projectName, collName, pagesOf(address.collection()));
     }
 
     static long lengthOf(File page) {

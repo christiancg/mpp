@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("NewClassNamingConvention")
 public class RefusedFoldStallProbe {
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String COLL = TestGlobals.COLL;
     private static final String FIELD = "tag";
     private static final long INDEX_BYTES = 50L * 1024 * 1024;
@@ -70,15 +70,15 @@ public class RefusedFoldStallProbe {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         savedTaskManager = TestUtils.getPrivateStaticField(SaveOperationHelper.class, "taskManager",
                 BackgroundTaskManager.class);
         doAnswer(invocation -> queued.add(invocation.getArgument(0))).when(taskManager)
                 .submitBackgroundTask(any(Event.class));
         TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", taskManager);
-        IndexHelper.createIndex(DB, COLL, FIELD);
-        cache.getAdminCollectionEntry(DB, COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(PROJECT, COLL, FIELD);
+        cache.getAdminCollectionEntry(PROJECT, COLL).setIndexes(Set.of(FIELD));
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
         final var pad = new char[VALUE_PAD];
         Arrays.fill(pad, 'p');
@@ -94,7 +94,7 @@ public class RefusedFoldStallProbe {
     }
 
     private Path indexPath() {
-        return Path.of(TestGlobals.PATH, DB, COLL, COLL + "-" + FIELD + "-String.idx");
+        return Path.of(TestGlobals.PATH, PROJECT, COLL, COLL + "-" + FIELD + "-String.idx");
     }
 
     private Path logPath() {
@@ -139,7 +139,7 @@ public class RefusedFoldStallProbe {
                 changes.add(new IndexLogChange(key, List.of(id), List.of()));
                 bytes += key.length() + id.length() + 4L;
             }
-            fs.appendIndexLogOnly(DB, COLL, FIELD, "String", changes, null);
+            fs.appendIndexLogOnly(PROJECT, COLL, FIELD, "String", changes, null);
         }
     }
 
@@ -147,13 +147,13 @@ public class RefusedFoldStallProbe {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty(FIELD, value);
-        final var request = new SaveRequest(DB, COLL);
+        final var request = new SaveRequest(PROJECT, COLL);
         request.setObject(object);
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
             SaveOperationHelper.executeSave(request);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 

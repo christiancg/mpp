@@ -87,8 +87,8 @@ Updates every document the predicate matches as part of the transaction, transla
 @exception System.NotSupportedException when the predicate cannot run on the server
 @exception Mpp.Client.Errors.MappingException when the patch does not map to a JSON object
 
-## DatabaseName
-The database the collection belongs to.
+## ProjectName
+The project the collection belongs to.
 
 ## Name
 The collection's name.

@@ -28,19 +28,19 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     public void test_empty_index_entry_map() throws IOException {
         String fieldName = "testField";
         Map<Class<?>, List<FieldIndexEntry<?>>> emptyMap = new HashMap<>();
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, emptyMap);
-        final var index = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, fieldName, String.class);
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, emptyMap);
+        final var index = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, String.class);
         assertNull(index);
     }
 
     @Test
     public void test_drop_index_nonexistent_collection() {
 
-        String dbName = "nonExistentDb";
+        String projectName = "nonExistentProject";
         String collName = "nonExistentColl";
         String fieldName = "testField";
 
-        boolean result = fs.dropIndex(dbName, collName, fieldName);
+        boolean result = fs.dropIndex(projectName, collName, fieldName);
 
         assertFalse(result);
     }
@@ -48,7 +48,7 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     @Test
     public void test_empty_index_file_returns_empty_list() throws IOException {
 
-        List<FieldIndexEntry<String>> entries = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL,
+        List<FieldIndexEntry<String>> entries = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL,
                 "emptyField", String.class);
 
         assertNull(entries);
@@ -60,7 +60,7 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
         File mockIndexFile = mock(File.class);
         when(mockIndexFile.exists()).thenReturn(false);
 
-        List<PkIndexEntry> result = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        List<PkIndexEntry> result = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(result.isEmpty());
     }
@@ -69,20 +69,20 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     public void test_readWholePkIndexFile_drops_and_rewrites_malformed_lines() throws Exception {
 
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id("good");
         entry.setData(new JsonObject());
         entry.setPage(0L);
         fs.insertIntoCollection(entry);
 
-        final var indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB
+        final var indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
                 + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.PK_INDEX_FILE_NAME + Globals.INDEX_FILE_EXTENSION);
         Files.writeString(indexFile.toPath(), "\nthis is not a valid pk index line", StandardCharsets.UTF_8,
                 java.nio.file.StandardOpenOption.APPEND);
 
-        final var firstRead = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var firstRead = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, firstRead.size());
         assertEquals("good", firstRead.getFirst().getValue());
 
@@ -90,7 +90,7 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
         assertTrue(diskLines.stream().noneMatch(l -> l.contains("not a valid")),
                 "the malformed PK index line should have been removed");
 
-        final var secondRead = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var secondRead = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, secondRead.size());
     }
 
@@ -98,14 +98,14 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     public void test_readWholePkIndexFile_dedups_duplicate_keys_keeping_last() throws Exception {
 
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id("dup");
         entry.setData(new JsonObject());
         entry.setPage(0L);
         fs.insertIntoCollection(entry);
 
-        final var indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB
+        final var indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
                 + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.PK_INDEX_FILE_NAME + Globals.INDEX_FILE_EXTENSION);
         Files.writeString(indexFile.toPath(),
@@ -113,7 +113,7 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
                         + Globals.ID_SEPARATOR + "0" + Globals.NEWLINE,
                 StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
 
-        final var firstRead = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var firstRead = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, firstRead.size(), "duplicate id must collapse to a single entry");
         assertEquals("dup", firstRead.getFirst().getValue());
         assertEquals(172L, firstRead.getFirst().getPosition(), "the last occurrence (freshest) must win");
@@ -122,7 +122,7 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
         assertEquals(2, diskLines.stream().filter(l -> !l.isEmpty()).count(),
                 "pk.idx is a log: a superseded row stays until a compaction, it is not a heal");
 
-        final var secondRead = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var secondRead = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, secondRead.size());
     }
 
@@ -130,14 +130,15 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     public void test_readWholeFieldIndexFiles_drops_and_rewrites_malformed_lines() throws Exception {
         final var fieldName = "selfHeal";
 
-        final var entry = new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "good", Set.of("id1"));
-        LegacyIndexLines.of(fs).updateIndexFiles(TestGlobals.DB, TestGlobals.COLL, fieldName, entry, null);
+        final var entry = new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "good", Set.of("id1"));
+        LegacyIndexLines.of(fs).updateIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, entry, null);
 
         final var indexFile = findIdxFile(fieldName);
         Files.writeString(indexFile.toPath(), "\nthis is not a valid field index line", StandardCharsets.UTF_8,
                 java.nio.file.StandardOpenOption.APPEND);
 
-        final var firstRead = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, fieldName, String.class);
+        final var firstRead = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, fieldName,
+                String.class);
         assertEquals(1, firstRead.size());
         assertEquals("good", firstRead.getFirst().getValue());
 
@@ -145,7 +146,8 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
         assertTrue(diskLines.stream().noneMatch(l -> l.contains("not a valid")),
                 "the malformed field index line should have been removed");
 
-        final var secondRead = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, fieldName, String.class);
+        final var secondRead = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, fieldName,
+                String.class);
         assertEquals(1, secondRead.size());
     }
 
@@ -153,15 +155,16 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
     public void test_readWholeHashIndexFile_drops_and_rewrites_malformed_lines() throws Exception {
         final var fieldName = "hashSelfHeal";
 
-        final var entry = new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "aaaa1111",
+        final var entry = new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "aaaa1111",
                 new HashSet<>(Set.of("id1")));
-        fs.writeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List.of(entry));
+        fs.writeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List.of(entry));
 
         final var indexFile = findIdxFile(fieldName);
         Files.writeString(indexFile.toPath(), "\nthis is not a valid hash index line", StandardCharsets.UTF_8,
                 java.nio.file.StandardOpenOption.APPEND);
 
-        final var firstRead = fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT);
+        final var firstRead = fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName,
+                IndexKind.OBJECT);
         assertEquals(1, firstRead.size());
         assertEquals("aaaa1111", firstRead.getFirst().getValue());
 
@@ -169,12 +172,13 @@ public class FileSystemIndexRecoveryTest extends FileSystemTestBase {
         assertTrue(diskLines.stream().noneMatch(l -> l.contains("not a valid")),
                 "the malformed hash index line should have been removed");
 
-        final var secondRead = fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT);
+        final var secondRead = fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName,
+                IndexKind.OBJECT);
         assertEquals(1, secondRead.size());
     }
 
     private static File findIdxFile(String fieldName) throws IOException {
-        final var collFolder = Path.of(TestGlobals.PATH, TestGlobals.DB, TestGlobals.COLL);
+        final var collFolder = Path.of(TestGlobals.PATH, TestGlobals.PROJECT, TestGlobals.COLL);
         try (var files = Files.list(collFolder)) {
             return files.map(Path::toFile)
                     .filter(f -> f.getName().contains(Globals.INDEX_FILE_NAME_SEPARATOR + fieldName)

@@ -3,7 +3,7 @@ A script running on the server.
 @param RunId the id `Scripts.CancelAsync` takes
 @param Node the cluster node it runs on
 @param Kind `RUN_SCRIPT`, `CALL_PROCEDURE`, a trigger or a schedule
-@param Database its database
+@param Project its project
 @param Name the procedure, trigger or schedule name
 @param Username who started it
 @param AgeMs how long it has run in milliseconds
@@ -15,7 +15,7 @@ Creates the description.
 @param RunId the run's id
 @param Node the cluster node it runs on
 @param Kind the kind of run
-@param Database its database
+@param Project its project
 @param Name the procedure, trigger or schedule name
 @param Username who started it
 @param AgeMs how long it has run in milliseconds
@@ -24,8 +24,8 @@ Creates the description.
 ## AgeMs
 How long the run has lasted, in milliseconds.
 
-## Database
-The run's database, or null.
+## Project
+The run's project, or null.
 
 ## Kind
 The kind of run: `RUN_SCRIPT`, `CALL_PROCEDURE`, a trigger or a schedule.

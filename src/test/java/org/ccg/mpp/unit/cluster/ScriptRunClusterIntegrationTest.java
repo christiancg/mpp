@@ -72,7 +72,7 @@ public class ScriptRunClusterIntegrationTest {
         final var row = ack.getRunningScripts().stream().filter(r -> run.runId().equals(r.getRunId())).findFirst();
         assertTrue(row.isPresent());
         assertEquals("CALL_PROCEDURE", row.get().getKind());
-        assertEquals("shop", row.get().getDatabase());
+        assertEquals("shop", row.get().getProject());
         assertEquals("reprice", row.get().getName());
         assertEquals("alice", row.get().getUsername());
         assertEquals(run.startedAt(), row.get().getStartedAt());

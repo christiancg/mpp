@@ -41,7 +41,7 @@ public class UserOperationHelperAdminTest {
         createReq.setPassword("password123");
         createReq.setAdmin(false);
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
 
         UserOperationHelper.processCreateUser(createReq);
@@ -59,7 +59,7 @@ public class UserOperationHelperAdminTest {
         createReq.setPassword("password123");
         createReq.setAdmin(false);
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -67,7 +67,7 @@ public class UserOperationHelperAdminTest {
         changeReq.setUsername("to_promotee");
         changeReq.setAdmin(true);
         changeReq.setGlobalPermissions(new HashSet<>());
-        changeReq.setDatabasePermissions(new HashMap<>());
+        changeReq.setProjectPermissions(new HashMap<>());
         changeReq.setCollectionPermissions(new HashMap<>());
 
         final var resp = UserOperationHelper.processChangePermissions(changeReq, new RestampedRecords());
@@ -83,7 +83,7 @@ public class UserOperationHelperAdminTest {
         createReq.setUsername("auth_test");
         createReq.setPassword(password);
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -102,27 +102,27 @@ public class UserOperationHelperAdminTest {
         createReq.setUsername("perm_user");
         createReq.setPassword("password123");
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
         final var globalPerms = new HashSet<GlobalPermissionType>();
-        globalPerms.add(GlobalPermissionType.CREATE_DATABASE);
-        globalPerms.add(GlobalPermissionType.DROP_DATABASE);
+        globalPerms.add(GlobalPermissionType.CREATE_PROJECT);
+        globalPerms.add(GlobalPermissionType.DROP_PROJECT);
 
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("db1", PermissionLevel.READ);
-        dbPerms.put("db2", PermissionLevel.READ_WRITE);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("project1", PermissionLevel.READ);
+        projectPerms.put("project2", PermissionLevel.READ_WRITE);
 
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("db1|coll1", PermissionLevel.READ);
-        collPerms.put("db2|coll1", PermissionLevel.READ_WRITE);
+        collPerms.put("project1|coll1", PermissionLevel.READ);
+        collPerms.put("project2|coll1", PermissionLevel.READ_WRITE);
 
         final var changeReq = new ChangePermissionsRequest();
         changeReq.setUsername("perm_user");
         changeReq.setAdmin(true);
         changeReq.setGlobalPermissions(globalPerms);
-        changeReq.setDatabasePermissions(dbPerms);
+        changeReq.setProjectPermissions(projectPerms);
         changeReq.setCollectionPermissions(collPerms);
 
         final var resp = UserOperationHelper.processChangePermissions(changeReq, new RestampedRecords());
@@ -131,7 +131,7 @@ public class UserOperationHelperAdminTest {
         final var user = cache.getAdminUserEntry("perm_user");
         assertTrue(user.isAdmin());
         assertEquals(globalPerms, user.getGlobalPermissions());
-        assertEquals(dbPerms, user.getDatabasePermissions());
+        assertEquals(projectPerms, user.getProjectPermissions());
         assertEquals(collPerms, user.getCollectionPermissions());
     }
 
@@ -142,7 +142,7 @@ public class UserOperationHelperAdminTest {
             req.setUsername("user" + i);
             req.setPassword("password" + i + "123");
             req.setGlobalPermissions(new HashSet<>());
-            req.setDatabasePermissions(new HashMap<>());
+            req.setProjectPermissions(new HashMap<>());
             req.setCollectionPermissions(new HashMap<>());
             final var resp = UserOperationHelper.processCreateUser(req);
             assertEquals(OperationStatus.OK, resp.getStatus());
@@ -158,7 +158,7 @@ public class UserOperationHelperAdminTest {
         req.setUsername("secure_user");
         req.setPassword(plainPassword);
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(req);
 

@@ -10,19 +10,19 @@ namespace Mpp.Client;
 public sealed class Schema
 {
     private readonly ClientContext _context;
-    private readonly string _database;
+    private readonly string _project;
     private readonly string _collection;
 
-    internal Schema(ClientContext context, string database, string collection)
+    internal Schema(ClientContext context, string project, string collection)
     {
         _context = context;
-        _database = database;
+        _project = project;
         _collection = collection;
     }
 
     public async Task<IReadOnlyList<string>> SaveAsync(Document schema, CancellationToken ct = default)
     {
-        var request = RequestEncoder.SaveSchema(_database, _collection, RequestEncoder.Document(schema));
+        var request = RequestEncoder.SaveSchema(_project, _collection, RequestEncoder.Document(schema));
         var reply = await _context.Channel.SendAsync(Operation.SaveSchema, request, ct).ConfigureAwait(false);
         return ResponseDecoder.Strings(reply["warnings"]);
     }
@@ -32,7 +32,7 @@ public sealed class Schema
         try
         {
             var reply = await _context.Channel
-                .SendAsync(Operation.GetSchema, RequestEncoder.Request("GET_SCHEMA", _database, _collection), ct)
+                .SendAsync(Operation.GetSchema, RequestEncoder.Request("GET_SCHEMA", _project, _collection), ct)
                 .ConfigureAwait(false);
             return ResponseDecoder.DocumentOf(reply, "schema");
         }
@@ -44,6 +44,6 @@ public sealed class Schema
 
     public async Task DeleteAsync(CancellationToken ct = default) =>
         await _context.Channel
-            .SendAsync(Operation.DeleteSchema, RequestEncoder.Request("DELETE_SCHEMA", _database, _collection), ct)
+            .SendAsync(Operation.DeleteSchema, RequestEncoder.Request("DELETE_SCHEMA", _project, _collection), ct)
             .ConfigureAwait(false);
 }

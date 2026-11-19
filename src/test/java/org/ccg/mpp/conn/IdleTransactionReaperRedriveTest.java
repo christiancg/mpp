@@ -36,7 +36,7 @@ public class IdleTransactionReaperRedriveTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         DeferredWrites.install();
         assertEquals(OperationStatus.OK, processor.processMessage(save("seed")).getStatus());
         clientId = clientTracker.registerForwardedClient("reaper-redriver");
@@ -66,14 +66,14 @@ public class IdleTransactionReaperRedriveTest {
     private static SaveRequest save(String id) {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         return request;
     }
 
     private static void writablePages(boolean writable) {
-        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.DB + "/" + TestGlobals.COLL)
+        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.PROJECT + "/" + TestGlobals.COLL)
                 .listFiles((_, name) -> name.endsWith(".dat"));
         for (final var page : files == null ? new File[0] : files) {
             assertTrue(page.setWritable(writable));

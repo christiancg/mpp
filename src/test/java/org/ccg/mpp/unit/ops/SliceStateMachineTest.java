@@ -261,7 +261,7 @@ public class SliceStateMachineTest extends VersionedReplaySupport {
         SliceCommit.begin(transaction);
         final var ops = opsOf(transaction);
         final var unreachable = new AdminTransactionEntry(transaction.getTransactionId().toString(), "client", 9,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, "no-such-collection", document("x", "v"));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, "no-such-collection", document("x", "v"));
         ops.add(unreachable);
 
         assertEquals(SliceCommit.Result.HALF_APPLIED, SliceCommit.finish(transaction, ops, "admin", true));

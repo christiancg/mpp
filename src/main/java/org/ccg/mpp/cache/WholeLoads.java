@@ -76,43 +76,43 @@ public final class WholeLoads {
         return pins;
     }
 
-    public List<PkIndexEntry> pkIndex(String dbName, String collName, boolean lockHeld, Admission admission)
+    public List<PkIndexEntry> pkIndex(String projectName, String collName, boolean lockHeld, Admission admission)
             throws IOException {
         final Load<List<PkIndexEntry>> load = () -> {
             final var estimate = CacheSizeEstimator
-                    .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(dbName, collName));
-            return run(admission.admits(estimate), estimate, () -> fs().readWholePkIndexFile(dbName, collName));
+                    .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(projectName, collName));
+            return run(admission.admits(estimate), estimate, () -> fs().readWholePkIndexFile(projectName, collName));
         };
-        return lockHeld ? once("pk|" + Cache.getCollectionIdentifier(dbName, collName), load) : load.run();
+        return lockHeld ? once("pk|" + Cache.getCollectionIdentifier(projectName, collName), load) : load.run();
     }
 
-    public List<PkIndexEntry> transientPkIndex(String dbName, String collName) throws IOException {
+    public List<PkIndexEntry> transientPkIndex(String projectName, String collName) throws IOException {
         final var estimate = CacheSizeEstimator
-                .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(dbName, collName));
-        return run(false, estimate, () -> fs().readWholePkIndexFile(dbName, collName));
+                .estimatePkIndexSizeFromFileBytes(fs().pkIndexFileBytes(projectName, collName));
+        return run(false, estimate, () -> fs().readWholePkIndexFile(projectName, collName));
     }
 
-    public <T> List<FieldIndexEntry<T>> fieldIndex(String dbName, String collName, String fieldName, Class<T> indexType,
-            Admission admission) throws IOException {
-        final var key = "field|" + Cache.getCollectionIdentifier(dbName, collName) + "|"
+    public <T> List<FieldIndexEntry<T>> fieldIndex(String projectName, String collName, String fieldName,
+            Class<T> indexType, Admission admission) throws IOException {
+        final var key = "field|" + Cache.getCollectionIdentifier(projectName, collName) + "|"
                 + Cache.getIndexIdentifier(fieldName, indexType);
         return once(key, () -> {
-            final var bytes = fs().indexFileBytes(dbName, collName, fieldName, IndexKind.fileLabel(indexType));
+            final var bytes = fs().indexFileBytes(projectName, collName, fieldName, IndexKind.fileLabel(indexType));
             final var estimate = CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes);
             return run(admission.admits(estimate), estimate,
-                    () -> fs().readWholeFieldIndexFiles(dbName, collName, fieldName, indexType));
+                    () -> fs().readWholeFieldIndexFiles(projectName, collName, fieldName, indexType));
         });
     }
 
-    public List<FieldIndexEntry<String>> hashIndex(String dbName, String collName, String fieldName, IndexKind kind,
-            Admission admission) throws IOException {
-        final var key = "hash|" + Cache.getCollectionIdentifier(dbName, collName) + "|"
+    public List<FieldIndexEntry<String>> hashIndex(String projectName, String collName, String fieldName,
+            IndexKind kind, Admission admission) throws IOException {
+        final var key = "hash|" + Cache.getCollectionIdentifier(projectName, collName) + "|"
                 + Cache.getHashIndexIdentifier(fieldName, kind.label());
         return once(key, () -> {
-            final var bytes = fs().indexFileBytes(dbName, collName, fieldName, kind.label());
+            final var bytes = fs().indexFileBytes(projectName, collName, fieldName, kind.label());
             final var estimate = CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes);
             return run(admission.admits(estimate), estimate,
-                    () -> fs().readWholeHashIndexFile(dbName, collName, fieldName, kind));
+                    () -> fs().readWholeHashIndexFile(projectName, collName, fieldName, kind));
         });
     }
 

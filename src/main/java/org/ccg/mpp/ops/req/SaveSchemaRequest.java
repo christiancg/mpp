@@ -6,8 +6,8 @@ import org.ccg.mpp.ops.OperationType;
 public class SaveSchemaRequest extends OperationRequest {
     private JsonObject schema;
 
-    public SaveSchemaRequest(String databaseName, String collectionName, JsonObject schema) {
-        super(OperationType.SAVE_SCHEMA, databaseName, collectionName);
+    public SaveSchemaRequest(String projectName, String collectionName, JsonObject schema) {
+        super(OperationType.SAVE_SCHEMA, projectName, collectionName);
         this.schema = schema;
     }
 

@@ -31,7 +31,7 @@ public final class IndexWindowWalk implements Iterator<String> {
     private static final Cache cache = IocContainer.get(Cache.class);
     private static final ResourceLocking rl = IocContainer.get(ResourceLocking.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String fieldName;
     private final Class<Object> type;
@@ -50,9 +50,9 @@ public final class IndexWindowWalk implements Iterator<String> {
     private boolean opened;
 
     @SuppressWarnings("unchecked")
-    private IndexWindowWalk(String dbName, String collName, FieldOperator operator, List<Object> operands,
+    private IndexWindowWalk(String projectName, String collName, FieldOperator operator, List<Object> operands,
             int firstPage) {
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.fieldName = operator.getField();
         this.operatorType = operator.getFieldOperatorType();
@@ -62,19 +62,20 @@ public final class IndexWindowWalk implements Iterator<String> {
         this.pageSize = firstPage;
     }
 
-    public static IndexWindowWalk open(FieldOperator operator, String dbName, String collName, int firstPage,
+    public static IndexWindowWalk open(FieldOperator operator, String projectName, String collName, int firstPage,
             ReadObserver observer) throws IOException {
         final var fieldName = operator.getField();
-        if (!rl.holdsCollectionLock(dbName, collName) || cache.hasNoIndex(dbName, collName, fieldName)) {
+        if (!rl.holdsCollectionLock(projectName, collName) || cache.hasNoIndex(projectName, collName, fieldName)) {
             return null;
         }
         final var operands = operandsOf(operator);
-        if (operands == null || cache.answersFromIndexFile(dbName, collName, fieldName,
+        if (operands == null || cache.answersFromIndexFile(projectName, collName, fieldName,
                 IndexKind.scalarIndexClassOf(operands.getFirst()))) {
             return null;
         }
-        final var walk = new IndexWindowWalk(dbName, collName, operator, operands, Math.clamp(firstPage, 1, MAX_PAGE));
-        for (final var id : PendingWriteReconciler.pendingIds(dbName, collName)) {
+        final var walk = new IndexWindowWalk(projectName, collName, operator, operands,
+                Math.clamp(firstPage, 1, MAX_PAGE));
+        for (final var id : PendingWriteReconciler.pendingIds(projectName, collName)) {
             walk.startedWithPendingIds = true;
             if (walk.emitted.add(id)) {
                 walk.page.add(id);
@@ -83,10 +84,10 @@ public final class IndexWindowWalk implements Iterator<String> {
         if (!walk.readPage()) {
             return null;
         }
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
-        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
         return walk;
     }
 
@@ -159,29 +160,29 @@ public final class IndexWindowWalk implements Iterator<String> {
 
     private boolean readPage() throws IOException {
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
-            final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, type);
+            final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, type);
             if (entries == null) {
                 if (opened) {
-                    throw new IOException("The index on " + fieldName + " of " + dbName + "|" + collName
+                    throw new IOException("The index on " + fieldName + " of " + projectName + "|" + collName
                             + " could not be read in the middle of a walk");
                 }
                 exhausted = true;
                 return false;
             }
-            final List<?> cached = cache.residentFieldIndex(dbName, collName,
+            final List<?> cached = cache.residentFieldIndex(projectName, collName,
                     Cache.getIndexIdentifier(fieldName, type));
             final var resident = cached == entries;
             collect(entries, runsOf(entries), resident ? page.size() + pageSize : Integer.MAX_VALUE);
             opened = true;
             return true;
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
     }
 

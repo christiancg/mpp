@@ -45,22 +45,22 @@ public final class SortOperatorHelper {
     record Sorted(Stream<JsonObject> rows, boolean skipApplied) {
     }
 
-    static Sorted processSortStep(SortAggregationStep sortStep, Stream<JsonObject> resultStream, String dbName,
+    static Sorted processSortStep(SortAggregationStep sortStep, Stream<JsonObject> resultStream, String projectName,
             String collName, long bound, long skip, PipelineContext context) throws IOException {
         final var fieldName = sortStep.getFieldName();
         final var ascending = sortStep.getAscending();
-        if (resultStream == null && (bound > 0 || !ScanPreference.indexFetchNotWorthIt(dbName, collName))) {
-            final var orderedIds = IndexHelper.getSortedIdsForField(dbName, collName, fieldName, entryOrder(ascending),
-                    bound > 0 ? bound : Long.MAX_VALUE, context);
+        if (resultStream == null && (bound > 0 || !ScanPreference.indexFetchNotWorthIt(projectName, collName))) {
+            final var orderedIds = IndexHelper.getSortedIdsForField(projectName, collName, fieldName,
+                    entryOrder(ascending), bound > 0 ? bound : Long.MAX_VALUE, context);
             if (orderedIds != null) {
-                return fetchSkipping(orderedIds, dbName, collName, bound, skip, context);
+                return fetchSkipping(orderedIds, projectName, collName, bound, skip, context);
             }
-            final var indexEntries = IndexHelper.getIndexEntriesForField(dbName, collName, fieldName, context);
+            final var indexEntries = IndexHelper.getIndexEntriesForField(projectName, collName, fieldName, context);
             if (indexEntries != null) {
-                return new Sorted(sortViaIndex(indexEntries, dbName, collName, ascending, bound, context), false);
+                return new Sorted(sortViaIndex(indexEntries, projectName, collName, ascending, bound, context), false);
             }
         }
-        final var source = context.source(resultStream, dbName, collName);
+        final var source = context.source(resultStream, projectName, collName);
         final var comparator = keyComparator(ascending);
         if (bound > 0 && bound <= MAX_BOUNDED_SORT) {
             return new Sorted(boundedSort(source, fieldName, comparator, (int) bound, context), false);
@@ -68,14 +68,14 @@ public final class SortOperatorHelper {
         return new Sorted(fullSort(source, fieldName, comparator, new HeldRows(context)), false);
     }
 
-    private static Sorted fetchSkipping(List<String> orderedIds, String dbName, String collName, long bound, long skip,
-            PipelineContext context) {
-        if (skip <= 0 || !locks.holdsCollectionLock(dbName, collName)) {
-            return new Sorted(fetchInOrder(orderedIds, dbName, collName, bound, context), false);
+    private static Sorted fetchSkipping(List<String> orderedIds, String projectName, String collName, long bound,
+            long skip, PipelineContext context) {
+        if (skip <= 0 || !locks.holdsCollectionLock(projectName, collName)) {
+            return new Sorted(fetchInOrder(orderedIds, projectName, collName, bound, context), false);
         }
         context.tick(Math.min(skip, orderedIds.size()));
         final var rest = orderedIds.subList((int) Math.min(skip, orderedIds.size()), orderedIds.size());
-        return new Sorted(fetchInOrder(rest, dbName, collName, bound > 0 ? bound - skip : bound, context), true);
+        return new Sorted(fetchInOrder(rest, projectName, collName, bound > 0 ? bound - skip : bound, context), true);
     }
 
     private static Comparator<Keyed> keyComparator(boolean ascending) {
@@ -136,27 +136,29 @@ public final class SortOperatorHelper {
         return decorated.toArray(Keyed[]::new);
     }
 
-    static IndexedSource.Fast tryIndexedRangeTopK(List<BaseAggregationStep> steps, String dbName, String collName,
+    static IndexedSource.Fast tryIndexedRangeTopK(List<BaseAggregationStep> steps, String projectName, String collName,
             long bound, PipelineContext context) throws IOException {
         if (bound <= 0 || steps.size() < 2 || !(steps.get(1) instanceof SortAggregationStep sortStep)) {
             return null;
         }
         final var range = SingleRange.of(steps.getFirst());
         if (range == null || !range.bounds().fieldName().equals(sortStep.getFieldName())) {
-            return IndexOrderTopK.tryWalk(steps, sortStep, dbName, collName, bound, context);
+            return IndexOrderTopK.tryWalk(steps, sortStep, projectName, collName, bound, context);
         }
-        final var ids = RangeIdWalk.open(dbName, collName, range.bounds(), sortStep.getAscending(), bound, context);
+        final var ids = RangeIdWalk.open(projectName, collName, range.bounds(), sortStep.getAscending(), bound,
+                context);
         if (ids == null) {
             return null;
         }
         final var skip = AggregationOperationHelper.skipAfter(steps, 1);
         if (skip <= 0) {
             return new IndexedSource.Fast(
-                    context.watch(fetchInOrder(ids, dbName, collName, bound, context).filter(range.matches())), 2);
+                    context.watch(fetchInOrder(ids, projectName, collName, bound, context).filter(range.matches())), 2);
         }
         context.tick(skipIds(ids, skip));
         return new IndexedSource.Fast(
-                context.watch(fetchInOrder(ids, dbName, collName, bound - skip, context).filter(range.matches())), 3);
+                context.watch(fetchInOrder(ids, projectName, collName, bound - skip, context).filter(range.matches())),
+                3);
     }
 
     private static long skipIds(Iterator<String> ids, long skip) {
@@ -168,25 +170,25 @@ public final class SortOperatorHelper {
         return skipped;
     }
 
-    private static Stream<JsonObject> fetchInOrder(List<String> orderedIds, String dbName, String collName, long bound,
-            PipelineContext context) {
-        return fetchInOrder(orderedIds.iterator(), dbName, collName, bound, context);
+    private static Stream<JsonObject> fetchInOrder(List<String> orderedIds, String projectName, String collName,
+            long bound, PipelineContext context) {
+        return fetchInOrder(orderedIds.iterator(), projectName, collName, bound, context);
     }
 
-    static Stream<JsonObject> fetchInOrder(Iterator<String> orderedIds, String dbName, String collName, long bound,
+    static Stream<JsonObject> fetchInOrder(Iterator<String> orderedIds, String projectName, String collName, long bound,
             PipelineContext context) {
         final var chunks = Spliterators.spliteratorUnknownSize(chunkIterator(orderedIds, firstChunkSize(bound)),
                 Spliterator.ORDERED);
-        return StreamSupport.stream(chunks, false).flatMap(chunk -> fetchChunk(chunk, dbName, collName, context));
+        return StreamSupport.stream(chunks, false).flatMap(chunk -> fetchChunk(chunk, projectName, collName, context));
     }
 
-    private static Stream<JsonObject> sortViaIndex(List<FieldIndexEntry<?>> indexEntries, String dbName,
+    private static Stream<JsonObject> sortViaIndex(List<FieldIndexEntry<?>> indexEntries, String projectName,
             String collName, boolean ascending, long bound, PipelineContext context) {
         final var order = entryOrder(ascending);
         final var sortedEntries = new ArrayList<>(indexEntries);
         sortedEntries.sort(order);
-        return fetchInOrder(IndexHelper.idsInOrder(sortedEntries, order, bound > 0 ? bound : Long.MAX_VALUE), dbName,
-                collName, bound, context);
+        return fetchInOrder(IndexHelper.idsInOrder(sortedEntries, order, bound > 0 ? bound : Long.MAX_VALUE),
+                projectName, collName, bound, context);
     }
 
     static Comparator<FieldIndexEntry<?>> entryOrder(boolean ascending) {
@@ -224,10 +226,11 @@ public final class SortOperatorHelper {
         };
     }
 
-    private static Stream<JsonObject> fetchChunk(List<String> chunk, String dbName, String collName,
+    private static Stream<JsonObject> fetchChunk(List<String> chunk, String projectName, String collName,
             PipelineContext context) {
         try {
-            final var documents = cache.getEntriesByIds(dbName, collName, Set.copyOf(chunk), context::pinnedPkIndex);
+            final var documents = cache.getEntriesByIds(projectName, collName, Set.copyOf(chunk),
+                    context::pinnedPkIndex);
             context.scanned(documents.size());
             if (documents.size() == 1) {
                 return Stream.of(documents.getFirst().getData());

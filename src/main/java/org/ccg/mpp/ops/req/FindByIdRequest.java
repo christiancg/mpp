@@ -5,8 +5,8 @@ import org.ccg.mpp.ops.OperationType;
 public class FindByIdRequest extends OperationRequest {
     private String _id;
 
-    public FindByIdRequest(String databaseName, String collectionName) {
-        super(OperationType.FIND_BY_ID, databaseName, collectionName);
+    public FindByIdRequest(String projectName, String collectionName) {
+        super(OperationType.FIND_BY_ID, projectName, collectionName);
     }
 
     public String get_id() {

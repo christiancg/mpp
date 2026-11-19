@@ -65,9 +65,9 @@ public class CollectionReadinessGuardTest {
     public void setUp() throws Exception {
         origEnabled = config.isClusterEnabled();
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.setObject(doc("present"));
         save.set_id("present");
         processor.processMessage(save);
@@ -91,7 +91,7 @@ public class CollectionReadinessGuardTest {
     }
 
     static Stream<Arguments> guardCases() {
-        final var db = TestGlobals.DB;
+        final var db = TestGlobals.PROJECT;
         final var coll = TestGlobals.COLL;
         final var runs = Globals.SCRIPT_RUNS_COLLECTION_NAME;
         final var users = Globals.ADMIN_USERS_COLLECTION_NAME;
@@ -106,7 +106,7 @@ public class CollectionReadinessGuardTest {
                         OperationType.BULK_SAVE, db, List.of(MISSING), notReady),
                 Arguments.of("test_the_refusal_carries_the_requested_operation_type", false, false,
                         OperationType.DELETE, db, List.of(MISSING), notFound),
-                Arguments.of("test_an_unknown_database_is_refused_too", false, false, OperationType.SAVE, "no-such-db",
+                Arguments.of("test_an_unknown_project_is_refused_too", false, false, OperationType.SAVE, "no-such-db",
                         List.of(coll), notFound),
                 Arguments.of("test_read_of_registered_collection_passes", false, true, OperationType.AGGREGATE, db,
                         List.of(coll), null),
@@ -118,12 +118,12 @@ public class CollectionReadinessGuardTest {
                         List.of(coll, MISSING), notFound),
                 Arguments.of("test_mis_cased_collection_read_is_refused", false, true, OperationType.FIND_BY_ID, db,
                         List.of(coll.toUpperCase(Locale.ROOT)), notFound),
-                Arguments.of("test_admin_database_read_passes", false, true, OperationType.AGGREGATE,
-                        Globals.ADMIN_DB_NAME, List.of(users), null),
-                Arguments.of("test_admin_database_read_passes", false, true, OperationType.AGGREGATE,
-                        Globals.ADMIN_PAGES_DB_NAME, List.of("anything"), null),
-                Arguments.of("test_mis_cased_admin_database_read_is_refused", false, true, OperationType.AGGREGATE,
-                        Globals.ADMIN_DB_NAME.toUpperCase(Locale.ROOT), List.of(users), notFound),
+                Arguments.of("test_admin_project_read_passes", false, true, OperationType.AGGREGATE,
+                        Globals.ADMIN_PROJECT_NAME, List.of(users), null),
+                Arguments.of("test_admin_project_read_passes", false, true, OperationType.AGGREGATE,
+                        Globals.ADMIN_PAGES_PROJECT_NAME, List.of("anything"), null),
+                Arguments.of("test_mis_cased_admin_project_read_is_refused", false, true, OperationType.AGGREGATE,
+                        Globals.ADMIN_PROJECT_NAME.toUpperCase(Locale.ROOT), List.of(users), notFound),
                 Arguments.of("test_unwritten_script_runs_read_passes", false, true, OperationType.AGGREGATE, db,
                         List.of(runs), null),
                 Arguments.of("test_mis_cased_script_runs_read_is_refused", false, true, OperationType.AGGREGATE, db,
@@ -133,12 +133,12 @@ public class CollectionReadinessGuardTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("guardCases")
     public void test_the_readiness_guard(String scenario, boolean clustered, boolean read, OperationType type,
-            String dbName, List<String> collNames, ErrorCode expected) throws Exception {
+            String projectName, List<String> collNames, ErrorCode expected) throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", clustered);
 
         final var response = read
-                ? CollectionReadinessGuard.checkRead(type, dbName, collNames)
-                : CollectionReadinessGuard.check(type, dbName, collNames.getFirst());
+                ? CollectionReadinessGuard.checkRead(type, projectName, collNames)
+                : CollectionReadinessGuard.check(type, projectName, collNames.getFirst());
 
         if (expected == null) {
             assertNull(response, scenario);
@@ -151,20 +151,20 @@ public class CollectionReadinessGuardTest {
     }
 
     private OperationResponse findById(String coll, String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, coll);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, coll);
         request.set_id(id);
         return processor.processMessage(request);
     }
 
     private static AggregateRequest count(String coll) {
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(new CountAggregationStep()));
         return request;
     }
 
     private boolean unregisteredPkIndexCached() throws Exception {
         final var pkIndexes = TestUtils.getPrivateField(cache.userCache(), "pkIndexMap", Map.class);
-        return pkIndexes.containsKey(Cache.getCollectionIdentifier(TestGlobals.DB, UNREGISTERED));
+        return pkIndexes.containsKey(Cache.getCollectionIdentifier(TestGlobals.PROJECT, UNREGISTERED));
     }
 
     @Test
@@ -182,7 +182,7 @@ public class CollectionReadinessGuardTest {
 
     @Test
     public void test_aggregate_joining_an_unregistered_collection_is_not_found() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(UNREGISTERED, "_id", "_id", "joined")));
 
         assertEquals("404-11", processor.processMessage(request).getErrorCode());
@@ -190,7 +190,7 @@ public class CollectionReadinessGuardTest {
 
     @Test
     public void test_listen_on_unregistered_collection_is_not_found() {
-        final var request = new ListenRequest(TestGlobals.DB, UNREGISTERED);
+        final var request = new ListenRequest(TestGlobals.PROJECT, UNREGISTERED);
         request.setAggregationSteps(List.of(new CountAggregationStep()));
 
         assertEquals("404-11", processor.processMessage(request, null).getErrorCode());
@@ -214,7 +214,7 @@ public class CollectionReadinessGuardTest {
     public void test_refused_read_inside_a_transaction_leaves_it_usable() {
         final var clientId = clientTracker.registerForwardedClient("admin");
         TransactionOperationHelper.start(clientId);
-        final var request = new FindByIdRequest(TestGlobals.DB, UNREGISTERED);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, UNREGISTERED);
         request.set_id("present");
 
         assertEquals("404-11", processor.processMessage(request, clientId).getErrorCode());
@@ -232,7 +232,7 @@ public class CollectionReadinessGuardTest {
     }
 
     private static CreateIndexRequest createIndexOn(String collName) {
-        return new CreateIndexRequest(TestGlobals.DB, collName, FIELD);
+        return new CreateIndexRequest(TestGlobals.PROJECT, collName, FIELD);
     }
 
     @Test
@@ -258,11 +258,11 @@ public class CollectionReadinessGuardTest {
         processor.processMessage(createIndexOn(ABSENT_COLL));
 
         assertFalse(new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + ABSENT_COLL)
+                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR + ABSENT_COLL)
                 .exists());
-        final var created = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, ABSENT_COLL));
+        final var created = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, ABSENT_COLL));
         assertEquals(OperationStatus.OK, created.getStatus());
-        assertTrue(cache.hasNoIndex(TestGlobals.DB, ABSENT_COLL, FIELD));
+        assertTrue(cache.hasNoIndex(TestGlobals.PROJECT, ABSENT_COLL, FIELD));
     }
 
     @Test
@@ -270,7 +270,7 @@ public class CollectionReadinessGuardTest {
         final var response = processor.processMessage(createIndexOn(TestGlobals.COLL));
 
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertFalse(cache.hasNoIndex(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        assertFalse(cache.hasNoIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 
     private void startBufferingTransaction() {
@@ -279,7 +279,7 @@ public class CollectionReadinessGuardTest {
     }
 
     private OperationResponse bufferSave(String collName) {
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setObject(doc("buffered"));
         return processor.processMessage(request, txClientId);
     }
@@ -297,7 +297,7 @@ public class CollectionReadinessGuardTest {
     @Test
     public void test_buffer_bulk_save_refuses_a_missing_collection_at_buffer_time() {
         startBufferingTransaction();
-        final var request = new BulkSaveRequest(TestGlobals.DB, ABSENT_COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, ABSENT_COLL);
         request.setObjects(List.of(doc("bulk-buffered")));
 
         final var response = processor.processMessage(request, txClientId);
@@ -308,7 +308,7 @@ public class CollectionReadinessGuardTest {
     @Test
     public void test_buffer_delete_refuses_a_missing_collection_at_buffer_time() {
         startBufferingTransaction();
-        final var request = new DeleteRequest(TestGlobals.DB, ABSENT_COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, ABSENT_COLL);
         request.set_id("gone");
 
         final var response = processor.processMessage(request, txClientId);
@@ -320,7 +320,7 @@ public class CollectionReadinessGuardTest {
     public void test_a_second_op_on_a_live_collection_still_succeeds() {
         startBufferingTransaction();
         assertNull(bufferSave(TestGlobals.COLL).getErrorCode());
-        final var second = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var second = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         second.setObject(doc("buffered-2"));
 
         final var response = processor.processMessage(second, txClientId);

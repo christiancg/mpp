@@ -7,7 +7,7 @@ from typing import Callable
 import base_utils as bu
 from base_utils import check, check_status, section
 
-DB = "tx_kill_db"
+PROJECT = "tx_kill_project"
 COLL = "tx_kill"
 POINT = "WAL_APPENDED"
 SUBJECT = "admin|transactions"
@@ -39,11 +39,12 @@ def send(conn, payload: dict) -> dict:
 
 
 def save(conn, doc_id: str) -> dict:
-    return send(conn, {"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"_id": doc_id, "v": 1}})
+    return send(conn, {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"_id": doc_id,
+                                                                                                  "v": 1}})
 
 
 def find(conn, doc_id: str) -> dict:
-    return send(conn, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": doc_id})
+    return send(conn, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": doc_id})
 
 
 def commit_in_background(conn):
@@ -138,11 +139,11 @@ def test_a_kill_after_a_buffered_save_leaves_nothing(proc, conn_factory, work_di
     return proc
 
 
-GROUP_SUBJECT = f"{DB}|{COLL}"
+GROUP_SUBJECT = f"{PROJECT}|{COLL}"
 
 
 def live_copies(work_dir: str, doc_id: str) -> int:
-    folder = os.path.join(work_dir, "db", DB, COLL)
+    folder = os.path.join(work_dir, "db", PROJECT, COLL)
     needle = f'"_id":"{doc_id}"'
     copies = 0
     for name in os.listdir(folder):
@@ -156,7 +157,7 @@ def open_transaction_with_saves(conn_factory, doc_ids: list, value: int):
     conn = conn_factory()
     tx_id = send(conn, {"type": "START_TRANSACTION"}).get("transactionId")
     for doc_id in doc_ids:
-        check_status(f"buffer {doc_id}", send(conn, {"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+        check_status(f"buffer {doc_id}", send(conn, {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                                       "object": {"_id": doc_id, "v": value}}), "OK")
     return conn, tx_id
 
@@ -216,8 +217,8 @@ def run(conn_factory, write_config: Callable[[str], None], recover: Callable[[st
     proc = bu.start_server(work_dir, log_path)
     try:
         with conn_factory() as conn:
-            check_status("create the database", send(conn, {"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
-            check_status("create the collection", send(conn, {"type": "CREATE_COLLECTION", "databaseName": DB,
+            check_status("create the project", send(conn, {"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
+            check_status("create the collection", send(conn, {"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                               "collectionName": COLL}), "OK")
             synced = bu.server_syncs_writes(conn)
         tests = [test_a_commit_halted_at_its_begin_record_is_finished_at_startup,

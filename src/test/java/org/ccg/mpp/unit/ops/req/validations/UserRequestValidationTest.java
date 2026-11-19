@@ -56,11 +56,11 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_rejects_admin_db() {
+    public void test_create_user_rejects_admin_project() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
-        req.setDatabasePermissions(Map.of("admin", PermissionLevel.READ));
+        req.setProjectPermissions(Map.of("admin", PermissionLevel.READ));
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
@@ -80,7 +80,7 @@ public class UserRequestValidationTest {
         req.setPassword("password123");
         req.setCollectionPermissions(Map.of("mydb|secret|", PermissionLevel.READ));
         assertFalse(RequestValidator.validate(req).isValid(),
-                "a key that can never match database|collection must not be stored as a no-op grant");
+                "a key that can never match project|collection must not be stored as a no-op grant");
     }
 
     @Test
@@ -99,8 +99,8 @@ public class UserRequestValidationTest {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
-        req.setGlobalPermissions(Set.of(GlobalPermissionType.CREATE_DATABASE));
-        req.setDatabasePermissions(Map.of("mydb", PermissionLevel.READ_WRITE));
+        req.setGlobalPermissions(Set.of(GlobalPermissionType.CREATE_PROJECT));
+        req.setProjectPermissions(Map.of("mydb", PermissionLevel.READ_WRITE));
         req.setCollectionPermissions(Map.of("mydb|coll", PermissionLevel.READ));
         assertTrue(RequestValidator.validate(req).isValid());
     }
@@ -128,10 +128,10 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_change_permissions_rejects_admin_db() {
+    public void test_change_permissions_rejects_admin_project() {
         final var req = new ChangePermissionsRequest();
         req.setUsername("user");
-        req.setDatabasePermissions(Map.of("admin", PermissionLevel.READ));
+        req.setProjectPermissions(Map.of("admin", PermissionLevel.READ));
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
@@ -173,16 +173,16 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_rejects_bad_db_name_in_permissions() {
+    public void test_create_user_rejects_bad_project_name_in_permissions() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
-        req.setDatabasePermissions(Map.of("ab", PermissionLevel.READ));
+        req.setProjectPermissions(Map.of("ab", PermissionLevel.READ));
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void test_create_user_rejects_admin_db_in_collection_permission() {
+    public void test_create_user_rejects_admin_project_in_collection_permission() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
@@ -191,7 +191,7 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_rejects_bad_db_name_in_collection_permission() {
+    public void test_create_user_rejects_bad_project_name_in_collection_permission() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
@@ -209,7 +209,7 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_invalid_db_permission_level() {
+    public void test_create_user_invalid_project_permission_level() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
@@ -220,33 +220,33 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_set_database_owners_valid() {
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest("mydb");
+    public void test_set_project_owners_valid() {
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest("mydb");
         assertTrue(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void test_set_database_owners_requires_db_name() {
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest(null);
+    public void test_set_project_owners_requires_project_name() {
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest(null);
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void test_set_database_owners_rejects_admin_db() {
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest("admin");
+    public void test_set_project_owners_rejects_admin_project() {
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest("admin");
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void test_set_database_owners_with_valid_owners() {
+    public void test_set_project_owners_with_valid_owners() {
         final var cache = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.cache.Cache.class);
         final var userEntry = new org.ccg.mpp.data.admin.AdminUserEntry("valid_owner", "hash", false,
                 new java.util.HashSet<>(), new java.util.HashMap<>(), new java.util.HashMap<>());
-        final var pkEntry = new org.ccg.mpp.data.PkIndexEntry(org.ccg.mpp.config.Globals.ADMIN_DB_NAME,
+        final var pkEntry = new org.ccg.mpp.data.PkIndexEntry(org.ccg.mpp.config.Globals.ADMIN_PROJECT_NAME,
                 org.ccg.mpp.config.Globals.ADMIN_USERS_COLLECTION_NAME, "valid_owner", 0, 10, 0);
         cache.putAdminUserEntry(userEntry, pkEntry);
 
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest("mydb");
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest("mydb");
         req.setOwners(java.util.List.of("valid_owner"));
         assertTrue(RequestValidator.validate(req).isValid());
 
@@ -254,15 +254,15 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_set_database_owners_rejects_nonexistent_user() {
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest("mydb");
+    public void test_set_project_owners_rejects_nonexistent_user() {
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest("mydb");
         req.setOwners(java.util.List.of("ghost_user"));
         assertFalse(RequestValidator.validate(req).isValid());
     }
 
     @Test
-    public void test_set_database_owners_rejects_bad_username() {
-        final var req = new org.ccg.mpp.ops.req.SetDatabaseOwnersRequest("mydb");
+    public void test_set_project_owners_rejects_bad_username() {
+        final var req = new org.ccg.mpp.ops.req.SetProjectOwnersRequest("mydb");
         req.setOwners(java.util.List.of("ab"));
         assertFalse(RequestValidator.validate(req).isValid());
     }
@@ -273,7 +273,7 @@ public class UserRequestValidationTest {
         req.setUsername("user");
         req.setPassword("password123");
         final var rawCollPerms = new org.ccg.mpp.ejson.elements.JsonObject();
-        rawCollPerms.add("valid_db|valid_coll", new org.ccg.mpp.ejson.elements.JsonString("NOT_A_VALID_LEVEL"));
+        rawCollPerms.add("valid_project|valid_coll", new org.ccg.mpp.ejson.elements.JsonString("NOT_A_VALID_LEVEL"));
         // inject via reflection to bypass the setter (which only accepts valid PermissionLevel)
         try {
             final var field = CreateUserRequest.class.getSuperclass().getDeclaredField("collectionPermissions");
@@ -295,7 +295,7 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_rejects_reserved_database_in_script_permissions() {
+    public void test_create_user_rejects_reserved_project_in_script_permissions() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");
@@ -304,7 +304,7 @@ public class UserRequestValidationTest {
     }
 
     @Test
-    public void test_create_user_rejects_invalid_database_name_in_script_permissions() {
+    public void test_create_user_rejects_invalid_project_name_in_script_permissions() {
         final var req = new CreateUserRequest();
         req.setUsername("user");
         req.setPassword("password123");

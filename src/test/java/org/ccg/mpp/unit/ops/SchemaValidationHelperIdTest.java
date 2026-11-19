@@ -30,7 +30,7 @@ public class SchemaValidationHelperIdTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -41,8 +41,8 @@ public class SchemaValidationHelperIdTest {
 
     @BeforeEach
     void reset() throws Exception {
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private JsonObject json(String text) {
@@ -50,8 +50,8 @@ public class SchemaValidationHelperIdTest {
     }
 
     private String errorsFor(String schema, String document) {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, json(schema));
-        return SchemaValidationHelper.schemaErrors(TestGlobals.DB, TestGlobals.COLL, json(document),
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, json(schema));
+        return SchemaValidationHelper.schemaErrors(TestGlobals.PROJECT, TestGlobals.COLL, json(document),
                 new SchemaBudget(1_000_000));
     }
 
@@ -60,7 +60,7 @@ public class SchemaValidationHelperIdTest {
     }
 
     private static String key(String collName) {
-        return TestGlobals.DB + "|" + collName;
+        return TestGlobals.PROJECT + "|" + collName;
     }
 
     @Test
@@ -82,29 +82,29 @@ public class SchemaValidationHelperIdTest {
     @Test
     public void test_validation_never_alters_the_document() {
         final var document = json("{\"_id\":\"a\",\"name\":\"x\"}");
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, json("{\"required\":[\"_id\"]}"));
-        SchemaValidationHelper.schemaErrors(TestGlobals.DB, TestGlobals.COLL, document, new SchemaBudget(1_000));
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, json("{\"required\":[\"_id\"]}"));
+        SchemaValidationHelper.schemaErrors(TestGlobals.PROJECT, TestGlobals.COLL, document, new SchemaBudget(1_000));
         assertEquals(json("{\"_id\":\"a\",\"name\":\"x\"}"), document);
     }
 
     @Test
-    public void test_dropping_a_collection_or_database_forgets_its_checked_schema() throws Exception {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, json("{\"type\":\"object\"}"));
-        cache.putCollectionSchema(TestGlobals.DB, OTHER_COLL, json("{\"type\":\"object\"}"));
-        assertNull(SchemaValidationHelper.schemaErrors(TestGlobals.DB, TestGlobals.COLL, json("{}"),
+    public void test_dropping_a_collection_or_project_forgets_its_checked_schema() throws Exception {
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, json("{\"type\":\"object\"}"));
+        cache.putCollectionSchema(TestGlobals.PROJECT, OTHER_COLL, json("{\"type\":\"object\"}"));
+        assertNull(SchemaValidationHelper.schemaErrors(TestGlobals.PROJECT, TestGlobals.COLL, json("{}"),
                 new SchemaBudget(1_000)));
-        assertNull(
-                SchemaValidationHelper.schemaErrors(TestGlobals.DB, OTHER_COLL, json("{}"), new SchemaBudget(1_000)));
+        assertNull(SchemaValidationHelper.schemaErrors(TestGlobals.PROJECT, OTHER_COLL, json("{}"),
+                new SchemaBudget(1_000)));
         assertTrue(checkedSchemas().containsKey(key(TestGlobals.COLL)));
         assertTrue(checkedSchemas().containsKey(key(OTHER_COLL)));
-        DroppedCollections.forgetCollection(TestGlobals.DB, OTHER_COLL);
+        DroppedCollections.forgetCollection(TestGlobals.PROJECT, OTHER_COLL);
         assertFalse(checkedSchemas().containsKey(key(OTHER_COLL)));
         assertTrue(checkedSchemas().containsKey(key(TestGlobals.COLL)));
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, json("{\"type\":\"object\"}"));
-        SchemaValidationHelper.schemaErrors(TestGlobals.DB, TestGlobals.COLL, json("{}"), new SchemaBudget(1_000));
-        DroppedCollections.forgetDatabase(TestGlobals.DB);
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, json("{\"type\":\"object\"}"));
+        SchemaValidationHelper.schemaErrors(TestGlobals.PROJECT, TestGlobals.COLL, json("{}"), new SchemaBudget(1_000));
+        DroppedCollections.forgetProject(TestGlobals.PROJECT);
         for (final var key : checkedSchemas().keySet()) {
-            assertFalse(key.toString().startsWith(TestGlobals.DB + "|"), "kept " + key);
+            assertFalse(key.toString().startsWith(TestGlobals.PROJECT + "|"), "kept " + key);
         }
     }
 }

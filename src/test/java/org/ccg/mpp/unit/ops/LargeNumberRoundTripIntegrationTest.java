@@ -37,7 +37,7 @@ public class LargeNumberRoundTripIntegrationTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -47,7 +47,7 @@ public class LargeNumberRoundTripIntegrationTest {
     }
 
     private void save(String coll, String id, double amount) {
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("amount", new JsonNumber(amount));
@@ -57,7 +57,7 @@ public class LargeNumberRoundTripIntegrationTest {
 
     @Test
     public void test_save_and_find_by_id_preserve_large_numbers() {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         save(COLL, "big", 1e20);
         save(COLL, "huge", 9.223372036854776E18);
         save(COLL, "tiny", 1e-7);
@@ -71,15 +71,15 @@ public class LargeNumberRoundTripIntegrationTest {
 
     @Test
     public void test_aggregate_and_reindex_on_large_numbers() {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, INDEXED_COLL));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, INDEXED_COLL));
         save(INDEXED_COLL, "agg1", 1e20);
         save(INDEXED_COLL, "agg2", 5);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, INDEXED_COLL, "amount"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, INDEXED_COLL, "amount"));
 
         assertEquals(1, matches(1e20));
         assertEquals(1, matches(5));
 
-        final var reindex = new ReindexRequest(TestGlobals.DB, INDEXED_COLL, List.of("amount"));
+        final var reindex = new ReindexRequest(TestGlobals.PROJECT, INDEXED_COLL, List.of("amount"));
         assertEquals(OperationStatus.OK, processor.processMessage(reindex).getStatus());
 
         assertEquals(1, matches(1e20));
@@ -87,7 +87,7 @@ public class LargeNumberRoundTripIntegrationTest {
     }
 
     private double amountOf(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, COLL);
         request.set_id(id);
         final var response = (FindByIdResponse) processor.processMessage(request);
         assertEquals(OperationStatus.OK, response.getStatus());
@@ -95,7 +95,7 @@ public class LargeNumberRoundTripIntegrationTest {
     }
 
     private int matches(double amount) {
-        final var request = new AggregateRequest(TestGlobals.DB, INDEXED_COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, INDEXED_COLL);
         request.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "amount", new JsonNumber(amount)))));
         final var response = (AggregateResponse) processor.processMessage(request);

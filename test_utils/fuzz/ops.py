@@ -39,7 +39,7 @@ def plain_field(rng) -> str:
     return "".join(rng.choice(FIELD_ALPHABET) for _ in range(size))
 
 
-def database_pool(rng, count: int = 2) -> list:
+def project_pool(rng, count: int = 2) -> list:
     pool = [f"fz{plain_name(rng, 3, 6)}" for _ in range(count)]
     if rng.random() < 0.25:
         pool.append(rng.choice(RESERVED_NEAR_MISSES))
@@ -78,7 +78,7 @@ def id_pool(rng, count: int = 8) -> list:
 
 class Op(NamedTuple):
     kind: str
-    db: str = None
+    project: str = None
     coll: str = None
     field: str = None
     docs: list = None
@@ -86,7 +86,7 @@ class Op(NamedTuple):
     nested: list = None
 
 
-CREATE_DATABASE = "CREATE_DATABASE"
+CREATE_PROJECT = "CREATE_PROJECT"
 CREATE_COLLECTION = "CREATE_COLLECTION"
 SAVE = "SAVE"
 BULK_SAVE = "BULK_SAVE"
@@ -95,18 +95,18 @@ CREATE_INDEX = "CREATE_INDEX"
 DROP_INDEX = "DROP_INDEX"
 REINDEX = "REINDEX"
 DROP_COLLECTION = "DROP_COLLECTION"
-DROP_DATABASE = "DROP_DATABASE"
+DROP_PROJECT = "DROP_PROJECT"
 TRANSACTION = "TRANSACTION"
 RESTART = "RESTART"
 
-NEEDS_DATABASE = (CREATE_COLLECTION, DROP_DATABASE)
+NEEDS_PROJECT = (CREATE_COLLECTION, DROP_PROJECT)
 NEEDS_COLLECTION = (SAVE, BULK_SAVE, DELETE, CREATE_INDEX, DROP_INDEX, REINDEX,
                     DROP_COLLECTION)
 
 
 class Namespace:
     def __init__(self, rng):
-        self.databases = database_pool(rng)
+        self.projects = project_pool(rng)
         self.collections = collection_pool(rng)
         self.fields = field_pool(rng)
         self.ids = id_pool(rng)
@@ -114,25 +114,25 @@ class Namespace:
 
 class PlanState:
     def __init__(self):
-        self.databases = set()
+        self.projects = set()
         self.collections = set()
 
     def apply(self, op: Op) -> None:
-        if op.kind == CREATE_DATABASE:
-            self.databases.add(op.db)
+        if op.kind == CREATE_PROJECT:
+            self.projects.add(op.project)
         elif op.kind == CREATE_COLLECTION:
-            self.collections.add((op.db, op.coll))
+            self.collections.add((op.project, op.coll))
         elif op.kind == DROP_COLLECTION:
-            self.collections.discard((op.db, op.coll))
-        elif op.kind == DROP_DATABASE:
-            self.databases.discard(op.db)
-            self.collections = {c for c in self.collections if c[0] != op.db}
+            self.collections.discard((op.project, op.coll))
+        elif op.kind == DROP_PROJECT:
+            self.projects.discard(op.project)
+            self.collections = {c for c in self.collections if c[0] != op.project}
 
     def permits(self, op: Op) -> bool:
-        if op.kind in NEEDS_DATABASE:
-            return op.db in self.databases
+        if op.kind in NEEDS_PROJECT:
+            return op.project in self.projects
         if op.kind in NEEDS_COLLECTION:
-            return (op.db, op.coll) in self.collections
+            return (op.project, op.coll) in self.collections
         if op.kind == TRANSACTION:
             return bool(op.nested)
         return True
@@ -151,44 +151,44 @@ def document(rng, namespace: Namespace, doc_id: str) -> dict:
     return doc
 
 
-def _write_op(rng, namespace: Namespace, db: str, coll: str) -> Op:
+def _write_op(rng, namespace: Namespace, project: str, coll: str) -> Op:
     roll = rng.random()
     if roll < 0.55:
         doc_id = rng.choice(namespace.ids)
-        return Op(kind=SAVE, db=db, coll=coll, docs=[document(rng, namespace, doc_id)])
+        return Op(kind=SAVE, project=project, coll=coll, docs=[document(rng, namespace, doc_id)])
     if roll < 0.85:
         count = rng.randint(1, 4)
         chosen = [rng.choice(namespace.ids) for _ in range(count)]
         docs = [document(rng, namespace, doc_id) for doc_id in chosen]
-        return Op(kind=BULK_SAVE, db=db, coll=coll, docs=docs)
-    return Op(kind=DELETE, db=db, coll=coll, ids=[rng.choice(namespace.ids)])
+        return Op(kind=BULK_SAVE, project=project, coll=coll, docs=docs)
+    return Op(kind=DELETE, project=project, coll=coll, ids=[rng.choice(namespace.ids)])
 
 
 def _choose_op(rng, namespace: Namespace, state: PlanState) -> Op:
     live = state.live_collections()
-    if not state.databases or rng.random() < 0.08:
-        return Op(kind=CREATE_DATABASE, db=rng.choice(namespace.databases))
+    if not state.projects or rng.random() < 0.08:
+        return Op(kind=CREATE_PROJECT, project=rng.choice(namespace.projects))
     if not live or rng.random() < 0.12:
-        return Op(kind=CREATE_COLLECTION, db=rng.choice(sorted(state.databases)),
+        return Op(kind=CREATE_COLLECTION, project=rng.choice(sorted(state.projects)),
                   coll=rng.choice(namespace.collections))
-    db, coll = rng.choice(live)
+    project, coll = rng.choice(live)
     roll = rng.random()
     if roll < 0.62:
-        return _write_op(rng, namespace, db, coll)
+        return _write_op(rng, namespace, project, coll)
     if roll < 0.72:
-        return Op(kind=CREATE_INDEX, db=db, coll=coll, field=rng.choice(namespace.fields))
+        return Op(kind=CREATE_INDEX, project=project, coll=coll, field=rng.choice(namespace.fields))
     if roll < 0.75:
-        return Op(kind=DROP_INDEX, db=db, coll=coll, field=rng.choice(namespace.fields))
+        return Op(kind=DROP_INDEX, project=project, coll=coll, field=rng.choice(namespace.fields))
     if roll < 0.78:
-        return Op(kind=REINDEX, db=db, coll=coll)
+        return Op(kind=REINDEX, project=project, coll=coll)
     if roll < 0.90:
-        nested = [_write_op(rng, namespace, db, coll) for _ in range(rng.randint(1, 3))]
-        return Op(kind=TRANSACTION, db=db, coll=coll, nested=nested)
+        nested = [_write_op(rng, namespace, project, coll) for _ in range(rng.randint(1, 3))]
+        return Op(kind=TRANSACTION, project=project, coll=coll, nested=nested)
     if roll < 0.94:
         return Op(kind=RESTART)
     if roll < 0.98:
-        return Op(kind=DROP_COLLECTION, db=db, coll=coll)
-    return Op(kind=DROP_DATABASE, db=db)
+        return Op(kind=DROP_COLLECTION, project=project, coll=coll)
+    return Op(kind=DROP_PROJECT, project=project)
 
 
 def generate_plan(rng, length: int):
@@ -211,7 +211,7 @@ def repair(plan: list) -> list:
             nested = [n for n in (op.nested or []) if state.permits(n)]
             if not nested:
                 continue
-            candidate = Op(kind=op.kind, db=op.db, coll=op.coll, nested=nested)
+            candidate = Op(kind=op.kind, project=op.project, coll=op.coll, nested=nested)
         if not state.permits(candidate):
             continue
         state.apply(candidate)

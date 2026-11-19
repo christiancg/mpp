@@ -49,9 +49,9 @@ public class ConditionalSaveBufferTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(WRITER, "h", false, Set.of(), new HashMap<>(),
-                new HashMap<>(Map.of(TestGlobals.DB + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE))));
+                new HashMap<>(Map.of(TestGlobals.PROJECT + "|" + TestGlobals.COLL, PermissionLevel.READ_WRITE))));
         for (var i = 0; i < 6; i++) {
             assertEquals(OperationStatus.OK,
                     processor.processMessage(RequestParser.parseRequest(save("c" + i, i))).getStatus());
@@ -75,18 +75,18 @@ public class ConditionalSaveBufferTest {
     }
 
     private static String save(String id, int n) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + n + "}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + n + "}}";
     }
 
     private static String saveWhereNBelow(int bound, String status) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"condition\":{\"fieldOperatorType\":\"SMALLER_THAN\",\"field\":\"n\"," + "\"value\":" + bound
-                + "},\"object\":{\"status\":\"" + status + "\"}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"condition\":{\"fieldOperatorType\":\"SMALLER_THAN\",\"field\":\"n\","
+                + "\"value\":" + bound + "},\"object\":{\"status\":\"" + status + "\"}}";
     }
 
     private static String deleteFirstSeeded() {
-        return "{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"_id\":\"c0\"}";
     }
 
@@ -96,7 +96,7 @@ public class ConditionalSaveBufferTest {
 
     private String committedStatus(String id) {
         final var response = processor.processMessage(
-                RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\"," + "\"databaseName\":\"" + TestGlobals.DB
+                RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\"," + "\"projectName\":\"" + TestGlobals.PROJECT
                         + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}"));
         final var document = assertInstanceOf(FindByIdResponse.class, response, response.getMessage()).getObject();
         return document.has("status") ? document.get("status").asJsonString().getValue() : null;
@@ -104,7 +104,7 @@ public class ConditionalSaveBufferTest {
 
     private int committedN(String id) {
         final var response = processor.processMessage(
-                RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\"," + "\"databaseName\":\"" + TestGlobals.DB
+                RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\"," + "\"projectName\":\"" + TestGlobals.PROJECT
                         + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}"));
         return assertInstanceOf(FindByIdResponse.class, response).getObject().get("n").asJsonNumber().getValue()
                 .intValue();
@@ -173,11 +173,10 @@ public class ConditionalSaveBufferTest {
     @Test
     public void test_a_patch_without_the_required_fields_is_buffered_once_merged() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(RequestParser.parseRequest(
-                        "{\"type\":\"SAVE_SCHEMA\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                                + TestGlobals.COLL + "\",\"schema\":{\"type\":\"object\",\"required\":[\"n\"],"
-                                + "\"properties\":{\"status\":{\"type\":\"string\"}}}}"))
-                        .getStatus());
+                processor.processMessage(RequestParser.parseRequest("{\"type\":\"SAVE_SCHEMA\",\"projectName\":\""
+                        + TestGlobals.PROJECT + "\",\"collectionName\":\"" + TestGlobals.COLL
+                        + "\",\"schema\":{\"type\":\"object\",\"required\":[\"n\"],"
+                        + "\"properties\":{\"status\":{\"type\":\"string\"}}}}")).getStatus());
 
         assertEquals(2L, updatedCount(inTransaction(saveWhereNBelow(2, "done"))));
         assertEquals(OperationStatus.OK, TransactionOperationHelper.commit(clientId).getStatus());
@@ -199,9 +198,9 @@ public class ConditionalSaveBufferTest {
     @Test
     public void test_a_hook_rejection_buffers_nothing() throws Exception {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "guard",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "guard",
                 "export default (d) => { if (d.n === 2) { throw new Error('keep'); } };"), WRITER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("guard", new LinkedHashSet<>(Set.of(EventType.UPDATED)), "guard",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, WRITER, 1L, 1L,
                         1L, WRITER)));

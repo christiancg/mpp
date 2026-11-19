@@ -50,7 +50,7 @@ public class CommittedOpTriggersOutcomeTest {
     }
 
     private static String keyOf(String collName, String id) {
-        return Cache.getCollectionIdentifier(TestGlobals.DB, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + id;
+        return Cache.getCollectionIdentifier(TestGlobals.PROJECT, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + id;
     }
 
     private static JsonObject doc(String id) {
@@ -71,7 +71,7 @@ public class CommittedOpTriggersOutcomeTest {
             transaction.recordInserts(seq, List.of(insertedIds));
         }
         return new AdminTransactionEntry(transaction.getTransactionId().toString(), "client", seq, opType,
-                TestGlobals.DB, collName, payload);
+                TestGlobals.PROJECT, collName, payload);
     }
 
     private AdminTransactionEntry op(String opType, JsonObject payload, String... insertedIds) {
@@ -123,7 +123,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of());
 
-            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.DELETED), anyList(), eq(ACTING_USER), anyInt(), anyString(), any()), times(1));
         }
     }
@@ -159,7 +159,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of(keyOf(TestGlobals.COLL, "prefix-save"), ApplyOutcome.ALREADY_APPLIED));
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("prefix-save")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -172,7 +172,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of());
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("kept-save")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -185,7 +185,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of());
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.UPDATED), eq(List.of("kept-update")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -198,7 +198,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, superseded(TestGlobals.COLL, "bulk-fenced"));
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("bulk-kept")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -213,7 +213,7 @@ public class CommittedOpTriggersOutcomeTest {
 
             triggers.verify(() -> TriggerHelper.stageCommitted(anyString(), anyString(), eq(EventType.DELETED),
                     anyList(), anyString(), anyInt(), anyString(), any()), never());
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("kept-save")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -239,11 +239,11 @@ public class CommittedOpTriggersOutcomeTest {
             fire(ops, Map.of());
 
             triggers.verify(
-                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                             eq(EventType.UPDATED), eq(List.of("dup")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
             triggers.verify(
-                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                             eq(EventType.CREATED), eq(List.of()), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -256,11 +256,11 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of());
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("dup-ins")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
             triggers.verify(
-                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                             eq(EventType.UPDATED), eq(List.of()), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -273,7 +273,7 @@ public class CommittedOpTriggersOutcomeTest {
         try (var triggers = TriggerStagingMocks.mockTriggerHelper()) {
             fire(ops, Map.of());
 
-            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.CREATED), eq(List.of("dup-mixed", "other")), eq(ACTING_USER), anyInt(), anyString(),
                     any()), times(1));
         }
@@ -287,11 +287,11 @@ public class CommittedOpTriggersOutcomeTest {
             fire(ops, Map.of());
 
             triggers.verify(
-                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                             eq(EventType.CREATED), eq(List.of("a")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
             triggers.verify(
-                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+                    () -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                             eq(EventType.UPDATED), eq(List.of("b")), eq(ACTING_USER), anyInt(), anyString(), any()),
                     times(1));
         }
@@ -321,12 +321,12 @@ public class CommittedOpTriggersOutcomeTest {
     }
 
     private static void verifyDeletedFired(MockedStatic<TriggerHelper> triggers, String coll, int count) {
-        triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.DB), eq(coll), eq(EventType.DELETED),
+        triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.PROJECT), eq(coll), eq(EventType.DELETED),
                 anyList(), anyString(), anyInt(), anyString(), any()), times(count));
     }
 
     private static void verifyCreatedFor(MockedStatic<TriggerHelper> triggers, List<String> ids) {
-        triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+        triggers.verify(() -> TriggerHelper.stageCommittedIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                 eq(EventType.CREATED), argThat(list -> list.equals(ids)), anyString(), anyInt(), anyString(), any()));
     }
 
@@ -383,7 +383,7 @@ public class CommittedOpTriggersOutcomeTest {
             commit(removalOf(TestGlobals.COLL, "d1"), removalOf(TestGlobals.COLL, "d2"),
                     removalOf(TestGlobals.COLL, "d3"));
             verifyDeletedFired(triggers, TestGlobals.COLL, 1);
-            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.DELETED), argThat(entries -> idsOf(entries).equals(List.of("d1", "d2", "d3"))),
                     anyString(), anyInt(), anyString(), any()));
         }
@@ -395,7 +395,7 @@ public class CommittedOpTriggersOutcomeTest {
             commit(removalOf(TestGlobals.COLL, "e1"), removalOf(OTHER_COLL, "e2"), removalOf(TestGlobals.COLL, "e3"));
             verifyDeletedFired(triggers, TestGlobals.COLL, 1);
             verifyDeletedFired(triggers, OTHER_COLL, 1);
-            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            triggers.verify(() -> TriggerHelper.stageCommitted(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     eq(EventType.DELETED), argThat(entries -> idsOf(entries).equals(List.of("e1", "e3"))), anyString(),
                     anyInt(), anyString(), any()));
         }

@@ -2,10 +2,10 @@ import type { Filter, PipelineStep } from "../query/types.js";
 import { PipelineEncoder } from "./pipeline-encoder.js";
 import { encodeDocument, type EncodeOptions, type JsonObject } from "./values-codec.js";
 
-export function request(type: string, database?: string, collection?: string): JsonObject {
+export function request(type: string, project?: string, collection?: string): JsonObject {
     return {
         type,
-        ...(database === undefined ? {} : { databaseName: database }),
+        ...(project === undefined ? {} : { projectName: project }),
         ...(collection === undefined ? {} : { collectionName: collection }),
     };
 }
@@ -31,108 +31,108 @@ export class RequestEncoder {
         return { ...request("AUTHENTICATE"), username, password };
     }
 
-    save(database: string, collection: string, document: JsonObject): JsonObject {
-        return { ...request("SAVE", database, collection), object: document };
+    save(project: string, collection: string, document: JsonObject): JsonObject {
+        return { ...request("SAVE", project, collection), object: document };
     }
 
-    insert(database: string, collection: string, document: JsonObject): JsonObject {
-        return { ...this.save(database, collection, document), failOnUpdate: true };
+    insert(project: string, collection: string, document: JsonObject): JsonObject {
+        return { ...this.save(project, collection, document), failOnUpdate: true };
     }
 
-    bulkSave(database: string, collection: string, documents: JsonObject[]): JsonObject {
-        return { ...request("BULK_SAVE", database, collection), objects: documents };
+    bulkSave(project: string, collection: string, documents: JsonObject[]): JsonObject {
+        return { ...request("BULK_SAVE", project, collection), objects: documents };
     }
 
-    findById(database: string, collection: string, id: string, dirtyRead: boolean): JsonObject {
-        return dirty({ ...request("FIND_BY_ID", database, collection), _id: id }, dirtyRead);
+    findById(project: string, collection: string, id: string, dirtyRead: boolean): JsonObject {
+        return dirty({ ...request("FIND_BY_ID", project, collection), _id: id }, dirtyRead);
     }
 
-    delete(database: string, collection: string, id: string): JsonObject {
-        return { ...request("DELETE", database, collection), _id: id };
+    delete(project: string, collection: string, id: string): JsonObject {
+        return { ...request("DELETE", project, collection), _id: id };
     }
 
-    deleteWhere(database: string, collection: string, condition: Filter): JsonObject {
-        return { ...request("DELETE", database, collection), condition: this.pipeline.filter(condition) };
+    deleteWhere(project: string, collection: string, condition: Filter): JsonObject {
+        return { ...request("DELETE", project, collection), condition: this.pipeline.filter(condition) };
     }
 
-    updateWhere(database: string, collection: string, condition: Filter, patch: JsonObject): JsonObject {
-        return { ...request("SAVE", database, collection), condition: this.pipeline.filter(condition), object: patch };
+    updateWhere(project: string, collection: string, condition: Filter, patch: JsonObject): JsonObject {
+        return { ...request("SAVE", project, collection), condition: this.pipeline.filter(condition), object: patch };
     }
 
     aggregate(
-        database: string,
+        project: string,
         collection: string,
         steps: readonly PipelineStep[],
         dirtyRead: boolean,
         analyze: boolean,
     ): JsonObject {
-        const frame = { ...request("AGGREGATE", database, collection), aggregationSteps: this.pipeline.steps(steps) };
+        const frame = { ...request("AGGREGATE", project, collection), aggregationSteps: this.pipeline.steps(steps) };
         return dirty(analyze ? { ...frame, analyze: true } : frame, dirtyRead);
     }
 
-    listen(database: string, collection: string, steps: readonly PipelineStep[]): JsonObject {
-        return { ...request("LISTEN", database, collection), aggregationSteps: this.pipeline.steps(steps) };
+    listen(project: string, collection: string, steps: readonly PipelineStep[]): JsonObject {
+        return { ...request("LISTEN", project, collection), aggregationSteps: this.pipeline.steps(steps) };
     }
 
     stopListen(listenId: string): JsonObject {
         return { ...request("STOP_LISTEN"), listenId };
     }
 
-    listDatabases(): JsonObject {
-        return request("LIST_DATABASES");
+    listProjects(): JsonObject {
+        return request("LIST_PROJECTS");
     }
 
-    createDatabase(database: string): JsonObject {
-        return request("CREATE_DATABASE", database);
+    createProject(project: string): JsonObject {
+        return request("CREATE_PROJECT", project);
     }
 
-    dropDatabase(database: string): JsonObject {
-        return request("DROP_DATABASE", database);
+    dropProject(project: string): JsonObject {
+        return request("DROP_PROJECT", project);
     }
 
-    listCollections(database: string): JsonObject {
-        return request("LIST_COLLECTIONS", database);
+    listCollections(project: string): JsonObject {
+        return request("LIST_COLLECTIONS", project);
     }
 
-    createCollection(database: string, collection: string): JsonObject {
-        return request("CREATE_COLLECTION", database, collection);
+    createCollection(project: string, collection: string): JsonObject {
+        return request("CREATE_COLLECTION", project, collection);
     }
 
-    dropCollection(database: string, collection: string): JsonObject {
-        return request("DROP_COLLECTION", database, collection);
+    dropCollection(project: string, collection: string): JsonObject {
+        return request("DROP_COLLECTION", project, collection);
     }
 
-    createIndex(database: string, collection: string, fields: readonly string[]): JsonObject {
-        const frame = request("CREATE_INDEX", database, collection);
+    createIndex(project: string, collection: string, fields: readonly string[]): JsonObject {
+        const frame = request("CREATE_INDEX", project, collection);
         const [only] = fields;
         return fields.length === 1 && only !== undefined
             ? { ...frame, fieldName: only }
             : { ...frame, fieldNames: [...fields] };
     }
 
-    dropIndex(database: string, collection: string, field: string): JsonObject {
-        return { ...request("DROP_INDEX", database, collection), fieldName: field };
+    dropIndex(project: string, collection: string, field: string): JsonObject {
+        return { ...request("DROP_INDEX", project, collection), fieldName: field };
     }
 
-    reindex(database: string, collection: string, fields: readonly string[]): JsonObject {
-        const frame = request("REINDEX", database, collection);
+    reindex(project: string, collection: string, fields: readonly string[]): JsonObject {
+        const frame = request("REINDEX", project, collection);
         return fields.length === 0 ? frame : { ...frame, fieldNames: [...fields] };
     }
 
-    reindexPrimaryKey(database: string, collection: string): JsonObject {
-        return { ...request("REINDEX", database, collection), primaryKey: true };
+    reindexPrimaryKey(project: string, collection: string): JsonObject {
+        return { ...request("REINDEX", project, collection), primaryKey: true };
     }
 
-    saveSchema(database: string, collection: string, schema: JsonObject): JsonObject {
-        return { ...request("SAVE_SCHEMA", database, collection), schema };
+    saveSchema(project: string, collection: string, schema: JsonObject): JsonObject {
+        return { ...request("SAVE_SCHEMA", project, collection), schema };
     }
 
-    getSchema(database: string, collection: string): JsonObject {
-        return request("GET_SCHEMA", database, collection);
+    getSchema(project: string, collection: string): JsonObject {
+        return request("GET_SCHEMA", project, collection);
     }
 
-    deleteSchema(database: string, collection: string): JsonObject {
-        return request("DELETE_SCHEMA", database, collection);
+    deleteSchema(project: string, collection: string): JsonObject {
+        return request("DELETE_SCHEMA", project, collection);
     }
 
     startTransaction(): JsonObject {
@@ -151,15 +151,15 @@ export class RequestEncoder {
         return request("SERVER_INFO");
     }
 
-    databaseStats(database?: string): JsonObject {
-        return request("GET_DATABASE_STATS", database);
+    projectStats(project?: string): JsonObject {
+        return request("GET_PROJECT_STATS", project);
     }
 
     closeConnection(): JsonObject {
         return request("CLOSE_CONNECTION");
     }
 
-    setDatabaseOwners(database: string, owners: readonly string[]): JsonObject {
-        return { ...request("SET_DATABASE_OWNERS", database), owners: [...owners] };
+    setProjectOwners(project: string, owners: readonly string[]): JsonObject {
+        return { ...request("SET_PROJECT_OWNERS", project), owners: [...owners] };
     }
 }

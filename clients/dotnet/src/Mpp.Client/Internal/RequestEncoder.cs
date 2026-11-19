@@ -13,12 +13,12 @@ internal sealed class RequestEncoder(TimeZoneInfo? temporalZone)
 
     public TimeZoneInfo? TemporalZone { get; } = temporalZone;
 
-    public static JsonObject Request(string type, string? database = null, string? collection = null)
+    public static JsonObject Request(string type, string? project = null, string? collection = null)
     {
         var frame = new JsonObject { ["type"] = type };
-        if (database is not null)
+        if (project is not null)
         {
-            frame["databaseName"] = database;
+            frame["projectName"] = project;
         }
         if (collection is not null)
         {
@@ -39,30 +39,30 @@ internal sealed class RequestEncoder(TimeZoneInfo? temporalZone)
         return frame;
     }
 
-    public static JsonObject Save(string database, string collection, JsonObject document) =>
-        With(Request("SAVE", database, collection), "object", document);
+    public static JsonObject Save(string project, string collection, JsonObject document) =>
+        With(Request("SAVE", project, collection), "object", document);
 
-    public static JsonObject Insert(string database, string collection, JsonObject document) =>
-        With(With(Request("SAVE", database, collection), "failOnUpdate", true), "object", document);
+    public static JsonObject Insert(string project, string collection, JsonObject document) =>
+        With(With(Request("SAVE", project, collection), "failOnUpdate", true), "object", document);
 
-    public JsonObject SaveWhere(string database, string collection, Filter condition, JsonObject patch) =>
-        With(With(Request("SAVE", database, collection), "condition", Pipeline.Filter(condition)), "object", patch);
+    public JsonObject SaveWhere(string project, string collection, Filter condition, JsonObject patch) =>
+        With(With(Request("SAVE", project, collection), "condition", Pipeline.Filter(condition)), "object", patch);
 
-    public static JsonObject BulkSave(string database, string collection, IEnumerable<JsonObject> documents) =>
-        With(Request("BULK_SAVE", database, collection), "objects", new JsonArray([.. documents]));
+    public static JsonObject BulkSave(string project, string collection, IEnumerable<JsonObject> documents) =>
+        With(Request("BULK_SAVE", project, collection), "objects", new JsonArray([.. documents]));
 
-    public static JsonObject FindById(string database, string collection, string id, bool dirtyRead) =>
-        Dirty(With(Request("FIND_BY_ID", database, collection), "_id", id), dirtyRead);
+    public static JsonObject FindById(string project, string collection, string id, bool dirtyRead) =>
+        Dirty(With(Request("FIND_BY_ID", project, collection), "_id", id), dirtyRead);
 
-    public static JsonObject Delete(string database, string collection, string id) =>
-        With(Request("DELETE", database, collection), "_id", id);
+    public static JsonObject Delete(string project, string collection, string id) =>
+        With(Request("DELETE", project, collection), "_id", id);
 
-    public JsonObject DeleteWhere(string database, string collection, Filter condition) =>
-        With(Request("DELETE", database, collection), "condition", Pipeline.Filter(condition));
+    public JsonObject DeleteWhere(string project, string collection, Filter condition) =>
+        With(Request("DELETE", project, collection), "condition", Pipeline.Filter(condition));
 
-    public JsonObject Aggregate(string database, string collection, ImmutableArray<PipelineStep> steps, bool dirtyRead, bool analyze)
+    public JsonObject Aggregate(string project, string collection, ImmutableArray<PipelineStep> steps, bool dirtyRead, bool analyze)
     {
-        var frame = With(Request("AGGREGATE", database, collection), "aggregationSteps", Pipeline.Steps(steps));
+        var frame = With(Request("AGGREGATE", project, collection), "aggregationSteps", Pipeline.Steps(steps));
         if (analyze)
         {
             frame["analyze"] = true;
@@ -70,34 +70,34 @@ internal sealed class RequestEncoder(TimeZoneInfo? temporalZone)
         return Dirty(frame, dirtyRead);
     }
 
-    public JsonObject Listen(string database, string collection, ImmutableArray<PipelineStep> steps) =>
-        With(Request("LISTEN", database, collection), "aggregationSteps", Pipeline.Steps(steps));
+    public JsonObject Listen(string project, string collection, ImmutableArray<PipelineStep> steps) =>
+        With(Request("LISTEN", project, collection), "aggregationSteps", Pipeline.Steps(steps));
 
     public static JsonObject StopListen(string listenId) => With(Request("STOP_LISTEN"), "listenId", listenId);
 
-    public static JsonObject CreateIndex(string database, string collection, IReadOnlyList<string> fields)
+    public static JsonObject CreateIndex(string project, string collection, IReadOnlyList<string> fields)
     {
-        var frame = Request("CREATE_INDEX", database, collection);
+        var frame = Request("CREATE_INDEX", project, collection);
         return fields.Count == 1 ? With(frame, "fieldName", fields[0]) : With(frame, "fieldNames", Strings(fields));
     }
 
-    public static JsonObject DropIndex(string database, string collection, string field) =>
-        With(Request("DROP_INDEX", database, collection), "fieldName", field);
+    public static JsonObject DropIndex(string project, string collection, string field) =>
+        With(Request("DROP_INDEX", project, collection), "fieldName", field);
 
-    public static JsonObject Reindex(string database, string collection, IReadOnlyList<string> fields)
+    public static JsonObject Reindex(string project, string collection, IReadOnlyList<string> fields)
     {
-        var frame = Request("REINDEX", database, collection);
+        var frame = Request("REINDEX", project, collection);
         return fields.Count == 0 ? frame : With(frame, "fieldNames", Strings(fields));
     }
 
-    public static JsonObject ReindexPrimaryKey(string database, string collection) =>
-        With(Request("REINDEX", database, collection), "primaryKey", true);
+    public static JsonObject ReindexPrimaryKey(string project, string collection) =>
+        With(Request("REINDEX", project, collection), "primaryKey", true);
 
-    public static JsonObject SaveSchema(string database, string collection, JsonObject schema) =>
-        With(Request("SAVE_SCHEMA", database, collection), "schema", schema);
+    public static JsonObject SaveSchema(string project, string collection, JsonObject schema) =>
+        With(Request("SAVE_SCHEMA", project, collection), "schema", schema);
 
-    public static JsonObject SetDatabaseOwners(string database, IEnumerable<string> owners) =>
-        With(Request("SET_DATABASE_OWNERS", database), "owners", Strings(owners));
+    public static JsonObject SetProjectOwners(string project, IEnumerable<string> owners) =>
+        With(Request("SET_PROJECT_OWNERS", project), "owners", Strings(owners));
 
     public static JsonObject With(JsonObject frame, string field, JsonNode? value)
     {

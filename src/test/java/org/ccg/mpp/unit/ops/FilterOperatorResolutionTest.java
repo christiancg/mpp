@@ -41,22 +41,22 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         obj2.add(Globals.PK_FIELD, new JsonString("idx2"));
         obj2.addProperty("score", 200);
 
-        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj1);
+        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj1);
         e1.set_id("idx1");
-        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj2);
+        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj2);
         e2.set_id("idx2");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, e1);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, e2);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, e1);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, e2);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "idx1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "idx1", 0, 100, 0));
 
-        org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "score");
-        final var coll = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "score");
+        final var coll = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         coll.setIndexes(java.util.Set.of("score"));
 
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "score", new JsonNumber(100));
-        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL)
+        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
 
         assertEquals(1, result.size());
@@ -74,23 +74,23 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         obj2.add(Globals.PK_FIELD, new JsonString("is2"));
         obj2.addProperty("level", 10);
 
-        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj1);
+        DbEntry e1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj1);
         e1.set_id("is1");
-        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj2);
+        DbEntry e2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj2);
         e2.set_id("is2");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, e1);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, e2);
-        final var adminCollEntry2 = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, e1);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, e2);
+        final var adminCollEntry2 = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry2,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "is1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "is1", 0, 100, 0));
 
-        org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "level");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(java.util.Set.of("level"));
+        org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "level");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(java.util.Set.of("level"));
 
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(5));
         java.util.stream.Stream<JsonObject> existing = java.util.stream.Stream.of(obj1, obj2);
-        List<JsonObject> result = FilterOperatorHelper.processOperator(op, existing, TestGlobals.DB, TestGlobals.COLL)
-                .toList();
+        List<JsonObject> result = FilterOperatorHelper
+                .processOperator(op, existing, TestGlobals.PROJECT, TestGlobals.COLL).toList();
 
         assertEquals(1, result.size());
         assertEquals(5, result.getFirst().get("level").asJsonNumber().asInteger());
@@ -100,16 +100,16 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("status", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void index(Cache cache, String... fields) throws InterruptedException {
         for (final var field : fields) {
-            org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
+            org.ccg.mpp.ops.IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
         }
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(java.util.Set.of(fields));
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(java.util.Set.of(fields));
     }
 
     // Populates the PK index in the user cache directly so NOR/NAND can compute the full id universe
@@ -118,10 +118,10 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var userCache = IocContainer.get(org.ccg.mpp.cache.UserCache.class);
         final var list = new ArrayList<PkIndexEntry>();
         for (final var id : new String[]{"r1", "r2", "r3"}) {
-            list.add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, id, 0, 100, 0));
+            list.add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, id, 0, 100, 0));
         }
         final var pkMap = new java.util.concurrent.ConcurrentHashMap<String, List<PkIndexEntry>>();
-        pkMap.put(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL), list);
+        pkMap.put(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL), list);
         TestUtils.setPrivateField(userCache, "pkIndexMap", pkMap);
     }
 
@@ -134,7 +134,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         index(cache, "status");
 
         final var op = new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"));
-        final var ids = FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.DB, TestGlobals.COLL,
+        final var ids = FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts());
 
         assertEquals(java.util.Set.of("r1", "r3"), ids);
@@ -146,7 +146,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         addIndexedDoc(cache, "r1", new JsonString("active"));
 
         final var op = new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"));
-        assertNull(FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.DB, TestGlobals.COLL,
+        assertNull(FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts()));
     }
 
@@ -161,7 +161,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var and = new ConjunctionOperator(ConjunctionOperatorType.AND,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(1))));
-        assertEquals(java.util.Set.of("r1"), FilterOperatorHelper.resolveIdsViaIndex(and, TestGlobals.DB,
+        assertEquals(java.util.Set.of("r1"), FilterOperatorHelper.resolveIdsViaIndex(and, TestGlobals.PROJECT,
                 TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
@@ -176,8 +176,8 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var or = new ConjunctionOperator(ConjunctionOperatorType.OR,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(3))));
-        assertEquals(java.util.Set.of("r1", "r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(or, TestGlobals.DB,
-                TestGlobals.COLL, PipelineContext.withoutScripts()));
+        assertEquals(java.util.Set.of("r1", "r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(or,
+                TestGlobals.PROJECT, TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
     @Test
@@ -191,7 +191,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var xor = new ConjunctionOperator(ConjunctionOperatorType.XOR,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(1))));
-        assertEquals(java.util.Set.of("r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(xor, TestGlobals.DB,
+        assertEquals(java.util.Set.of("r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(xor, TestGlobals.PROJECT,
                 TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
@@ -207,8 +207,8 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var nor = new ConjunctionOperator(ConjunctionOperatorType.NOR,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(3))));
-        assertEquals(java.util.Set.of(), FilterOperatorHelper.resolveIdsViaIndex(nor, TestGlobals.DB, TestGlobals.COLL,
-                PipelineContext.withoutScripts()));
+        assertEquals(java.util.Set.of(), FilterOperatorHelper.resolveIdsViaIndex(nor, TestGlobals.PROJECT,
+                TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
     @Test
@@ -223,7 +223,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var nand = new ConjunctionOperator(ConjunctionOperatorType.NAND,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(1))));
-        assertEquals(java.util.Set.of("r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(nand, TestGlobals.DB,
+        assertEquals(java.util.Set.of("r2", "r3"), FilterOperatorHelper.resolveIdsViaIndex(nand, TestGlobals.PROJECT,
                 TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
@@ -236,7 +236,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var and = new ConjunctionOperator(ConjunctionOperatorType.AND,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(1))));
-        assertNull(FilterOperatorHelper.resolveIdsViaIndex(and, TestGlobals.DB, TestGlobals.COLL,
+        assertNull(FilterOperatorHelper.resolveIdsViaIndex(and, TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts()));
     }
 
@@ -247,7 +247,7 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         index(cache, "status");
 
         final var op = new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("missing"));
-        final var ids = FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.DB, TestGlobals.COLL,
+        final var ids = FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts());
 
         assertNotNull(ids);
@@ -259,9 +259,9 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty("status", status);
         obj.addProperty("level", level);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private static JsonObject objField(int n) {
@@ -284,21 +284,21 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
     public void test_resolve_ids_via_index_object_equals_disqualified_but_filter_resolves()
             throws IOException, InterruptedException {
         final var cache = IocContainer.get(Cache.class);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var pk = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "o1", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pk = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "o1", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, pk);
         addObjEntry(cache, "o1", 1);
         addObjEntry(cache, "o2", 1);
         addObjEntry(cache, "o3", 2);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
 
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "data", objField(1));
         assertNull(
-                FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.DB, TestGlobals.COLL,
+                FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.PROJECT, TestGlobals.COLL,
                         PipelineContext.withoutScripts()),
                 "object operands are disqualified from the index-only COUNT (hash hits are candidates)");
 
-        final var matched = FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL)
+        final var matched = FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue())
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("o1", "o2"), matched);
@@ -308,21 +308,21 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
     public void test_resolve_ids_via_index_array_equals_disqualified_but_filter_resolves()
             throws IOException, InterruptedException {
         final var cache = IocContainer.get(Cache.class);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var pk = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "a1", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pk = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "a1", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, pk);
         addArrEntry(cache, "a1", "x", "y");
         addArrEntry(cache, "a2", "x", "y");
         addArrEntry(cache, "a3", "z");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
 
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "data", arrField("x", "y"));
         assertNull(
-                FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.DB, TestGlobals.COLL,
+                FilterOperatorHelper.resolveIdsViaIndex(op, TestGlobals.PROJECT, TestGlobals.COLL,
                         PipelineContext.withoutScripts()),
                 "array operands are disqualified from the index-only COUNT (hash hits are candidates)");
 
-        final var matched = FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL)
+        final var matched = FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue())
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("a1", "a2"), matched);
@@ -332,18 +332,18 @@ public class FilterOperatorResolutionTest extends FilterResolutionSupport {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("data", objField(n));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void addArrEntry(Cache cache, String id, String... items) throws IOException {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("data", arrField(items));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
 }

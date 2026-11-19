@@ -35,10 +35,10 @@ public class EventProcessorIncarnationTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
         pendingIndexWrites = IocContainer.get(PendingIndexWrites.class);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIncarnation(CURRENT);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIncarnation(CURRENT);
     }
 
     @AfterEach
@@ -50,14 +50,14 @@ public class EventProcessorIncarnationTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("payload", new JsonString("some bytes"));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
         entry.setPage(page);
         return entry;
     }
 
     private AdminPageEntry page(long number) {
-        final var pages = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pages = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         if (pages == null) {
             return null;
         }
@@ -71,12 +71,12 @@ public class EventProcessorIncarnationTest {
     }
 
     private void seedLivePage() throws IOException, InterruptedException {
-        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL,
+        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(entryOnPage("live", 0)), List.of(), CURRENT));
     }
 
     private static EntityEvent event(EventType type, DbEntry entry, long incarnation) {
-        return new EntityEvent(type, TestGlobals.DB, TestGlobals.COLL, entry, incarnation);
+        return new EntityEvent(type, TestGlobals.PROJECT, TestGlobals.COLL, entry, incarnation);
     }
 
     @Test
@@ -101,13 +101,13 @@ public class EventProcessorIncarnationTest {
 
     @Test
     public void test_stale_bulk_event_is_skipped_and_its_pending_marks_cleared() throws Exception {
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "gone");
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "gone");
 
-        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL,
+        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(entryOnPage("gone", 3)), List.of(), DROPPED));
 
         Assertions.assertNull(page(3));
-        Assertions.assertFalse(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("gone"));
+        Assertions.assertFalse(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("gone"));
     }
 
     @Test
@@ -126,7 +126,7 @@ public class EventProcessorIncarnationTest {
         seedLivePage();
         final var countBefore = firstPage().getEntryCount();
         final var live = entryOnPage("live", 0);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0L, -live.byteSize(), -1);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0L, -live.byteSize(), -1);
 
         EventProcessorHelper.processEvent(event(EventType.DELETED, live, CURRENT));
 
@@ -139,16 +139,16 @@ public class EventProcessorIncarnationTest {
         EventProcessorHelper.processEvent(event(EventType.CREATED, entryOnPage("unstamped", 4), 0L));
         Assertions.assertNotNull(page(4));
 
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIncarnation(0L);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIncarnation(0L);
         EventProcessorHelper.processEvent(event(EventType.CREATED, entryOnPage("legacy", 6), DROPPED));
         Assertions.assertNotNull(page(6));
     }
 
     @Test
     public void test_entry_count_refuses_an_incarnation_that_changed_under_the_lock() throws Exception {
-        AdminOperationHelper.updateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        AdminOperationHelper.updateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 EntityRef.of(entryOnPage("raced", 9)), DROPPED);
-        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 List.of(EntityRef.of(entryOnPage("raced-bulk", 10))), DROPPED);
 
         Assertions.assertNull(page(9));
@@ -167,7 +167,7 @@ public class EventProcessorIncarnationTest {
 
     @Test
     public void test_a_booking_under_a_changed_incarnation_creates_no_row() throws Exception {
-        AdminOperationHelper.bookWritePathPages(TestGlobals.DB, TestGlobals.COLL,
+        AdminOperationHelper.bookWritePathPages(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(EntityRef.of(entryOnPage("raced-group", 12))), List.of(), DROPPED);
 
         Assertions.assertNull(page(12));
@@ -175,8 +175,8 @@ public class EventProcessorIncarnationTest {
 
     @Test
     public void test_current_incarnation_reads_the_registered_entry() {
-        Assertions.assertEquals(CURRENT, CollectionIncarnation.current(TestGlobals.DB, TestGlobals.COLL));
-        Assertions.assertEquals(0L, CollectionIncarnation.current(TestGlobals.DB, "neverCreated"));
-        Assertions.assertFalse(CollectionIncarnation.isCurrent(TestGlobals.DB, "neverCreated", 0L));
+        Assertions.assertEquals(CURRENT, CollectionIncarnation.current(TestGlobals.PROJECT, TestGlobals.COLL));
+        Assertions.assertEquals(0L, CollectionIncarnation.current(TestGlobals.PROJECT, "neverCreated"));
+        Assertions.assertFalse(CollectionIncarnation.isCurrent(TestGlobals.PROJECT, "neverCreated", 0L));
     }
 }

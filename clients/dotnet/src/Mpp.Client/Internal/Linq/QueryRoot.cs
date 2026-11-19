@@ -19,7 +19,7 @@ internal interface IQueryRoot
 {
     ClientContext Context { get; }
 
-    string Database { get; }
+    string Project { get; }
 
     string Collection { get; }
 
@@ -38,7 +38,7 @@ internal sealed class QueryRoot<T>(IQueryTarget<T> target) : IQueryRoot
 {
     public ClientContext Context => target.Context;
 
-    public string Database => target.Database;
+    public string Project => target.Project;
 
     public string Collection => target.Collection;
 

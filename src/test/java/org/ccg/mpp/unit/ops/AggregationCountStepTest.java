@@ -44,7 +44,7 @@ public class AggregationCountStepTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -57,14 +57,14 @@ public class AggregationCountStepTest {
         final var conjunction = new ConjunctionOperator(type,
                 List.of(new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")),
                         new FieldOperator(FieldOperatorType.EQUALS, "level", new JsonNumber(level))));
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new FilterAggregationStep(conjunction), new CountAggregationStep()));
         return req;
     }
 
     @Test
     public void test_count_on_empty_collection_returns_zero() throws IOException {
-        var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         var steps = new ArrayList<BaseAggregationStep>();
         steps.add(new CountAggregationStep());
         request.setAggregationSteps(steps);
@@ -85,10 +85,10 @@ public class AggregationCountStepTest {
             obj.addProperty(fieldName, s);
         else if (fieldValue instanceof Number n)
             obj.addProperty(fieldName, n);
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     // The whole-collection COUNT is derived from the (synchronously-maintained) PK index size, so
@@ -100,9 +100,9 @@ public class AggregationCountStepTest {
         final var pkIndexMap = TestUtils.getPrivateField(userCache, "pkIndexMap", token);
         final var list = new ArrayList<PkIndexEntry>();
         for (var id : ids) {
-            list.add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, id, 0, 100, 0));
+            list.add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, id, 0, 100, 0));
         }
-        pkIndexMap.put(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL), list);
+        pkIndexMap.put(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL), list);
     }
 
     @Test
@@ -113,7 +113,7 @@ public class AggregationCountStepTest {
         insertEntry(cache, "c3", "val", "c");
         registerPkIndex("c1", "c2", "c3");
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new CountAggregationStep()));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -127,14 +127,14 @@ public class AggregationCountStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("status", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex(Cache cache) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status"));
     }
 
     @Test
@@ -155,7 +155,7 @@ public class AggregationCountStepTest {
     }
 
     private List<JsonObject> countByName(FieldOperatorType type) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(
                 List.of(new FilterAggregationStep(new FieldOperator(type, "status", new JsonString("bob"))),
                         new CountAggregationStep()));
@@ -174,9 +174,9 @@ public class AggregationCountStepTest {
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("status", v1);
         obj.add(f2, v2);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     @Test
@@ -186,9 +186,10 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("inactive"));
         addDoc(cache, "c3", new JsonString("active"));
         enableIndex(cache);
-        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.PROJECT,
+                TestGlobals.COLL);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -205,7 +206,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("inactive"));
         addDoc(cache, "c3", new JsonString("active"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -222,7 +223,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("inactive"));
         addDoc(cache, "c3", new JsonString("active"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -246,7 +247,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("active"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -263,9 +264,9 @@ public class AggregationCountStepTest {
         addDocWithFields(cache, "c1", new JsonString("active"), "level", new JsonNumber(1));
         addDocWithFields(cache, "c2", new JsonString("active"), "level", new JsonNumber(2));
         addDocWithFields(cache, "c3", new JsonString("inactive"), "level", new JsonNumber(1));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "level");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "level");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
 
         final var req = conjunctionCount(ConjunctionOperatorType.AND, 1);
 
@@ -278,9 +279,9 @@ public class AggregationCountStepTest {
         addDocWithFields(cache, "c1", new JsonString("active"), "level", new JsonNumber(1));
         addDocWithFields(cache, "c2", new JsonString("active"), "level", new JsonNumber(2));
         addDocWithFields(cache, "c3", new JsonString("inactive"), "level", new JsonNumber(3));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "level");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "level");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
 
         final var req = conjunctionCount(ConjunctionOperatorType.OR, 3);
 
@@ -305,11 +306,11 @@ public class AggregationCountStepTest {
             throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         final var cache = IocContainer.get(Cache.class);
         addDoc(cache, "c1", new JsonString("active"));
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
         registerPkIndex("c1");
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new CountAggregationStep()));
 
         assertEquals(1, countOf(AggregationOperationHelper.processAggregation(req)));
@@ -321,7 +322,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c1", new JsonString("active"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("missing"))),
@@ -336,11 +337,11 @@ public class AggregationCountStepTest {
         addDocWithFields(cache, "c1", new JsonString("active"), "level", new JsonNumber(1));
         addDocWithFields(cache, "c2", new JsonString("active"), "level", new JsonNumber(2));
         addDocWithFields(cache, "c3", new JsonString("inactive"), "level", new JsonNumber(1));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "level");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "level");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status", "level"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -357,9 +358,10 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("inactive"));
         addDoc(cache, "c3", new JsonString("active"));
         enableIndex(cache);
-        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.PROJECT,
+                TestGlobals.COLL);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -378,7 +380,7 @@ public class AggregationCountStepTest {
         addDocWithFields(cache, "c3", new JsonString("inactive"), "ref", new JsonNumber(1));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -395,7 +397,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c3", new JsonString("inactive"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -412,7 +414,7 @@ public class AggregationCountStepTest {
         insertEntry(cache, "c2", "status", "inactive");
         registerPkIndex("c1", "c2");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new MapAggregationStep(
                         List.of(new org.ccg.mpp.ops.req.agg.step.map.RemoveFieldMapOperator("extra", null))),
@@ -428,7 +430,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("active"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),
@@ -445,7 +447,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c3", new JsonString("active"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new MapAggregationStep(
                         List.of(new org.ccg.mpp.ops.req.agg.step.map.RemoveFieldMapOperator("extra", null))),
@@ -463,7 +465,7 @@ public class AggregationCountStepTest {
         addDoc(cache, "c2", new JsonString("active"));
         enableIndex(cache);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active"))),

@@ -15,9 +15,9 @@ public class SaveTriggerRequest extends VersionedDefinitionRequest {
         super(OperationType.SAVE_TRIGGER, null, null);
     }
 
-    public SaveTriggerRequest(String databaseName, String collectionName, String name, List<String> events,
+    public SaveTriggerRequest(String projectName, String collectionName, String name, List<String> events,
             String procedureName) {
-        super(OperationType.SAVE_TRIGGER, databaseName, collectionName);
+        super(OperationType.SAVE_TRIGGER, projectName, collectionName);
         this.name = name;
         this.events = events;
         this.procedureName = procedureName;

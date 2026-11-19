@@ -16,8 +16,8 @@ public record CapturingHostBindings(HostBindings delegate, ConsoleCapture captur
     }
 
     @Override
-    public DatabaseAccess database() {
-        return delegate.database();
+    public ProjectAccess project() {
+        return delegate.project();
     }
 
     @Override

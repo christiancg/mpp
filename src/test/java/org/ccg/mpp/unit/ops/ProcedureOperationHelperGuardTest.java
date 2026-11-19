@@ -68,7 +68,7 @@ public class ProcedureOperationHelperGuardTest {
 
         assertEquals(REFUSAL, refused.getErrorCode());
         assertEquals(OperationStatus.FORBIDDEN, refused.getStatus());
-        final var stored = cache.getProcedure(TestGlobals.DB, BOUND);
+        final var stored = cache.getProcedure(TestGlobals.PROJECT, BOUND);
         assertEquals("return 1;", stored.getSource());
         assertEquals(1L, stored.getVersion());
         assertEquals(DEFINER, stored.getUpdatedBy());
@@ -78,20 +78,20 @@ public class ProcedureOperationHelperGuardTest {
     public void test_delete_refused_with_403_4_before_the_reference_refusal() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
 
-        final var foreign = ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest(TestGlobals.DB, BOUND),
-                INTRUDER);
-        final var own = ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest(TestGlobals.DB, BOUND),
+        final var foreign = ProcedureOperationHelper
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, BOUND), INTRUDER);
+        final var own = ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, BOUND),
                 DEFINER);
 
         assertEquals(REFUSAL, foreign.getErrorCode());
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), own.getErrorCode());
-        assertNotNull(cache.getProcedure(TestGlobals.DB, BOUND));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, BOUND));
     }
 
     @Test
     public void test_the_guard_runs_before_the_version_conflict_check() throws Exception {
         bindTrigger("audit", BOUND, TriggerDefinition.TIMING_AFTER, DEFINER);
-        final var stale = new SaveProcedureRequest(TestGlobals.DB, BOUND, "return 2;");
+        final var stale = new SaveProcedureRequest(TestGlobals.PROJECT, BOUND, "return 2;");
         stale.setIfVersion(7L);
 
         assertEquals(REFUSAL, ProcedureOperationHelper.executeSave(stale, INTRUDER).getErrorCode());
@@ -102,9 +102,9 @@ public class ProcedureOperationHelperGuardTest {
     @Test
     public void test_a_trigger_saved_while_a_procedure_save_holds_the_lock_is_seen_by_the_guard() throws Exception {
         holder.hold(() -> {
-            locks.lock(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
+            locks.lock(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
             return true;
-        }, () -> locks.release(TestGlobals.DB, Globals.PROCEDURES_FOLDER));
+        }, () -> locks.release(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER));
         final var result = new AtomicReference<OperationResponse>();
         final var saver = startParked(() -> saveProcedure(BOUND, "return 2;", INTRUDER), result);
 
@@ -115,7 +115,7 @@ public class ProcedureOperationHelperGuardTest {
         saver.join(BUDGET_MS);
 
         assertEquals(REFUSAL, result.get().getErrorCode());
-        assertEquals("return 1;", cache.getProcedure(TestGlobals.DB, BOUND).getSource());
+        assertEquals("return 1;", cache.getProcedure(TestGlobals.PROJECT, BOUND).getSource());
     }
 
     @Test
@@ -126,10 +126,10 @@ public class ProcedureOperationHelperGuardTest {
         final var replicated = new ProcedureDefinition(BOUND, "return 9;", 2L, null, true, 1L, 2L, INTRUDER);
 
         final var merged = AdminRecordMerge
-                .apply(List.of(new AdminRecord(AdminRecordKey.procedure(TestGlobals.DB, BOUND), version,
+                .apply(List.of(new AdminRecord(AdminRecordKey.procedure(TestGlobals.PROJECT, BOUND), version,
                         AdminStamp.stamped(replicated.toJsonObject(), version))), true);
 
         assertTrue(merged.complete());
-        assertEquals("return 9;", cache.getProcedure(TestGlobals.DB, BOUND).getSource());
+        assertEquals("return 9;", cache.getProcedure(TestGlobals.PROJECT, BOUND).getSource());
     }
 }

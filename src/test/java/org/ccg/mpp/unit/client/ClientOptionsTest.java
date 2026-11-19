@@ -55,7 +55,7 @@ public class ClientOptionsTest {
         assertFalse(options.insecure());
         assertFalse(options.compress());
         assertTrue(options.commands().isEmpty());
-        assertTrue(options.databases().isEmpty());
+        assertTrue(options.projects().isEmpty());
         assertTrue(options.collections().isEmpty());
     }
 
@@ -110,6 +110,11 @@ public class ClientOptionsTest {
     }
 
     @Test
+    public void test_the_old_databases_flag_is_unknown() {
+        assertUsageError("--dump", "--databases", "shop");
+    }
+
+    @Test
     public void test_missing_value_rejected() {
         assertUsageError("--dump", "--host");
         assertUsageError("--dump", "--user", "--compress");
@@ -124,9 +129,9 @@ public class ClientOptionsTest {
     }
 
     @Test
-    public void test_databases_list_split() {
-        assertEquals(List.of("shop", "crm"), parse("--dump", "--databases", "shop, crm,shop").databases());
-        assertUsageError("--dump", "--databases", "shop,,crm");
+    public void test_projects_list_split() {
+        assertEquals(List.of("shop", "crm"), parse("--dump", "--projects", "shop, crm,shop").projects());
+        assertUsageError("--dump", "--projects", "shop,,crm");
     }
 
     @Test
@@ -154,13 +159,13 @@ public class ClientOptionsTest {
     }
 
     @Test
-    public void test_databases_and_collections_together_rejected() {
-        assertUsageError("--dump", "--databases", "shop", "--collections", "crm.leads");
+    public void test_projects_and_collections_together_rejected() {
+        assertUsageError("--dump", "--projects", "shop", "--collections", "crm.leads");
     }
 
     @Test
     public void test_filters_outside_dump_rejected() {
-        assertUsageError("--restore", "--databases", "shop");
+        assertUsageError("--restore", "--projects", "shop");
         assertUsageError("--shell", "--collections", "shop.orders");
         assertUsageError("--exec", "{}", "--compress");
     }

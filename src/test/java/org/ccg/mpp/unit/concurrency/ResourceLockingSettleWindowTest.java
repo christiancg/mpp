@@ -18,9 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 public class ResourceLockingSettleWindowTest {
-    private static final String DB = "settle_db";
+    private static final String PROJECT = "settle_project";
     private static final String COLL = "settle_coll";
-    private static final String ID = Cache.getCollectionIdentifier(DB, COLL);
+    private static final String ID = Cache.getCollectionIdentifier(PROJECT, COLL);
     private static final long WAIT_MS = 5_000L;
     private static final long BLOCKED_MS = 200L;
     private final ResourceLocking rl = new ResourceLocking();
@@ -52,17 +52,17 @@ public class ResourceLockingSettleWindowTest {
 
     private CompletableFuture<Boolean> pointRead(long timeoutMillis) {
         return inOtherThread(() -> rl.acquirePointReadLock(false, ID, timeoutMillis) != null,
-                () -> rl.releaseRead(DB, COLL));
+                () -> rl.releaseRead(PROJECT, COLL));
     }
 
     private CompletableFuture<Boolean> scanRead(long timeoutMillis) {
         return inOtherThread(() -> rl.acquireReadLocks(false, List.of(ID), timeoutMillis) != null,
-                () -> rl.releaseRead(DB, COLL));
+                () -> rl.releaseRead(PROJECT, COLL));
     }
 
     private SettleWindow openWindow() throws InterruptedException {
-        rl.lock(DB, COLL);
-        return rl.openSettleWindow(DB, COLL);
+        rl.lock(PROJECT, COLL);
+        return rl.openSettleWindow(PROJECT, COLL);
     }
 
     private static void assertStillBlocked(CompletableFuture<Boolean> pending) {
@@ -87,13 +87,13 @@ public class ResourceLockingSettleWindowTest {
 
     @Test
     public void test_a_writer_also_holding_a_read_lock_keeps_its_lock_exclusive() throws Exception {
-        rl.lock(DB, COLL);
-        rl.lockRead(DB, COLL);
-        try (var window = rl.openSettleWindow(DB, COLL)) {
+        rl.lock(PROJECT, COLL);
+        rl.lockRead(PROJECT, COLL);
+        try (var window = rl.openSettleWindow(PROJECT, COLL)) {
             assertFalse(window.shared(), "downgrading would leave the read hold counted twice");
         } finally {
-            rl.releaseRead(DB, COLL);
-            rl.release(DB, COLL);
+            rl.releaseRead(PROJECT, COLL);
+            rl.release(PROJECT, COLL);
         }
     }
 
@@ -109,15 +109,15 @@ public class ResourceLockingSettleWindowTest {
 
     @Test
     public void test_a_scan_queued_before_the_window_backs_off_onto_the_gate() throws Exception {
-        rl.lock(DB, COLL);
+        rl.lock(PROJECT, COLL);
         final var acquired = new AtomicBoolean();
         final var scan = inOtherThread(() -> {
-            rl.lockRead(DB, COLL);
+            rl.lockRead(PROJECT, COLL);
             acquired.set(true);
             return true;
-        }, () -> rl.releaseRead(DB, COLL));
+        }, () -> rl.releaseRead(PROJECT, COLL));
         Thread.sleep(BLOCKED_MS);
-        try (var ignored = rl.openSettleWindow(DB, COLL)) {
+        try (var ignored = rl.openSettleWindow(PROJECT, COLL)) {
             assertStillBlocked(scan);
             assertFalse(acquired.get());
         }
@@ -128,20 +128,20 @@ public class ResourceLockingSettleWindowTest {
     public void test_a_bounded_scan_read_times_out_on_an_open_window() throws Exception {
         try (var ignored = openWindow()) {
             assertFalse(scanRead(150L).get(WAIT_MS, TimeUnit.MILLISECONDS));
-            assertFalse(inOtherThread(() -> rl.tryLockRead(DB, COLL, 150L), () -> rl.releaseRead(DB, COLL)).get(WAIT_MS,
-                    TimeUnit.MILLISECONDS));
+            assertFalse(inOtherThread(() -> rl.tryLockRead(PROJECT, COLL, 150L), () -> rl.releaseRead(PROJECT, COLL))
+                    .get(WAIT_MS, TimeUnit.MILLISECONDS));
         }
     }
 
     @Test
     public void test_try_lock_write_fails_inside_a_window() throws Exception {
         try (var ignored = openWindow()) {
-            assertFalse(inOtherThread(() -> rl.tryLockWrite(DB, COLL), () -> rl.release(DB, COLL)).get(WAIT_MS,
-                    TimeUnit.MILLISECONDS));
-            assertFalse(inOtherThread(() -> rl.tryLockWrite(DB, COLL, 150L), () -> rl.release(DB, COLL)).get(WAIT_MS,
-                    TimeUnit.MILLISECONDS));
+            assertFalse(inOtherThread(() -> rl.tryLockWrite(PROJECT, COLL), () -> rl.release(PROJECT, COLL))
+                    .get(WAIT_MS, TimeUnit.MILLISECONDS));
+            assertFalse(inOtherThread(() -> rl.tryLockWrite(PROJECT, COLL, 150L), () -> rl.release(PROJECT, COLL))
+                    .get(WAIT_MS, TimeUnit.MILLISECONDS));
         }
-        assertTrue(inOtherThread(() -> rl.tryLockWrite(DB, COLL), () -> rl.release(DB, COLL)).get(WAIT_MS,
+        assertTrue(inOtherThread(() -> rl.tryLockWrite(PROJECT, COLL), () -> rl.release(PROJECT, COLL)).get(WAIT_MS,
                 TimeUnit.MILLISECONDS));
     }
 
@@ -173,7 +173,7 @@ public class ResourceLockingSettleWindowTest {
             readerHolds.countDown();
             readerRelease.await();
             return acquired;
-        }, () -> rl.releaseRead(DB, COLL));
+        }, () -> rl.releaseRead(PROJECT, COLL));
         assertTrue(readerHolds.await(WAIT_MS, TimeUnit.MILLISECONDS));
 
         failNow.countDown();
@@ -191,9 +191,9 @@ public class ResourceLockingSettleWindowTest {
 
     @Test
     public void test_a_reentrant_write_hold_stays_exclusive() throws Exception {
-        rl.lock(DB, COLL);
-        rl.lock(DB, COLL);
-        try (var window = rl.openSettleWindow(DB, COLL)) {
+        rl.lock(PROJECT, COLL);
+        rl.lock(PROJECT, COLL);
+        try (var window = rl.openSettleWindow(PROJECT, COLL)) {
             assertFalse(window.shared());
             window.fail();
             assertFalse(pointRead(150L).get(WAIT_MS, TimeUnit.MILLISECONDS));
@@ -202,10 +202,10 @@ public class ResourceLockingSettleWindowTest {
             assertFalse(exclusive.shared());
         }
         assertTrue(rl.isWriteLockedByCurrentThread(ID));
-        rl.release(DB, COLL);
-        rl.release(DB, COLL);
+        rl.release(PROJECT, COLL);
+        rl.release(PROJECT, COLL);
         assertFalse(rl.isWriteLockedByCurrentThread(ID));
-        try (var unlocked = rl.openSettleWindow(DB, COLL)) {
+        try (var unlocked = rl.openSettleWindow(PROJECT, COLL)) {
             assertFalse(unlocked.shared(), "no window without the write lock");
         }
     }

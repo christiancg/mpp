@@ -52,7 +52,7 @@ public class TwoPhaseParticipantFencingTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (final var username : List.of("participant", "in-flight", "op-count", "op-count-ok")) {
             TestUtils.ensureAdminUser(username);
         }
@@ -76,12 +76,12 @@ public class TwoPhaseParticipantFencingTest {
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("fenced"));
         request.set_id("fenced");
         TransactionOperationHelper.bufferSave(request, transaction);
         final var corrupt = new AdminTransactionEntry(transaction.getTransactionId().toString(), "client", 99,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, new JsonObject());
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, new JsonObject());
         AdminOperationHelper.saveTransactionOp(corrupt);
         transaction.getBufferedOpIds().add(corrupt.get_id());
         return clientId;
@@ -141,7 +141,7 @@ public class TwoPhaseParticipantFencingTest {
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("unfenced"));
         request.set_id("unfenced");
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -160,7 +160,7 @@ public class TwoPhaseParticipantFencingTest {
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("erroring"));
         request.set_id("erroring");
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -189,7 +189,7 @@ public class TwoPhaseParticipantFencingTest {
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("clean"));
         request.set_id("clean");
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -215,12 +215,12 @@ public class TwoPhaseParticipantFencingTest {
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, transaction);
         final var coordinator = org.mockito.Mockito.mock(org.ccg.mpp.cluster.ClusterCoordinator.class);
-        org.mockito.Mockito.when(coordinator.stillOwns(TestGlobals.DB, TestGlobals.COLL)).thenReturn(stillOwner);
+        org.mockito.Mockito.when(coordinator.stillOwns(TestGlobals.PROJECT, TestGlobals.COLL)).thenReturn(stillOwner);
         final var original = swapCoordinator(coordinator);
         try {
             return TwoPhaseParticipant.prepare(clientId, "127.0.0.1:5000", List.of("127.0.0.1:5000"));
@@ -251,12 +251,12 @@ public class TwoPhaseParticipantFencingTest {
         final var configuration = Configuration.getInstance();
         final var cache = IocContainer.get(Cache.class);
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("t", new LinkedHashSet<>(Set.of(EventType.CREATED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
         final var clientId = clientTracker.registerForwardedClient("participant");
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("staged-2pc"));
         request.set_id("staged-2pc");
         TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
@@ -269,7 +269,7 @@ public class TwoPhaseParticipantFencingTest {
                 var ignoredRunLog = mockStatic(TriggerRunLog.class, recording)) {
             TwoPhaseParticipant.commitPrepared(clientId);
         } finally {
-            cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+            cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(configuration, "triggersEnabled", false);
             clientTracker.removeById(clientId);
         }
@@ -287,7 +287,7 @@ public class TwoPhaseParticipantFencingTest {
     }
 
     private void bufferSave(UUID clientId, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(bareDocument(id));
         request.set_id(id);
         assertEquals(OperationStatus.OK, TransactionOperationHelper
@@ -295,7 +295,7 @@ public class TwoPhaseParticipantFencingTest {
     }
 
     private OperationStatus findStatus(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }

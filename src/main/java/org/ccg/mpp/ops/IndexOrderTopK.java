@@ -46,18 +46,18 @@ final class IndexOrderTopK {
     private record Candidates(Set<String> ids, boolean exact) {
     }
 
-    private record Plan(String dbName, String collName, Candidates candidates, Predicate<JsonObject> test, long skip,
-            int limit, long budget) {
+    private record Plan(String projectName, String collName, Candidates candidates, Predicate<JsonObject> test,
+            long skip, int limit, long budget) {
     }
 
-    static IndexedSource.Fast tryWalk(List<BaseAggregationStep> steps, SortAggregationStep sort, String dbName,
+    static IndexedSource.Fast tryWalk(List<BaseAggregationStep> steps, SortAggregationStep sort, String projectName,
             String collName, long bound, PipelineContext context) throws IOException {
         final var sortField = sort.getFieldName();
         if (!(steps.getFirst() instanceof FilterAggregationStep filter) || !walkable(filter.getOperator())
-                || JsonUtils.isPrimaryKeyPath(sortField) || !locks.holdsCollectionLock(dbName, collName)
-                || cache.hasNoIndex(dbName, collName, sortField)
-                || cache.reloadsLargeFieldIndex(dbName, collName, sortField)
-                || !PendingWriteReconciler.pendingIds(dbName, collName).isEmpty()) {
+                || JsonUtils.isPrimaryKeyPath(sortField) || !locks.holdsCollectionLock(projectName, collName)
+                || cache.hasNoIndex(projectName, collName, sortField)
+                || cache.reloadsLargeFieldIndex(projectName, collName, sortField)
+                || !PendingWriteReconciler.pendingIds(projectName, collName).isEmpty()) {
             return null;
         }
         final var skip = AggregationOperationHelper.skipAfter(steps, 1);
@@ -69,13 +69,13 @@ final class IndexOrderTopK {
         if (split.others() == null) {
             return null;
         }
-        final var resolved = candidatesOf(split.others(), dbName, collName, context);
+        final var resolved = candidatesOf(split.others(), projectName, collName, context);
         final var candidates = resolved == null ? new Candidates(null, false) : resolved;
         final long matched = resolved == null ? Long.MAX_VALUE : resolved.ids().size();
         if (matched == 0) {
             return new IndexedSource.Fast(Stream.empty(), next);
         }
-        final var documents = Math.max(cache.pkIndexSize(dbName, collName), 1);
+        final var documents = Math.max(cache.pkIndexSize(projectName, collName), 1);
         final var expectedWalk = (double) bound * documents / matched;
         if (expectedWalk > (double) WALK_PER_CANDIDATE * matched) {
             return null;
@@ -88,13 +88,13 @@ final class IndexOrderTopK {
                 ? Math.min(budget + 1, MAX_FIRST_PAGE)
                 : (long) Math.clamp(Math.max(expectedWalk, bound) * 2, MIN_PAGE, MAX_FIRST_PAGE);
         final var ids = split.walkRange() == null
-                ? SortedIdWalk.open(dbName, collName, sortField, sort.getAscending(), firstPage, context)
-                : RangeIdWalk.open(dbName, collName, split.walkRange(), sort.getAscending(), firstPage, context);
+                ? SortedIdWalk.open(projectName, collName, sortField, sort.getAscending(), firstPage, context)
+                : RangeIdWalk.open(projectName, collName, split.walkRange(), sort.getAscending(), firstPage, context);
         if (ids == null) {
             return null;
         }
-        final var plan = new Plan(dbName, collName, candidates, OperatorPredicate.of(filter.getOperator(), context),
-                skip, (int) (bound - skip), budget);
+        final var plan = new Plan(projectName, collName, candidates,
+                OperatorPredicate.of(filter.getOperator(), context), skip, (int) (bound - skip), budget);
         final var rows = walk(ids, plan, context);
         return rows == null ? null : new IndexedSource.Fast(rows.stream(), next);
     }
@@ -133,12 +133,13 @@ final class IndexOrderTopK {
         };
     }
 
-    private static Candidates candidatesOf(BaseOperator operator, String dbName, String collName,
+    private static Candidates candidatesOf(BaseOperator operator, String projectName, String collName,
             PipelineContext context) throws IOException {
         final Set<String> ids = switch (operator) {
-            case FieldOperator field -> FilterOperatorHelper.indexMatchingIds(field, dbName, collName, context);
-            case ConjunctionOperator conjunction -> ConjunctionCandidates.of(conjunction, dbName, collName, context);
-            case CustomOperator custom -> GeoSpatialIndexHelper.candidateIds(custom, dbName, collName, context);
+            case FieldOperator field -> FilterOperatorHelper.indexMatchingIds(field, projectName, collName, context);
+            case ConjunctionOperator conjunction ->
+                ConjunctionCandidates.of(conjunction, projectName, collName, context);
+            case CustomOperator custom -> GeoSpatialIndexHelper.candidateIds(custom, projectName, collName, context);
             default -> null;
         };
         if (ids == null) {
@@ -194,7 +195,7 @@ final class IndexOrderTopK {
         if (buffer.isEmpty()) {
             return;
         }
-        try (var fetched = SortOperatorHelper.fetchInOrder(buffer.iterator(), plan.dbName(), plan.collName(),
+        try (var fetched = SortOperatorHelper.fetchInOrder(buffer.iterator(), plan.projectName(), plan.collName(),
                 buffer.size(), context)) {
             fetched.forEachOrdered(document -> {
                 if (rows.size() >= plan.limit() || !plan.test().test(document)) {

@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class DocumentPageStoreChunkedTest {
-    private static final String DB = "chunkDb";
+    private static final String PROJECT = "chunkProject";
     private static final String COLL = "chunkColl";
     private static final int CHUNK = ChunkedLines.CHUNK_BYTES;
 
@@ -33,7 +33,7 @@ public class DocumentPageStoreChunkedTest {
     public void setUp() throws IOException {
         paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        Files.createDirectories(paths.collectionFolder(DB, COLL).toPath());
+        Files.createDirectories(paths.collectionFolder(PROJECT, COLL).toPath());
     }
 
     private static String record(String id, int payloadChars) {
@@ -45,7 +45,7 @@ public class DocumentPageStoreChunkedTest {
     }
 
     private void writePage(byte[] bytes) throws IOException {
-        Files.write(paths.collectionPage(DB, COLL, 0).toPath(), bytes);
+        Files.write(paths.collectionPage(PROJECT, COLL, 0).toPath(), bytes);
     }
 
     private static byte[] bytes(String... parts) {
@@ -57,7 +57,7 @@ public class DocumentPageStoreChunkedTest {
     }
 
     private Map<String, DbEntry> read() throws IOException {
-        return new DocumentPageStore(paths).readWholeCollectionPage(DB, COLL, 0);
+        return new DocumentPageStore(paths).readWholeCollectionPage(PROJECT, COLL, 0);
     }
 
     private static List<String> chunkedLines(byte[] content, int... cuts) {
@@ -183,7 +183,7 @@ public class DocumentPageStoreChunkedTest {
     public void test_an_empty_page_reads_as_no_chunk_and_no_document() throws IOException {
         writePage(new byte[0]);
 
-        assertTrue(FileLocks.readChunksLocked(paths.collectionPage(DB, COLL, 0), CHUNK).isEmpty());
+        assertTrue(FileLocks.readChunksLocked(paths.collectionPage(PROJECT, COLL, 0), CHUNK).isEmpty());
         assertTrue(read().isEmpty());
     }
 
@@ -207,7 +207,7 @@ public class DocumentPageStoreChunkedTest {
         final var content = bytes(record("a", 10), "\n", record("b", CHUNK), "\n");
         writePage(content);
 
-        try (var reader = new RandomAccessFile(paths.collectionPage(DB, COLL, 0), "r")) {
+        try (var reader = new RandomAccessFile(paths.collectionPage(PROJECT, COLL, 0), "r")) {
             final var chunks = FileLocks.readChunks(reader, content.length + 1000L, CHUNK);
 
             final var read = new ByteArrayOutputStream();

@@ -119,7 +119,7 @@ public class ApplyTrackerTest {
     }
 
     @Test
-    public void test_forgetting_a_database_drops_only_its_idle_keys() {
+    public void test_forgetting_a_project_drops_only_its_idle_keys() {
         tracker.begin(List.of("db|a", "db|b", "dbx|a"));
         tracker.end(List.of("db|a", "dbx|a"));
         final var survivor = tracker.snapshot(List.of("dbx|a"));

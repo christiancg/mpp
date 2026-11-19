@@ -21,9 +21,9 @@ import org.ccg.mpp.ejson.elements.JsonObject;
 import org.junit.jupiter.api.Test;
 
 public class ScanRefusalsTest {
-    private static final String DB = "refusalDb";
+    private static final String PROJECT = "refusalProject";
     private static final String COLL = "refusalColl";
-    private static final String ID = DB + Globals.COLL_IDENTIFIER_SEPARATOR + COLL;
+    private static final String ID = PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + COLL;
     private static final int PAGES = 4;
     private static final int DOCS_PER_PAGE = 20;
 
@@ -50,7 +50,7 @@ public class ScanRefusalsTest {
     private static List<AdminPageEntry> pages() {
         final var pages = new ArrayList<AdminPageEntry>();
         for (var page = 0; page < PAGES; page++) {
-            final var entry = new AdminPageEntry(DB, COLL, page);
+            final var entry = new AdminPageEntry(PROJECT, COLL, page);
             entry.setPageSize(10_000L);
             entry.setEntryCount(DOCS_PER_PAGE);
             pages.add(entry);
@@ -64,7 +64,7 @@ public class ScanRefusalsTest {
             final var object = new JsonObject();
             object.addProperty(Globals.PK_FIELD, "p" + page + "-" + i);
             object.addProperty("payload", "value-" + page + "-" + i);
-            documents.add(DbEntry.fromJsonObject(DB, COLL, object));
+            documents.add(DbEntry.fromJsonObject(PROJECT, COLL, object));
         }
         return documents;
     }
@@ -177,30 +177,30 @@ public class ScanRefusalsTest {
     }
 
     @Test
-    public void test_forget_drops_one_collection_and_forget_database_drops_only_that_database() {
-        final var sibling = DB + Globals.COLL_IDENTIFIER_SEPARATOR + "other";
-        final var longerDb = DB + "x" + Globals.COLL_IDENTIFIER_SEPARATOR + COLL;
+    public void test_forget_drops_one_collection_and_forget_project_drops_only_that_project() {
+        final var sibling = PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + "other";
+        final var longerProject = PROJECT + "x" + Globals.COLL_IDENTIFIER_SEPARATOR + COLL;
         refusals.refused(ID, 1_000L, 8_000L);
         refusals.refused(sibling, 1_000L, 8_000L);
-        refusals.refused(longerDb, 1_000L, 8_000L);
+        refusals.refused(longerProject, 1_000L, 8_000L);
 
         refusals.forget(ID);
         assertFalse(refusals.refusedAt(ID, 0L, 8_000L));
         assertTrue(refusals.refusedAt(sibling, 0L, 8_000L));
 
-        refusals.forgetDatabase(DB);
+        refusals.forgetProject(PROJECT);
         assertFalse(refusals.refusedAt(sibling, 0L, 8_000L));
-        assertTrue(refusals.refusedAt(longerDb, 0L, 8_000L));
+        assertTrue(refusals.refusedAt(longerProject, 0L, 8_000L));
     }
 
     @Test
     public void test_the_memo_is_bounded() {
         for (var i = 0; i < ScanRefusals.MAX_REMEMBERED; i++) {
-            refusals.refused(DB + Globals.COLL_IDENTIFIER_SEPARATOR + "c" + i, 1_000L, 8_000L);
+            refusals.refused(PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + "c" + i, 1_000L, 8_000L);
         }
         assertEquals(ScanRefusals.MAX_REMEMBERED, refusals.size());
 
-        refusals.refused(DB + Globals.COLL_IDENTIFIER_SEPARATOR + "c0", 2_000L, 8_000L);
+        refusals.refused(PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + "c0", 2_000L, 8_000L);
         assertEquals(ScanRefusals.MAX_REMEMBERED, refusals.size(), "refreshing a known collection keeps the rest");
 
         refusals.refused(ID, 1_000L, 8_000L);

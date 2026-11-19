@@ -8,18 +8,20 @@ import org.junit.jupiter.api.Test;
 public class ScriptingRequestValidatorTest {
     @Test
     public void validate_runScript_valid() {
-        assertTrue(RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myDb", "return 1;", null))
+        assertTrue(RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myProject", "return 1;", null))
                 .isValid());
     }
 
     @Test
     public void validate_runScript_missingScript_returnsFail() {
-        assertFalse(RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myDb", null, null)).isValid());
+        assertFalse(
+                RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myProject", null, null)).isValid());
     }
 
     @Test
     public void validate_runScript_blankScript_returnsFail() {
-        assertFalse(RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myDb", "   ", null)).isValid());
+        assertFalse(RequestValidator.validate(new org.ccg.mpp.ops.req.RunScriptRequest("myProject", "   ", null))
+                .isValid());
     }
 
     @Test

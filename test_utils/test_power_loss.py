@@ -29,7 +29,7 @@ SERVER_SETTINGS = {"maxPageSize": "8kb", "maxEntrySize": "4kb", "walCheckpointBy
 CASE_SETTINGS = {"maxMemory": "256mb", "maxPageSize": "4kb", "maxEntrySize": "1kb", "scriptsEnabled": True,
                  "faultInjectionEnabled": True, "syncWrites": True, "walCheckpointBytes": "16kb",
                  "walIdleCheckpointMs": 0, "triggersEnabled": True}
-CASES_DB = write_intent_kills.DB
+CASES_PROJECT = write_intent_kills.PROJECT
 DEFAULT_BUDGET_S = 300.0
 AUTO = "auto"
 AT_POWER_LOSS = "db.at-power-loss"
@@ -92,9 +92,9 @@ def run_seed(seed: int, mode: str, rebuild: str = AUTO) -> Run:
     finally:
         kill_process(proc)
     run.rebuild_mode = auto_rebuild(seed, mode) if rebuild == AUTO else rebuild
-    db = os.path.join(run.work_dir, "db")
-    run.rebuild = shadow.rebuild(shadow_root, db, run.rebuild_mode, rng).summary()
-    shutil.copytree(db, os.path.join(run.work_dir, AT_POWER_LOSS))
+    data_folder = os.path.join(run.work_dir, "db")
+    run.rebuild = shadow.rebuild(shadow_root, data_folder, run.rebuild_mode, rng).summary()
+    shutil.copytree(data_folder, os.path.join(run.work_dir, AT_POWER_LOSS))
     counts = {}
     for entry in history.entries:
         key = f"{entry.outcome}/{entry.error_code}" if entry.error_code else entry.outcome
@@ -131,7 +131,8 @@ def run_cases() -> None:
     case_config(work_dir, shadow_roots)
     proc = bu.start_server(work_dir, log_path, port=PORT)
     with connect() as conn:
-        check_status(f"create {CASES_DB}", conn.send({"type": "CREATE_DATABASE", "databaseName": CASES_DB}), "OK")
+        check_status(f"create {CASES_PROJECT}", conn.send({"type": "CREATE_PROJECT", "projectName": CASES_PROJECT}),
+                     "OK")
     bu.stop_server(proc, port=PORT)
     proc = None
     try:

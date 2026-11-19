@@ -37,9 +37,9 @@ public class TornCodepointRecoveryTest {
         TestUtils.setPrivateField(config, "filePath", TestGlobals.PATH);
         final var fileSystem = fs();
         fileSystem.createBaseDbPath();
-        fileSystem.createAdminDatabase();
-        fileSystem.createDatabaseFolder(TestGlobals.DB);
-        fileSystem.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fileSystem.createAdminProject();
+        fileSystem.createProjectFolder(TestGlobals.PROJECT);
+        fileSystem.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @AfterEach
@@ -57,8 +57,8 @@ public class TornCodepointRecoveryTest {
     }
 
     private static File collectionFolder() {
-        return new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
+                + TestGlobals.COLL);
     }
 
     private static File fileNamed(String suffix) {
@@ -85,7 +85,7 @@ public class TornCodepointRecoveryTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add(FIELD, new JsonString(label));
-        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         dbEntry.set_id(id);
         return dbEntry;
     }
@@ -99,7 +99,7 @@ public class TornCodepointRecoveryTest {
         assertTrue(page.exists(), "the page file must exist before it is torn");
         appendTornLine(page, "{\"_id\":\"p3\",\"" + FIELD + "\":\"");
 
-        final var read = fileSystem.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0);
+        final var read = fileSystem.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0);
 
         assertNotNull(read);
         assertTrue(read.containsKey("p1"),
@@ -121,13 +121,13 @@ public class TornCodepointRecoveryTest {
     @Test
     public void test_a_field_index_truncated_mid_codepoint_self_heals() throws Exception {
         final var fileSystem = fs();
-        LegacyIndexLines.of(fileSystem).updateIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD,
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "plain", Set.of("id1")), null);
-        LegacyIndexLines.of(fileSystem).updateIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD,
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, CJK, Set.of("id2")), null);
+        LegacyIndexLines.of(fileSystem).updateIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "plain", Set.of("id1")), null);
+        LegacyIndexLines.of(fileSystem).updateIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, CJK, Set.of("id2")), null);
         truncateOneByte(fileNamed("-" + FIELD + "-String.idx"));
 
-        final List<FieldIndexEntry<String>> index = fileSystem.readWholeFieldIndexFiles(TestGlobals.DB,
+        final List<FieldIndexEntry<String>> index = fileSystem.readWholeFieldIndexFiles(TestGlobals.PROJECT,
                 TestGlobals.COLL, FIELD, String.class);
 
         assertNotNull(index, "a torn codepoint must not make the whole index unreadable");
@@ -144,7 +144,7 @@ public class TornCodepointRecoveryTest {
         appendTornLine(pkIndex, "torn" + Globals.ID_SEPARATOR + "0" + Globals.ID_SEPARATOR + "1" + Globals.ID_SEPARATOR
                 + "0" + Globals.ID_SEPARATOR);
 
-        final var read = fileSystem.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        final var read = fileSystem.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertNotNull(read);
         assertEquals(2, read.stream().filter(e -> e.getValue().equals("k1") || e.getValue().equals("k2")).count(),

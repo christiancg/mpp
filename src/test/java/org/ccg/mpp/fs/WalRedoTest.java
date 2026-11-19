@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 @RequiresDirectorySync
 @RequiresFileKeys
 public class WalRedoTest {
-    private static final String DB = WalRedoFixture.DB;
+    private static final String PROJECT = WalRedoFixture.PROJECT;
     private static final String COLL = WalRedoFixture.COLL;
 
     @TempDir
@@ -112,13 +112,13 @@ public class WalRedoTest {
 
         assertHolds(Map.of("a", "old-a", "c", "old-c"));
         assertEquals(List.of("b"), completed.stream().map(PkIndexEntry::getValue).toList());
-        assertEquals(DB, completed.getFirst().getDatabaseName());
+        assertEquals(PROJECT, completed.getFirst().getProjectName());
         assertEquals(0L, completed.getFirst().getPage());
     }
 
     @Test
     public void test_a_bulk_insert_and_a_bulk_update_are_redone_whole() throws Exception {
-        rf.appender.bulkInsert(DB, COLL, new ArrayList<>(List.of(rf.entry("x", "x", 0), rf.entry("y", "y", 1))),
+        rf.appender.bulkInsert(PROJECT, COLL, new ArrayList<>(List.of(rf.entry("x", "x", 0), rf.entry("y", "y", 1))),
                 DbEntry::getPage, entry -> ReplacerFixture.line(entry.get_id(), entry.get_id()));
         rf.bulk(List.of(rf.indexed("a", "bulk-a"), rf.indexed("c", "bulk-c")));
         power.powerLoss();
@@ -213,13 +213,13 @@ public class WalRedoTest {
         final var log = Files.readAllBytes(log().toPath());
         redo();
         final var page = Files.readAllBytes(rf.fx.page(0).toPath());
-        final var pk = Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath());
+        final var pk = Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
         Files.write(log().toPath(), log);
 
         redo();
 
         assertArrayEquals(page, Files.readAllBytes(rf.fx.page(0).toPath()));
-        assertArrayEquals(pk, Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath()));
+        assertArrayEquals(pk, Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath()));
     }
 
     @Test
@@ -227,7 +227,7 @@ public class WalRedoTest {
         insertAfterTheCheckpoint();
         final var group = new ForceGroup();
         group.add(rf.fx.page(0).toPath());
-        group.add(rf.fx.paths.pkIndexFile(DB, COLL).toPath());
+        group.add(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
         group.force();
         power.powerLoss();
 
@@ -240,7 +240,7 @@ public class WalRedoTest {
     public void test_a_log_in_a_quarantined_folder_is_not_replayed() throws Exception {
         insertAfterTheCheckpoint();
         power.powerLoss();
-        final var folder = rf.fx.paths.collectionFolder(DB, COLL);
+        final var folder = rf.fx.paths.collectionFolder(PROJECT, COLL);
         final var aside = new File(folder.getParentFile(), COLL + Globals.QUARANTINE_INFIX + "1");
         Files.move(folder.toPath(), aside.toPath());
 
@@ -254,8 +254,8 @@ public class WalRedoTest {
     public void test_a_lost_group_keeps_every_acknowledged_version() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
         final var page = rf.fx.page(0);
-        final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
-        wal.openGroup(DB, COLL);
+        final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
+        wal.openGroup(PROJECT, COLL);
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         rf.replacer.delete(rf.fx.indexed("c"));
         power.powerLoss(Map.of(page, page.length(), pk, pk.length()));
@@ -269,8 +269,8 @@ public class WalRedoTest {
     public void test_a_group_whose_log_prefix_landed_keeps_only_that_prefix() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
         final var page = rf.fx.page(0);
-        final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
-        wal.openGroup(DB, COLL);
+        final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
+        wal.openGroup(PROJECT, COLL);
         rf.replace("a", "new-a", 0, PagePlacement.APPEND);
         final var firstRecordEnd = OutsideWrites.logEnd(log());
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
@@ -286,18 +286,18 @@ public class WalRedoTest {
         final var original = TestUtils.getPrivateStaticField(WriteAheadLog.class, "guard", CheckpointGuard.class);
         WriteAheadLog.guardWith(new CheckpointGuard() {
             @Override
-            public boolean holdsIndexWork(String dbName, String collName) {
+            public boolean holdsIndexWork(String projectName, String collName) {
                 return true;
             }
 
             @Override
-            public Collection<String> pendingIds(String dbName, String collName) {
+            public Collection<String> pendingIds(String projectName, String collName) {
                 return List.of("b", "gone");
             }
         });
         try {
             insertAfterTheCheckpoint();
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
         } finally {
             WriteAheadLog.guardWith(original);
         }
@@ -312,9 +312,9 @@ public class WalRedoTest {
     public void test_a_lost_group_cuts_pk_idx_back_to_its_logged_base() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
         final var page = rf.fx.page(0);
-        final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
+        final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
         final var base = pk.length();
-        wal.openGroup(DB, COLL);
+        wal.openGroup(PROJECT, COLL);
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         power.powerLoss(Map.of(page, page.length(), pk, pk.length()));
 
@@ -331,28 +331,28 @@ public class WalRedoTest {
 
         redo();
 
-        assertEquals(rebuilt, Files.readString(rf.fx.paths.pkIndexFile(DB, COLL).toPath(), StandardCharsets.UTF_8),
+        assertEquals(rebuilt, Files.readString(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath(), StandardCharsets.UTF_8),
                 "without a group base only a durable record that touched pk.idx can cut it");
     }
 
     @Test
     public void test_a_rebuild_after_a_group_interval_is_kept() throws Exception {
         final var wal = new WriteAheadLog(rf.fx.paths);
-        wal.openGroup(DB, COLL);
+        wal.openGroup(PROJECT, COLL);
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
-        wal.closeGroup(DB, COLL);
-        wal.checkpoint(DB, COLL);
+        wal.closeGroup(PROJECT, COLL);
+        wal.checkpoint(PROJECT, COLL);
         final var rebuilt = writeALongerPkIndex();
         power.powerLoss();
 
         redo();
 
-        assertEquals(rebuilt, Files.readString(rf.fx.paths.pkIndexFile(DB, COLL).toPath(), StandardCharsets.UTF_8),
+        assertEquals(rebuilt, Files.readString(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath(), StandardCharsets.UTF_8),
                 "the rebuild's leading checkpoint dropped the base, so the longer file survives");
     }
 
     private String writeALongerPkIndex() throws IOException {
-        final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
+        final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
         final var rebuilt = Files.readString(pk.toPath(), StandardCharsets.UTF_8) + "a\u001f0\u001f0\u001f0\u001f1\n";
         Files.writeString(pk.toPath(), rebuilt, StandardCharsets.UTF_8);
         power.force(null, pk.toPath());
@@ -360,7 +360,7 @@ public class WalRedoTest {
     }
 
     private File appendIndexLineOfD() throws IOException {
-        final var folder = rf.fx.paths.collectionFolder(DB, COLL);
+        final var folder = rf.fx.paths.collectionFolder(PROJECT, COLL);
         final var idxlog = new File(folder, COLL + "-v-String.idxlog");
         FieldIndexLog.append(new File(folder, COLL + "-v-String.idx"), idxlog,
                 List.of(new IndexLogChange("old-d", List.of("d"), List.of())));
@@ -385,7 +385,7 @@ public class WalRedoTest {
     public void test_a_checkpoint_makes_the_index_lines_it_drops_the_records_of_durable() throws Exception {
         insertAfterTheCheckpoint();
         final var idxlog = appendIndexLineOfD();
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
         power.powerLoss();
 
         assertEquals(List.of(), redo());

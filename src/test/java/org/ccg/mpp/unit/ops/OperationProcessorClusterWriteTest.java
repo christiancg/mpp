@@ -60,7 +60,7 @@ public class OperationProcessorClusterWriteTest {
     }
 
     private static SaveRequest save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         request.setObject(object);
@@ -71,7 +71,7 @@ public class OperationProcessorClusterWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origEnabled = config.isClusterEnabled();
         origExpected = config.getClusterExpectedSize();
         TestUtils.setPrivateField(config, "clusterEnabled", true);
@@ -117,13 +117,13 @@ public class OperationProcessorClusterWriteTest {
     @Test
     public void test_owner_bulk_save_and_delete_succeed() throws Exception {
         configureMembership(1, node("self", 9990));
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString("c2"));
         bulk.setObjects(List.of(object));
         assertInstanceOf(BulkSaveResponse.class, processor.processMessage(bulk));
 
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("c2");
         assertInstanceOf(DeleteResponse.class, processor.processMessage(delete));
     }
@@ -140,11 +140,11 @@ public class OperationProcessorClusterWriteTest {
         configureMembership(2, node("self", 9990), node("other", 9991));
         String ownedByOther = null;
         for (var i = 0; i < 500 && ownedByOther == null; i++) {
-            if (!ownership.isOwner(TestGlobals.DB, "coll-" + i)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, "coll-" + i)) {
                 ownedByOther = "coll-" + i;
             }
         }
-        final var request = new SaveRequest(TestGlobals.DB, ownedByOther);
+        final var request = new SaveRequest(TestGlobals.PROJECT, ownedByOther);
         final var object = new JsonObject();
         object.add("_id", new JsonString("c4"));
         request.setObject(object);
@@ -168,7 +168,7 @@ public class OperationProcessorClusterWriteTest {
 
     private String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
-            if (!ownership.isOwner(TestGlobals.DB, "coll-" + i)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, "coll-" + i)) {
                 return "coll-" + i;
             }
         }
@@ -179,7 +179,7 @@ public class OperationProcessorClusterWriteTest {
         for (var i = 0; i < 500; i++) {
             final var peer = node("peer-" + i, 9991);
             ownership.onMembershipChanged(new MembershipView(List.of(self, peer)));
-            if (!ownership.isOwner(TestGlobals.DB, TestGlobals.COLL)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 return peer;
             }
         }
@@ -201,13 +201,13 @@ public class OperationProcessorClusterWriteTest {
         configureMembership(2, node("self", 9990), node("other", 9991));
         final var halts = new CopyOnWriteArrayList<Integer>();
         armHalt(halts::add);
-        final var refused = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, TestGlobals.DB,
+        final var refused = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, TestGlobals.PROJECT,
                 collectionOwnedByOther());
         assertNotNull(refused);
         assertEquals("421-1", refused.getErrorCode());
         assertTrue(halts.isEmpty(), "a refused write must not reach the point");
         configureMembership(1, node("self", 9990));
-        assertNull(ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, TestGlobals.DB, TestGlobals.COLL));
+        assertNull(ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(List.of(137), halts);
     }
 
@@ -216,11 +216,11 @@ public class OperationProcessorClusterWriteTest {
         configureMembership(2, node("self", 9990), node("other", 9991));
         final var halts = new CopyOnWriteArrayList<Integer>();
         armHaltAt(FaultPoint.WRITE_OWNER_PROBED, halts::add);
-        assertNotNull(
-                ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, TestGlobals.DB, collectionOwnedByOther()));
+        assertNotNull(ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, TestGlobals.PROJECT,
+                collectionOwnedByOther()));
         assertTrue(halts.isEmpty(), "a refused write must not reach the probe point");
         configureMembership(1, node("self", 9990));
-        assertNull(ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, TestGlobals.DB, TestGlobals.COLL));
+        assertNull(ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(List.of(137), halts);
     }
 
@@ -236,14 +236,14 @@ public class OperationProcessorClusterWriteTest {
         final var response = processor.processMessage(save("moved"));
 
         assertEquals("503-8", response.getErrorCode());
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("moved");
         assertEquals(OperationStatus.OK, processor.processMessage(find).getStatus(),
                 "the write applied locally, so refusing it as not applied would be a lie");
     }
 
     private static DeleteRequest deleteWhereFlagged(String collName) {
-        final var request = new DeleteRequest(TestGlobals.DB, collName);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, collName);
         request.setCondition(new FieldOperator(FieldOperatorType.EQUALS, "flag", new JsonString("x")));
         return request;
     }
@@ -288,14 +288,14 @@ public class OperationProcessorClusterWriteTest {
 
         assertEquals("421-1", response.getErrorCode());
         ownership.onMembershipChanged(new MembershipView(List.of(self)));
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("kept");
         assertEquals(OperationStatus.OK, processor.processMessage(find).getStatus(),
                 "a reservation refused for a lost ownership deletes nothing");
     }
 
     private static SaveRequest saveWhereFlagged(String collName) {
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setCondition(new FieldOperator(FieldOperatorType.EQUALS, "flag", new JsonString("x")));
         final var patch = new JsonObject();
         patch.add("flag", new JsonString("y"));
@@ -338,7 +338,7 @@ public class OperationProcessorClusterWriteTest {
         assertEquals(ErrorCode.WRITE_OUTCOME_UNKNOWN.getCode(), response.getErrorCode());
         assertEquals(OperationType.SAVE, response.getType());
         ownership.onMembershipChanged(new MembershipView(List.of(self)));
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("kept");
         final var found = assertInstanceOf(FindByIdResponse.class, processor.processMessage(find));
         assertEquals("y", found.getObject().get("flag").asJsonString().getValue(),

@@ -72,7 +72,7 @@ public class TransactionClusteringTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         TestUtils.ensureAdminUser("admin");
         TestUtils.ensureAdminUser("alice");
@@ -109,7 +109,7 @@ public class TransactionClusteringTest {
     }
 
     private SaveRequest saveRequest(String id) {
-        final var req = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         req.setObject(obj);
@@ -126,7 +126,7 @@ public class TransactionClusteringTest {
     }
 
     private OperationStatus findStatus(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
@@ -217,13 +217,13 @@ public class TransactionClusteringTest {
             return TransactionOperationHelper.bufferSave(saveRequest("stranded"),
                     clientTracker.getActiveTransaction(session.clientId()));
         }).get();
-        assertFalse(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL), "lock should be held by the session");
+        assertFalse(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL), "lock should be held by the session");
 
         TransactionOperationHelper.reapTransactionsForDeparted(new MembershipView(List.of(node("self", 5000))));
 
         assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL), "lock should have been released");
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL), "lock should have been released");
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -379,16 +379,16 @@ public class TransactionClusteringTest {
         TestUtils.setPrivateField(config, "clusterEnabled", false);
         try {
             assertEquals(OperationStatus.OK,
-                    processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "stamped")).getStatus());
+                    processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "stamped")).getStatus());
         } finally {
             TestUtils.setPrivateField(config, "clusterEnabled", true);
         }
-        assertNotEquals(0L, CollectionIncarnation.current(TestGlobals.DB, "stamped"));
+        assertNotEquals(0L, CollectionIncarnation.current(TestGlobals.PROJECT, "stamped"));
         return "stamped";
     }
 
     private static SaveRequest saveIn(String collName, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         request.setObject(object);
@@ -397,7 +397,7 @@ public class TransactionClusteringTest {
     }
 
     private static DeleteRequest deleteIn(String collName, String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, collName);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, collName);
         request.set_id(id);
         return request;
     }
@@ -414,7 +414,7 @@ public class TransactionClusteringTest {
         final var payloads = ArgumentCaptor.forClass(ReplicationPayload.class);
         verify(replicator, times(2)).broadcast(payloads.capture());
         for (final var payload : payloads.getAllValues()) {
-            assertEquals(CollectionIncarnation.current(TestGlobals.DB, collName), payload.incarnationValue(),
+            assertEquals(CollectionIncarnation.current(TestGlobals.PROJECT, collName), payload.incarnationValue(),
                     "a replica cannot refuse a write that outlived a drop and re-create without its incarnation");
         }
     }
@@ -437,7 +437,7 @@ public class TransactionClusteringTest {
         verify(replicator).broadcastTx(batch.capture());
         assertEquals(2, batch.getValue().getEntries().size());
         for (final var entry : batch.getValue().getEntries()) {
-            assertEquals(CollectionIncarnation.current(TestGlobals.DB, collName), entry.incarnationValue());
+            assertEquals(CollectionIncarnation.current(TestGlobals.PROJECT, collName), entry.incarnationValue());
         }
     }
 }

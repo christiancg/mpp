@@ -12,20 +12,20 @@ public record HookHostBindings(ResourceLimits limits, ZoneId timeZone, Locale lo
         ModuleResolver moduleResolver, CancellationToken cancellation) implements HostBindings {
     private static final Configuration configuration = Configuration.getInstance();
 
-    public static HookHostBindings live(String scopedDatabase, ResourceLimits limits, CancellationToken cancellation) {
-        return of(scopedDatabase, limits, _ -> {
+    public static HookHostBindings live(String scopedProject, ResourceLimits limits, CancellationToken cancellation) {
+        return of(scopedProject, limits, _ -> {
         }, cancellation);
     }
 
-    public static HookHostBindings capturing(String scopedDatabase, ResourceLimits limits, Consumer<String> sink,
+    public static HookHostBindings capturing(String scopedProject, ResourceLimits limits, Consumer<String> sink,
             CancellationToken cancellation) {
-        return of(scopedDatabase, limits, sink, cancellation);
+        return of(scopedProject, limits, sink, cancellation);
     }
 
-    private static HookHostBindings of(String scopedDatabase, ResourceLimits limits, Consumer<String> sink,
+    private static HookHostBindings of(String scopedProject, ResourceLimits limits, Consumer<String> sink,
             CancellationToken cancellation) {
-        final var resolver = configuration.isScriptProcedureImportEnabled() && scopedDatabase != null
-                ? new ProcedureModuleResolver(scopedDatabase)
+        final var resolver = configuration.isScriptProcedureImportEnabled() && scopedProject != null
+                ? new ProcedureModuleResolver(scopedProject)
                 : null;
         return new HookHostBindings(limits, ZoneId.of(configuration.getScriptTimeZone()),
                 Locale.forLanguageTag(configuration.getScriptLocale()), sink, resolver, cancellation);
@@ -37,7 +37,7 @@ public record HookHostBindings(ResourceLimits limits, ZoneId timeZone, Locale lo
     }
 
     @Override
-    public DatabaseAccess database() {
+    public ProjectAccess project() {
         return null;
     }
 

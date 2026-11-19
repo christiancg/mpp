@@ -33,8 +33,8 @@ class Collected:
                 await self.arrived.wait()
 
 
-async def _orders(client: AsyncMppClient, database: str) -> Any:
-    shop = client.database(database)
+async def _orders(client: AsyncMppClient, project: str) -> Any:
+    shop = client.project(project)
     await shop.create()
     orders = shop.collection("orders")
     await orders.create()
@@ -97,7 +97,7 @@ async def test_listens_past_the_per_connection_limit_spread_over_connections(cli
 
 
 def test_a_sync_handler_receives_updates_in_order_and_may_call_the_client(sync_client: MppClient) -> None:
-    shop = sync_client.database("listen_sync")
+    shop = sync_client.project("listen_sync")
     shop.create()
     orders = shop.collection("orders")
     orders.create()

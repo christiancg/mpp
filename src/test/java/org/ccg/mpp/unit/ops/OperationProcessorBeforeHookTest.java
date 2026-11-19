@@ -52,7 +52,7 @@ public class OperationProcessorBeforeHookTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -73,22 +73,22 @@ public class OperationProcessorBeforeHookTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "beforeHookInstructionBudget", 200_000L);
         TestUtils.setPrivateField(configuration, "beforeHookTimeoutMs", 2_000L);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     private void installHook(String name, String procedure, String source, EventType... events) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, procedure, source), ACTOR);
-        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, procedure, source), ACTOR);
+        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         existing.add(new TriggerDefinition(name, new LinkedHashSet<>(Set.of(events)), procedure,
                 TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, ACTOR, 1L, 1L, 1L,
                 ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, existing);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, existing);
     }
 
     private static JsonObject document(String id) {
@@ -100,14 +100,14 @@ public class OperationProcessorBeforeHookTest {
     }
 
     private org.ccg.mpp.ops.resp.OperationResponse save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         return processor.processMessage(request);
     }
 
     private JsonObject find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         final var response = processor.processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
@@ -179,7 +179,7 @@ public class OperationProcessorBeforeHookTest {
         assertEquals(OperationStatus.OK, save("taken").getStatus());
         installHook("veto", "veto", "export default (d) => { throw new Error('hooked'); };", EventType.CREATED,
                 EventType.UPDATED);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("taken"));
         request.set_id("taken");
         request.setFailOnUpdate(true);
@@ -192,7 +192,7 @@ public class OperationProcessorBeforeHookTest {
         installHook("veto", "veto", "export default (d) => { if (d.qty > 1) { throw new Error('too many'); } };",
                 EventType.CREATED, EventType.UPDATED);
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), save("s3").getErrorCode());
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = document("s4");
         object.add("qty", new JsonNumber(1));
         request.setObject(object);
@@ -215,7 +215,7 @@ public class OperationProcessorBeforeHookTest {
     public void test_bulk_save_applies_the_replacement_to_every_document() throws Exception {
         installHook("calc", "calc", "export default (d) => ({ ...d, total: d.qty * d.price });", EventType.CREATED,
                 EventType.UPDATED);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("b1"), document("b2")));
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
         assertEquals(20.0, Objects.requireNonNull(find("b1")).get("total").asJsonNumber().getValue().doubleValue());
@@ -226,7 +226,7 @@ public class OperationProcessorBeforeHookTest {
     public void test_bulk_save_rejects_the_whole_request_on_the_first_veto() throws Exception {
         installHook("veto", "veto", "export default (d) => { if (d._id === 'b4') { throw new Error('no'); } };",
                 EventType.CREATED, EventType.UPDATED);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("b3"), document("b4"), document("b5")));
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), processor.processMessage(request).getErrorCode());
         assertNull(find("b3"));
@@ -238,7 +238,7 @@ public class OperationProcessorBeforeHookTest {
     public void test_bulk_save_evaluates_the_module_body_once() throws Exception {
         installHook("counter", "counter", "let opened = 0; opened++; export default (d) => ({ ...d, opened: opened });",
                 EventType.CREATED, EventType.UPDATED);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("c1"), document("c2"), document("c3")));
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
         assertEquals(1.0, Objects.requireNonNull(find("c1")).get("opened").asJsonNumber().getValue().doubleValue());
@@ -250,7 +250,7 @@ public class OperationProcessorBeforeHookTest {
         assertEquals(OperationStatus.OK, save("d1").getStatus());
         installHook("lock", "lock", "export default (d) => { if (d.price === 10) { throw new Error('locked'); } };",
                 EventType.DELETED);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("d1");
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), processor.processMessage(request).getErrorCode());
         assertNotNull(find("d1"));
@@ -261,14 +261,14 @@ public class OperationProcessorBeforeHookTest {
         assertEquals(OperationStatus.OK, save("d2").getStatus());
         installHook("lock", "lock", "export default (d) => { if (d.qty !== 2) { throw new Error('unexpected'); } };",
                 EventType.DELETED);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("d2");
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
         assertNull(find("d2"));
     }
 
     private org.ccg.mpp.ops.resp.OperationResponse deleteWhereQtyIsTwo() {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.EQUALS, "qty", new JsonNumber(2)));
         return processor.processMessage(request);
     }
@@ -305,7 +305,7 @@ public class OperationProcessorBeforeHookTest {
     }
 
     private org.ccg.mpp.ops.resp.OperationResponse saveWhereQtyIsTwo(JsonObject patch) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.EQUALS, "qty", new JsonNumber(2)));
         request.setObject(patch);
         return processor.processMessage(request);
@@ -354,7 +354,7 @@ public class OperationProcessorBeforeHookTest {
     @Test
     public void test_delete_of_an_absent_document_runs_no_hook() throws Exception {
         installHook("lock", "lock", "export default (d) => { throw new Error('should not run'); };", EventType.DELETED);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("never-existed");
         assertNotEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), processor.processMessage(request).getErrorCode());
     }
@@ -364,7 +364,7 @@ public class OperationProcessorBeforeHookTest {
     public void test_before_hook_does_not_fire_on_a_replicated_apply() throws Exception {
         installHook("calc", "calc", "export default (d) => ({ ...d, total: 999 });", EventType.CREATED,
                 EventType.UPDATED);
-        final var payload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(document("r1")), List.of(), List.of("1"));
         ReplicatedApplyHelper.apply(payload, TestGlobals.APPLY_BUDGET_MS);
         final var stored = find("r1");
@@ -391,7 +391,7 @@ public class OperationProcessorBeforeHookTest {
         final var second = document("ignored2");
         first.remove("_id");
         second.remove("_id");
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(first, second));
         final var response = processor.processMessage(request);
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
@@ -408,7 +408,7 @@ public class OperationProcessorBeforeHookTest {
                 EventType.UPDATED);
         final var object = document("ignored");
         object.remove("_id");
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(object));
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), processor.processMessage(request).getErrorCode());
     }
@@ -416,7 +416,7 @@ public class OperationProcessorBeforeHookTest {
     private org.ccg.mpp.ops.resp.OperationResponse saveWithoutAnId() {
         final var object = new JsonObject();
         object.add("qty", new JsonNumber(1));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         return processor.processMessage(request);
     }
@@ -446,7 +446,7 @@ public class OperationProcessorBeforeHookTest {
         installHook("bulkSeer", "bulkSeer", "export default (d) => ({ ...d, seenId: d._id });", EventType.CREATED);
         final var object = new JsonObject();
         object.add("qty", new JsonNumber(1));
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(object));
 
         final var response = processor.processMessage(request);

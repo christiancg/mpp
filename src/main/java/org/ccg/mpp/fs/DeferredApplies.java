@@ -17,26 +17,26 @@ public final class DeferredApplies {
         return any && collections.contains(collectionId);
     }
 
-    static synchronized void flag(String dbName, String collName) {
-        collections.add(idOf(dbName, collName));
+    static synchronized void flag(String projectName, String collName) {
+        collections.add(idOf(projectName, collName));
         any = true;
     }
 
-    static void flagIfUnapplied(FilePaths paths, String dbName, String collName) {
-        final var state = WalLogState.known(paths.writeAheadLog(dbName, collName).getAbsolutePath());
+    static void flagIfUnapplied(FilePaths paths, String projectName, String collName) {
+        final var state = WalLogState.known(paths.writeAheadLog(projectName, collName).getAbsolutePath());
         if (state != null && state.unapplied) {
-            flag(dbName, collName);
+            flag(projectName, collName);
         }
     }
 
-    static void clear(String dbName, String collName) {
+    static void clear(String projectName, String collName) {
         if (any) {
-            clearFlag(dbName, collName);
+            clearFlag(projectName, collName);
         }
     }
 
-    private static synchronized void clearFlag(String dbName, String collName) {
-        collections.remove(idOf(dbName, collName));
+    private static synchronized void clearFlag(String projectName, String collName) {
+        collections.remove(idOf(projectName, collName));
         any = !collections.isEmpty();
     }
 
@@ -44,20 +44,21 @@ public final class DeferredApplies {
         listener = replacement == null ? DeferredApplyListener.NONE : replacement;
     }
 
-    static void replay(FilePaths paths, String dbName, String collName, WalCodec.Decoded decoded) throws IOException {
-        final var rows = WalRedo.writtenRows(dbName, collName, decoded.records());
+    static void replay(FilePaths paths, String projectName, String collName, WalCodec.Decoded decoded)
+            throws IOException {
+        final var rows = WalRedo.writtenRows(projectName, collName, decoded.records());
         final var current = listener;
-        final var generation = current.replaying(dbName, collName, rows);
+        final var generation = current.replaying(projectName, collName, rows);
         try {
-            WalRedo.replay(paths, dbName, collName, decoded);
+            WalRedo.replay(paths, projectName, collName, decoded);
         } catch (IOException | RuntimeException failure) {
-            current.notReplayed(dbName, collName, rows, generation);
+            current.notReplayed(projectName, collName, rows, generation);
             throw failure;
         }
-        current.replayed(dbName, collName, rows, generation);
+        current.replayed(projectName, collName, rows, generation);
     }
 
-    private static String idOf(String dbName, String collName) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName;
+    private static String idOf(String projectName, String collName) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName;
     }
 }

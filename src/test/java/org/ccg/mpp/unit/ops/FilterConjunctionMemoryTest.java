@@ -37,7 +37,7 @@ public class FilterConjunctionMemoryTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -52,12 +52,12 @@ public class FilterConjunctionMemoryTest {
             doc.addProperty(Globals.PK_FIELD, "d" + i);
             doc.addProperty("n", random.nextInt(20));
             doc.addProperty("m", random.nextInt(5));
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, doc);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, doc);
             entry.set_id("d" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "d0", 0, 100, 0));
+        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL),
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "d0", 0, 100, 0));
     }
 
     private static List<BaseOperator> children(Random random, int count) {
@@ -84,13 +84,13 @@ public class FilterConjunctionMemoryTest {
     private List<Stream<JsonObject>> childStreams(List<BaseOperator> children) throws IOException {
         final var streams = new ArrayList<Stream<JsonObject>>();
         for (var child : children) {
-            streams.add(FilterOperatorHelper.processOperator(child, null, TestGlobals.DB, TestGlobals.COLL));
+            streams.add(FilterOperatorHelper.processOperator(child, null, TestGlobals.PROJECT, TestGlobals.COLL));
         }
         return streams;
     }
 
     private Stream<JsonObject> wholeCollection() {
-        return cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).values().stream().map(DbEntry::getData);
+        return cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).values().stream().map(DbEntry::getData);
     }
 
     private List<JsonObject> legacy(ConjunctionOperatorType type, List<BaseOperator> children) throws IOException {
@@ -122,7 +122,7 @@ public class FilterConjunctionMemoryTest {
                 final var expected = ids(legacy(type, children));
 
                 final var actual = ids(FilterOperatorHelper.processOperator(new ConjunctionOperator(type, children),
-                        null, TestGlobals.DB, TestGlobals.COLL).toList());
+                        null, TestGlobals.PROJECT, TestGlobals.COLL).toList());
 
                 assertEquals(expected, actual, type + " round " + round);
                 nonEmpty += actual.isEmpty() ? 0 : 1;

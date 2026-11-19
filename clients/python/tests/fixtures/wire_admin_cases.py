@@ -23,9 +23,9 @@ RUN_ID = "8f0e1a2b"
 
 
 def _ddl(cases: dict[str, FixtureCall]) -> None:
-    cases["ddl.list_databases"] = lambda r: r.raw(r.encoder.list_databases())
-    cases["ddl.create_database"] = lambda r: r.shop.create()
-    cases["ddl.drop_database"] = lambda r: r.shop.drop()
+    cases["ddl.list_projects"] = lambda r: r.raw(r.encoder.list_projects())
+    cases["ddl.create_project"] = lambda r: r.shop.create()
+    cases["ddl.drop_project"] = lambda r: r.shop.drop()
     cases["ddl.list_collections"] = lambda r: r.shop.list_collections()
     cases["ddl.create_collection"] = lambda r: r.orders.create()
     cases["ddl.drop_collection"] = lambda r: r.orders.drop()
@@ -41,8 +41,8 @@ def _ddl(cases: dict[str, FixtureCall]) -> None:
     cases["schema.get"] = lambda r: r.orders.schema().get()
     cases["schema.delete"] = lambda r: r.orders.schema().delete()
     cases["info.server_info"] = lambda r: r.raw(r.encoder.server_info())
-    cases["info.database_stats_all"] = lambda r: r.raw(r.encoder.database_stats())
-    cases["info.database_stats_one"] = lambda r: r.shop.stats()
+    cases["info.project_stats_all"] = lambda r: r.raw(r.encoder.project_stats())
+    cases["info.project_stats_one"] = lambda r: r.shop.stats()
     cases["info.close_connection"] = lambda r: r.raw(r.encoder.close_connection())
 
 
@@ -99,7 +99,7 @@ def _triggers_and_schedules(cases: dict[str, FixtureCall]) -> None:
     )
     cases["scripting.delete_trigger"] = lambda r: r.orders.triggers().delete("audit")
     cases["scripting.list_triggers_collection"] = lambda r: r.orders.triggers().list()
-    cases["scripting.list_triggers_database"] = lambda r: r.shop.list_triggers()
+    cases["scripting.list_triggers_project"] = lambda r: r.shop.list_triggers()
     cases["scripting.test_trigger"] = lambda r: r.orders.triggers().test(
         "normalize", TriggerEvent.CREATED, {"_id": "o-1", "qty": 2}
     )
@@ -143,8 +143,8 @@ def _users(cases: dict[str, FixtureCall]) -> None:
         "Secret-1234",
         Permissions(
             admin=False,
-            global_permissions=(GlobalPermission.CREATE_DATABASE,),
-            databases={"shop": DataPermission.READ_WRITE},
+            global_permissions=(GlobalPermission.CREATE_PROJECT,),
+            projects={"shop": DataPermission.READ_WRITE},
             collections={"shop|orders": DataPermission.READ},
             scripts={"shop": ScriptPermission.MANAGE},
         ),
@@ -152,13 +152,13 @@ def _users(cases: dict[str, FixtureCall]) -> None:
     cases["users.create_minimal"] = lambda r: r.admin.users().create("bob", "Secret-1234")
     cases["users.delete"] = lambda r: r.admin.users().delete("bob")
     cases["users.change_permissions"] = lambda r: r.admin.users().change_permissions(
-        "bob", Permissions(databases={"shop": DataPermission.READ}, scripts={"shop": ScriptPermission.RUN})
+        "bob", Permissions(projects={"shop": DataPermission.READ}, scripts={"shop": ScriptPermission.RUN})
     )
     cases["users.set_password_own"] = lambda r: r.raw(r.scripts.set_password("alice", "Secret-1234", "Secret-5678"))
     cases["users.set_password_admin"] = lambda r: r.admin.users().set_password("bob", "Secret-5678")
     cases["users.list"] = lambda r: r.admin.users().list()
     cases["users.list_filtered"] = lambda r: r.admin.users().list(field("admin").eq(True))
-    cases["users.set_database_owners"] = lambda r: r.shop.set_owners(["alice", "bob"])
+    cases["users.set_project_owners"] = lambda r: r.shop.set_owners(["alice", "bob"])
 
 
 def add_admin_cases(cases: dict[str, FixtureCall]) -> None:

@@ -16,7 +16,7 @@ import org.ccg.mpp.ejson.elements.JsonString;
 import org.ccg.mpp.simplejs.exceptions.RangeErrorException;
 import org.ccg.mpp.simplejs.exceptions.TypeErrorException;
 import org.ccg.mpp.simplejs.host.BulkSaveOutcome;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.internal.JsCoercion;
 import org.ccg.mpp.simplejs.values.EJsonInterop;
@@ -34,7 +34,7 @@ public final class DbModule {
     private static final int PAYLOAD_INDEX = 2;
     private static final int PATCH_INDEX = 3;
     private static final String PK_FIELD = "_id";
-    private static final String DATABASE_NAME = "database name";
+    private static final String PROJECT_NAME = "project name";
     private static final String COLLECTION_NAME = "collection name";
     private static final String ID = "id";
 
@@ -46,29 +46,29 @@ public final class DbModule {
         JsonObject apply(String db, String coll, JsonObject document);
     }
 
-    public static JsObject create(DatabaseAccess database, InterpreterOps ops, Intrinsics intrinsics,
+    public static JsObject create(ProjectAccess project, InterpreterOps ops, Intrinsics intrinsics,
             ResourceLimits limits) {
         final var db = new JsObject();
-        db.set("findById", hostCall("findById", ops, args -> findById(database, ops, args)));
-        db.set("aggregate", hostCall("aggregate", ops, args -> aggregate(database, ops, args)));
-        db.set("save", hostCall("save", ops, args -> write("save", database::save, ops, args)));
-        db.set("insert", hostCall("insert", ops, args -> write("insert", database::insert, ops, args)));
-        db.set("bulkSave", hostCall("bulkSave", ops, args -> bulkSave(database, ops, args)));
-        db.set("cursor", hostCall("cursor", ops, args -> cursor(database, ops, intrinsics, limits, args)));
+        db.set("findById", hostCall("findById", ops, args -> findById(project, ops, args)));
+        db.set("aggregate", hostCall("aggregate", ops, args -> aggregate(project, ops, args)));
+        db.set("save", hostCall("save", ops, args -> write("save", project::save, ops, args)));
+        db.set("insert", hostCall("insert", ops, args -> write("insert", project::insert, ops, args)));
+        db.set("bulkSave", hostCall("bulkSave", ops, args -> bulkSave(project, ops, args)));
+        db.set("cursor", hostCall("cursor", ops, args -> cursor(project, ops, intrinsics, limits, args)));
         db.set("delete", hostCall("delete", ops, args -> {
-            database.delete(requireString(args, 0, "delete", DATABASE_NAME),
+            project.delete(requireString(args, 0, "delete", PROJECT_NAME),
                     requireString(args, 1, "delete", COLLECTION_NAME), requireString(args, 2, "delete", ID));
             return JsUndefined.getInstance();
         }));
-        db.set("deleteWhere", hostCall("deleteWhere", ops, args -> deleteWhere(database, ops, args)));
-        db.set("updateWhere", hostCall("updateWhere", ops, args -> updateWhere(database, ops, args)));
+        db.set("deleteWhere", hostCall("deleteWhere", ops, args -> deleteWhere(project, ops, args)));
+        db.set("updateWhere", hostCall("updateWhere", ops, args -> updateWhere(project, ops, args)));
         db.set("listCollections", hostCall("listCollections", ops, args -> toStringArray(
-                database.listCollections(requireString(args, 0, "listCollections", DATABASE_NAME)))));
-        db.set("listDatabases", hostCall("listDatabases", ops, _ -> toStringArray(database.listDatabases())));
-        db.set("transaction", hostCall("transaction", ops, args -> transaction(database, ops, args)));
-        final var scopedDatabase = database.scopedDatabase();
-        if (scopedDatabase != null) {
-            db.set("name", new JsString(scopedDatabase));
+                project.listCollections(requireString(args, 0, "listCollections", PROJECT_NAME)))));
+        db.set("listProjects", hostCall("listProjects", ops, _ -> toStringArray(project.listProjects())));
+        db.set("transaction", hostCall("transaction", ops, args -> transaction(project, ops, args)));
+        final var scopedProject = project.scopedProject();
+        if (scopedProject != null) {
+            db.set("name", new JsString(scopedProject));
         }
         return db;
     }
@@ -77,18 +77,18 @@ public final class DbModule {
         return new JsNativeFunction(name, (_, args) -> NativeDepth.withHeadroom(ops, () -> body.apply(args)));
     }
 
-    private static JsValue findById(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
-        final var document = database.findById(requireString(args, 0, "findById", DATABASE_NAME),
+    private static JsValue findById(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
+        final var document = project.findById(requireString(args, 0, "findById", PROJECT_NAME),
                 requireString(args, 1, "findById", COLLECTION_NAME), requireString(args, 2, "findById", ID));
         InterpreterOps.charge(ops, EJsonInterop.estimatedBytes(document));
         return EJsonInterop.fromEjson(document);
     }
 
-    private static JsValue aggregate(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
-        final var dbName = requireString(args, 0, "aggregate", DATABASE_NAME);
+    private static JsValue aggregate(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
+        final var projectName = requireString(args, 0, "aggregate", PROJECT_NAME);
         final var collName = requireString(args, 1, "aggregate", COLLECTION_NAME);
         final var pipeline = requireArray(payloadArg(args, ops), "db.aggregate expects an array of aggregation steps");
-        final var results = database.aggregate(dbName, collName, pipeline);
+        final var results = project.aggregate(projectName, collName, pipeline);
         final var array = new JsArray();
         for (final var result : results) {
             InterpreterOps.charge(ops, EJsonInterop.estimatedBytes(result));
@@ -98,16 +98,16 @@ public final class DbModule {
     }
 
     private static JsValue write(String method, DocumentWrite access, InterpreterOps ops, List<JsValue> args) {
-        final var dbName = requireString(args, 0, method, DATABASE_NAME);
+        final var projectName = requireString(args, 0, method, PROJECT_NAME);
         final var collName = requireString(args, 1, method, COLLECTION_NAME);
         final var document = requireObject(payloadArg(args, ops), "db." + method + " expects a document");
-        final var saved = access.apply(dbName, collName, document);
+        final var saved = access.apply(projectName, collName, document);
         InterpreterOps.charge(ops, EJsonInterop.estimatedBytes(saved));
         return EJsonInterop.fromEjson(saved);
     }
 
-    private static JsValue bulkSave(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
-        final var dbName = requireString(args, 0, "bulkSave", DATABASE_NAME);
+    private static JsValue bulkSave(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
+        final var projectName = requireString(args, 0, "bulkSave", PROJECT_NAME);
         final var collName = requireString(args, 1, "bulkSave", COLLECTION_NAME);
         final var array = requireArray(payloadArg(args, ops), "db.bulkSave expects an array of documents");
         final var documents = new ArrayList<JsonObject>();
@@ -117,38 +117,38 @@ public final class DbModule {
             }
             documents.add(document);
         }
-        final var result = database.bulkSave(dbName, collName, documents);
+        final var result = project.bulkSave(projectName, collName, documents);
         InterpreterOps.chargeElements(ops, (long) result.inserted().size() + result.updated().size());
         return outcome(result);
     }
 
-    private static JsValue deleteWhere(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
-        final var dbName = requireString(args, 0, "deleteWhere", DATABASE_NAME);
+    private static JsValue deleteWhere(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
+        final var projectName = requireString(args, 0, "deleteWhere", PROJECT_NAME);
         final var collName = requireString(args, 1, "deleteWhere", COLLECTION_NAME);
         final var condition = requireObject(payloadArg(args, ops), "db.deleteWhere expects a condition object");
-        return new JsNumber(database.deleteWhere(dbName, collName, condition));
+        return new JsNumber(project.deleteWhere(projectName, collName, condition));
     }
 
-    private static JsValue updateWhere(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
-        final var dbName = requireString(args, 0, "updateWhere", DATABASE_NAME);
+    private static JsValue updateWhere(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
+        final var projectName = requireString(args, 0, "updateWhere", PROJECT_NAME);
         final var collName = requireString(args, 1, "updateWhere", COLLECTION_NAME);
         final var condition = requireObject(payloadArg(args, ops), "db.updateWhere expects a condition object");
         final var patch = requireObject(
                 args.size() > PATCH_INDEX ? EJsonInterop.toHostPayload(args.get(PATCH_INDEX), ops) : null,
                 "db.updateWhere expects an object of fields to set");
-        return new JsNumber(database.updateWhere(dbName, collName, condition, patch));
+        return new JsNumber(project.updateWhere(projectName, collName, condition, patch));
     }
 
-    private static JsValue cursor(DatabaseAccess database, InterpreterOps ops, Intrinsics intrinsics,
+    private static JsValue cursor(ProjectAccess project, InterpreterOps ops, Intrinsics intrinsics,
             ResourceLimits limits, List<JsValue> args) {
-        final var dbName = requireString(args, 0, "cursor", DATABASE_NAME);
+        final var projectName = requireString(args, 0, "cursor", PROJECT_NAME);
         final var collName = requireString(args, 1, "cursor", COLLECTION_NAME);
         final var converted = args.size() > 2 ? EJsonInterop.toHostEjson(args.get(2), ops) : null;
         if (!(converted instanceof JsonArray steps)) {
             throw new TypeErrorException("db.cursor expects an array of aggregation steps");
         }
         final var iterator = JsIterators
-                .of(new BatchIterator(database, ops, dbName, collName, steps, batchSize(args, limits)));
+                .of(new BatchIterator(project, ops, projectName, collName, steps, batchSize(args, limits)));
         return JsIterators.linkPrototype(iterator, intrinsics == null ? null : intrinsics.dbCursorProto);
     }
 
@@ -171,9 +171,9 @@ public final class DbModule {
     }
 
     private static final class BatchIterator implements Iterator<JsValue> {
-        private final DatabaseAccess database;
+        private final ProjectAccess project;
         private final InterpreterOps ops;
-        private final String dbName;
+        private final String projectName;
         private final String collName;
         private final JsonArray steps;
         private final int batchSize;
@@ -182,15 +182,15 @@ public final class DbModule {
         private boolean exhausted;
         private long batchBytes;
 
-        private BatchIterator(DatabaseAccess database, InterpreterOps ops, String dbName, String collName,
+        private BatchIterator(ProjectAccess project, InterpreterOps ops, String projectName, String collName,
                 JsonArray steps, int batchSize) {
-            this.database = database;
+            this.project = project;
             this.ops = ops;
-            this.dbName = dbName;
+            this.projectName = projectName;
             this.collName = collName;
-            final var cut = database.firstUnorderedCut(dbName, collName, steps);
+            final var cut = project.firstUnorderedCut(projectName, collName, steps);
             final var anchored = cut < 0 ? steps : sortedByIdAt(steps, cut);
-            this.steps = database.ordersResults(dbName, collName, anchored)
+            this.steps = project.ordersResults(projectName, collName, anchored)
                     ? anchored
                     : sortedByIdAt(anchored, anchored.size());
             this.batchSize = batchSize;
@@ -234,7 +234,7 @@ public final class DbModule {
             NativeDepth.requireHeadroom(ops);
             InterpreterOps.release(ops, batchBytes);
             batchBytes = 0;
-            final var results = database.aggregate(dbName, collName, paged());
+            final var results = project.aggregate(projectName, collName, paged());
             for (final var result : results) {
                 final var bytes = EJsonInterop.estimatedBytes(result);
                 InterpreterOps.charge(ops, bytes);
@@ -268,19 +268,19 @@ public final class DbModule {
         return object;
     }
 
-    private static JsValue transaction(DatabaseAccess database, InterpreterOps ops, List<JsValue> args) {
+    private static JsValue transaction(ProjectAccess project, InterpreterOps ops, List<JsValue> args) {
         final var callback = args.isEmpty() ? JsUndefined.getInstance() : args.getFirst();
         requireSynchronousCallable(callback);
-        database.beginTransaction();
+        project.beginTransaction();
         JsValue result;
         try {
             result = ops.call(callback, JsUndefined.getInstance(), List.of());
             rejectThenable(result);
         } catch (Throwable e) {
-            database.rollbackTransaction();
+            project.rollbackTransaction();
             throw e;
         }
-        database.commitTransaction();
+        project.commitTransaction();
         return result;
     }
 

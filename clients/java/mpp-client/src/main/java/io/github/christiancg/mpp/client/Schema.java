@@ -9,25 +9,25 @@ import java.util.Optional;
 
 public final class Schema {
     private final ClientContext context;
-    private final String database;
+    private final String project;
     private final String collection;
 
-    Schema(ClientContext context, String database, String collection) {
+    Schema(ClientContext context, String project, String collection) {
         this.context = context;
-        this.database = database;
+        this.project = project;
         this.collection = collection;
     }
 
     public List<String> save(Document schema) {
         final var reply = context.channel().send(Operation.SAVE_SCHEMA,
-                context.encoder().saveSchema(database, collection, schema));
+                context.encoder().saveSchema(project, collection, schema));
         return ResponseDecoder.strings(reply.get("warnings"));
     }
 
     public Optional<Document> get() {
         try {
             final var reply = context.channel().send(Operation.GET_SCHEMA,
-                    context.encoder().getSchema(database, collection));
+                    context.encoder().getSchema(project, collection));
             return ResponseDecoder.document(reply, "schema");
         } catch (NotFoundException e) {
             return Optional.empty();
@@ -35,6 +35,6 @@ public final class Schema {
     }
 
     public void delete() {
-        context.channel().send(Operation.DELETE_SCHEMA, context.encoder().deleteSchema(database, collection));
+        context.channel().send(Operation.DELETE_SCHEMA, context.encoder().deleteSchema(project, collection));
     }
 }

@@ -11,7 +11,7 @@ import java.util.List;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.req.RequestParser;
 import org.ccg.mpp.simplejs.exceptions.JsThrowException;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
 import org.ccg.mpp.simplejs.internal.JsCoercion;
 import org.ccg.mpp.simplejs.values.JsObject;
 import org.ccg.mpp.test.TestGlobals;
@@ -22,13 +22,13 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
     @Test
     public void test_single_remote_commit_refuses_when_the_receiving_node_does_not_own_the_collection()
             throws Exception {
-        configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
+        configureMembership(2, node("self", 19990), node("peer", cluster.serverPort()));
         final var remote = collectionOwnedByOther();
         createCollection(remote);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
         db.beginTransaction();
-        db.save(TestGlobals.DB, TestGlobals.COLL, doc("local-part"));
-        db.save(TestGlobals.DB, remote, doc("remote-part"));
+        db.save(TestGlobals.PROJECT, TestGlobals.COLL, doc("local-part"));
+        db.save(TestGlobals.PROJECT, remote, doc("remote-part"));
         final var error = assertThrows(JsThrowException.class, db::commitTransaction);
         final var message = ((JsObject) error.getValue()).get("message");
         assertTrue(JsCoercion.toStrDataOnly(message).contains("not the owner"),
@@ -41,9 +41,9 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
         final var remote = collectionOwnedByOther();
         createCollection(remote);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
+        final var db = new EnforcingProjectAccess(ADMIN, null);
         db.beginTransaction();
-        db.save(TestGlobals.DB, remote, doc("rolled-back"));
+        db.save(TestGlobals.PROJECT, remote, doc("rolled-back"));
         db.rollbackTransaction();
         assertEquals(OperationStatus.NOT_FOUND, findStatus(remote, "rolled-back"));
         assertTrue(clientTracker.txSessionsSnapshot().isEmpty());
@@ -54,26 +54,27 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(2, node("self", 19990), node("other", 1));
         final var coll = collectionOwnedByOther();
         createCollection(coll);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
-        assertThrows(JsThrowException.class, () -> db.save(TestGlobals.DB, coll, doc("unreachable")));
-        assertThrows(JsThrowException.class, () -> db.bulkSave(TestGlobals.DB, coll, List.of(doc("unreachable-2"))));
-        assertThrows(JsThrowException.class, () -> db.delete(TestGlobals.DB, coll, "unreachable"));
+        final var db = new EnforcingProjectAccess(ADMIN, null);
+        assertThrows(JsThrowException.class, () -> db.save(TestGlobals.PROJECT, coll, doc("unreachable")));
+        assertThrows(JsThrowException.class,
+                () -> db.bulkSave(TestGlobals.PROJECT, coll, List.of(doc("unreachable-2"))));
+        assertThrows(JsThrowException.class, () -> db.delete(TestGlobals.PROJECT, coll, "unreachable"));
     }
 
     @Test
     public void test_cluster_disabled_runs_everything_locally() throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", false);
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
-        db.save(TestGlobals.DB, TestGlobals.COLL, doc("standalone"));
+        final var db = new EnforcingProjectAccess(ADMIN, null);
+        db.save(TestGlobals.PROJECT, TestGlobals.COLL, doc("standalone"));
         assertEquals(OperationStatus.OK, findStatus(TestGlobals.COLL, "standalone"));
-        assertNotNull(db.findById(TestGlobals.DB, TestGlobals.COLL, "standalone"));
+        assertNotNull(db.findById(TestGlobals.PROJECT, TestGlobals.COLL, "standalone"));
     }
 
     @Test
     public void test_owned_collection_write_stays_local() throws Exception {
         configureMembership(1, node("self", cluster.serverPort()));
-        final var db = new EnforcingDatabaseAccess(ADMIN, null);
-        db.save(TestGlobals.DB, TestGlobals.COLL, doc("owned"));
+        final var db = new EnforcingProjectAccess(ADMIN, null);
+        db.save(TestGlobals.PROJECT, TestGlobals.COLL, doc("owned"));
         assertEquals(OperationStatus.OK, findStatus(TestGlobals.COLL, "owned"));
     }
 
@@ -82,10 +83,10 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
         configureMembership(1, node("self", cluster.serverPort()));
         final var clientId = clientTracker.registerForwardedClient(ADMIN);
         try {
-            final var db = new EnforcingDatabaseAccess(ADMIN, clientId);
+            final var db = new EnforcingProjectAccess(ADMIN, clientId);
             db.beginTransaction();
             try {
-                db.save(TestGlobals.DB, TestGlobals.COLL, doc("cluster-state"));
+                db.save(TestGlobals.PROJECT, TestGlobals.COLL, doc("cluster-state"));
                 assertTrue(clientTracker.hasLocalSlice(clientId));
             } finally {
                 db.commitTransaction();
@@ -101,18 +102,18 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
     public void test_run_script_stays_local_when_routing_is_disabled() throws Exception {
         enableScriptRouting();
         TestUtils.setPrivateField(config, "scriptRoutingEnabled", false);
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"script\":\"return 1;\"}";
         assertNull(router.forward(RequestParser.parseRequest(raw), raw, false, ADMIN, null));
     }
 
     @Test
-    public void test_run_script_is_placed_on_the_owner_of_the_scoped_database() throws Exception {
+    public void test_run_script_is_placed_on_the_owner_of_the_scoped_project() throws Exception {
         TestUtils.setPrivateField(config, "scriptsEnabled", true);
         TestUtils.setPrivateField(config, "scriptRoutingEnabled", true);
         TestUtils.setPrivateField(config, "scriptLocalityWeight", 100);
-        configureMembershipWithAPeerOwningTheWholeDatabase();
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+        configureMembershipWithAPeerOwningTheWholeProject();
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"script\":\"return 41 + 1;\"}";
         final var forwardedBefore = scriptPlacement.getForwarded();
         final var preferredBefore = scriptPlacement.getLocalityPreferred();
@@ -127,9 +128,9 @@ public class ScriptClusterRoutingIntegrationTest extends ScriptClusterTestBase {
     public void test_locality_weight_zero_leaves_placement_load_only() throws Exception {
         TestUtils.setPrivateField(config, "scriptsEnabled", true);
         TestUtils.setPrivateField(config, "scriptRoutingEnabled", true);
-        configureMembershipWithAPeerOwningTheWholeDatabase();
+        configureMembershipWithAPeerOwningTheWholeProject();
         TestUtils.setPrivateField(config, "scriptLocalityWeight", 0);
-        final var raw = "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB
+        final var raw = "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"script\":\"return 41 + 1;\"}";
         final var forwardedBefore = scriptPlacement.getForwarded();
         final var preferredBefore = scriptPlacement.getLocalityPreferred();

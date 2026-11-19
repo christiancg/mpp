@@ -77,39 +77,42 @@ public final class VersionedApply {
         return outcomes;
     }
 
-    public static String key(String dbName, String collName, String id) {
-        return Cache.getCollectionIdentifier(dbName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + id;
+    public static String key(String projectName, String collName, String id) {
+        return Cache.getCollectionIdentifier(projectName, collName) + Globals.COLL_IDENTIFIER_SEPARATOR + id;
     }
 
     public void apply(AdminTransactionEntry op) throws Exception {
-        final var dbName = op.getTargetDb();
+        final var projectName = op.getTargetProject();
         final var collName = op.getTargetColl();
         if (CommitWriteGroups.writesData(op)) {
-            groups.ensureOpen(dbName, collName);
+            groups.ensureOpen(projectName, collName);
         }
         switch (op.getOpType()) {
-            case AdminTransactionEntry.OP_TYPE_SAVE -> applySave(dbName, collName, op.getPayload(), op.versionAt(0));
+            case AdminTransactionEntry.OP_TYPE_SAVE ->
+                applySave(projectName, collName, op.getPayload(), op.versionAt(0));
             case AdminTransactionEntry.OP_TYPE_BULK_SAVE -> applyBulkSave(op);
-            case AdminTransactionEntry.OP_TYPE_DELETE -> applyDelete(dbName, collName, op.targetId(), op.versionAt(0));
+            case AdminTransactionEntry.OP_TYPE_DELETE ->
+                applyDelete(projectName, collName, op.targetId(), op.versionAt(0));
             case AdminTransactionEntry.OP_TYPE_DELETE_TRIGGER_RUN ->
                 AdminOperationHelper.deleteTriggerRuns(TriggerRunLog.recordIdsFor(op.consumedTriggerRunId()));
             default -> throw new IllegalStateException("Unknown transaction op type: " + op.getOpType());
         }
     }
 
-    private void applySave(String dbName, String collName, JsonObject object, long version) throws Exception {
+    private void applySave(String projectName, String collName, JsonObject object, long version) throws Exception {
         final var id = idOf(object);
-        if (record(dbName, collName, id, saveOutcome(dbName, collName, id, version)) != ApplyOutcome.APPLIED) {
+        if (record(projectName, collName, id,
+                saveOutcome(projectName, collName, id, version)) != ApplyOutcome.APPLIED) {
             return;
         }
-        final var request = new SaveRequest(dbName, collName);
+        final var request = new SaveRequest(projectName, collName);
         request.setObject(object);
         request.set_id(id);
         requireApplied(AdminTransactionEntry.OP_TYPE_SAVE, SaveOperationHelper.executeSave(request, version, sink));
     }
 
     private void applyBulkSave(AdminTransactionEntry op) throws Exception {
-        final var dbName = op.getTargetDb();
+        final var projectName = op.getTargetProject();
         final var collName = op.getTargetColl();
         final var objects = new ArrayList<JsonObject>();
         final var versions = new ArrayList<Long>();
@@ -118,7 +121,8 @@ public final class VersionedApply {
             final var object = elements.get(i);
             final var id = idOf(object);
             final var version = op.versionAt(i);
-            if (record(dbName, collName, id, saveOutcome(dbName, collName, id, version)) == ApplyOutcome.APPLIED) {
+            if (record(projectName, collName, id,
+                    saveOutcome(projectName, collName, id, version)) == ApplyOutcome.APPLIED) {
                 objects.add(object);
                 versions.add(version);
             }
@@ -126,48 +130,48 @@ public final class VersionedApply {
         if (objects.isEmpty()) {
             return;
         }
-        final var request = new BulkSaveRequest(dbName, collName);
+        final var request = new BulkSaveRequest(projectName, collName);
         request.setObjects(objects);
         requireApplied(AdminTransactionEntry.OP_TYPE_BULK_SAVE,
                 SaveOperationHelper.executeBulkSave(request, versions, sink));
     }
 
-    private void applyDelete(String dbName, String collName, String id, long version) throws Exception {
-        final var stored = storedEntry(dbName, collName, id);
+    private void applyDelete(String projectName, String collName, String id, long version) throws Exception {
+        final var stored = storedEntry(projectName, collName, id);
         final var outcome = ApplyOutcome.forDelete(stored == null ? 0L : stored.getVersion(), stored != null, version);
-        if (record(dbName, collName, id, outcome) != ApplyOutcome.APPLIED) {
+        if (record(projectName, collName, id, outcome) != ApplyOutcome.APPLIED) {
             return;
         }
-        final var request = new DeleteRequest(dbName, collName);
+        final var request = new DeleteRequest(projectName, collName);
         request.set_id(id);
         DeleteOperationHelper.executeDelete(request, sink);
     }
 
-    private ApplyOutcome record(String dbName, String collName, String id, ApplyOutcome outcome) {
-        outcomes.put(key(dbName, collName, id), outcome);
+    private ApplyOutcome record(String projectName, String collName, String id, ApplyOutcome outcome) {
+        outcomes.put(key(projectName, collName, id), outcome);
         return outcome;
     }
 
-    private ApplyOutcome saveOutcome(String dbName, String collName, String id, long version) throws IOException {
-        final var stored = storedEntry(dbName, collName, id);
+    private ApplyOutcome saveOutcome(String projectName, String collName, String id, long version) throws IOException {
+        final var stored = storedEntry(projectName, collName, id);
         if (stored != null) {
             return ApplyOutcome.forSave(stored.getVersion(), 0L, version);
         }
-        return ApplyOutcome.forSave(0L, tombstoneVersion(dbName, collName, id), version);
+        return ApplyOutcome.forSave(0L, tombstoneVersion(projectName, collName, id), version);
     }
 
-    private long tombstoneVersion(String dbName, String collName, String id) throws IOException {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    private long tombstoneVersion(String projectName, String collName, String id) throws IOException {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         var tombstones = tombstonesByCollection.get(collId);
         if (tombstones == null) {
-            tombstones = fs.tombstones().read(dbName, collName);
+            tombstones = fs.tombstones().read(projectName, collName);
             tombstonesByCollection.put(collId, tombstones);
         }
         return tombstones.getOrDefault(id, 0L);
     }
 
-    public static PkIndexEntry storedEntry(String dbName, String collName, String id) throws IOException {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+    public static PkIndexEntry storedEntry(String projectName, String collName, String id) throws IOException {
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         final var position = Collections.binarySearch(primaryKeyIndex, id);
         return position >= 0 ? primaryKeyIndex.get(position) : null;
     }

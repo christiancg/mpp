@@ -53,11 +53,11 @@ public class CommitTriggerBatchTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         IocContainer.get(TriggerExecutor.class).stop();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition(TRIGGER, new LinkedHashSet<>(Set.of(EventType.CREATED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
         TriggerTestSupport.consumeAllPendingRuns();
@@ -65,7 +65,7 @@ public class CommitTriggerBatchTest {
 
     @AfterEach
     public void tearDown() throws Exception {
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.setPrivateField(configuration, "triggersEnabled", false);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -81,7 +81,7 @@ public class CommitTriggerBatchTest {
             object.addProperty(Globals.PK_FIELD, "tx-batch-" + i);
             objects.add(object);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         assertEquals(OperationStatus.OK, TransactionOperationHelper
                 .bufferBulkSave(request, clientTracker.getActiveTransaction(clientId)).getStatus());
@@ -91,17 +91,17 @@ public class CommitTriggerBatchTest {
     private static DbEntry entryOf(String id) {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
     }
 
     private static String runIdOf(String id) {
-        return TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, TRIGGER, EventType.CREATED,
-                id);
+        return TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, TRIGGER,
+                EventType.CREATED, id);
     }
 
     private static void writeStaleChunk(String id) throws Exception {
         AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(runIdOf(id), 1, TriggerRunLog.currentNodeId(),
-                TestGlobals.DB, TestGlobals.COLL, TRIGGER, "recalc", EventType.CREATED, false, "owner", 0,
+                TestGlobals.PROJECT, TestGlobals.COLL, TRIGGER, "recalc", EventType.CREATED, false, "owner", 0,
                 System.currentTimeMillis(), List.of("stale-" + id), List.of()));
     }
 
@@ -127,7 +127,7 @@ public class CommitTriggerBatchTest {
 
         try (var admin = mockStatic(AdminOperationHelper.class, CALLS_REAL_METHODS)) {
             final var batch = WriteEffects.batched();
-            TriggerHelper.stageCommitted(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+            TriggerHelper.stageCommitted(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                     List.of(entryOf("restaged")), "owner", 0, TX_ID, batch);
             batch.flushStaging(TX_ID);
 
@@ -146,7 +146,7 @@ public class CommitTriggerBatchTest {
             admin.when(() -> AdminOperationHelper.saveTriggerRuns(anyList(), anyList()))
                     .thenThrow(new IOException("disk full"));
             final var batch = WriteEffects.batched();
-            final var staged = TriggerHelper.stageCommitted(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+            final var staged = TriggerHelper.stageCommitted(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                     List.of(entryOf("fallback-a"), entryOf("fallback-b")), "owner", 0, TX_ID, batch);
             batch.flushStaging(TX_ID);
             assertFalse(staged.isEmpty());

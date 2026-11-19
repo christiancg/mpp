@@ -42,30 +42,30 @@ public final class TriggerDeadLetterCap {
         }
     }
 
-    public static void afterDeadLetter(String dbName) {
+    public static void afterDeadLetter(String projectName) {
         final var cap = cap();
-        if (cap <= 0 || dbName == null) {
+        if (cap <= 0 || projectName == null) {
             return;
         }
-        if (TriggerRunIndex.knownDeadIn(dbName) <= cap) {
-            overCap.remove(dbName);
+        if (TriggerRunIndex.knownDeadIn(projectName) <= cap) {
+            overCap.remove(projectName);
             return;
         }
         try {
-            enforce(dbName);
+            enforce(projectName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.warning("Interrupted while capping the dead-lettered trigger runs of " + dbName);
+            logger.warning("Interrupted while capping the dead-lettered trigger runs of " + projectName);
         } catch (IOException | RuntimeException e) {
-            logger.warning("Failed to cap the dead-lettered trigger runs of " + dbName + ": " + e.getMessage());
+            logger.warning("Failed to cap the dead-lettered trigger runs of " + projectName + ": " + e.getMessage());
         }
     }
 
-    public static void forgetDatabase(String dbName) {
-        overCap.remove(dbName);
+    public static void forgetProject(String projectName) {
+        overCap.remove(projectName);
     }
 
-    public static int enforce(String dbName) throws IOException, InterruptedException {
+    public static int enforce(String projectName) throws IOException, InterruptedException {
         final var cap = cap();
         if (cap <= 0) {
             overCap.clear();
@@ -75,10 +75,10 @@ public final class TriggerDeadLetterCap {
         try {
             final var doomed = new ArrayList<String>();
             var dropped = 0;
-            for (final var database : deadRunsByDatabase(dbName).entrySet()) {
-                final var runs = database.getValue();
+            for (final var project : deadRunsByProject(projectName).entrySet()) {
+                final var runs = project.getValue();
                 if (runs.size() <= cap) {
-                    overCap.remove(database.getKey());
+                    overCap.remove(project.getKey());
                     continue;
                 }
                 final var oldest = new ArrayList<>(runs.values());
@@ -88,8 +88,8 @@ public final class TriggerDeadLetterCap {
                     doomed.addAll(run.recordIds);
                 }
                 dropped += excess;
-                if (overCap.add(database.getKey())) {
-                    logger.warning("Database '" + database.getKey() + "' holds " + runs.size()
+                if (overCap.add(project.getKey())) {
+                    logger.warning("Project '" + project.getKey() + "' holds " + runs.size()
                             + " dead-lettered trigger runs, more than triggerDeadLetterMaxRuns=" + cap
                             + "; deleting the oldest ones beyond the cap. Further deletions are not logged until it"
                             + " drops back under the cap.");
@@ -104,20 +104,20 @@ public final class TriggerDeadLetterCap {
         }
     }
 
-    private static Map<String, Map<String, DeadRun>> deadRunsByDatabase(String dbName)
+    private static Map<String, Map<String, DeadRun>> deadRunsByProject(String projectName)
             throws IOException, InterruptedException {
-        final var byDatabase = new HashMap<String, Map<String, DeadRun>>();
+        final var byProject = new HashMap<String, Map<String, DeadRun>>();
         for (final var summary : TriggerRunIndex.current()) {
-            final var database = summary.dbName();
-            if (!summary.isDead() || database == null || dbName != null && !dbName.equals(database)) {
+            final var project = summary.projectName();
+            if (!summary.isDead() || project == null || projectName != null && !projectName.equals(project)) {
                 continue;
             }
-            final var run = byDatabase.computeIfAbsent(database, _ -> new HashMap<>()).computeIfAbsent(summary.runId(),
+            final var run = byProject.computeIfAbsent(project, _ -> new HashMap<>()).computeIfAbsent(summary.runId(),
                     DeadRun::new);
             run.recordIds.add(summary.recordId());
             run.diedAt = Math.max(run.diedAt, summary.diedAt());
         }
-        return byDatabase;
+        return byProject;
     }
 
     private static long cap() {

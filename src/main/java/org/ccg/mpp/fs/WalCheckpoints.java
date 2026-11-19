@@ -25,7 +25,7 @@ final class WalCheckpoints {
     void atShutdown(long deadline) {
         final var dirty = new ArrayList<WriteAheadLog.WalLogStatus>();
         for (final var status : writeAheadLog.statusesUnder(root())) {
-            if (status.dirty() && !replayedAtStartup(status.dbName())) {
+            if (status.dirty() && !replayedAtStartup(status.projectName())) {
                 dirty.add(status);
             }
         }
@@ -65,14 +65,14 @@ final class WalCheckpoints {
     }
 
     private void checkpointAtShutdown(WriteAheadLog.WalLogStatus status) {
-        final var subject = WriteAheadLog.subject(status.dbName(), status.collName());
-        if (WriteAheadLog.holdsIndexWork(status.dbName(), status.collName())) {
+        final var subject = WriteAheadLog.subject(status.projectName(), status.collName());
+        if (WriteAheadLog.holdsIndexWork(status.projectName(), status.collName())) {
             logger.info("Leaving the write-ahead log of " + subject + " as it is: its field-index work is still"
                     + " pending, so the next startup replays it and finishes that work");
             return;
         }
         try {
-            writeAheadLog.checkpoint(status.dbName(), status.collName());
+            writeAheadLog.checkpoint(status.projectName(), status.collName());
         } catch (IOException e) {
             logger.error("Could not checkpoint the write-ahead log of " + subject + "; the next startup replays it", e);
         }
@@ -86,21 +86,21 @@ final class WalCheckpoints {
                 break;
             }
             if (!status.dirty() || status.grouped() || now - status.lastWriteMillis() < idleMillis
-                    || WriteAheadLog.holdsIndexWork(status.dbName(), status.collName())
-                    || CheckpointBackoff.waiting(stateOf(status.dbName(), status.collName()), now)
-                    || !collectionLocks.tryLock(status.dbName(), status.collName())) {
+                    || WriteAheadLog.holdsIndexWork(status.projectName(), status.collName())
+                    || CheckpointBackoff.waiting(stateOf(status.projectName(), status.collName()), now)
+                    || !collectionLocks.tryLock(status.projectName(), status.collName())) {
                 continue;
             }
             try {
-                if (writeAheadLog.checkpointIfIdle(status.dbName(), status.collName(), idleMillis)) {
+                if (writeAheadLog.checkpointIfIdle(status.projectName(), status.collName(), idleMillis)) {
                     checkpointed++;
-                    succeeded(status.dbName(), status.collName());
+                    succeeded(status.projectName(), status.collName());
                 }
             } catch (IOException e) {
-                failed(status.dbName(), status.collName(), e, "the idle write-ahead log",
+                failed(status.projectName(), status.collName(), e, "the idle write-ahead log",
                         "it keeps its records and a later pass retries");
             } finally {
-                collectionLocks.unlock(status.dbName(), status.collName());
+                collectionLocks.unlock(status.projectName(), status.collName());
             }
         }
         return checkpointed;
@@ -109,44 +109,44 @@ final class WalCheckpoints {
     int requested(CollectionTryLock collectionLocks) {
         var checkpointed = 0;
         for (final var request : WalCheckpointRequests.takeAll()) {
-            final var dbName = request.dbName();
+            final var projectName = request.projectName();
             final var collName = request.collName();
-            if (!paths.collectionFolder(dbName, collName).isDirectory()
-                    || CheckpointBackoff.waiting(stateOf(dbName, collName), System.currentTimeMillis())
-                    || !collectionLocks.tryLock(dbName, collName)) {
+            if (!paths.collectionFolder(projectName, collName).isDirectory()
+                    || CheckpointBackoff.waiting(stateOf(projectName, collName), System.currentTimeMillis())
+                    || !collectionLocks.tryLock(projectName, collName)) {
                 continue;
             }
             try {
-                if (writeAheadLog.checkpointRequested(dbName, collName)) {
+                if (writeAheadLog.checkpointRequested(projectName, collName)) {
                     checkpointed++;
-                    succeeded(dbName, collName);
+                    succeeded(projectName, collName);
                 }
             } catch (IOException e) {
-                failed(dbName, collName, e, "the full write-ahead log",
+                failed(projectName, collName, e, "the full write-ahead log",
                         "it keeps its records and the next write past its size retries");
             } finally {
-                collectionLocks.unlock(dbName, collName);
+                collectionLocks.unlock(projectName, collName);
             }
         }
         return checkpointed;
     }
 
-    private WalLogState stateOf(String dbName, String collName) {
-        return WalLogState.known(paths.writeAheadLog(dbName, collName).getAbsolutePath());
+    private WalLogState stateOf(String projectName, String collName) {
+        return WalLogState.known(paths.writeAheadLog(projectName, collName).getAbsolutePath());
     }
 
-    private void succeeded(String dbName, String collName) {
-        final var streak = CheckpointBackoff.succeeded(stateOf(dbName, collName));
+    private void succeeded(String projectName, String collName) {
+        final var streak = CheckpointBackoff.succeeded(stateOf(projectName, collName));
         if (streak > 0) {
-            logger.info("Checkpointed the write-ahead log of " + WriteAheadLog.subject(dbName, collName) + " after "
-                    + streak + " failed attempt(s)");
+            logger.info("Checkpointed the write-ahead log of " + WriteAheadLog.subject(projectName, collName)
+                    + " after " + streak + " failed attempt(s)");
         }
     }
 
-    private void failed(String dbName, String collName, IOException failure, String what, String consequence) {
-        final var state = stateOf(dbName, collName);
+    private void failed(String projectName, String collName, IOException failure, String what, String consequence) {
+        final var state = stateOf(projectName, collName);
         final var delay = CheckpointBackoff.failed(state, System.currentTimeMillis());
-        final var subject = WriteAheadLog.subject(dbName, collName);
+        final var subject = WriteAheadLog.subject(projectName, collName);
         if (state == null || state.checkpointFailures == 1) {
             logger.error("Could not checkpoint " + what + " of " + subject + " in the background; " + consequence,
                     failure);
@@ -156,8 +156,8 @@ final class WalCheckpoints {
                 + " attempts; next try in " + delay / 1000 + " s: " + failure.getMessage());
     }
 
-    static boolean replayedAtStartup(String dbName) {
-        return Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    static boolean replayedAtStartup(String projectName) {
+        return Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName);
     }
 
     private String root() {

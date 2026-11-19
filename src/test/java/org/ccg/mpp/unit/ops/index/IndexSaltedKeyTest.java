@@ -43,7 +43,7 @@ public class IndexSaltedKeyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
         pending = IocContainer.get(PendingIndexWrites.class);
     }
@@ -77,23 +77,23 @@ public class IndexSaltedKeyTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void addPendingDoc(String id, JsonBaseElement value) throws IOException {
         addDoc(id, value);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, id);
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, id);
     }
 
     private void enableIndex() throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
     }
 
     private Map<JsonBaseElement, Integer> groupSizes(List<BaseAggregationStep> steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         return AggregationOperationHelper.processAggregation(request).stream()
                 .collect(Collectors.toMap(group -> group.get(FIELD), group -> group.get("group").asJsonArray().size()));
@@ -109,7 +109,7 @@ public class IndexSaltedKeyTest {
 
     private Set<String> idsEqualTo(JsonBaseElement value) throws IOException {
         final var operator = new FieldOperator(FieldOperatorType.EQUALS, FIELD, value);
-        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL)
+        return FilterOperatorHelper.processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .map(object -> object.get(Globals.PK_FIELD).asJsonString().getValue()).collect(Collectors.toSet());
     }
 

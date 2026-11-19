@@ -31,7 +31,7 @@ public class FilterOperatorCustomTypeTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -56,16 +56,16 @@ public class FilterOperatorCustomTypeTest {
         DbEntry entry = new DbEntry();
         entry.set_id("ct1");
         entry.setData(obj);
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         final var cache = IocContainer.get(Cache.class);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         cache.putAdminCollectionEntry(adminCollEntry,
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "ct1", 0, 100, 0));
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "ct1", 0, 100, 0));
 
         FieldOperator op = new FieldOperator(FieldOperatorType.EQUALS, "t", new JsonTime("#time(10:00:00)"));
-        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL)
+        List<JsonObject> result = FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL)
                 .toList();
 
         assertFalse(result.isEmpty());

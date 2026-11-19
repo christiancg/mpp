@@ -41,19 +41,19 @@ public final class SchemaValidationHelper {
                 default -> null;
             };
         } catch (MetadataReadException e) {
-            logger.error("Refusing the write: cannot read the schema for " + request.getDatabaseName() + "|"
+            logger.error("Refusing the write: cannot read the schema for " + request.getProjectName() + "|"
                     + request.getCollectionName(), e);
             return new OperationResponse(request.getType(), ErrorCode.SCHEMA_UNAVAILABLE);
         } catch (InvalidSchemaException e) {
-            logger.error("Refusing the write: the stored schema for " + request.getDatabaseName() + "|"
+            logger.error("Refusing the write: the stored schema for " + request.getProjectName() + "|"
                     + request.getCollectionName() + " does not meta-validate", e);
             return new OperationResponse(request.getType(), ErrorCode.SCHEMA_UNAVAILABLE);
         } catch (SchemaBudgetExceededException e) {
-            logger.warning("Refusing the write: validating it against the schema of " + request.getDatabaseName() + "|"
+            logger.warning("Refusing the write: validating it against the schema of " + request.getProjectName() + "|"
                     + request.getCollectionName() + " exceeded the schema validation budget");
             return new OperationResponse(request.getType(), ErrorCode.SCHEMA_VALIDATION_BUDGET_EXCEEDED);
         } catch (Exception e) {
-            logger.error("Refusing the write: the schema check for " + request.getDatabaseName() + "|"
+            logger.error("Refusing the write: the schema check for " + request.getProjectName() + "|"
                     + request.getCollectionName() + " failed unexpectedly", e);
             return new OperationResponse(request.getType(), ErrorCode.SCHEMA_UNAVAILABLE);
         }
@@ -63,7 +63,7 @@ public final class SchemaValidationHelper {
         if (request.getCondition() != null) {
             return null;
         }
-        final var schema = governingSchema(request.getDatabaseName(), request.getCollectionName());
+        final var schema = governingSchema(request.getProjectName(), request.getCollectionName());
         final var document = request.getObject();
         if (schema == null || alreadyChecked(request, document, schema)) {
             return null;
@@ -80,7 +80,7 @@ public final class SchemaValidationHelper {
     }
 
     private static OperationResponse checkBulkSave(BulkSaveRequest request) {
-        final var schema = governingSchema(request.getDatabaseName(), request.getCollectionName());
+        final var schema = governingSchema(request.getProjectName(), request.getCollectionName());
         final var documents = request.getObjects();
         if (schema == null || alreadyChecked(request, documents, schema)) {
             return null;
@@ -100,8 +100,8 @@ public final class SchemaValidationHelper {
     }
 
     // Also re-validates a before-hook's replacement document: the checks above run at the edge, before the hook.
-    public static String schemaErrors(String dbName, String collName, JsonObject object, SchemaBudget budget) {
-        final var schema = governingSchema(dbName, collName);
+    public static String schemaErrors(String projectName, String collName, JsonObject object, SchemaBudget budget) {
+        final var schema = governingSchema(projectName, collName);
         return schema == null ? null : errorsAgainst(schema, object, budget);
     }
 
@@ -110,10 +110,10 @@ public final class SchemaValidationHelper {
         return checked != null ? checked.budget() : newBudget();
     }
 
-    private static JsonObject governingSchema(String dbName, String collName) {
-        final var schema = cache.getCollectionSchema(dbName, collName);
+    private static JsonObject governingSchema(String projectName, String collName) {
+        final var schema = cache.getCollectionSchema(projectName, collName);
         if (schema != null) {
-            requireValidSchema(dbName, collName, schema);
+            requireValidSchema(projectName, collName, schema);
         }
         return schema;
     }
@@ -137,17 +137,17 @@ public final class SchemaValidationHelper {
         request.setSchemaCheck(new OperationRequest.SchemaCheck(payload, schema, budget));
     }
 
-    public static void forgetCollection(String dbName, String collName) {
-        checkedSchemas.remove(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
+    public static void forgetCollection(String projectName, String collName) {
+        checkedSchemas.remove(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
     }
 
-    public static void forgetDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public static void forgetProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         checkedSchemas.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
-    private static void requireValidSchema(String dbName, String collName, JsonObject schema) {
-        final var key = Cache.getCollectionIdentifier(dbName, collName);
+    private static void requireValidSchema(String projectName, String collName, JsonObject schema) {
+        final var key = Cache.getCollectionIdentifier(projectName, collName);
         final var cached = checkedSchemas.get(key);
         final var checked = cached != null && cached.source().get() == schema
                 ? cached

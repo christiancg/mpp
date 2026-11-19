@@ -30,7 +30,7 @@ public class SortOperatorHelperTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         fixture.createIndexedOnTs(TopKFixture.standardDocuments());
     }
 
@@ -96,7 +96,7 @@ public class SortOperatorHelperTest {
     public void test_pending_writes_keep_the_fetching_path() {
         fixture.save(TopKFixture.document("late", 1, 150));
         fixture.save(TopKFixture.document("d0007", 1, 101));
-        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.DB, COLL).isEmpty());
+        assertFalse(IocContainer.get(PendingIndexWrites.class).idsFor(TestGlobals.PROJECT, COLL).isEmpty());
         final var steps = page(range(100, 2500), true, 2, LIMIT);
 
         final var answer = fixture.run(steps);

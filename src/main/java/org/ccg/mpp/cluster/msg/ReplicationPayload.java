@@ -6,7 +6,7 @@ import org.ccg.mpp.ejson.elements.JsonObject;
 
 @NullsOmitted
 public class ReplicationPayload {
-    private String dbName;
+    private String projectName;
     private String collName;
     private ReplicationOp op;
     private List<JsonObject> documents;
@@ -18,14 +18,14 @@ public class ReplicationPayload {
     public ReplicationPayload() {
     }
 
-    public ReplicationPayload(String dbName, String collName, ReplicationOp op, List<JsonObject> documents,
+    public ReplicationPayload(String projectName, String collName, ReplicationOp op, List<JsonObject> documents,
             List<String> ids) {
-        this(dbName, collName, op, documents, ids, null);
+        this(projectName, collName, op, documents, ids, null);
     }
 
-    public ReplicationPayload(String dbName, String collName, ReplicationOp op, List<JsonObject> documents,
+    public ReplicationPayload(String projectName, String collName, ReplicationOp op, List<JsonObject> documents,
             List<String> ids, List<String> versions) {
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.op = op;
         this.documents = documents;
@@ -33,12 +33,12 @@ public class ReplicationPayload {
         this.versions = versions;
     }
 
-    public String getDbName() {
-        return dbName;
+    public String getProjectName() {
+        return projectName;
     }
 
-    public void setDbName(String dbName) {
-        this.dbName = dbName;
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 
     public String getCollName() {

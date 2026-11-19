@@ -13,7 +13,7 @@ PORT = 8989
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "bench_db"
+PROJECT = "bench_project"
 COLL = "items"
 DOCS = int(os.environ.get("BENCH_DOCS", "20000"))
 PAYLOAD_BYTES = int(os.environ.get("BENCH_PAYLOAD_BYTES", "512"))
@@ -38,15 +38,15 @@ def connect():
 
 
 def setup(c: Conn):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
-    c.send({"type": "CREATE_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
+    c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
     c.send({"type": "CREATE_COLLECTION",
-                "databaseName": DB, "collectionName": COLL})
+                "projectName": PROJECT, "collectionName": COLL})
     categories = ["alpha", "beta", "gamma", "delta", "epsilon"]
     ok = True
 
     def flush(b):
-        r = c.send({"type": "BULK_SAVE", "databaseName": DB,
+        r = c.send({"type": "BULK_SAVE", "projectName": PROJECT,
                         "collectionName": COLL, "objects": b})
         return r.get("status") == "OK"
 
@@ -68,7 +68,7 @@ def setup(c: Conn):
 
 
 def cache_bytes(c):
-    r = c.send({"type": "GET_DATABASE_STATS"})
+    r = c.send({"type": "GET_PROJECT_STATS"})
     return r.get("stats", {}).get("memory", {}).get("userCacheBytes", 0)
 
 
@@ -78,7 +78,7 @@ def evict_collection_cache(c):
 
 def run_query(c, value):
     return c.send({
-        "type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+        "type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
         "aggregationSteps": [
             {"type": "FILTER",
              "operator": {"fieldOperatorType": "EQUALS",
@@ -126,12 +126,12 @@ def timed_runs(c: Conn, values):
 def main():
     bu.banner("Cache warmup (cold vs warm) benchmark suite", HOST, PORT)
     print(f"  Plan: load {DOCS} docs (~{(DOCS * PAYLOAD_BYTES) // (1024*1024)}MB) "
-          f"in {DB}.{COLL}, restart to drop the cache, then compare the cold")
+          f"in {PROJECT}.{COLL}, restart to drop the cache, then compare the cold")
     print(f"        disk read against {WARM_RUNS} warm (cached) calls.")
 
     c = connect()
 
-    section(f"Load dataset ({DOCS} docs in {DB}.{COLL})")
+    section(f"Load dataset ({DOCS} docs in {PROJECT}.{COLL})")
     loaded = setup(c)
     cb_before = cache_bytes(c)
     check(f"dataset of {DOCS} docs loaded", loaded)
@@ -180,7 +180,7 @@ def main():
         warm_median <= cold_ms * SPEED_TOLERANCE,
         detail=f"cold={cold_ms:.2f} ms  warm median={warm_median:.2f} ms  speedup={speedup:.1f}x")
 
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
     c.close()
 
     bu.summary()

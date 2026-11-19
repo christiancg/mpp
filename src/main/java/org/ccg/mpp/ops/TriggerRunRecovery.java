@@ -120,7 +120,7 @@ public final class TriggerRunRecovery {
 
     private static List<AdminTriggerRunEntry> confirmLanded(List<AdminTriggerRunEntry> chunks) throws Exception {
         final var first = chunks.getFirst();
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(first.getDbName(), first.getCollName());
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(first.getTargetProject(), first.getCollName());
         final var landed = new HashSet<String>();
         for (final var chunk : chunks) {
             if (!isStaged(chunk)) {
@@ -231,7 +231,7 @@ public final class TriggerRunRecovery {
         if (first.getEventType() == EventType.DELETED) {
             for (final var chunk : chunks) {
                 for (final var document : chunk.getDocuments()) {
-                    entries.add(DbEntry.fromJsonObject(first.getDbName(), first.getCollName(), document));
+                    entries.add(DbEntry.fromJsonObject(first.getTargetProject(), first.getCollName(), document));
                 }
             }
         } else {
@@ -239,14 +239,14 @@ public final class TriggerRunRecovery {
             for (final var chunk : chunks) {
                 ids.addAll(chunk.getIds());
             }
-            entries.addAll(cache.getEntriesByIds(first.getDbName(), first.getCollName(), ids));
+            entries.addAll(cache.getEntriesByIds(first.getTargetProject(), first.getCollName(), ids));
         }
         if (entries.isEmpty()) {
             return null;
         }
-        return new TriggerEvent(first.getEventType(), first.getDbName(), first.getCollName(), first.getTriggerName(),
-                first.getProcedureName(), first.isBatchMode(), entries, first.getActingUser(), first.getDepth(),
-                first.getRunId(), Math.max(1, attempt), recordedFiredAt(first));
+        return new TriggerEvent(first.getEventType(), first.getTargetProject(), first.getCollName(),
+                first.getTriggerName(), first.getProcedureName(), first.isBatchMode(), entries, first.getActingUser(),
+                first.getDepth(), first.getRunId(), Math.max(1, attempt), recordedFiredAt(first));
     }
 
     private static long recordedFiredAt(AdminTriggerRunEntry run) {

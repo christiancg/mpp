@@ -7,8 +7,8 @@ import org.ccg.mpp.ops.req.agg.BaseAggregationStep;
 public class ListenRequest extends OperationRequest {
     private List<BaseAggregationStep> aggregationSteps;
 
-    public ListenRequest(String databaseName, String collectionName) {
-        super(OperationType.LISTEN, databaseName, collectionName);
+    public ListenRequest(String projectName, String collectionName) {
+        super(OperationType.LISTEN, projectName, collectionName);
     }
 
     public List<BaseAggregationStep> getAggregationSteps() {

@@ -16,14 +16,14 @@ public final class PageRowWriteBack {
     private static final Map<String, DirtyRows> dirty = new ConcurrentHashMap<>();
 
     private static final class DirtyRows {
-        private final String dbName;
+        private final String projectName;
         private final String collName;
         private final long since;
         private final Set<Long> pages = new HashSet<>();
         private long incarnation;
 
-        DirtyRows(String dbName, String collName, long since) {
-            this.dbName = dbName;
+        DirtyRows(String projectName, String collName, long since) {
+            this.projectName = projectName;
             this.collName = collName;
             this.since = since;
         }
@@ -33,8 +33,8 @@ public final class PageRowWriteBack {
             pages.addAll(touchedPages);
         }
 
-        String dbName() {
-            return dbName;
+        String projectName() {
+            return projectName;
         }
 
         String collName() {
@@ -57,12 +57,12 @@ public final class PageRowWriteBack {
     private PageRowWriteBack() {
     }
 
-    static void touched(String dbName, String collName, long incarnation, Collection<Long> pages, long nowMillis) {
+    static void touched(String projectName, String collName, long incarnation, Collection<Long> pages, long nowMillis) {
         if (pages.isEmpty()) {
             return;
         }
-        dirty.compute(Cache.getCollectionIdentifier(dbName, collName), (_, existing) -> {
-            final var rows = existing != null ? existing : new DirtyRows(dbName, collName, nowMillis);
+        dirty.compute(Cache.getCollectionIdentifier(projectName, collName), (_, existing) -> {
+            final var rows = existing != null ? existing : new DirtyRows(projectName, collName, nowMillis);
             rows.absorb(incarnation, pages);
             return rows;
         });
@@ -85,8 +85,8 @@ public final class PageRowWriteBack {
         }
     }
 
-    static void forget(String dbName, String collName) {
-        dirty.remove(Cache.getCollectionIdentifier(dbName, collName));
+    static void forget(String projectName, String collName) {
+        dirty.remove(Cache.getCollectionIdentifier(projectName, collName));
     }
 
     private static void flush(String key) {
@@ -95,7 +95,7 @@ public final class PageRowWriteBack {
             return;
         }
         try {
-            AdminPageHelper.writeBackRows(rows.dbName(), rows.collName(), rows.incarnation(), rows.pages());
+            AdminPageHelper.writeBackRows(rows.projectName(), rows.collName(), rows.incarnation(), rows.pages());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             retryLater(key, rows);
@@ -108,7 +108,7 @@ public final class PageRowWriteBack {
 
     private static void retryLater(String key, DirtyRows rows) {
         dirty.compute(key, (_, existing) -> {
-            final var retry = new DirtyRows(rows.dbName(), rows.collName(), System.currentTimeMillis());
+            final var retry = new DirtyRows(rows.projectName(), rows.collName(), System.currentTimeMillis());
             retry.absorb(rows.incarnation(), rows.pages());
             if (existing != null) {
                 retry.absorb(existing.incarnation(), existing.pages());

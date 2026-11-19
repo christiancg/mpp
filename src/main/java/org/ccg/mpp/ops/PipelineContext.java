@@ -107,13 +107,13 @@ public final class PipelineContext implements ReadObserver, AutoCloseable {
         }
     }
 
-    public Stream<JsonObject> source(Stream<JsonObject> resultStream, String dbName, String collName)
+    public Stream<JsonObject> source(Stream<JsonObject> resultStream, String projectName, String collName)
             throws IOException {
         if (resultStream != null) {
             return resultStream;
         }
         refuseUnderPointHold();
-        return scan(cache.streamCollection(dbName, collName)).map(DbEntry::getData);
+        return scan(cache.streamCollection(projectName, collName)).map(DbEntry::getData);
     }
 
     public Stream<DbEntry> scan(Stream<DbEntry> entries) {
@@ -219,23 +219,23 @@ public final class PipelineContext implements ReadObserver, AutoCloseable {
         }
     }
 
-    public List<PkIndexEntry> pinnedPkIndex(String dbName, String collName) throws IOException {
-        if (!locks.holdsCollectionLock(dbName, collName)) {
+    public List<PkIndexEntry> pinnedPkIndex(String projectName, String collName) throws IOException {
+        if (!locks.holdsCollectionLock(projectName, collName)) {
             return null;
         }
-        final var collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        final var collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         final var pinned = pinnedPk.get(collectionIdentifier);
         if (pinned != null) {
             return pinned;
         }
-        if (cache.pkServedByPointScans(dbName, collName)) {
+        if (cache.pkServedByPointScans(projectName, collName)) {
             return pointScannedFetches.merge(collectionIdentifier, 1, Integer::sum) > POINT_SCANS_BEFORE_PIN
                     && cache.userCache().tryPinTransientPkIndex()
-                            ? pinnedPointScannedPk(dbName, collName, collectionIdentifier)
+                            ? pinnedPointScannedPk(projectName, collName, collectionIdentifier)
                             : null;
         }
-        final var rows = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
-        if (cache.userCache().isResidentPkIndex(dbName, collName, rows)) {
+        final var rows = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
+        if (cache.userCache().isResidentPkIndex(projectName, collName, rows)) {
             pinnedPk.put(collectionIdentifier, rows);
         } else if (cache.userCache().tryPinTransientPkIndex()) {
             transientPins++;
@@ -244,10 +244,10 @@ public final class PipelineContext implements ReadObserver, AutoCloseable {
         return rows;
     }
 
-    private List<PkIndexEntry> pinnedPointScannedPk(String dbName, String collName, String collectionIdentifier)
+    private List<PkIndexEntry> pinnedPointScannedPk(String projectName, String collName, String collectionIdentifier)
             throws IOException {
         try {
-            final var rows = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+            final var rows = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
             transientPins++;
             pinnedPk.put(collectionIdentifier, rows);
             return rows;

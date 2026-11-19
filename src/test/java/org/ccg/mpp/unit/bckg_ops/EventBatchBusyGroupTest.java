@@ -40,7 +40,7 @@ public class EventBatchBusyGroupTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         indexField(TestGlobals.COLL);
         indexField(TestGlobals.JOIN_COLL);
@@ -58,8 +58,8 @@ public class EventBatchBusyGroupTest {
     }
 
     private void indexField(String collName) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, collName, "f");
-        cache.getAdminCollectionEntry(TestGlobals.DB, collName).setIndexes(Set.of("f"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, collName, "f");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, collName).setIndexes(Set.of("f"));
     }
 
     private List<Event> eventsFor(String collName, String... ids) {
@@ -69,10 +69,10 @@ public class EventBatchBusyGroupTest {
             final var data = new JsonObject();
             data.add(Globals.PK_FIELD, new JsonString(id));
             data.addProperty("f", value++);
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, collName, data);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, data);
             entry.set_id(id);
-            cache.addEntryToCache(TestGlobals.DB, collName, entry);
-            events.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, collName, entry));
+            cache.addEntryToCache(TestGlobals.PROJECT, collName, entry);
+            events.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, collName, entry));
         }
         return events;
     }
@@ -81,10 +81,10 @@ public class EventBatchBusyGroupTest {
         final var held = new CountDownLatch(1);
         lockHolder.execute(() -> {
             try {
-                if (locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL, 5_000L)) {
+                if (locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL, 5_000L)) {
                     held.countDown();
                     release.await();
-                    locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                    locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -94,14 +94,14 @@ public class EventBatchBusyGroupTest {
     }
 
     private Set<String> indexedIds(String collName) throws Exception {
-        locks.lockRead(TestGlobals.DB, collName);
+        locks.lockRead(TestGlobals.PROJECT, collName);
         try {
-            final var index = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, collName, "f", Number.class);
+            final var index = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, collName, "f", Number.class);
             return index == null
                     ? Set.of()
                     : index.stream().flatMap(entry -> entry.getIds().stream()).collect(Collectors.toSet());
         } finally {
-            locks.releaseRead(TestGlobals.DB, collName);
+            locks.releaseRead(TestGlobals.PROJECT, collName);
         }
     }
 
@@ -130,8 +130,8 @@ public class EventBatchBusyGroupTest {
     private boolean lockHolderReleased() throws Exception {
         final var deadline = System.currentTimeMillis() + 5_000L;
         while (System.currentTimeMillis() < deadline) {
-            if (locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 100L)) {
-                locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            if (locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 100L)) {
+                locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
                 return true;
             }
         }

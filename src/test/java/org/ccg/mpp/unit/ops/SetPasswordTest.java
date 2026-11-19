@@ -47,7 +47,7 @@ public class SetPasswordTest {
         req.setPassword("password123");
         req.setAdmin(admin);
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(req);
     }

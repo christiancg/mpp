@@ -42,7 +42,7 @@ public class ListenRerunTimeoutTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.ensureAdminUser(LISTENER);
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
@@ -51,7 +51,7 @@ public class ListenRerunTimeoutTest {
             document.addProperty("n", i);
             objects.add(document);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(objects);
         IocContainer.get(OperationProcessor.class).processMessage(bulk);
         clientId = clientTracker.registerForwardedClient(LISTENER);
@@ -89,7 +89,7 @@ public class ListenRerunTimeoutTest {
 
     private UUID rerunOnce() throws InterruptedException {
         final var manager = new ListenManager();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SlowSkipStep()));
         request.setDirtyRead(true);
         final var listenId = manager.register(clientId, LISTENER, request, "stale-hash", 0);

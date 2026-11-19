@@ -1,4 +1,4 @@
-Maps between stored documents and an application type. `Database.collection(name, Class)` uses a
+Maps between stored documents and an application type. `Project.collection(name, Class)` uses a
 Jackson-based codec; implement this interface to map differently.
 
 @param <T> the application type

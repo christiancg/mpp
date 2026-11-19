@@ -18,7 +18,7 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.ProcedureOperationHelper;
 import org.ccg.mpp.ops.ScheduleOperationHelper;
 import org.ccg.mpp.ops.TriggerOperationHelper;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 
 public class DefinitionCapsTest {
     private static final String ACTOR = "capsowner";
-    private static final String OTHER_DB = "capsOtherDb";
+    private static final String OTHER_PROJECT = "capsOtherProject";
     private static final Configuration configuration = Configuration.getInstance();
     private final Cache cache = IocContainer.get(Cache.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
@@ -43,8 +43,8 @@ public class DefinitionCapsTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(OperationProcessor.class).processMessage(new CreateDatabaseRequest(OTHER_DB));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(OperationProcessor.class).processMessage(new CreateProjectRequest(OTHER_PROJECT));
         TriggerTestSupport.createDefiner(ACTOR);
     }
 
@@ -61,21 +61,21 @@ public class DefinitionCapsTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TriggerTestSupport.clearTriggersAndProcedures();
-        for (final var db : List.of(TestGlobals.DB, OTHER_DB)) {
+        for (final var db : List.of(TestGlobals.PROJECT, OTHER_PROJECT)) {
             for (final var name : fs.metadataFiles().listScheduleNames(db)) {
                 fs.metadataFiles().deleteSchedule(db, name);
             }
-            cache.removeSchedulesForDatabase(db);
+            cache.removeSchedulesForProject(db);
         }
         registry.clear();
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "job", "return 1;"), ACTOR);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(OTHER_DB, "job", "return 1;"), ACTOR);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "job", "return 1;"), ACTOR);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(OTHER_PROJECT, "job", "return 1;"), ACTOR);
     }
 
     @AfterEach
     void restoreCaps() throws Exception {
         for (final var key : List.of(ConfigKey.TRIGGER_MAX_PER_COLLECTION, ConfigKey.SCHEDULE_MAX_TOTAL_PER_USER,
-                ConfigKey.SCHEDULE_MIN_INTERVAL_MS, ConfigKey.MAX_PROCEDURES_PER_DATABASE)) {
+                ConfigKey.SCHEDULE_MIN_INTERVAL_MS, ConfigKey.MAX_PROCEDURES_PER_PROJECT)) {
             TestUtils.setPrivateField(configuration, key.key(), key.defaultValue());
         }
     }
@@ -87,7 +87,7 @@ public class DefinitionCapsTest {
     }
 
     private static SaveTriggerRequest trigger(String name) {
-        return new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, name, List.of("CREATED"), "job");
+        return new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, name, List.of("CREATED"), "job");
     }
 
     @Test
@@ -99,48 +99,48 @@ public class DefinitionCapsTest {
         final var refused = TriggerOperationHelper.executeSave(trigger("t3"), ACTOR);
 
         assertEquals(ErrorCode.TOO_MANY_TRIGGERS.getCode(), refused.getErrorCode());
-        assertEquals(2, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(2, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(trigger("t2"), ACTOR).getStatus(),
                 "replacing an existing trigger never counts against the cap");
     }
 
     @Test
-    public void test_schedules_per_user_are_capped_across_databases() throws Exception {
+    public void test_schedules_per_user_are_capped_across_projects() throws Exception {
         TestUtils.setPrivateField(configuration, "scheduleMaxTotalPerUser", 2);
         assertEquals(OperationStatus.OK,
-                ScheduleOperationHelper.executeSave(every(TestGlobals.DB, "a", 5_000L), ACTOR).getStatus());
+                ScheduleOperationHelper.executeSave(every(TestGlobals.PROJECT, "a", 5_000L), ACTOR).getStatus());
         assertEquals(OperationStatus.OK,
-                ScheduleOperationHelper.executeSave(every(OTHER_DB, "b", 5_000L), ACTOR).getStatus());
+                ScheduleOperationHelper.executeSave(every(OTHER_PROJECT, "b", 5_000L), ACTOR).getStatus());
 
-        final var refused = ScheduleOperationHelper.executeSave(every(OTHER_DB, "c", 5_000L), ACTOR);
+        final var refused = ScheduleOperationHelper.executeSave(every(OTHER_PROJECT, "c", 5_000L), ACTOR);
 
         assertEquals(ErrorCode.TOO_MANY_SCHEDULES_FOR_USER.getCode(), refused.getErrorCode());
         assertEquals(OperationStatus.OK,
-                ScheduleOperationHelper.executeSave(every(OTHER_DB, "b", 6_000L), ACTOR).getStatus(),
+                ScheduleOperationHelper.executeSave(every(OTHER_PROJECT, "b", 6_000L), ACTOR).getStatus(),
                 "replacing one of the user's own schedules takes no new slot");
         assertEquals(OperationStatus.OK,
-                ScheduleOperationHelper.executeSave(every(OTHER_DB, "c", 5_000L), "anotheruser").getStatus(),
+                ScheduleOperationHelper.executeSave(every(OTHER_PROJECT, "c", 5_000L), "anotheruser").getStatus(),
                 "the cap is per user, not per node");
     }
 
     @Test
     public void test_a_schedule_interval_below_the_minimum_is_refused() throws Exception {
-        final var refused = ScheduleOperationHelper.executeSave(every(TestGlobals.DB, "fast", 999L), ACTOR);
+        final var refused = ScheduleOperationHelper.executeSave(every(TestGlobals.PROJECT, "fast", 999L), ACTOR);
 
         assertEquals(ErrorCode.SCHEDULE_INTERVAL_TOO_SMALL.getCode(), refused.getErrorCode());
         assertTrue(refused.getMessage().contains("1000 ms"));
         assertEquals(OperationStatus.OK,
-                ScheduleOperationHelper.executeSave(every(TestGlobals.DB, "fast", 1_000L), ACTOR).getStatus());
+                ScheduleOperationHelper.executeSave(every(TestGlobals.PROJECT, "fast", 1_000L), ACTOR).getStatus());
     }
 
     @Test
     public void test_a_stored_interval_below_the_minimum_runs_at_the_minimum() throws Exception {
         final var definition = new ScheduleDefinition("legacy", "job", null, 10L, null, 0L, true, ACTOR, null, 1L, 1L,
                 1L, ACTOR);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, "legacy", eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, "legacy");
-        registry.reload(TestGlobals.DB);
-        final var entry = registry.get(TestGlobals.DB, "legacy");
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, "legacy", eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, "legacy");
+        registry.reload(TestGlobals.PROJECT);
+        final var entry = registry.get(TestGlobals.PROJECT, "legacy");
         entry.setNextRunAt(1_000_000L);
 
         assertEquals(1_001_000L, registry.nextRunAfter(entry, 1_000_000L),
@@ -148,17 +148,17 @@ public class DefinitionCapsTest {
     }
 
     @Test
-    public void test_procedures_per_database_are_capped() throws Exception {
-        TestUtils.setPrivateField(configuration, "maxProceduresPerDatabase", 2);
+    public void test_procedures_per_project_are_capped() throws Exception {
+        TestUtils.setPrivateField(configuration, "maxProceduresPerProject", 2);
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "second", "return 2;"), ACTOR).getStatus());
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "second", "return 2;"), ACTOR).getStatus());
 
         final var refused = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "third", "return 3;"), ACTOR);
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "third", "return 3;"), ACTOR);
 
         assertEquals(ErrorCode.TOO_MANY_PROCEDURES.getCode(), refused.getErrorCode());
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "second", "return 22;"), ACTOR).getStatus(),
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "second", "return 22;"), ACTOR).getStatus(),
                 "replacing an existing procedure never counts against the cap");
     }
 }

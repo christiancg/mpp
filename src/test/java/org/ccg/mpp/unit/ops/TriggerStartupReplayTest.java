@@ -68,7 +68,7 @@ public class TriggerStartupReplayTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -88,9 +88,9 @@ public class TriggerStartupReplayTest {
         TriggerTestSupport.consumeAllPendingRuns();
         captured.clear();
         final var definition = new ProcedureDefinition("noop", "export default 1;", 1L, null, true, 1L, 1L, "admin");
-        fs.metadataFiles().writeProcedure(TestGlobals.DB, "noop", eJson.toJson(definition.toJsonObject()));
-        cache.putProcedure(TestGlobals.DB, definition);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        fs.metadataFiles().writeProcedure(TestGlobals.PROJECT, "noop", eJson.toJson(definition.toJsonObject()));
+        cache.putProcedure(TestGlobals.PROJECT, definition);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit",
                         new LinkedHashSet<>(Set.of(EventType.CREATED, EventType.UPDATED)), "noop",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "admin", 1L, 1L, 1L, "admin")));
@@ -104,14 +104,14 @@ public class TriggerStartupReplayTest {
     }
 
     private static List<String> collections() {
-        return List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        return List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private String crashAfterStagingCommittedSlice(String id, boolean prepared) throws Exception {
         final var clientId = clientTracker.registerForwardedClient("admin");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -201,7 +201,7 @@ public class TriggerStartupReplayTest {
 
     @Test
     public void test_record_without_tx_id_is_recovered_as_before() throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("standalone"));
         request.set_id("standalone");
         processor.processMessage(request);

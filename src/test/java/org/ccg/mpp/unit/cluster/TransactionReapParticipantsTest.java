@@ -22,7 +22,7 @@ public class TransactionReapParticipantsTest extends RemoteOwnerTxTestBase {
     @Test
     public void test_reap_with_participants_goes_through_the_2pc_rollback() {
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var save = new SaveRequest(TestGlobals.DB, coll);
+        final var save = new SaveRequest(TestGlobals.PROJECT, coll);
         save.setObject(document("idle"));
         save.set_id("idle");
         final var relayed = router.forward(save, eJson.toJson(save), true, "admin", clientId);

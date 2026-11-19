@@ -5,7 +5,7 @@ Writes are buffered by the server and applied together on `CommitAsync`. Disposi
 ## Collection(string, string)
 Returns a collection whose documents are `Document` values, bound to this transaction.
 
-@param database the database name
+@param project the project name
 @param collection the collection name
 @returns the collection handle
 @exception System.InvalidOperationException when the transaction is already committed or rolled back
@@ -14,7 +14,7 @@ Returns a collection whose documents are `Document` values, bound to this transa
 Returns a collection whose documents are mapped to `T`, bound to this transaction.
 
 @typeparam T the type documents are mapped to
-@param database the database name
+@param project the project name
 @param collection the collection name
 @param codec how `T` maps to and from a document; when null, a `JsonCodec<T>` over `ClientSettings.Json`
 @returns the collection handle

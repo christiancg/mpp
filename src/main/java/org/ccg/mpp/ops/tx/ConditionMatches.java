@@ -15,11 +15,11 @@ final class ConditionMatches {
     private ConditionMatches() {
     }
 
-    static List<JsonObject> of(String dbName, String collName, BaseOperator condition, Transaction transaction)
+    static List<JsonObject> of(String projectName, String collName, BaseOperator condition, Transaction transaction)
             throws IOException {
-        final var filter = new AggregateRequest(dbName, collName);
+        final var filter = new AggregateRequest(projectName, collName);
         filter.setAggregationSteps(List.of(new FilterAggregationStep(condition)));
-        final var overlay = transaction.overlayFor(Cache.getCollectionIdentifier(dbName, collName));
+        final var overlay = transaction.overlayFor(Cache.getCollectionIdentifier(projectName, collName));
         try (var context = PipelineContext.fromConfiguration(null)) {
             return overlay == null || overlay.isEmpty()
                     ? AggregationOperationHelper.processAggregation(filter, null, transaction, context)

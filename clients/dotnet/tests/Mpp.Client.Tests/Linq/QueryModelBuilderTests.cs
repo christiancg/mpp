@@ -99,8 +99,8 @@ public sealed class QueryModelBuilderTests
         Refused(() => _harness.Linq.Select(o => o.Name).Where(n => n == "a").ToList(), "Select");
         Refused(() => _harness.Linq.Where(o => o.Name!.StartsWith('a')).ToList(), "StartsWith");
         Refused(() => _harness.Linq.GroupJoin(_harness.Customers.AsQueryable().Where(c => c.Name == "x"), o => o.CustomerId, c => c.Id, (o, c) => o).ToList(), "operators");
-        var other = new Database(_harness.Context, "other").Collection<Customer>("customers");
-        Refused(() => _harness.Linq.GroupJoin(other.AsQueryable(), o => o.CustomerId, c => c.Id, (o, c) => o).ToList(), "another database");
+        var other = new Project(_harness.Context, "other").Collection<Customer>("customers");
+        Refused(() => _harness.Linq.GroupJoin(other.AsQueryable(), o => o.CustomerId, c => c.Id, (o, c) => o).ToList(), "another project");
         Refused(() => _harness.Linq.GroupBy(o => o.Status).Where(g => g.Count() > 1).ToList(), "Count");
         Refused(() => _harness.Linq.Select(o => o.Name).ToQuery(), "ToQuery");
         Refused(() => _harness.Linq.Where((o, index) => index > 1).ToList(), "index");

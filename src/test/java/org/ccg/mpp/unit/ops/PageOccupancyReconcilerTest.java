@@ -46,14 +46,14 @@ public class PageOccupancyReconcilerTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
     public void tearDown() throws Exception {
         if (originalTaskManager != null) {
             TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-            pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -63,14 +63,14 @@ public class PageOccupancyReconcilerTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty("payload", "value-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         assertNotNull(SaveOperationHelper.executeSave(request));
     }
 
     private AdminPageEntry row(long page) {
-        final var rows = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var rows = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         return rows == null ? null : rows.stream().filter(r -> r.getPage() == page).findFirst().orElse(null);
     }
 
@@ -81,13 +81,13 @@ public class PageOccupancyReconcilerTest {
     }
 
     private long firstPageFileLength() throws Exception {
-        return fs.pageFileLengths(TestGlobals.DB, TestGlobals.COLL).get(0L);
+        return fs.pageFileLengths(TestGlobals.PROJECT, TestGlobals.COLL).get(0L);
     }
 
     private File persistedRowsFolder() {
-        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.DB,
+        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.PROJECT,
                 TestGlobals.COLL);
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_DB_NAME + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECT_NAME + Globals.FILE_SEPARATOR
                 + Globals.ADMIN_PAGES_FOLDER + Globals.FILE_SEPARATOR + pagesCollName);
     }
 
@@ -95,9 +95,9 @@ public class PageOccupancyReconcilerTest {
     public void test_missing_row_for_a_page_file_is_rebuilt() throws Exception {
         save("a");
         save("b");
-        cache.removeAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         final var rebuilt = row(0);
         assertNotNull(rebuilt);
@@ -113,7 +113,7 @@ public class PageOccupancyReconcilerTest {
         save("a");
         existingRow(0).setPageSize(1L);
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(firstPageFileLength(), existingRow(0).getPageSize());
         assertEquals(1, existingRow(0).getEntryCount());
@@ -122,12 +122,12 @@ public class PageOccupancyReconcilerTest {
     @Test
     public void test_row_for_a_page_file_that_no_longer_exists_is_emptied() throws Exception {
         save("a");
-        final var phantom = new AdminPageEntry(TestGlobals.DB, TestGlobals.COLL, 9L);
+        final var phantom = new AdminPageEntry(TestGlobals.PROJECT, TestGlobals.COLL, 9L);
         phantom.setEntryCount(3);
         phantom.setPageSize(500L);
-        cache.addAdminPageEntries(TestGlobals.DB, TestGlobals.COLL, phantom);
+        cache.addAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL, phantom);
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(0, existingRow(9).getEntryCount());
         assertEquals(0L, existingRow(9).getPageSize());
@@ -136,10 +136,10 @@ public class PageOccupancyReconcilerTest {
     @Test
     public void test_consistent_collection_is_not_rewritten() throws Exception {
         save("a");
-        cache.removeAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        cache.removeAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -147,12 +147,12 @@ public class PageOccupancyReconcilerTest {
         save("a");
         save("b");
         save("c");
-        final var removed = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var removed = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(pk -> pk.getValue().equals("b")).findFirst().orElseThrow();
         fs.deleteFromCollection(removed);
-        cache.removeAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(firstPageFileLength() - removed.getLength(), existingRow(0).getPageSize(),
                 "a hole is dead space: the row counts only the records the pk index names");
@@ -163,26 +163,26 @@ public class PageOccupancyReconcilerTest {
     public void test_an_empty_page_file_with_no_row_gets_an_empty_row() throws Exception {
         save("a");
         final var page = new File(persistedRowsFolder().getParentFile().getParentFile().getParentFile(),
-                TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
-                        + "-1" + Globals.DB_FILE_EXTENSION);
+                TestGlobals.PROJECT + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR
+                        + TestGlobals.COLL + "-1" + Globals.DB_FILE_EXTENSION);
         Files.createFile(page.toPath());
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(0, existingRow(1).getEntryCount());
         assertEquals(0L, existingRow(1).getPageSize());
-        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_an_empty_collection_needs_nothing() throws Exception {
-        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_reconcile_all_covers_every_registered_collection() throws Exception {
         save("a");
-        cache.removeAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
 
         PageOccupancyReconciler.reconcileAll();
 
@@ -198,7 +198,7 @@ public class PageOccupancyReconcilerTest {
 
     private Map<Long, Long> adminTransactionRowSizes() {
         final var byPage = new TreeMap<Long, Long>();
-        cache.getAdminPageEntries(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME)
+        cache.getAdminPageEntries(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME)
                 .forEach(row -> byPage.put(row.getPage(), row.getPageSize()));
         return byPage;
     }
@@ -214,16 +214,16 @@ public class PageOccupancyReconcilerTest {
     public void test_admin_rows_are_rebuilt_at_startup() throws Exception {
         final var collName = Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
         saveOutcomeMarker("committed");
-        cache.getAdminPageEntries(Globals.ADMIN_DB_NAME, collName).forEach(stale -> {
+        cache.getAdminPageEntries(Globals.ADMIN_PROJECT_NAME, collName).forEach(stale -> {
             stale.setPageSize(0L);
             stale.setEntryCount(0);
         });
 
         PageOccupancyReconciler.reconcileAll();
 
-        final var live = fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, collName);
+        final var live = fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, collName);
         assertEquals(liveBytesByPage(live), adminTransactionRowSizes());
-        assertEquals(live.size(), cache.getAdminPageEntries(Globals.ADMIN_DB_NAME, collName).stream()
+        assertEquals(live.size(), cache.getAdminPageEntries(Globals.ADMIN_PROJECT_NAME, collName).stream()
                 .mapToInt(AdminPageEntry::getEntryCount).sum());
         assertFalse(PageOccupancyReconciler.reconcileAdminRows(collName), "the rebuilt rows agree");
     }
@@ -232,28 +232,28 @@ public class PageOccupancyReconcilerTest {
     public void test_admin_rows_whose_sizes_agree_but_counts_do_not_are_rebuilt() throws Exception {
         final var collName = Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
         saveOutcomeMarker("aborted");
-        final var row = cache.getAdminPageEntries(Globals.ADMIN_DB_NAME, collName).getFirst();
+        final var row = cache.getAdminPageEntries(Globals.ADMIN_PROJECT_NAME, collName).getFirst();
         row.setEntryCount(row.getEntryCount() + 1);
 
         assertTrue(PageOccupancyReconciler.reconcileAdminRows(collName));
 
-        assertEquals(fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, collName).size(), row.getEntryCount());
+        assertEquals(fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, collName).size(), row.getEntryCount());
     }
 
     @Test
     public void test_user_rows_whose_sizes_agree_but_counts_do_not_are_rebuilt() throws Exception {
         save("counted");
-        final var row = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        final var row = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
         row.setEntryCount(row.getEntryCount() + 1);
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        assertEquals(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).size(),
-                cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).getFirst().getEntryCount());
+        assertEquals(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).size(),
+                cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().getEntryCount());
     }
 
     private File firstUserPage() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-0.dat");
     }
 
@@ -262,12 +262,12 @@ public class PageOccupancyReconcilerTest {
         save("before");
         Files.writeString(firstUserPage().toPath(), "{\"_id\":\"torn\",\"pay", StandardOpenOption.APPEND);
 
-        PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         save("after");
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        final var scanned = cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL);
+        final var scanned = cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(scanned.containsKey("before"));
         assertTrue(scanned.containsKey("after"), "an insert after the heal must not share a line with torn bytes");
         assertFalse(scanned.containsKey("torn"));
@@ -286,7 +286,7 @@ public class PageOccupancyReconcilerTest {
     }
 
     private AdminPageEntry firstPageRow() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(r -> r.getPage() == 0)
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream().filter(r -> r.getPage() == 0)
                 .findFirst().orElseThrow();
     }
 
@@ -296,13 +296,13 @@ public class PageOccupancyReconcilerTest {
         save(KEPT);
         leaveAnUnindexedRecord();
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        final var pkIds = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream().map(PkIndexEntry::getValue)
-                .sorted().toList();
+        final var pkIds = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
+                .map(PkIndexEntry::getValue).sorted().toList();
         assertEquals(List.of(KEPT, ORPHAN), pkIds);
-        final var whole = cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL);
+        final var whole = cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(2, whole.size());
         assertEquals("left by a crash", whole.get(ORPHAN).getData().get("payload").asJsonString().getValue());
     }
@@ -313,9 +313,9 @@ public class PageOccupancyReconcilerTest {
         save(KEPT);
         leaveAnUnindexedRecord();
 
-        PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(ORPHAN),
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(ORPHAN),
                 "an index-backed read must re-derive the adopted record before the worker indexes it");
         final var repairs = QueuedRepairs.of(stubTaskManager);
         assertEquals(1, repairs.size());
@@ -330,7 +330,7 @@ public class PageOccupancyReconcilerTest {
         leaveAnUnindexedRecord();
         firstPageRow().setPageSize(firstUserPage().length());
 
-        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(2, firstPageRow().getEntryCount());
         assertEquals(firstUserPage().length(), firstPageRow().getPageSize());
@@ -341,7 +341,7 @@ public class PageOccupancyReconcilerTest {
         stubTheTaskManager();
         save(KEPT);
 
-        PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(QueuedRepairs.of(stubTaskManager).isEmpty());
     }

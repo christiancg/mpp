@@ -28,19 +28,19 @@ public final class SnapshotOperationHelper {
     }
 
     public static OperationResponse start(StartSnapshotRequest request, UUID clientId, String actingUser) {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.START_SNAPSHOT, "Database " + dbName + " not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.START_SNAPSHOT, "Project " + projectName + " not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
-        final var collections = readableCollections(dbName, request.getCollectionNames(), actingUser);
-        final var lockIds = collections.stream().map(collName -> Cache.getCollectionIdentifier(dbName, collName))
+        final var collections = readableCollections(projectName, request.getCollectionNames(), actingUser);
+        final var lockIds = collections.stream().map(collName -> Cache.getCollectionIdentifier(projectName, collName))
                 .toList();
         return fencedWhenRefused(OperationLocks.withReadLocks(false, lockIds, OperationType.START_SNAPSHOT,
                 ErrorCode.ERROR_STARTING_SNAPSHOT, true, () -> {
                     final var captured = collections.stream()
-                            .filter(collName -> cache.getAdminCollectionEntry(dbName, collName) != null).toList();
-                    final var snapshot = registry.open(dbName, captured, clientId);
+                            .filter(collName -> cache.getAdminCollectionEntry(projectName, collName) != null).toList();
+                    final var snapshot = registry.open(projectName, captured, clientId);
                     if (snapshot == null) {
                         return new OperationResponse(OperationType.START_SNAPSHOT, ErrorCode.SNAPSHOT_LIMIT_REACHED);
                     }
@@ -49,7 +49,7 @@ public final class SnapshotOperationHelper {
     }
 
     public static OperationResponse read(ReadSnapshotRequest request, UUID clientId) {
-        final var snapshot = ownedSnapshot(request.getSnapshotId(), request.getDatabaseName(), clientId);
+        final var snapshot = ownedSnapshot(request.getSnapshotId(), request.getProjectName(), clientId);
         if (snapshot == null) {
             return new OperationResponse(OperationType.READ_SNAPSHOT, ErrorCode.SNAPSHOT_NOT_FOUND);
         }
@@ -61,7 +61,7 @@ public final class SnapshotOperationHelper {
             return new OperationResponse(OperationType.READ_SNAPSHOT,
                     "Collection " + collName + " is not in snapshot " + snapshot.id(), ErrorCode.VALIDATION_ERROR);
         }
-        final var lockIds = List.of(Cache.getCollectionIdentifier(snapshot.dbName(), collName));
+        final var lockIds = List.of(Cache.getCollectionIdentifier(snapshot.projectName(), collName));
         return fencedWhenRefused(OperationLocks.withReadLocks(false, lockIds, OperationType.READ_SNAPSHOT,
                 ErrorCode.ERROR_READING_SNAPSHOT, true, () -> readPage(snapshot, request)), lockIds);
     }
@@ -74,7 +74,7 @@ public final class SnapshotOperationHelper {
     }
 
     public static OperationResponse release(ReleaseSnapshotRequest request, UUID clientId) {
-        final var snapshot = ownedSnapshot(request.getSnapshotId(), request.getDatabaseName(), clientId);
+        final var snapshot = ownedSnapshot(request.getSnapshotId(), request.getProjectName(), clientId);
         if (snapshot == null) {
             return new OperationResponse(OperationType.RELEASE_SNAPSHOT, ErrorCode.SNAPSHOT_NOT_FOUND);
         }
@@ -98,21 +98,21 @@ public final class SnapshotOperationHelper {
         }
     }
 
-    private static Snapshot ownedSnapshot(String snapshotId, String dbName, UUID clientId) {
+    private static Snapshot ownedSnapshot(String snapshotId, String projectName, UUID clientId) {
         final var snapshot = registry.find(snapshotId, clientId);
-        return snapshot == null || !snapshot.dbName().equals(dbName) ? null : snapshot;
+        return snapshot == null || !snapshot.projectName().equals(projectName) ? null : snapshot;
     }
 
     private static OperationResponse aborted(Snapshot snapshot) {
         return new OperationResponse(OperationType.READ_SNAPSHOT, ErrorCode.SNAPSHOT_ABORTED, snapshot.abortReason());
     }
 
-    private static List<String> readableCollections(String dbName, List<String> requested, String actingUser) {
+    private static List<String> readableCollections(String projectName, List<String> requested, String actingUser) {
         final var user = actingUser == null ? null : cache.getAdminUserEntry(actingUser);
-        final var names = requested == null ? cache.getCollectionNamesForDatabase(dbName) : requested;
+        final var names = requested == null ? cache.getCollectionNamesForProject(projectName) : requested;
         final var readable = new TreeSet<String>();
         for (final var collName : names) {
-            if (AuthorizationChecker.canReadCollection(user, dbName, collName)) {
+            if (AuthorizationChecker.canReadCollection(user, projectName, collName)) {
                 readable.add(collName);
             }
         }

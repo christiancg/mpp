@@ -187,9 +187,9 @@ public class UserOperationHelperAuthThrottleTest {
         final var locks = IocContainer.get(ResourceLocking.class);
         try (var holder = new LockHolder()) {
             holder.hold(() -> {
-                locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
+                locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
                 return true;
-            }, () -> locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
+            }, () -> locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
             final var result = new AtomicReference<OperationResponse>();
             final var authenticate = startParked(
                     () -> UserOperationHelper.processAuthenticate(request(USER, PASSWORD), clientId), result);

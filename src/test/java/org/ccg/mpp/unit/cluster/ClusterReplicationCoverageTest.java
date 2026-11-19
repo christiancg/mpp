@@ -60,7 +60,7 @@ public class ClusterReplicationCoverageTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.enableAlone(ClusterTestHarness.node("self", 19990));
     }
 
@@ -73,22 +73,22 @@ public class ClusterReplicationCoverageTest {
 
     @Test
     public void test_replicate_upsert_reads_committed_doc_and_meets_quorum() {
-        ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("u1")), null), TestGlobals.APPLY_BUDGET_MS);
         assertEquals(ReplicationOutcome.QUORUM_MET,
-                coordinator.replicateUpsert(TestGlobals.DB, TestGlobals.COLL, List.of("u1")));
+                coordinator.replicateUpsert(TestGlobals.PROJECT, TestGlobals.COLL, List.of("u1")));
     }
 
     @Test
     public void test_replicate_delete_meets_quorum() {
         assertEquals(ReplicationOutcome.QUORUM_MET,
-                coordinator.replicateDelete(TestGlobals.DB, TestGlobals.COLL, List.of("gone"), null));
+                coordinator.replicateDelete(TestGlobals.PROJECT, TestGlobals.COLL, List.of("gone"), null));
     }
 
     @Test
     public void test_replicate_admin_records_meets_quorum() throws Exception {
         assertEquals(ReplicationOutcome.QUORUM_MET, coordinator.replicateAdminRecords(
-                AdminRecords.of(List.of(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL)))));
+                AdminRecords.of(List.of(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL)))));
     }
 
     @Test
@@ -103,12 +103,12 @@ public class ClusterReplicationCoverageTest {
     @Test
     public void test_broadcast_reindex_meets_quorum() {
         assertEquals(ReplicationOutcome.QUORUM_MET,
-                coordinator.broadcastReindex(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null)));
+                coordinator.broadcastReindex(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null)));
     }
 
     @Test
     public void test_replicator_broadcasts_meet_quorum_with_no_peers() {
-        final var docPayload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        final var docPayload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("b1")), null);
         assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcast(docPayload));
         assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcastAdmin(new AdminSnapshotPayload(List.of())));
@@ -127,7 +127,7 @@ public class ClusterReplicationCoverageTest {
         when(pool.request(any(), any(), anyLong())).thenThrow(new IllegalStateException("unreachable"));
         TestUtils.setPrivateField(replicator, "pool", pool);
         try {
-            replicator.broadcast(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+            replicator.broadcast(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                     List.of(doc("dedup")), null));
 
             verify(pool, after(500).times(1)).request(eq(stale.address()), any(), anyLong());

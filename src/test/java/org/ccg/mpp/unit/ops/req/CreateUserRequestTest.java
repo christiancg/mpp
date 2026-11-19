@@ -48,17 +48,17 @@ public class CreateUserRequestTest {
     @Test
     public void test_global_permissions_setter_getter() {
         final var req = new CreateUserRequest();
-        final var perms = Set.of(GlobalPermissionType.CREATE_DATABASE);
+        final var perms = Set.of(GlobalPermissionType.CREATE_PROJECT);
         req.setGlobalPermissions(perms);
         assertEquals(perms, req.getGlobalPermissions());
     }
 
     @Test
-    public void test_database_permissions_setter_getter() {
+    public void test_project_permissions_setter_getter() {
         final var req = new CreateUserRequest();
-        final var perms = Map.of("db1", PermissionLevel.READ);
-        req.setDatabasePermissions(perms);
-        assertEquals(perms, req.getDatabasePermissions());
+        final var perms = Map.of("project1", PermissionLevel.READ);
+        req.setProjectPermissions(perms);
+        assertEquals(perms, req.getProjectPermissions());
     }
 
     @Test
@@ -73,10 +73,10 @@ public class CreateUserRequestTest {
     public void test_default_collections_are_empty() {
         final var req = new CreateUserRequest();
         assertNotNull(req.getGlobalPermissions());
-        assertNotNull(req.getDatabasePermissions());
+        assertNotNull(req.getProjectPermissions());
         assertNotNull(req.getCollectionPermissions());
         assertTrue(req.getGlobalPermissions().isEmpty());
-        assertTrue(req.getDatabasePermissions().isEmpty());
+        assertTrue(req.getProjectPermissions().isEmpty());
         assertTrue(req.getCollectionPermissions().isEmpty());
     }
 

@@ -24,15 +24,15 @@ def _send_all(conn: Conn, label: str, requests: list):
         check_status(label, conn.send(request), "OK")
 
 
-def _bulk(db: str, coll: str, objects: list) -> dict:
-    return {"type": "BULK_SAVE", "databaseName": db, "collectionName": coll, "objects": objects}
+def _bulk(project: str, coll: str, objects: list) -> dict:
+    return {"type": "BULK_SAVE", "projectName": project, "collectionName": coll, "objects": objects}
 
 
 def _seed(port: int):
     with Conn.authenticated(port=port) as c:
-        check_status(f"create {SNAP}", c.send({"type": "CREATE_DATABASE", "databaseName": SNAP}), "OK")
+        check_status(f"create {SNAP}", c.send({"type": "CREATE_PROJECT", "projectName": SNAP}), "OK")
         for coll in (LEDGER, EVENTS):
-            check_status(f"create {SNAP}.{coll}", c.send({"type": "CREATE_COLLECTION", "databaseName": SNAP,
+            check_status(f"create {SNAP}.{coll}", c.send({"type": "CREATE_COLLECTION", "projectName": SNAP,
                                                          "collectionName": coll}), "OK")
         _send_all(c, "seed the churn documents first, so they sit before the fillers",
                   [_bulk(SNAP, LEDGER, [{"_id": f"churn-{i:04d}", "body": "c"} for i in range(start, start + 200)])
@@ -49,11 +49,11 @@ def _seed(port: int):
 def _transaction_round(conn: Conn, k: int) -> bool:
     requests = [
         {"type": "START_TRANSACTION"},
-        {"type": "SAVE", "databaseName": SNAP, "collectionName": LEDGER, "object": {"_id": "clock", "n": k}},
-        {"type": "SAVE", "databaseName": SNAP, "collectionName": EVENTS, "object": {"_id": f"ins-{k:04d}"}},
-        {"type": "DELETE", "databaseName": SNAP, "collectionName": EVENTS, "_id": f"del-{k:04d}"},
-        {"type": "DELETE", "databaseName": SNAP, "collectionName": LEDGER, "_id": f"churn-{k:04d}"},
-        {"type": "SAVE", "databaseName": SNAP, "collectionName": LEDGER,
+        {"type": "SAVE", "projectName": SNAP, "collectionName": LEDGER, "object": {"_id": "clock", "n": k}},
+        {"type": "SAVE", "projectName": SNAP, "collectionName": EVENTS, "object": {"_id": f"ins-{k:04d}"}},
+        {"type": "DELETE", "projectName": SNAP, "collectionName": EVENTS, "_id": f"del-{k:04d}"},
+        {"type": "DELETE", "projectName": SNAP, "collectionName": LEDGER, "_id": f"churn-{k:04d}"},
+        {"type": "SAVE", "projectName": SNAP, "collectionName": LEDGER,
          "object": {"_id": f"churn-{k + 300:04d}", "body": GROWN_BODY}},
         {"type": "COMMIT_TRANSACTION"},
     ]
@@ -86,7 +86,7 @@ class _Writer(threading.Thread):
 
 def _documents(port: int, coll: str) -> dict:
     with Conn.authenticated(port=port) as c:
-        reply = c.send({"type": "AGGREGATE", "databaseName": SNAP, "collectionName": coll, "aggregationSteps": []})
+        reply = c.send({"type": "AGGREGATE", "projectName": SNAP, "collectionName": coll, "aggregationSteps": []})
     return {doc["_id"]: doc for doc in reply.get("results") or []}
 
 
@@ -125,14 +125,14 @@ def _check_cut(port: int, writer_rounds: int):
 
 
 def test_dump_is_a_point_in_time_cut_under_writes(cwd: str, client, source_port: int, target_port: int):
-    section("--dump is one consistent cut of a database while transactions keep writing")
+    section("--dump is one consistent cut of a project while transactions keep writing")
     _seed(source_port)
     writer = _Writer(source_port)
     writer.start()
     try:
         check("the writer is committing before the dump starts",
               bool(bu.wait_until(lambda: writer.rounds >= 10, 30.0)), f"rounds={writer.rounds}")
-        dumped = client(cwd, "--dump", "--databases", SNAP, "--max-reply-bytes", str(SMALL_PAGE_REPLY_BYTES))
+        dumped = client(cwd, "--dump", "--projects", SNAP, "--max-reply-bytes", str(SMALL_PAGE_REPLY_BYTES))
     finally:
         writer.stop.set()
         writer.join(60)
@@ -143,23 +143,23 @@ def test_dump_is_a_point_in_time_cut_under_writes(cwd: str, client, source_port:
     _check_cut(target_port, writer.rounds)
     for port in (source_port, target_port):
         with Conn.authenticated(port=port) as c:
-            c.send({"type": "DROP_DATABASE", "databaseName": SNAP})
+            c.send({"type": "DROP_PROJECT", "projectName": SNAP})
 
 
-def _start(conn: Conn, db: str) -> dict:
-    return conn.send({"type": "START_SNAPSHOT", "databaseName": db})
+def _start(conn: Conn, project: str) -> dict:
+    return conn.send({"type": "START_SNAPSHOT", "projectName": project})
 
 
-def _read(conn: Conn, db: str, coll: str, snapshot_id: str, limit: int = 10) -> dict:
-    return conn.send({"type": "READ_SNAPSHOT", "databaseName": db, "collectionName": coll,
+def _read(conn: Conn, project: str, coll: str, snapshot_id: str, limit: int = 10) -> dict:
+    return conn.send({"type": "READ_SNAPSHOT", "projectName": project, "collectionName": coll,
                       "snapshotId": snapshot_id, "limit": limit})
 
 
 def test_a_snapshot_past_its_budget_is_aborted_and_the_writes_stand(port: int):
     section("A snapshot past snapshotMaxBytes is aborted; the write that passed it stands")
     with Conn.authenticated(port=port) as c:
-        check_status(f"create {SNAP}", c.send({"type": "CREATE_DATABASE", "databaseName": SNAP}), "OK")
-        check_status(f"create {SNAP}.{LEDGER}", c.send({"type": "CREATE_COLLECTION", "databaseName": SNAP,
+        check_status(f"create {SNAP}", c.send({"type": "CREATE_PROJECT", "projectName": SNAP}), "OK")
+        check_status(f"create {SNAP}.{LEDGER}", c.send({"type": "CREATE_COLLECTION", "projectName": SNAP,
                                                        "collectionName": LEDGER}), "OK")
         check_status("seed", c.send(_bulk(SNAP, LEDGER, [{"_id": f"r{i:04d}", "body": FILLER_BODY}
                                                          for i in range(ABORT_ROWS)])), "OK")
@@ -174,17 +174,17 @@ def test_a_snapshot_past_its_budget_is_aborted_and_the_writes_stand(port: int):
         check_code("reading the snapshot answers 409-17", aborted, "ERROR", "409-17")
         check("the reason names snapshotMaxBytes", "snapshotMaxBytes" in (aborted.get("message") or ""),
               aborted.get("message") or "")
-        current = c.send({"type": "FIND_BY_ID", "databaseName": SNAP, "collectionName": LEDGER, "_id": "r0000"})
+        current = c.send({"type": "FIND_BY_ID", "projectName": SNAP, "collectionName": LEDGER, "_id": "r0000"})
         check("the update is in place", (current.get("object") or {}).get("body") == "updated", json.dumps(current))
         check_status("RELEASE_SNAPSHOT of an aborted snapshot",
-                     c.send({"type": "RELEASE_SNAPSHOT", "databaseName": SNAP, "snapshotId": snapshot_id}), "OK")
-        c.send({"type": "DROP_DATABASE", "databaseName": SNAP})
+                     c.send({"type": "RELEASE_SNAPSHOT", "projectName": SNAP, "snapshotId": snapshot_id}), "OK")
+        c.send({"type": "DROP_PROJECT", "projectName": SNAP})
 
 
 def test_snapshots_are_released_on_disconnect_and_when_idle(port: int):
     section("A snapshot is released when its connection closes, and when it is left unread")
     with Conn.authenticated(port=port) as c:
-        check_status(f"create {SNAP}", c.send({"type": "CREATE_DATABASE", "databaseName": SNAP}), "OK")
+        check_status(f"create {SNAP}", c.send({"type": "CREATE_PROJECT", "projectName": SNAP}), "OK")
     holder = Conn.authenticated(port=port)
     with Conn.authenticated(port=port) as other:
         check_status("the first START_SNAPSHOT", _start(holder, SNAP), "OK")
@@ -197,4 +197,4 @@ def test_snapshots_are_released_on_disconnect_and_when_idle(port: int):
         expired = bu.wait_until(lambda: _start(other, SNAP).get("status") == "OK", 15.0)
         check("an unread snapshot is released after snapshotIdleTimeoutMs", bool(expired))
     with Conn.authenticated(port=port) as c:
-        c.send({"type": "DROP_DATABASE", "databaseName": SNAP})
+        c.send({"type": "DROP_PROJECT", "projectName": SNAP})

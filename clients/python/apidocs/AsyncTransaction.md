@@ -17,7 +17,7 @@ Whether the transaction has not been committed or rolled back yet.
 
 ## collection
 
-Returns a collection inside this transaction, typed like `Database.collection`.
+Returns a collection inside this transaction, typed like `Project.collection`.
 
 Raises:
     MppError: the transaction already ended

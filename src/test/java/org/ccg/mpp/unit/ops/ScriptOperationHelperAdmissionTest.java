@@ -39,13 +39,13 @@ public class ScriptOperationHelperAdmissionTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var request = new CreateUserRequest();
         request.setUsername(ADMIN);
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -86,7 +86,7 @@ public class ScriptOperationHelperAdmissionTest {
     }
 
     private static OperationResponse run(String script) {
-        return ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB, script, null), ADMIN, null);
+        return ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.PROJECT, script, null), ADMIN, null);
     }
 
     @Test
@@ -154,9 +154,9 @@ public class ScriptOperationHelperAdmissionTest {
             assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), disabled.getErrorCode());
 
             TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
-            final var unknownDb = ScriptOperationHelper.execute(new RunScriptRequest("missingDb", "return 1;", null),
-                    ADMIN, null);
-            assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), unknownDb.getErrorCode());
+            final var unknownProject = ScriptOperationHelper
+                    .execute(new RunScriptRequest("missingProject", "return 1;", null), ADMIN, null);
+            assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), unknownProject.getErrorCode());
 
             TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 4L);
             final var tooLarge = run("return 1234567;");

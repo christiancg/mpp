@@ -10,8 +10,8 @@ import org.ccg.mpp.simplejs.exceptions.ScriptCancelledException;
 import org.ccg.mpp.simplejs.exceptions.ScriptLimitException;
 import org.ccg.mpp.simplejs.exceptions.ScriptTimeoutException;
 import org.ccg.mpp.simplejs.host.CancellationToken;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.internal.Interpreter;
 import org.ccg.mpp.simplejs.internal.Lexer;
@@ -27,7 +27,7 @@ public class RunLifecycleTickTest {
         }
 
         @Override
-        public DatabaseAccess database() {
+        public ProjectAccess project() {
             return null;
         }
 

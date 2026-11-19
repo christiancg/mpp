@@ -7,8 +7,8 @@ import org.ccg.mpp.ejson.elements.JsonNumber;
 import org.ccg.mpp.ejson.elements.JsonObject;
 
 public class AdminPageEntry extends DbEntry {
-    public static String pagesCollectionName(String dbName, String collName) {
-        return dbName + "_" + collName;
+    public static String pagesCollectionName(String projectName, String collName) {
+        return projectName + "_" + collName;
     }
 
     private static final String PAGE_FIELD_NAME = "page";
@@ -19,21 +19,21 @@ public class AdminPageEntry extends DbEntry {
     private long pageSize;
     private long storagePage;
 
-    public AdminPageEntry(String dbName, String collectionName) {
-        this(dbName, collectionName, 0L);
+    public AdminPageEntry(String projectName, String collectionName) {
+        this(projectName, collectionName, 0L);
     }
 
-    public AdminPageEntry(String dbName, String collectionName, long page) {
-        setDatabaseName(Globals.ADMIN_PAGES_DB_NAME);
-        setCollectionName(pagesCollectionName(dbName, collectionName));
+    public AdminPageEntry(String projectName, String collectionName, long page) {
+        setProjectName(Globals.ADMIN_PAGES_PROJECT_NAME);
+        setCollectionName(pagesCollectionName(projectName, collectionName));
         this.page = page;
-        set_id(buildId(dbName, collectionName, page));
+        set_id(buildId(projectName, collectionName, page));
         setData(new JsonObject());
         syncData();
     }
 
-    public static AdminPageEntry fromJsonObject(String dbName, String collName, JsonObject object) {
-        final var result = new AdminPageEntry(dbName, collName);
+    public static AdminPageEntry fromJsonObject(String projectName, String collName, JsonObject object) {
+        final var result = new AdminPageEntry(projectName, collName);
         result.setData(object);
         final var id = object.get(Globals.PK_FIELD).asJsonString().getValue();
         result.set_id(id);
@@ -44,8 +44,8 @@ public class AdminPageEntry extends DbEntry {
         return result;
     }
 
-    public static String buildId(String dbName, String collName, long page) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR + page;
+    public static String buildId(String projectName, String collName, long page) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR + page;
     }
 
     @Override

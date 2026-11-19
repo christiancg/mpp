@@ -34,12 +34,12 @@ public class RequestedLogCheckpointTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         fs.onCheckpointRequest(() -> {
             requests.incrementAndGet();
             return true;
         });
-        log = new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        log = new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + ".wal");
         for (var i = 0; i < 8; i++) {
             insert("seed" + i);
@@ -58,7 +58,7 @@ public class RequestedLogCheckpointTest {
     private static void insert(String id) throws Exception {
         final var document = new JsonObject();
         document.addProperty(Globals.PK_FIELD, id);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document);
         entry.setPage(0L);
         fs.insertIntoCollection(entry);
     }
@@ -73,11 +73,11 @@ public class RequestedLogCheckpointTest {
         final var fullLength = log.length();
         assertEquals(1, requests.get());
 
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             processRequests();
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertTrue(log.length() < fullLength, "a reader does not hold the background checkpoint off");
@@ -112,12 +112,12 @@ public class RequestedLogCheckpointTest {
 
     private static void holdWriteLock(CountDownLatch locked, CountDownLatch release) {
         try {
-            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
                 locked.countDown();
                 assertTrue(release.await(30, TimeUnit.SECONDS));
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

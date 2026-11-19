@@ -1,4 +1,4 @@
-Maps `T` to and from documents with `System.Text.Json`. It is the codec a typed collection uses unless one is passed to `Database.Collection<T>`.
+Maps `T` to and from documents with `System.Text.Json`. It is the codec a typed collection uses unless one is passed to `Project.Collection<T>`.
 
 The options come from `MppJson.CreateOptions`: a member named `Id` is stored as `_id`, `DateTime`, `TimeOnly`, `GeoPoint` and `Vector` map to the custom value types, and `double[]` or `float[]` members marked `[MppVector]` map to `#vector`. Non-finite numbers, integers beyond 2^53 and text that looks like a custom value are refused with a `MappingException`.
 

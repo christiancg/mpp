@@ -39,13 +39,13 @@ public final class NotificationBatch implements DirtySink, AutoCloseable {
     }
 
     @Override
-    public void markDirty(String dbName, String collName) {
+    public void markDirty(String projectName, String collName) {
         if (root != null) {
-            root.markDirty(dbName, collName);
+            root.markDirty(projectName, collName);
         } else if (closed) {
-            manager.markDirty(dbName, collName);
+            manager.markDirty(projectName, collName);
         } else {
-            pending.add(ListenManager.keyOf(dbName, collName));
+            pending.add(ListenManager.keyOf(projectName, collName));
         }
     }
 

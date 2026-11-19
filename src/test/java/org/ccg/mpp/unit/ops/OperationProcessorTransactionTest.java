@@ -46,7 +46,7 @@ public class OperationProcessorTransactionTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -70,7 +70,7 @@ public class OperationProcessorTransactionTest {
     }
 
     private SaveRequest saveRequest(String id, String field, String value) {
-        final var req = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         obj.add(field, new JsonString(value));
@@ -122,7 +122,7 @@ public class OperationProcessorTransactionTest {
         final var saveResponse = processor.processMessage(saveRequest("txn-buf-1", "name", "alice"), txnClient);
         assertInstanceOf(SaveResponse.class, saveResponse);
 
-        final var findOther = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var findOther = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         findOther.set_id("txn-buf-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(findOther, otherClient).getStatus());
 
@@ -137,7 +137,7 @@ public class OperationProcessorTransactionTest {
         processor.processMessage(new StartTransactionRequest(), clientId);
         processor.processMessage(saveRequest("txn-ryw-1", "name", "bob"), clientId);
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-ryw-1");
         final var response = processor.processMessage(find, clientId);
         assertInstanceOf(FindByIdResponse.class, response);
@@ -154,11 +154,11 @@ public class OperationProcessorTransactionTest {
         processor.processMessage(new CommitTransactionRequest(), clientId);
 
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("txn-del-1");
         assertEquals(OperationStatus.OK, processor.processMessage(delete, clientId).getStatus());
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-del-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find, clientId).getStatus());
 
@@ -170,7 +170,7 @@ public class OperationProcessorTransactionTest {
     public void test_buffered_delete_of_missing_id_returns_not_found() {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("txn-does-not-exist");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(delete, clientId).getStatus());
         processor.processMessage(new RollbackTransactionRequest(), clientId);
@@ -187,11 +187,11 @@ public class OperationProcessorTransactionTest {
         processor.processMessage(new StartTransactionRequest(), clientId);
         processor.processMessage(saveRequest("txn-agg-ins", "status", "new"), clientId);
         processor.processMessage(saveRequest("txn-agg-upd", "status", "updated"), clientId);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("txn-agg-del");
         processor.processMessage(delete, clientId);
 
-        final var aggregate = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var aggregate = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         aggregate.setAggregationSteps(new ArrayList<>());
         final var response = processor.processMessage(aggregate, clientId);
         assertInstanceOf(AggregateResponse.class, response);
@@ -218,7 +218,7 @@ public class OperationProcessorTransactionTest {
     public void test_buffered_bulk_save_classifies_and_commits() {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var objects = new ArrayList<JsonObject>();
         final var a = new JsonObject();
         a.add("_id", new JsonString("txn-bulk-1"));
@@ -232,7 +232,7 @@ public class OperationProcessorTransactionTest {
         assertEquals(2, ((BulkSaveResponse) response).getInserted().size());
         processor.processMessage(new CommitTransactionRequest(), clientId);
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-bulk-2");
         assertEquals(OperationStatus.OK, processor.processMessage(find, newClient()).getStatus());
     }
@@ -245,7 +245,7 @@ public class OperationProcessorTransactionTest {
         final var response = processor.processMessage(new RollbackTransactionRequest(), clientId);
         assertEquals(OperationType.ROLLBACK_TRANSACTION, response.getType());
 
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-rb-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find, newClient()).getStatus());
     }
@@ -259,15 +259,15 @@ public class OperationProcessorTransactionTest {
         assertEquals(OperationType.COMMIT_TRANSACTION, response.getType());
         // The write lock must have been released: acquire+release it directly, which throws nothing.
         final var locks = IocContainer.get(ResourceLocking.class);
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
     public void test_ddl_operation_during_transaction_returns_409_6() {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var response = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "someColl"),
+        final var response = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "someColl"),
                 clientId);
         assertEquals("409-6", response.getErrorCode());
         assertEquals(OperationStatus.ERROR, response.getStatus());
@@ -282,7 +282,7 @@ public class OperationProcessorTransactionTest {
         processor.processMessage(new CommitTransactionRequest(), clientId);
 
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var objects = new ArrayList<JsonObject>();
         final var existing = new JsonObject();
         existing.add("_id", new JsonString("txn-bulkupd-1"));
@@ -302,10 +302,10 @@ public class OperationProcessorTransactionTest {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
         processor.processMessage(saveRequest("txn-di-1", "v", "temp"), clientId);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("txn-di-1");
         assertEquals(OperationStatus.OK, processor.processMessage(delete, clientId).getStatus());
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-di-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find, clientId).getStatus());
         processor.processMessage(new RollbackTransactionRequest(), clientId);
@@ -315,13 +315,13 @@ public class OperationProcessorTransactionTest {
     public void test_buffered_save_without_id_generates_id() {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("name", new JsonString("no-id"));
         save.setObject(obj);
         final var response = (SaveResponse) processor.processMessage(save, clientId);
         assertNotNull(response.get_id());
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id(response.get_id());
         assertEquals(OperationStatus.OK, processor.processMessage(find, clientId).getStatus());
         processor.processMessage(new RollbackTransactionRequest(), clientId);
@@ -351,7 +351,7 @@ public class OperationProcessorTransactionTest {
         final var clientId = newClient();
         try {
             processor.processMessage(new StartTransactionRequest(), clientId);
-            final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             final var objects = new ArrayList<JsonObject>();
             final var obj = new JsonObject();
             obj.add("_id", new JsonString("txn-bigbulk-1"));
@@ -370,7 +370,7 @@ public class OperationProcessorTransactionTest {
     public void test_buffered_bulk_save_duplicate_id_returns_400_3() {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var objects = new ArrayList<JsonObject>();
         final var a = new JsonObject();
         a.add("_id", new JsonString("txn-dup-1"));
@@ -396,14 +396,14 @@ public class OperationProcessorTransactionTest {
         final var clientId = newClient();
         final var save = processor.processMessage(saveRequest("txn-none-1", "name", "frank"), clientId);
         assertEquals(OperationStatus.OK, save.getStatus());
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("txn-none-1");
         final OperationResponse response = processor.processMessage(find, clientId);
         assertEquals(OperationStatus.OK, response.getStatus());
     }
 
     private void saveInto(String coll, String id, String value, UUID clientId) {
-        final var req = new SaveRequest(TestGlobals.DB, coll);
+        final var req = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         obj.add("k", new JsonString(value));
@@ -413,7 +413,7 @@ public class OperationProcessorTransactionTest {
     }
 
     private List<JsonObject> joinFrom(UUID clientId) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(
                 List.of(new org.ccg.mpp.ops.req.agg.step.JoinAggregationStep(TestGlobals.JOIN_COLL, "k", "k", "cfg")));
         final var response = processor.processMessage(request, clientId);
@@ -449,7 +449,7 @@ public class OperationProcessorTransactionTest {
         saveInto(TestGlobals.JOIN_COLL, "jtx2-right", "gone", clientId);
         processor.processMessage(new StartTransactionRequest(), clientId);
         try {
-            final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+            final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
             delete.set_id("jtx2-right");
             assertEquals(OperationStatus.OK, processor.processMessage(delete, clientId).getStatus());
 

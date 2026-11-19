@@ -65,11 +65,11 @@ public class NameValidationsTest {
     }
 
     @Test
-    public void reservedDatabaseNamesFoldCase() {
-        assertTrue(NameValidations.isReservedDbName("admin"));
-        assertTrue(NameValidations.isReservedDbName("ADMIN"));
-        assertTrue(NameValidations.isReservedDbName("admin_pages"));
-        assertTrue(NameValidations.isReservedDbName("Cluster"));
-        assertFalse(NameValidations.isReservedDbName("administrator"));
+    public void reservedProjectNamesFoldCase() {
+        assertTrue(NameValidations.isReservedProjectName("admin"));
+        assertTrue(NameValidations.isReservedProjectName("ADMIN"));
+        assertTrue(NameValidations.isReservedProjectName("admin_pages"));
+        assertTrue(NameValidations.isReservedProjectName("Cluster"));
+        assertFalse(NameValidations.isReservedProjectName("administrator"));
     }
 }

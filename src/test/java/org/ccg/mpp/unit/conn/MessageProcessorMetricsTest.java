@@ -26,9 +26,9 @@ public class MessageProcessorMetricsTest {
     private static final String ADMIN = "metrics_wire_admin";
     private static final String AUTHENTICATE = "{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN
             + "\",\"password\":\"password123\"}";
-    private static final String SAVE = "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String SAVE = "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"m1\",\"n\":1}}";
-    private static final String MISSING = "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String MISSING = "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"absent\"}";
     private static final EJson eJson = IocContainer.get(EJson.class);
     private final Configuration configuration = Configuration.getInstance();
@@ -38,7 +38,7 @@ public class MessageProcessorMetricsTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         metrics = new RequestMetrics();
         originalMaxConnections = configuration.getMaxConnections();
@@ -112,9 +112,9 @@ public class MessageProcessorMetricsTest {
 
     @Test
     public void test_an_unauthenticated_request_counts_its_refusal() throws Exception {
-        run("{\"type\":\"LIST_DATABASES\"}");
+        run("{\"type\":\"LIST_PROJECTS\"}");
 
-        assertEquals(Map.of("LIST_DATABASES/UNAUTHENTICATED/401-1", 1L), counts());
+        assertEquals(Map.of("LIST_PROJECTS/UNAUTHENTICATED/401-1", 1L), counts());
     }
 
     @Test

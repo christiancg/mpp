@@ -50,19 +50,19 @@ public class UserRequestTypesTest {
         req.setUsername("user");
         req.setAdmin(true);
 
-        final var globalPerms = Set.of(GlobalPermissionType.DROP_DATABASE);
+        final var globalPerms = Set.of(GlobalPermissionType.DROP_PROJECT);
         req.setGlobalPermissions(globalPerms);
 
-        final var dbPerms = Map.of("db1", PermissionLevel.READ_WRITE);
-        req.setDatabasePermissions(dbPerms);
+        final var projectPerms = Map.of("project1", PermissionLevel.READ_WRITE);
+        req.setProjectPermissions(projectPerms);
 
-        final var collPerms = Map.of("db1|coll", PermissionLevel.READ);
+        final var collPerms = Map.of("project1|coll", PermissionLevel.READ);
         req.setCollectionPermissions(collPerms);
 
         assertEquals("user", req.getUsername());
         assertTrue(req.getAdmin());
         assertEquals(globalPerms, req.getGlobalPermissions());
-        assertEquals(dbPerms, req.getDatabasePermissions());
+        assertEquals(projectPerms, req.getProjectPermissions());
         assertEquals(collPerms, req.getCollectionPermissions());
     }
 

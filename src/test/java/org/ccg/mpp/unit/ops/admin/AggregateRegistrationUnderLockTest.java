@@ -35,8 +35,8 @@ public class AggregateRegistrationUnderLockTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        TestUtils.createTestProjectAndCollection();
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var document = new JsonObject();
         document.addProperty(Globals.PK_FIELD, "present");
         request.setObject(document);
@@ -54,24 +54,24 @@ public class AggregateRegistrationUnderLockTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, ReentrantReadWriteLock>>() {
         };
         return TestUtils.getPrivateField(locks, "locks", type)
-                .get(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                .get(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private static OperationResponse aggregate() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         return ReadPathHelper.processAggregateOperation(request, null);
     }
 
     @Test
     public void test_an_aggregate_queued_behind_a_drop_answers_not_found() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         final var result = new AtomicReference<OperationResponse>();
         final var pending = startParked(AggregateRegistrationUnderLockTest::aggregate, result);
         assertTrue(collectionLock().hasQueuedThreads(), "the aggregate never queued on the collection lock");
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
-        locks.release(TestGlobals.DB, TestGlobals.COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
 
         pending.join(5000);
 

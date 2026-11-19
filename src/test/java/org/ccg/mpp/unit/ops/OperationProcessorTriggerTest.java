@@ -39,7 +39,7 @@ public class OperationProcessorTriggerTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -60,7 +60,7 @@ public class OperationProcessorTriggerTest {
     }
 
     private void installTriggerFor(EventType... events) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(events)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
     }
@@ -89,7 +89,7 @@ public class OperationProcessorTriggerTest {
     }
 
     private void save(String id, int value) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, value));
         request.set_id(id);
         processor.processMessage(request);
@@ -119,7 +119,7 @@ public class OperationProcessorTriggerTest {
 
     @Test
     public void test_insert_without_an_id_submits_a_created_event() {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.addProperty("value", 7L);
         request.setObject(object);
@@ -131,7 +131,7 @@ public class OperationProcessorTriggerTest {
 
     @Test
     public void test_bulk_save_submits_one_event_per_document() {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("b1", 1), document("b2", 2)));
         processor.processMessage(request);
         final var events = settle();
@@ -144,7 +144,7 @@ public class OperationProcessorTriggerTest {
         save("d1", 5);
         settle();
         captured.clear();
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("d1");
         processor.processMessage(request);
         final var events = settle();
@@ -160,7 +160,7 @@ public class OperationProcessorTriggerTest {
     // has already fired.
     @Test
     public void test_replicated_apply_does_not_fire_triggers() {
-        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.UPSERT, List.of(document("r1", 1)), List.of("r1")), TestGlobals.APPLY_BUDGET_MS));
         sleep(80);
         assertTrue(captured.isEmpty(), "a replicated apply must not fire a trigger");
@@ -171,7 +171,7 @@ public class OperationProcessorTriggerTest {
         save("r2", 1);
         settle();
         captured.clear();
-        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.DELETE, List.of(), List.of("r2")), TestGlobals.APPLY_BUDGET_MS));
         sleep(80);
         assertTrue(captured.isEmpty(), "a replicated delete must not fire a trigger");
@@ -191,7 +191,7 @@ public class OperationProcessorTriggerTest {
         save("only-delete", 1);
         sleep(80);
         assertTrue(captured.isEmpty());
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("only-delete");
         processor.processMessage(request);
         assertEquals(1, settle().size());

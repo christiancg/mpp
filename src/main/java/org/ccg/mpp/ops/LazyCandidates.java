@@ -24,22 +24,22 @@ final class LazyCandidates {
     private LazyCandidates() {
     }
 
-    static Stream<JsonObject> fetched(String dbName, String collName, Set<String> ids, long bound,
+    static Stream<JsonObject> fetched(String projectName, String collName, Set<String> ids, long bound,
             PipelineContext context) throws IOException {
         if (bound <= 0 || ids.size() <= Globals.LAZY_CANDIDATE_CHUNKS.getFirst()
-                || !locks.holdsCollectionLock(dbName, collName)) {
-            final var entries = cache.getEntriesByIds(dbName, collName, ids);
+                || !locks.holdsCollectionLock(projectName, collName)) {
+            final var entries = cache.getEntriesByIds(projectName, collName, ids);
             context.scanned(entries.size());
             return entries.stream().map(DbEntry::getData);
         }
         final var chunks = Spliterators.spliteratorUnknownSize(new Chunks(ids.iterator()), Spliterator.ORDERED);
-        return StreamSupport.stream(chunks, false).flatMap(chunk -> fetchChunk(chunk, dbName, collName, context));
+        return StreamSupport.stream(chunks, false).flatMap(chunk -> fetchChunk(chunk, projectName, collName, context));
     }
 
-    private static Stream<JsonObject> fetchChunk(Set<String> chunk, String dbName, String collName,
+    private static Stream<JsonObject> fetchChunk(Set<String> chunk, String projectName, String collName,
             PipelineContext context) {
         try {
-            final var entries = cache.getEntriesByIds(dbName, collName, chunk, context::pinnedPkIndex);
+            final var entries = cache.getEntriesByIds(projectName, collName, chunk, context::pinnedPkIndex);
             context.scanned(entries.size());
             return entries.stream().map(DbEntry::getData);
         } catch (IOException e) {

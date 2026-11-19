@@ -43,10 +43,10 @@ public class AggregateBreadthLimitsTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         assertEquals(OperationStatus.OK, run(write("SAVE", TestGlobals.COLL,
                 "\"object\":{\"_id\":\"left\",\"n\":1," + "\"s\":\"" + "x".repeat(300) + "\"}")).getStatus());
-        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB
+        assertEquals(OperationStatus.OK, run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + JOINED + "\"}").getStatus());
         final var objects = new StringBuilder(JOINED_DOCUMENTS * 140);
         for (var i = 0; i < JOINED_DOCUMENTS; i++) {
@@ -69,12 +69,12 @@ public class AggregateBreadthLimitsTest {
     }
 
     private static String write(String type, String collection, String payload) {
-        return "{\"type\":\"" + type + "\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"" + type + "\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + collection + "\"," + payload + "}";
     }
 
     private static String aggregate(String steps) {
-        return "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[" + steps + "]}";
     }
 

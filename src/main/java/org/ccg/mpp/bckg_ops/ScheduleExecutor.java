@@ -99,7 +99,7 @@ public class ScheduleExecutor {
 
     private boolean isOwner(ScheduleRegistry.Entry entry) {
         return !clusterConfig.isEnabled() || (ownershipManager.hasQuorum()
-                && ownershipManager.isOwner(entry.getDbName(), ScheduleOperationHelper.ringKey(entry.getName())));
+                && ownershipManager.isOwner(entry.getProjectName(), ScheduleOperationHelper.ringKey(entry.getName())));
     }
 
     public void submit(ScheduleRegistry.Entry entry) {
@@ -108,7 +108,7 @@ public class ScheduleExecutor {
             return;
         }
         while (!queue.offer(entry)) {
-            final var evicted = oldestQueuedFor(entry.getDbName());
+            final var evicted = oldestQueuedFor(entry.getProjectName());
             if (evicted == null) {
                 if (!queue.offer(entry)) {
                     drop(entry, "the newest");
@@ -121,9 +121,9 @@ public class ScheduleExecutor {
         }
     }
 
-    private ScheduleRegistry.Entry oldestQueuedFor(String dbName) {
+    private ScheduleRegistry.Entry oldestQueuedFor(String projectName) {
         for (final var queued : queue) {
-            if (dbName.equals(queued.getDbName())) {
+            if (projectName.equals(queued.getProjectName())) {
                 return queued;
             }
         }

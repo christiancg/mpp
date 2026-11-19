@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 import org.ccg.mpp.config.ConfigKey;
 
 public record ClientOptions(ClientMode mode, String host, int port, String user, String password, boolean tls,
-        boolean insecure, boolean compress, List<String> commands, List<String> databases,
+        boolean insecure, boolean compress, List<String> commands, List<String> projects,
         List<CollectionRef> collections, int maxReplyBytes) {
     public static final String PASSWORD_ENV = "MPP_PASSWORD";
     public static final String DEFAULT_HOST = "127.0.0.1";
@@ -17,11 +17,11 @@ public record ClientOptions(ClientMode mode, String host, int port, String user,
     private static final Pattern PORT_DIGITS = Pattern.compile("\\d{1,5}");
     private static final Pattern BYTES_DIGITS = Pattern.compile("\\d{1,10}");
 
-    public record CollectionRef(String database, String collection) {
+    public record CollectionRef(String project, String collection) {
         static CollectionRef parse(String item) {
             final var parts = item.split("\\.", -1);
             if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-                throw usage("--collections takes db.collection items, got '" + item + "'");
+                throw usage("--collections takes project.collection items, got '" + item + "'");
             }
             return new CollectionRef(parts[0], parts[1]);
         }
@@ -50,9 +50,9 @@ public record ClientOptions(ClientMode mode, String host, int port, String user,
         private boolean insecure;
         private boolean compress;
         private final List<String> commands = new ArrayList<>();
-        private final LinkedHashSet<String> databases = new LinkedHashSet<>();
+        private final LinkedHashSet<String> projects = new LinkedHashSet<>();
         private final LinkedHashSet<CollectionRef> collections = new LinkedHashSet<>();
-        private boolean databasesGiven;
+        private boolean projectsGiven;
         private boolean collectionsGiven;
         private int maxReplyBytes = Connection.MAX_REPLY_BYTES;
 
@@ -78,9 +78,9 @@ public record ClientOptions(ClientMode mode, String host, int port, String user,
                 case "--user" -> user = valueOf(args, index);
                 case "--password" -> password = valueOf(args, index);
                 case "--max-reply-bytes" -> maxReplyBytes = positiveBytesOf(valueOf(args, index));
-                case "--databases" -> {
-                    databasesGiven = true;
-                    databases.addAll(itemsOf(flag, valueOf(args, index)));
+                case "--projects" -> {
+                    projectsGiven = true;
+                    projects.addAll(itemsOf(flag, valueOf(args, index)));
                 }
                 case "--collections" -> {
                     collectionsGiven = true;
@@ -95,7 +95,7 @@ public record ClientOptions(ClientMode mode, String host, int port, String user,
 
         private static boolean takesValue(String flag) {
             return switch (flag) {
-                case "--host", "--port", "--user", "--password", "--databases", "--collections", "--max-reply-bytes" ->
+                case "--host", "--port", "--user", "--password", "--projects", "--collections", "--max-reply-bytes" ->
                     true;
                 default -> false;
             };
@@ -153,15 +153,15 @@ public record ClientOptions(ClientMode mode, String host, int port, String user,
             if (insecure && !tls) {
                 throw usage("--insecure only applies together with --tls");
             }
-            if (databasesGiven && collectionsGiven) {
-                throw usage("--databases and --collections cannot be combined");
+            if (projectsGiven && collectionsGiven) {
+                throw usage("--projects and --collections cannot be combined");
             }
-            if (mode != ClientMode.DUMP && (databasesGiven || collectionsGiven || compress)) {
-                throw usage("--databases, --collections and --compress only apply to --dump");
+            if (mode != ClientMode.DUMP && (projectsGiven || collectionsGiven || compress)) {
+                throw usage("--projects, --collections and --compress only apply to --dump");
             }
             final var resolvedPassword = password != null ? password : env.get(PASSWORD_ENV);
             return new ClientOptions(mode, host, port, user, resolvedPassword, tls, insecure, compress,
-                    List.copyOf(commands), List.copyOf(databases), List.copyOf(collections), maxReplyBytes);
+                    List.copyOf(commands), List.copyOf(projects), List.copyOf(collections), maxReplyBytes);
         }
     }
 }

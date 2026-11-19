@@ -61,8 +61,8 @@ public class ListenIT extends ServerIT {
 
     @BeforeAll
     public void createCollection() {
-        client.database("listen_it").create();
-        orders = client.database("listen_it").collection("orders");
+        client.project("listen_it").create();
+        orders = client.project("listen_it").collection("orders");
         orders.create();
     }
 
@@ -84,8 +84,8 @@ public class ListenIT extends ServerIT {
 
     @Test
     public void test_dropping_the_collection_ends_the_listen() throws Exception {
-        client.database("listen_it").collection("doomed").create();
-        final var doomed = client.database("listen_it").collection("doomed");
+        client.project("listen_it").collection("doomed").create();
+        final var doomed = client.project("listen_it").collection("doomed");
         final var events = new Events();
         final var subscription = doomed.listen(events);
         events.update();

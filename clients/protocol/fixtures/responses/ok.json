@@ -10,7 +10,7 @@
     {"name":"ok.save_where","frame":{"type":"SAVE","status":"OK","message":"Updated 3 document(s)","updatedCount":3},"expect":"ok"},
     {"name":"ok.delete","frame":{"type":"DELETE","status":"OK","message":"Deleted"},"expect":"ok"},
     {"name":"ok.delete_where","frame":{"type":"DELETE","status":"OK","message":"Deleted 3 document(s)","deletedCount":3},"expect":"ok"},
-    {"name":"ok.list_databases","frame":{"type":"LIST_DATABASES","status":"OK","message":"Ok","databases":["shop"]},"expect":"ok"},
+    {"name":"ok.list_projects","frame":{"type":"LIST_PROJECTS","status":"OK","message":"Ok","projects":["shop"]},"expect":"ok"},
     {"name":"ok.list_collections","frame":{"type":"LIST_COLLECTIONS","status":"OK","message":"Ok","collections":["orders"]},"expect":"ok"},
     {"name":"ok.reindex","frame":{"type":"REINDEX","status":"OK","message":"Rebuilt 1 index(es)","rebuiltFields":["email"]},"expect":"ok"},
     {"name":"ok.reindex_primary_key","frame":{"type":"REINDEX","status":"OK","message":"Rebuilt","rebuiltFields":[],"primaryKeyEntries":2,"unversionedEntries":0},"expect":"ok"},
@@ -35,9 +35,9 @@
     {"name":"ok.list_trigger_runs","frame":{"type":"LIST_TRIGGER_RUNS","status":"OK","message":"Ok","runs":[{"runId":"8f0e","status":"DEAD"}]},"expect":"ok"},
     {"name":"ok.resolve_trigger_run","frame":{"type":"RESOLVE_TRIGGER_RUN","status":"OK","message":"Ok","resolved":true},"expect":"ok"},
     {"name":"ok.list_users","frame":{"type":"LIST_USERS","status":"OK","message":"Ok","users":[{"_id":"alice","admin":true}]},"expect":"ok"},
-    {"name":"ok.get_database_stats","frame":{"type":"GET_DATABASE_STATS","status":"OK","message":"Ok","stats":{"memory":{"userCacheBytes":1}}},"expect":"ok"},
+    {"name":"ok.get_project_stats","frame":{"type":"GET_PROJECT_STATS","status":"OK","message":"Ok","stats":{"memory":{"userCacheBytes":1}}},"expect":"ok"},
     {"name":"ok.server_info","frame":{"type":"SERVER_INFO","status":"OK","message":"Ok","server":{"state":"READY"}},"expect":"ok"},
     {"name":"ok.authenticate","frame":{"type":"AUTHENTICATE","status":"OK","message":"Authenticated"},"expect":"ok"},
-    {"name":"ok.with_null_error_code","frame":{"type":"CREATE_DATABASE","status":"OK","message":"Created","errorCode":null},"expect":"ok"}
+    {"name":"ok.with_null_error_code","frame":{"type":"CREATE_PROJECT","status":"OK","message":"Created","errorCode":null},"expect":"ok"}
   ]
 }

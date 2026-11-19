@@ -66,13 +66,14 @@ public class IdleLogCheckpointTest {
     @Test
     public void test_a_collection_whose_write_lock_is_held_elsewhere_is_skipped_until_it_is_free() throws Exception {
         TestUtils.setPrivateField(Configuration.getInstance(), "walIdleCheckpointMs", 1L);
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var document = new JsonObject();
         document.addProperty(Globals.PK_FIELD, "d1");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document);
         entry.setPage(0L);
         IocContainer.get(FileSystem.class).insertIntoCollection(entry);
-        final var log = new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        final var log = new File(
+                TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + ".wal");
         final var dirtyLength = log.length();
         Thread.sleep(5);
@@ -96,12 +97,12 @@ public class IdleLogCheckpointTest {
     private static void holdWriteLock(CountDownLatch locked, CountDownLatch release) {
         final var locks = IocContainer.get(ResourceLocking.class);
         try {
-            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
                 locked.countDown();
                 assertTrue(release.await(30, TimeUnit.SECONDS));
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

@@ -16,13 +16,13 @@ import org.ccg.mpp.fs.PagePlacement;
 import org.junit.jupiter.api.Test;
 
 public class BatchPagePlacementTest {
-    private static final String DB = "placementDb";
+    private static final String PROJECT = "placementProject";
     private static final String COLL = "placementColl";
     private static final long MEGABYTE = 1024L * 1024L;
     private static final int SCENARIOS = 3_000;
 
     private static AdminPageEntry page(long number, long liveBytes) {
-        final var entry = new AdminPageEntry(DB, COLL, number);
+        final var entry = new AdminPageEntry(PROJECT, COLL, number);
         entry.setPageSize(liveBytes);
         entry.setEntryCount(1);
         return entry;

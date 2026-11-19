@@ -41,7 +41,7 @@ import org.ccg.mpp.conn.OutboundQueue;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.ioc.IocContainer;
@@ -61,7 +61,7 @@ public class TestUtils {
         setPrivateField(config, "filePath", TestGlobals.PATH);
         final var fs = IocContainer.get(FileSystem.class);
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
+        fs.createAdminProject();
         final var cache = IocContainer.get(Cache.class);
         cache.loadAdminData();
         DeferredWrites.install();
@@ -70,7 +70,7 @@ public class TestUtils {
     public static void standardTearDown() throws NoSuchFieldException, IllegalAccessException {
         deleteDir(new File(TestGlobals.PATH));
         clearCache();
-        IdleIndexFolds.forgetDatabase(TestGlobals.DB);
+        IdleIndexFolds.forgetProject(TestGlobals.PROJECT);
         discardQueuedBackgroundEvents(IocContainer.get(BackgroundTaskManager.class));
     }
 
@@ -78,9 +78,9 @@ public class TestUtils {
         AdminCache adminCache = IocContainer.get(AdminCache.class);
         UserCache userCache = IocContainer.get(UserCache.class);
         TestUtils.setPrivateField(adminCache, "collections", new ConcurrentHashMap<>());
-        TestUtils.setPrivateField(adminCache, "databases", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "projects", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(adminCache, "users", new ConcurrentHashMap<>());
-        TestUtils.setPrivateField(adminCache, "databasesPkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(adminCache, "projectsPkIndex", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(adminCache, "collectionsPkIndex", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(adminCache, "usersPkIndex", new ConcurrentHashMap<>());
         CacheResidents.reset(userCache);
@@ -129,18 +129,18 @@ public class TestUtils {
         }
     }
 
-    public static void createTestDatabaseAndCollection() throws IOException, InterruptedException {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+    public static void createTestProjectAndCollection() throws IOException, InterruptedException {
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         FileSystem fs = IocContainer.get(FileSystem.class);
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     public static void createTestJoinCollection() throws IOException, InterruptedException {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.JOIN_COLL));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.JOIN_COLL));
         FileSystem fs = IocContainer.get(FileSystem.class);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
     }
 
     public static <U, T> T getPrivateField(U object, String fieldName, ReflectionUtils.TypeToken<T> fieldType)
@@ -227,21 +227,22 @@ public class TestUtils {
         field.set(null, fieldValue);
     }
 
-    public static void cacheEntry(Cache cache, String dbName, String collName, DbEntry entry) throws IOException {
-        cache.addEntryToCache(dbName, collName, entry);
-        underCollectionLock(dbName, collName, () -> {
-            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+    public static void cacheEntry(Cache cache, String projectName, String collName, DbEntry entry) throws IOException {
+        cache.addEntryToCache(projectName, collName, entry);
+        underCollectionLock(projectName, collName, () -> {
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
             final var position = Collections.binarySearch(pkIndex, entry.get_id());
             if (position < 0) {
-                pkIndex.add(-(position + 1), new PkIndexEntry(dbName, collName, entry.get_id(), 0, 1, entry.getPage()));
+                pkIndex.add(-(position + 1),
+                        new PkIndexEntry(projectName, collName, entry.get_id(), 0, 1, entry.getPage()));
             }
         });
     }
 
-    public static void uncacheEntry(Cache cache, String dbName, String collName, String id) throws IOException {
-        cache.evictEntry(dbName, collName, id);
-        underCollectionLock(dbName, collName, () -> {
-            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+    public static void uncacheEntry(Cache cache, String projectName, String collName, String id) throws IOException {
+        cache.evictEntry(projectName, collName, id);
+        underCollectionLock(projectName, collName, () -> {
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
             final var position = Collections.binarySearch(pkIndex, id);
             if (position >= 0) {
                 pkIndex.remove(position);
@@ -253,11 +254,11 @@ public class TestUtils {
         void run() throws IOException;
     }
 
-    private static void underCollectionLock(String dbName, String collName, PkIndexMutation mutation)
+    private static void underCollectionLock(String projectName, String collName, PkIndexMutation mutation)
             throws IOException {
         final var locks = IocContainer.get(ResourceLocking.class);
         try {
-            locks.lock(dbName, collName);
+            locks.lock(projectName, collName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException(e);
@@ -265,7 +266,7 @@ public class TestUtils {
         try {
             mutation.run();
         } finally {
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
         }
     }
 
@@ -358,12 +359,12 @@ public class TestUtils {
 
     public static List<String> dirtyIndexCollections() {
         final var result = new ArrayList<String>();
-        final var databases = new File(TestGlobals.PATH).listFiles(File::isDirectory);
-        for (final var database : databases == null ? new File[0] : databases) {
-            final var collections = database.listFiles(File::isDirectory);
+        final var projects = new File(TestGlobals.PATH).listFiles(File::isDirectory);
+        for (final var project : projects == null ? new File[0] : projects) {
+            final var collections = project.listFiles(File::isDirectory);
             for (final var collection : collections == null ? new File[0] : collections) {
                 if (new File(collection, collection.getName() + "-indexes.dirty").exists()) {
-                    result.add(database.getName() + "|" + collection.getName());
+                    result.add(project.getName() + "|" + collection.getName());
                 }
             }
         }
@@ -392,7 +393,7 @@ public class TestUtils {
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         return UserOperationHelper.processCreateUser(request);
     }

@@ -11,7 +11,7 @@ The transaction manager bean name, `mppTransactionManager`.
 
 ## mppMappingContext(MppProperties, BeanFactory)
 
-@param properties supplies the default database
+@param properties supplies the default project
 @param beanFactory supplies the packages to scan
 @return the mapping context
 

@@ -38,29 +38,30 @@ public final class CountOperatorHelper {
     public record FastCount(JsonObject result, int nextStepIndex) {
     }
 
-    public static Stream<JsonObject> processCountStep(Stream<JsonObject> resultStream, String dbName, String collName) {
+    public static Stream<JsonObject> processCountStep(Stream<JsonObject> resultStream, String projectName,
+            String collName) {
         final var result = new JsonObject();
         if (resultStream != null) {
             try (var documents = resultStream) {
                 result.addProperty(COUNT_FIELD_NAME, documents.mapToLong(_ -> 1L).sum());
             }
         } else {
-            result.addProperty(COUNT_FIELD_NAME, wholeCollectionCount(dbName, collName));
+            result.addProperty(COUNT_FIELD_NAME, wholeCollectionCount(projectName, collName));
         }
         return Stream.of(result);
     }
 
-    public static FastCount tryIndexOnlyCount(List<BaseAggregationStep> steps, String dbName, String collName,
+    public static FastCount tryIndexOnlyCount(List<BaseAggregationStep> steps, String projectName, String collName,
             PipelineContext context) throws IOException {
         final var countIndex = indexOfFirstCount(steps);
         if (countIndex < 1 || AggregationStepValidator.canFailWhileRunning(steps.subList(0, countIndex))) {
             return null;
         }
-        final var rangeCount = countOfSingleRange(steps, countIndex, dbName, collName, context);
+        final var rangeCount = countOfSingleRange(steps, countIndex, projectName, collName, context);
         if (rangeCount != null) {
             return rangeCount;
         }
-        final var equalsCount = countOfSingleEquals(steps, countIndex, dbName, collName, context);
+        final var equalsCount = countOfSingleEquals(steps, countIndex, projectName, collName, context);
         if (equalsCount != null) {
             return equalsCount;
         }
@@ -74,7 +75,7 @@ public final class CountOperatorHelper {
                         return null;
                     }
                     final var operator = ((FilterAggregationStep) step).getOperator();
-                    final var ids = FilterOperatorHelper.resolveIdsViaIndex(operator, dbName, collName, context);
+                    final var ids = FilterOperatorHelper.resolveIdsViaIndex(operator, projectName, collName, context);
                     if (ids == null) {
                         return null;
                     }
@@ -88,35 +89,37 @@ public final class CountOperatorHelper {
                 }
             }
         }
-        final var count = filterSets.isEmpty() ? wholeCollectionCount(dbName, collName) : intersectionSize(filterSets);
+        final var count = filterSets.isEmpty()
+                ? wholeCollectionCount(projectName, collName)
+                : intersectionSize(filterSets);
         final var result = new JsonObject();
         result.addProperty(COUNT_FIELD_NAME, (long) count);
         return new FastCount(result, countIndex + 1);
     }
 
-    private static FastCount countOfSingleRange(List<BaseAggregationStep> steps, int countIndex, String dbName,
+    private static FastCount countOfSingleRange(List<BaseAggregationStep> steps, int countIndex, String projectName,
             String collName, PipelineContext context) throws IOException {
         final var filters = stepsBesidesSorts(steps, countIndex);
         final var range = filters.size() == 1 ? SingleRange.of(filters.getFirst()) : null;
-        if (range == null || cache.hasNoIndex(dbName, collName, range.bounds().fieldName())) {
+        if (range == null || cache.hasNoIndex(projectName, collName, range.bounds().fieldName())) {
             return null;
         }
         final var bounds = range.bounds();
-        return countWhileNothingPending(dbName, collName, bounds.fieldName(), countIndex, context,
-                () -> cache.countInRange(dbName, collName, bounds));
+        return countWhileNothingPending(projectName, collName, bounds.fieldName(), countIndex, context,
+                () -> cache.countInRange(projectName, collName, bounds));
     }
 
-    private static FastCount countOfSingleEquals(List<BaseAggregationStep> steps, int countIndex, String dbName,
+    private static FastCount countOfSingleEquals(List<BaseAggregationStep> steps, int countIndex, String projectName,
             String collName, PipelineContext context) throws IOException {
         final var filters = stepsBesidesSorts(steps, countIndex);
         final var operator = filters.size() == 1 ? singleScalarMembership(filters.getFirst()) : null;
         final var values = operator == null ? null : membershipValues(operator);
-        if (values == null || cache.hasNoIndex(dbName, collName, operator.getField())) {
+        if (values == null || cache.hasNoIndex(projectName, collName, operator.getField())) {
             return null;
         }
         final var fieldName = operator.getField();
-        return countWhileNothingPending(dbName, collName, fieldName, countIndex, context,
-                () -> cache.countEqualsAny(dbName, collName, fieldName, values));
+        return countWhileNothingPending(projectName, collName, fieldName, countIndex, context,
+                () -> cache.countEqualsAny(projectName, collName, fieldName, values));
     }
 
     private static List<BaseAggregationStep> stepsBesidesSorts(List<BaseAggregationStep> steps, int countIndex) {
@@ -169,17 +172,18 @@ public final class CountOperatorHelper {
         OptionalLong read() throws IOException;
     }
 
-    private static FastCount countWhileNothingPending(String dbName, String collName, String fieldName, int countIndex,
-            PipelineContext context, IndexCount read) throws IOException {
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+    private static FastCount countWhileNothingPending(String projectName, String collName, String fieldName,
+            int countIndex, PipelineContext context, IndexCount read) throws IOException {
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         if (!pendingBefore.isEmpty()) {
             return null;
         }
         final var count = read.read();
-        if (count.isEmpty() || !PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName).isEmpty()) {
+        if (count.isEmpty()
+                || !PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName).isEmpty()) {
             return null;
         }
-        context.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+        context.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
         final var result = new JsonObject();
         result.addProperty(COUNT_FIELD_NAME, count.getAsLong());
         return new FastCount(result, countIndex + 1);
@@ -207,7 +211,7 @@ public final class CountOperatorHelper {
     }
 
     // The PK index is maintained synchronously on save/delete, so its size is the exact document count.
-    private static int wholeCollectionCount(String dbName, String collName) {
-        return cache.pkIndexSize(dbName, collName);
+    private static int wholeCollectionCount(String projectName, String collName) {
+        return cache.pkIndexSize(projectName, collName);
     }
 }

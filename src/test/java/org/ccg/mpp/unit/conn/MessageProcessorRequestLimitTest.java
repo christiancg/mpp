@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 public class MessageProcessorRequestLimitTest {
     private static final String ADMIN = "limit_admin";
-    private static final String LIST_DATABASES = "{\"type\":\"LIST_DATABASES\"}";
+    private static final String LIST_PROJECTS = "{\"type\":\"LIST_PROJECTS\"}";
 
     private final Configuration config = Configuration.getInstance();
     private ScriptedConnection connection;
@@ -29,7 +29,7 @@ public class MessageProcessorRequestLimitTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         TestUtils.setPrivateField(config, "maxRequestSize", "128Kb");
         connection = new ScriptedConnection();
@@ -46,13 +46,13 @@ public class MessageProcessorRequestLimitTest {
         return "{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN + "\",\"password\":\"password123\"}";
     }
 
-    private static String paddedListDatabases(int bytes) {
-        final var prefix = "{\"type\":\"LIST_DATABASES\",\"pad\":\"";
+    private static String paddedListProjects(int bytes) {
+        final var prefix = "{\"type\":\"LIST_PROJECTS\",\"pad\":\"";
         return prefix + "a".repeat(bytes - prefix.length() - 2) + "\"}";
     }
 
-    private static String flatArrayListDatabases(int bytes) {
-        final var prefix = "{\"type\":\"LIST_DATABASES\",\"x\":[1";
+    private static String flatArrayListProjects(int bytes) {
+        final var prefix = "{\"type\":\"LIST_PROJECTS\",\"x\":[1";
         return prefix + ",1".repeat((bytes - prefix.length() - 2) / 2) + "]}";
     }
 
@@ -76,7 +76,7 @@ public class MessageProcessorRequestLimitTest {
     public void test_an_oversized_line_before_authentication_uses_the_64kb_limit() throws Exception {
         connection.start();
 
-        final var refusal = connection.exchange(paddedListDatabases(70_000));
+        final var refusal = connection.exchange(paddedListProjects(70_000));
 
         assertTrue(refusal.contains("400-22"), refusal);
         assertTrue(connection.awaitClosed(5000));
@@ -86,7 +86,7 @@ public class MessageProcessorRequestLimitTest {
     public void test_an_authenticated_line_between_64kb_and_the_limit_is_served() throws Exception {
         startAuthenticated();
 
-        final var served = connection.exchange(paddedListDatabases(100_000));
+        final var served = connection.exchange(paddedListProjects(100_000));
 
         assertTrue(served.contains("\"OK\""), served);
         assertFalse(connection.awaitClosed(10));
@@ -97,13 +97,13 @@ public class MessageProcessorRequestLimitTest {
             throws Exception {
         startAuthenticated();
 
-        final var refused = connection.exchange(flatArrayListDatabases(100_000));
+        final var refused = connection.exchange(flatArrayListProjects(100_000));
 
         assertTrue(refused.contains("\"status\":\"ERROR\""), refused);
         assertTrue(refused.contains("\"message\":\"The command is not valid\""), refused);
         assertTrue(refused.contains("\"errorCode\":\"400-43\""), refused);
-        assertTrue(connection.exchange(LIST_DATABASES).contains("\"OK\""));
-        assertTrue(connection.exchange(flatArrayListDatabases(1_000)).contains("\"OK\""),
+        assertTrue(connection.exchange(LIST_PROJECTS).contains("\"OK\""));
+        assertTrue(connection.exchange(flatArrayListProjects(1_000)).contains("\"OK\""),
                 "a small array stays within the budget");
     }
 
@@ -113,7 +113,7 @@ public class MessageProcessorRequestLimitTest {
         TestUtils.setPrivateField(connection.processor(), "operationProcessor", processor);
         connection.start();
 
-        connection.send(paddedListDatabases(70_000) + "\n" + LIST_DATABASES);
+        connection.send(paddedListProjects(70_000) + "\n" + LIST_PROJECTS);
 
         assertTrue(connection.response().contains("400-22"));
         assertTrue(connection.awaitClosed(5000));

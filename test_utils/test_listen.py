@@ -15,7 +15,7 @@ PORT = int(os.environ.get("LISTEN_TEST_PORT", "8989"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "listen_test_db"
+PROJECT = "listen_test_project"
 COLL = "listen_coll"
 
 GEO_TARGET = "#geo(40.0,-74.0)"
@@ -32,15 +32,15 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 
 
 def save_doc(conn: Conn, doc: dict) -> dict:
-    return conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": doc})
+    return conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": doc})
 
 
 def delete_doc(conn: Conn, id_: str) -> dict:
-    return conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": id_})
+    return conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": id_})
 
 
 def listen(conn: Conn, steps: list, coll: str = COLL) -> dict:
-    return conn.send({"type": "LISTEN", "databaseName": DB, "collectionName": coll, "aggregationSteps": steps})
+    return conn.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": steps})
 
 
 def stop_listen(conn: Conn, listen_id: str) -> dict:
@@ -50,7 +50,7 @@ def stop_listen(conn: Conn, listen_id: str) -> dict:
 def aggregate(conn: Conn, steps: list) -> dict:
     return conn.send({
         "type": "AGGREGATE",
-        "databaseName": DB,
+        "projectName": PROJECT,
         "collectionName": COLL,
         "aggregationSteps": steps,
     })
@@ -73,22 +73,22 @@ def vector_nearest_steps(query: str, k: int, exact: bool = False, field: str = "
 
 
 def setup(admin: Conn):
-    admin.send({"type": "CREATE_DATABASE", "databaseName": DB})
-    admin.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
+    admin.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+    admin.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
 
 
 def teardown(admin: Conn):
-    admin.send({"type": "DROP_DATABASE", "databaseName": DB})
+    admin.send({"type": "DROP_PROJECT", "projectName": PROJECT})
 
 
 def test_validation(admin: Conn):
     section("Validation: LISTEN and STOP_LISTEN")
 
-    r = admin.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL})
+    r = admin.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL})
     check_code("LISTEN without aggregationSteps → VALIDATION_ERROR", r, "ERROR", "400-1")
 
     r = admin.send({"type": "LISTEN", "collectionName": COLL, "aggregationSteps": []})
-    check_code("LISTEN without databaseName → VALIDATION_ERROR", r, "ERROR", "400-1")
+    check_code("LISTEN without projectName → VALIDATION_ERROR", r, "ERROR", "400-1")
 
     r = admin.send({"type": "STOP_LISTEN"})
     check_code("STOP_LISTEN without listenId → VALIDATION_ERROR", r, "ERROR", "400-1")
@@ -132,7 +132,7 @@ def test_no_push_on_unrelated_write(admin: Conn):
     check_status("LISTEN registered for no-push test", r, "OK")
     listen_id = r.get("listenId")
 
-    admin.send({"type": "LIST_DATABASES"})
+    admin.send({"type": "LIST_PROJECTS"})
 
     pushed = admin.recv(timeout=1.5)
     check("no push received on unrelated activity", pushed is None,
@@ -231,7 +231,7 @@ def test_push_on_delete_by_condition(writer: Conn, listener: Conn):
     check_status("LISTEN registered for the conditional delete", r, "OK")
     listen_id = r.get("listenId")
 
-    deleted = writer.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL,
+    deleted = writer.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL,
                            "condition": steps[0]["operator"]})
     check_field("the conditional delete removed all three", deleted, "deletedCount", 3)
 
@@ -257,7 +257,7 @@ def test_push_on_save_by_condition(writer: Conn, listener: Conn):
     check_status("LISTEN registered for the conditional save", r, "OK")
     listen_id = r.get("listenId")
 
-    updated = writer.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+    updated = writer.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                            "condition": steps[0]["operator"], "object": {"kind": "processed"}})
     check_field("the conditional save moved all three out of the result", updated, "updatedCount", 3)
 
@@ -603,7 +603,7 @@ def test_multiple_listeners(writer: Conn, listener: Conn):
 
         r_b = l2.send({
             "type": "LISTEN",
-            "databaseName": DB,
+            "projectName": PROJECT,
             "collectionName": COLL,
             "aggregationSteps": steps_b,
         })
@@ -833,9 +833,9 @@ def test_a_revoked_reader_is_told_its_listen_ended(writer: Conn):
     section("LISTEN: a reader whose permission was revoked is told its listen ended")
     reader_name = "listen_revoked_reader"
     writer.send({"type": "DELETE_USER", "username": reader_name})
-    check_status("create a reader on the listen database", writer.send({
+    check_status("create a reader on the listen project", writer.send({
         "type": "CREATE_USER", "username": reader_name, "password": "listen_reader1234", "admin": False,
-        "globalPermissions": [], "databasePermissions": {DB: "READ"}, "collectionPermissions": {}}), "OK")
+        "globalPermissions": [], "projectPermissions": {PROJECT: "READ"}, "collectionPermissions": {}}), "OK")
     steps = [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "kind", "value": "revoked"}}]
     try:
         with Conn() as reader:
@@ -849,9 +849,9 @@ def test_a_revoked_reader_is_told_its_listen_ended(writer: Conn):
             check("the reader is pushed a matching write while authorized", pushed is not None,
                   "no push within 5 s")
 
-            check_status("revoke the reader's database permission", writer.send({
+            check_status("revoke the reader's project permission", writer.send({
                 "type": "CHANGE_PERMISSIONS", "username": reader_name, "admin": False, "globalPermissions": [],
-                "databasePermissions": {}, "collectionPermissions": {}}), "OK")
+                "projectPermissions": {}, "collectionPermissions": {}}), "OK")
             save_doc(writer, {"_id": "revoked-2", "kind": "revoked"})
             check_listen_ended("the revoked reader is told its listen ended", reader.recv(timeout=5.0), listen_id)
             pushed = reader.recv(timeout=2.0)
@@ -867,30 +867,30 @@ def test_a_revoked_reader_is_told_its_listen_ended(writer: Conn):
 def test_dropping_the_collection_ends_the_listen(writer: Conn, listener: Conn):
     section("LISTEN: dropping the listened collection ends the listen with one terminal frame")
     coll = "listen_dropped_coll"
-    writer.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+    writer.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     r = listen(listener, [], coll)
     check_status("LISTEN registered on the collection about to be dropped", r, "OK")
     listen_id = r.get("listenId")
     try:
         check_status("DROP_COLLECTION", writer.send(
-            {"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+            {"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
         check_listen_ended("the listener is told its listen ended", listener.recv(timeout=5.0), listen_id)
         check_code("the ended listen is no longer registered", stop_listen(listener, listen_id), "NOT_FOUND",
                    "404-7")
 
-        writer.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
-        writer.send({"type": "SAVE", "databaseName": DB, "collectionName": coll, "object": {"_id": "after"}})
+        writer.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
+        writer.send({"type": "SAVE", "projectName": PROJECT, "collectionName": coll, "object": {"_id": "after"}})
         pushed = listener.recv(timeout=2.0)
         check("a re-created collection does not revive the ended listen", pushed is None,
               f"unexpected push: {pushed!r}")
     finally:
-        writer.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+        writer.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
 
 
 def test_dropping_a_joined_collection_ends_the_listen(writer: Conn, listener: Conn):
     section("LISTEN: dropping a JOIN target ends the listen on the primary collection")
     joined = "listen_joined_coll"
-    writer.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": joined})
+    writer.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": joined})
     steps = [{"type": "JOIN", "joinCollection": joined, "localField": "ref", "remoteField": "_id",
               "asField": "joined"}]
     r = listen(listener, steps)
@@ -898,23 +898,23 @@ def test_dropping_a_joined_collection_ends_the_listen(writer: Conn, listener: Co
     listen_id = r.get("listenId")
     try:
         check_status("DROP_COLLECTION of the joined collection", writer.send(
-            {"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": joined}), "OK")
+            {"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": joined}), "OK")
         check_listen_ended("the JOIN listener is told its listen ended", listener.recv(timeout=5.0), listen_id)
         pushed = listener.recv(timeout=2.0)
         check("exactly one terminal frame arrives", pushed is None, f"unexpected push: {pushed!r}")
     finally:
-        writer.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": joined})
+        writer.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": joined})
 
 
 def test_a_push_and_a_reply_on_one_connection_arrive_in_either_order(listener: Conn):
     section("LISTEN: a listen's end and the reply that caused it share one connection in either order")
     coll = "listen_same_conn_drop"
-    listener.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+    listener.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     r = listen(listener, [], coll)
     check_status("LISTEN registered on the collection the same connection drops", r, "OK")
     listen_id = r.get("listenId")
     try:
-        bu.send_without_reading(listener, {"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+        bu.send_without_reading(listener, {"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
         frames = [listener.recv(timeout=5.0), listener.recv(timeout=5.0)]
         replies = [f for f in frames if f is not None and f.get("type") == "DROP_COLLECTION"]
         pushes = [f for f in frames if f is not None and f.get("type") == "LISTEN"]
@@ -926,7 +926,7 @@ def test_a_push_and_a_reply_on_one_connection_arrive_in_either_order(listener: C
         pushed = listener.recv(timeout=2.0)
         check("nothing else follows", pushed is None, f"unexpected frame: {pushed!r}")
     finally:
-        listener.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
+        listener.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
 
 
 def test_listener_survives_a_concurrent_bulk_save(writer_conn: Conn, listener_conn: Conn):
@@ -939,7 +939,7 @@ def test_listener_survives_a_concurrent_bulk_save(writer_conn: Conn, listener_co
 
     expected = 40
     objects = [{"_id": f"bulk_{i:03d}", "kind": "bulk"} for i in range(expected)]
-    writer_conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+    writer_conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
                       "objects": objects})
 
     seen = [-1]
@@ -1034,18 +1034,18 @@ def test_revoking_one_user_ends_only_their_listen_in_a_shared_query(writer: Conn
     section("LISTEN: revoking one reader ends only that reader's listen on a query others share")
     reader_name = "listen_shared_reader"
     writer.send({"type": "DELETE_USER", "username": reader_name})
-    check_status("create a reader on the listen database", writer.send({
+    check_status("create a reader on the listen project", writer.send({
         "type": "CREATE_USER", "username": reader_name, "password": "listen_reader1234", "admin": False,
-        "globalPermissions": [], "databasePermissions": {DB: "READ"}, "collectionPermissions": {}}), "OK")
+        "globalPermissions": [], "projectPermissions": {PROJECT: "READ"}, "collectionPermissions": {}}), "OK")
     steps = [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "kind", "value": "revshare"}}]
     try:
         with Conn() as reader, Conn.authenticated() as admin_a, Conn.authenticated() as admin_b:
             check_status("AUTHENTICATE as the reader", reader.authenticate(reader_name, "listen_reader1234"), "OK")
             reader_id = listen(reader, steps).get("listenId")
             admin_ids = [listen(admin_a, steps).get("listenId"), listen(admin_b, steps).get("listenId")]
-            check_status("revoke the reader's database permission", writer.send({
+            check_status("revoke the reader's project permission", writer.send({
                 "type": "CHANGE_PERMISSIONS", "username": reader_name, "admin": False, "globalPermissions": [],
-                "databasePermissions": {}, "collectionPermissions": {}}), "OK")
+                "projectPermissions": {}, "collectionPermissions": {}}), "OK")
             save_doc(writer, {"_id": "revshare-1", "kind": "revshare"})
             check_listen_ended("the revoked reader is told its listen ended", reader.recv(timeout=5.0), reader_id)
             for conn, listen_id in zip((admin_a, admin_b), admin_ids):
@@ -1086,10 +1086,10 @@ def pushed_frames(conn: Conn, buffered: bytearray, timeout: float) -> list:
 
 def test_sorted_listen_under_concurrent_writes_ends_with_final_state(writer: Conn, listener: Conn):
     section("LISTEN: an index-sorted top 5 re-run under concurrent writers ends on the final state")
-    writer.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": SORTED_COLL})
-    writer.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": SORTED_COLL,
+    writer.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": SORTED_COLL})
+    writer.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": SORTED_COLL,
                  "objects": [{"_id": f"s{i:04d}", "kind": "sorted", "score": i} for i in range(SORTED_SEED)]})
-    check_status("score indexed", writer.send({"type": "CREATE_INDEX", "databaseName": DB,
+    check_status("score indexed", writer.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                                "collectionName": SORTED_COLL, "fieldName": "score"}), "OK")
     started = listen(listener, SORTED_STEPS, coll=SORTED_COLL)
     check_status("sorted LISTEN registered", started, "OK")
@@ -1101,7 +1101,7 @@ def test_sorted_listen_under_concurrent_writes_ends_with_final_state(writer: Con
         with Conn() as conn:
             conn.authenticate()
             for _ in range(SORTED_WRITES_PER_WRITER):
-                conn.send({"type": "SAVE", "databaseName": DB, "collectionName": SORTED_COLL,
+                conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": SORTED_COLL,
                            "object": {"_id": f"s{rng.randrange(SORTED_SEED + 50):04d}", "kind": "sorted",
                                       "score": rng.randrange(10_000)}})
 
@@ -1124,14 +1124,14 @@ def test_sorted_listen_under_concurrent_writes_ends_with_final_state(writer: Con
             quiet_since = time.time()
     for thread in writers:
         thread.join(60)
-    final = writer.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": SORTED_COLL,
+    final = writer.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": SORTED_COLL,
                          "aggregationSteps": SORTED_STEPS})
     check(f"the listener was notified while the writers ran ({pushes} pushes)", pushes > 0)
     check("the last pushed top 5 equals the final state",
           sorted_signature(last[0]) == sorted_signature(final.get("results")),
           f"last={sorted_signature(last[0])} final={sorted_signature(final.get('results'))}")
     stop_listen(listener, listen_id)
-    writer.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": SORTED_COLL})
+    writer.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": SORTED_COLL})
 
 
 def main():

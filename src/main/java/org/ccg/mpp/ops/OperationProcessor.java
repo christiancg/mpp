@@ -6,8 +6,8 @@ import org.ccg.mpp.data.Transaction;
 import org.ccg.mpp.ex.PartialBulkSaveException;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.admin.CollectionOperationHelper;
-import org.ccg.mpp.ops.admin.DatabaseOperationHelper;
 import org.ccg.mpp.ops.admin.ListenOperationHelper;
+import org.ccg.mpp.ops.admin.ProjectOperationHelper;
 import org.ccg.mpp.ops.admin.ReadPathHelper;
 import org.ccg.mpp.ops.admin.RestampedRecords;
 import org.ccg.mpp.ops.admin.RunDirectoryHelper;
@@ -21,8 +21,8 @@ import org.ccg.mpp.ops.req.CallProcedureRequest;
 import org.ccg.mpp.ops.req.CancelScriptRequest;
 import org.ccg.mpp.ops.req.ChangePermissionsRequest;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
 import org.ccg.mpp.ops.req.CreateIndexRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteRequest;
@@ -31,8 +31,8 @@ import org.ccg.mpp.ops.req.DeleteSchemaRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
 import org.ccg.mpp.ops.req.DropIndexRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.ops.req.FindByIdRequest;
 import org.ccg.mpp.ops.req.GetSchemaRequest;
 import org.ccg.mpp.ops.req.ListCollectionsRequest;
@@ -56,8 +56,8 @@ import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveSchemaRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
 import org.ccg.mpp.ops.req.ServerInfoRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.ops.req.StartSnapshotRequest;
 import org.ccg.mpp.ops.req.StopListenRequest;
 import org.ccg.mpp.ops.req.TestTriggerRequest;
@@ -101,9 +101,9 @@ public class OperationProcessor {
             case FIND_BY_ID -> processFindByIdOperation((FindByIdRequest) operationRequest, activeTransaction);
             case AGGREGATE -> processAggregateOperation((AggregateRequest) operationRequest, activeTransaction);
             case DELETE -> processDeleteOperation((DeleteRequest) operationRequest, activeTransaction, actingUser);
-            case CREATE_DATABASE -> processCreateDatabaseOperation((CreateDatabaseRequest) operationRequest, clientId);
-            case DROP_DATABASE -> processDropDatabaseOperation((DropDatabaseRequest) operationRequest, restamped);
-            case LIST_DATABASES -> processListDatabasesOperation(actingUser);
+            case CREATE_PROJECT -> processCreateProjectOperation((CreateProjectRequest) operationRequest, clientId);
+            case DROP_PROJECT -> processDropProjectOperation((DropProjectRequest) operationRequest, restamped);
+            case LIST_PROJECTS -> processListProjectsOperation(actingUser);
             case CREATE_COLLECTION -> processCreateCollectionOperation((CreateCollectionRequest) operationRequest);
             case DROP_COLLECTION -> processDropCollectionOperation((DropCollectionRequest) operationRequest, restamped);
             case LIST_COLLECTIONS -> processListCollectionsOperation((ListCollectionsRequest) operationRequest);
@@ -121,12 +121,11 @@ public class OperationProcessor {
             case DELETE_USER -> UserOperationHelper.processDeleteUser((DeleteUserRequest) operationRequest, restamped);
             case CHANGE_PERMISSIONS ->
                 UserOperationHelper.processChangePermissions((ChangePermissionsRequest) operationRequest, restamped);
-            case SET_DATABASE_OWNERS ->
-                processSetDatabaseOwners((SetDatabaseOwnersRequest) operationRequest, restamped);
+            case SET_PROJECT_OWNERS -> processSetProjectOwners((SetProjectOwnersRequest) operationRequest, restamped);
             case LIST_USERS -> processListUsers((ListUsersRequest) operationRequest);
             case SET_PASSWORD ->
                 UserOperationHelper.processSetPassword((SetPasswordRequest) operationRequest, clientId);
-            case GET_DATABASE_STATS -> DatabaseStatsHelper.processGetDatabaseStats(actingUser);
+            case GET_PROJECT_STATS -> ProjectStatsHelper.processGetProjectStats(actingUser);
             case LISTEN -> processListenOperation((ListenRequest) operationRequest, clientId);
             case STOP_LISTEN -> processStopListenOperation((StopListenRequest) operationRequest, clientId);
             case START_TRANSACTION ->
@@ -222,26 +221,25 @@ public class OperationProcessor {
         return RunDirectoryHelper.processListTransactions();
     }
 
-    private OperationResponse processCreateDatabaseOperation(CreateDatabaseRequest createDatabaseRequest,
-            UUID clientId) {
-        return DatabaseOperationHelper.processCreateDatabaseOperation(createDatabaseRequest, clientId);
+    private OperationResponse processCreateProjectOperation(CreateProjectRequest createProjectRequest, UUID clientId) {
+        return ProjectOperationHelper.processCreateProjectOperation(createProjectRequest, clientId);
     }
 
-    private OperationResponse processSetDatabaseOwners(SetDatabaseOwnersRequest request, RestampedRecords restamped) {
-        final var response = DatabaseOperationHelper.processSetDatabaseOwners(request);
+    private OperationResponse processSetProjectOwners(SetProjectOwnersRequest request, RestampedRecords restamped) {
+        final var response = ProjectOperationHelper.processSetProjectOwners(request);
         if (response.getStatus() == OperationStatus.OK) {
-            DefinerRevocation.forDatabase(request.getDatabaseName(), restamped);
+            DefinerRevocation.forProject(request.getProjectName(), restamped);
         }
         return response;
     }
 
-    private OperationResponse processDropDatabaseOperation(DropDatabaseRequest dropDatabaseRequest,
+    private OperationResponse processDropProjectOperation(DropProjectRequest dropProjectRequest,
             RestampedRecords restamped) {
-        return DatabaseOperationHelper.processDropDatabaseOperation(dropDatabaseRequest, restamped);
+        return ProjectOperationHelper.processDropProjectOperation(dropProjectRequest, restamped);
     }
 
-    private OperationResponse processListDatabasesOperation(String actingUser) {
-        return DatabaseOperationHelper.processListDatabasesOperation(actingUser);
+    private OperationResponse processListProjectsOperation(String actingUser) {
+        return ProjectOperationHelper.processListProjectsOperation(actingUser);
     }
 
     private OperationResponse processCreateCollectionOperation(CreateCollectionRequest createCollectionRequest) {
@@ -288,16 +286,16 @@ public class OperationProcessor {
     }
 
     private OperationResponse processSaveTrigger(SaveTriggerRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.SAVE_TRIGGER,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.SAVE_TRIGGER,
                 ErrorCode.ERROR_SAVING_TRIGGER, () -> TriggerOperationHelper.executeSave(request, actingUser));
     }
 
     private OperationResponse processDeleteTrigger(DeleteTriggerRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.DELETE_TRIGGER,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.DELETE_TRIGGER,
                 ErrorCode.ERROR_DELETING_TRIGGER, () -> TriggerOperationHelper.executeDelete(request, actingUser));
     }
 
@@ -326,18 +324,18 @@ public class OperationProcessor {
 
     private OperationResponse processBulkSaveOperation(BulkSaveRequest bulkSaveRequest, Transaction activeTransaction,
             String actingUser) {
-        final var dbName = bulkSaveRequest.getDatabaseName();
+        final var projectName = bulkSaveRequest.getProjectName();
         final var collName = bulkSaveRequest.getCollectionName();
         if (activeTransaction != null) {
             return TransactionOperationHelper.bufferBulkSave(bulkSaveRequest, activeTransaction);
         }
-        final var guardError = ClusterWriteHelper.guard(OperationType.BULK_SAVE, dbName, collName);
+        final var guardError = ClusterWriteHelper.guard(OperationType.BULK_SAVE, projectName, collName);
         if (guardError != null) {
             return guardError;
         }
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.BULK_SAVE, ErrorCode.ERROR_BULK_SAVING,
-                () -> {
-                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.BULK_SAVE, dbName,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.BULK_SAVE,
+                ErrorCode.ERROR_BULK_SAVING, () -> {
+                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.BULK_SAVE, projectName,
                             collName);
                     if (ownershipError != null) {
                         return ownershipError;
@@ -352,12 +350,12 @@ public class OperationProcessor {
                     }
                     final var staged = TriggerHelper.stageBulkSave(bulkSaveRequest, actingUser);
                     try {
-                        return ClusterWriteHelper.afterBulkSave(dbName, collName,
-                                TriggerHelper.runStaged(staged, dbName, collName, actingUser,
+                        return ClusterWriteHelper.afterBulkSave(projectName, collName,
+                                TriggerHelper.runStaged(staged, projectName, collName, actingUser,
                                         bulkSaveRequest.getTriggerDepth(),
                                         () -> SaveOperationHelper.executeBulkSave(bulkSaveRequest)));
                     } catch (PartialBulkSaveException e) {
-                        ClusterWriteHelper.afterBulkSave(dbName, collName, e.committed());
+                        ClusterWriteHelper.afterBulkSave(projectName, collName, e.committed());
                         throw e;
                     }
                 });
@@ -365,21 +363,21 @@ public class OperationProcessor {
 
     private OperationResponse processSaveOperation(SaveRequest saveRequest, Transaction activeTransaction,
             String actingUser) {
-        final var dbName = saveRequest.getDatabaseName();
+        final var projectName = saveRequest.getProjectName();
         final var collName = saveRequest.getCollectionName();
         if (activeTransaction != null) {
             return TransactionOperationHelper.bufferSave(saveRequest, activeTransaction);
         }
-        final var guardError = ClusterWriteHelper.guard(OperationType.SAVE, dbName, collName);
+        final var guardError = ClusterWriteHelper.guard(OperationType.SAVE, projectName, collName);
         if (guardError != null) {
             return guardError;
         }
         if (saveRequest.getCondition() != null) {
             return processSaveWhere(saveRequest, actingUser);
         }
-        return OperationLocks.withGroupedCollectionLock(dbName, collName, OperationType.SAVE, ErrorCode.ERROR_SAVING,
-                GroupCommit.forSave(saveRequest), effects -> {
-                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, dbName,
+        return OperationLocks.withGroupedCollectionLock(projectName, collName, OperationType.SAVE,
+                ErrorCode.ERROR_SAVING, GroupCommit.forSave(saveRequest), effects -> {
+                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, projectName,
                             collName);
                     if (ownershipError != null) {
                         return GroupCommit.answered(ownershipError);
@@ -397,52 +395,54 @@ public class OperationProcessor {
                         return GroupCommit.answered(hookError);
                     }
                     final var staged = TriggerHelper.stageSave(saveRequest, actingUser, effects);
-                    return () -> ClusterWriteHelper.afterSave(dbName, collName,
-                            TriggerHelper.runStaged(staged, dbName, collName, actingUser, saveRequest.getTriggerDepth(),
-                                    effects, () -> SaveOperationHelper.executeSave(saveRequest)),
+                    return () -> ClusterWriteHelper.afterSave(projectName, collName,
+                            TriggerHelper.runStaged(staged, projectName, collName, actingUser,
+                                    saveRequest.getTriggerDepth(), effects,
+                                    () -> SaveOperationHelper.executeSave(saveRequest)),
                             effects);
                 });
     }
 
     private OperationResponse processSaveWhere(SaveRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.SAVE, ErrorCode.ERROR_SAVING, () -> {
-            final var update = ConditionalSave.prepare(request, actingUser);
-            if (update.answered() != null) {
-                return update.answered();
-            }
-            final var merged = update.merged();
-            final var staged = TriggerHelper.stageBulkSave(merged, actingUser);
-            return SaveWhereResponse.answering(
-                    ClusterWriteHelper.afterBulkSave(dbName, collName, TriggerHelper.runStaged(staged, dbName, collName,
-                            actingUser, request.getTriggerDepth(), () -> SaveOperationHelper.executeBulkSave(merged))));
-        });
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.SAVE, ErrorCode.ERROR_SAVING,
+                () -> {
+                    final var update = ConditionalSave.prepare(request, actingUser);
+                    if (update.answered() != null) {
+                        return update.answered();
+                    }
+                    final var merged = update.merged();
+                    final var staged = TriggerHelper.stageBulkSave(merged, actingUser);
+                    return SaveWhereResponse.answering(ClusterWriteHelper.afterBulkSave(projectName, collName,
+                            TriggerHelper.runStaged(staged, projectName, collName, actingUser,
+                                    request.getTriggerDepth(), () -> SaveOperationHelper.executeBulkSave(merged))));
+                });
     }
 
     private OperationResponse processDeleteOperation(DeleteRequest deleteRequest, Transaction activeTransaction,
             String actingUser) {
-        final var dbName = deleteRequest.getDatabaseName();
+        final var projectName = deleteRequest.getProjectName();
         final var collName = deleteRequest.getCollectionName();
         if (activeTransaction != null) {
             return TransactionOperationHelper.bufferDelete(deleteRequest, activeTransaction);
         }
-        final var guardError = ClusterWriteHelper.guard(OperationType.DELETE, dbName, collName);
+        final var guardError = ClusterWriteHelper.guard(OperationType.DELETE, projectName, collName);
         if (guardError != null) {
             return guardError;
         }
         if (deleteRequest.getCondition() != null) {
             return processDeleteWhere(deleteRequest, actingUser);
         }
-        return OperationLocks.withGroupedCollectionLock(dbName, collName, OperationType.DELETE,
+        return OperationLocks.withGroupedCollectionLock(projectName, collName, OperationType.DELETE,
                 ErrorCode.ERROR_DELETING, GroupCommit.forDelete(deleteRequest), effects -> {
-                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, dbName,
+                    final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, projectName,
                             collName);
                     if (ownershipError != null) {
                         return GroupCommit.answered(ownershipError);
                     }
                     // Read before the delete: afterWrite needs the document that is about to disappear.
-                    final var deleted = TriggerHelper.captureForDelete(dbName, collName, deleteRequest.get_id(),
+                    final var deleted = TriggerHelper.captureForDelete(projectName, collName, deleteRequest.get_id(),
                             deleteRequest.getTriggerDepth());
                     final var hookError = BeforeHookHelper.beforeDelete(deleteRequest, actingUser);
                     if (hookError != null) {
@@ -451,31 +451,31 @@ public class OperationProcessor {
                     final var staged = TriggerHelper.stageDelete(deleteRequest, deleted, actingUser, effects);
                     return () -> {
                         final var reservation = TriggerHelper.discardingOnFailure(staged, effects,
-                                () -> ClusterWriteHelper.reserveDelete(dbName, collName, deleteRequest.get_id()));
+                                () -> ClusterWriteHelper.reserveDelete(projectName, collName, deleteRequest.get_id()));
                         if (reservation.ownerLost()) {
                             effects.discard(staged);
                             return new OperationResponse(OperationType.DELETE, ErrorCode.NOT_COLLECTION_OWNER);
                         }
-                        final var local = TriggerHelper.runStaged(staged, dbName, collName, actingUser,
+                        final var local = TriggerHelper.runStaged(staged, projectName, collName, actingUser,
                                 deleteRequest.getTriggerDepth(), effects,
                                 () -> ClusterWriteHelper.deleteOrRetract(deleteRequest, reservation.version()));
-                        return ClusterWriteHelper.afterDelete(dbName, collName, deleteRequest.get_id(),
+                        return ClusterWriteHelper.afterDelete(projectName, collName, deleteRequest.get_id(),
                                 reservation.version(), local, effects);
                     };
                 });
     }
 
     private OperationResponse processDeleteWhere(DeleteRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.DELETE, ErrorCode.ERROR_DELETING,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.DELETE, ErrorCode.ERROR_DELETING,
                 () -> {
                     final var deletion = ConditionalDelete.prepare(request, actingUser);
                     if (deletion.refusal() != null) {
                         return deletion.refusal();
                     }
                     final var staged = TriggerHelper.stageDeleteMany(request, deletion.captured(), actingUser);
-                    return deletion.replicated(TriggerHelper.runStaged(staged, dbName, collName, actingUser,
+                    return deletion.replicated(TriggerHelper.runStaged(staged, projectName, collName, actingUser,
                             request.getTriggerDepth(), deletion::execute));
                 });
     }

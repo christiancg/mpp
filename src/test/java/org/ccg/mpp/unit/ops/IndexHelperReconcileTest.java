@@ -30,7 +30,7 @@ public class IndexHelperReconcileTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -42,17 +42,17 @@ public class IndexHelperReconcileTest {
         JsonObject obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        DbEntry e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         e.set_id(id);
         return e;
     }
 
     private void setupCollection(Cache cache, DbEntry... entries) throws IOException {
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var pk = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pk = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, pk);
         for (var entry : entries) {
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
     }
 
@@ -89,13 +89,13 @@ public class IndexHelperReconcileTest {
         final var indexed = entryWith("s1", "status", new JsonString("active"));
         final var pending = entryWith("n1", "status", JsonNull.INSTANCE);
         setupCollection(cache, indexed, pending);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status"));
 
         final var pendingWrites = IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class);
-        pendingWrites.mark(TestGlobals.DB, TestGlobals.COLL, "n1");
+        pendingWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "n1");
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "status",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "status",
                 ReadObserver.NONE);
 
         assertNotNull(entries, "null-valued pending doc must not force a full-scan fallback (null result)");
@@ -129,16 +129,16 @@ public class IndexHelperReconcileTest {
         final var indexed = entryWith("has1", "status", new JsonString("active"));
         final var missingFieldDoc = new JsonObject();
         missingFieldDoc.add(Globals.PK_FIELD, new JsonString("missing1"));
-        final var pendingEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, missingFieldDoc);
+        final var pendingEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, missingFieldDoc);
         pendingEntry.set_id("missing1");
         setupCollection(cache, indexed, pendingEntry);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status"));
 
-        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL,
+        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL,
                 "missing1");
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "status",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "status",
                 ReadObserver.NONE);
 
         assertNull(entries,
@@ -154,16 +154,18 @@ public class IndexHelperReconcileTest {
             throws IOException, InterruptedException {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("s1", "status", new JsonString("active")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "status");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("status"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "status");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("status"));
 
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entryWith("null1", "status", JsonNull.INSTANCE));
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entryWith("null2", "status", JsonNull.INSTANCE));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                entryWith("null1", "status", JsonNull.INSTANCE));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                entryWith("null2", "status", JsonNull.INSTANCE));
         final var pendingWrites = IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class);
-        pendingWrites.mark(TestGlobals.DB, TestGlobals.COLL, "null1");
-        pendingWrites.mark(TestGlobals.DB, TestGlobals.COLL, "null2");
+        pendingWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "null1");
+        pendingWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "null2");
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "status",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "status",
                 ReadObserver.NONE);
         assertNotNull(entries);
         final var nullEntry = entries.stream().filter(e -> e.getValue() == JsonNull.INSTANCE).findFirst().orElseThrow();
@@ -175,13 +177,15 @@ public class IndexHelperReconcileTest {
             throws IOException, InterruptedException {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("b1", "flag", JsonBoolean.of(true)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "flag");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("flag"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "flag");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("flag"));
 
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entryWith("b2", "flag", JsonBoolean.of(false)));
-        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL, "b2");
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                entryWith("b2", "flag", JsonBoolean.of(false)));
+        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL,
+                "b2");
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "flag",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "flag",
                 ReadObserver.NONE);
         assertNotNull(entries);
         assertEquals(2, entries.size());
@@ -195,14 +199,15 @@ public class IndexHelperReconcileTest {
             throws IOException, InterruptedException {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("ct1", "startTime", new JsonTime("#time(08:00:00)")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "startTime");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("startTime"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "startTime");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("startTime"));
 
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
                 entryWith("ct2", "startTime", new JsonTime("#time(09:00:00)")));
-        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL, "ct2");
+        IocContainer.get(org.ccg.mpp.bckg_ops.PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL,
+                "ct2");
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "startTime",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "startTime",
                 ReadObserver.NONE);
         assertNotNull(entries);
         assertEquals(2, entries.size());

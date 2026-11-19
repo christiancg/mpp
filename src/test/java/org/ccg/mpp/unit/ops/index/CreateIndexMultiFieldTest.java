@@ -41,18 +41,18 @@ public class CreateIndexMultiFieldTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (var i = 0; i < 20; i++) {
             final var object = new JsonObject();
             object.addProperty("_id", "d" + i);
             object.addProperty("status", i % 2 == 0 ? "active" : "archived");
             object.addProperty("tier", "t" + i % 3);
             object.addProperty("score", i);
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(object);
             assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
         }
-        cache.userCache().evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @AfterEach
@@ -69,11 +69,11 @@ public class CreateIndexMultiFieldTest {
     }
 
     private OperationResponse create(List<String> fields) {
-        return processor.processMessage(CreateIndexRequest.ofFields(TestGlobals.DB, TestGlobals.COLL, fields));
+        return processor.processMessage(CreateIndexRequest.ofFields(TestGlobals.PROJECT, TestGlobals.COLL, fields));
     }
 
     private Set<String> registered() {
-        return cache.getIndexesForCollection(TestGlobals.DB, TestGlobals.COLL);
+        return cache.getIndexesForCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -85,23 +85,23 @@ public class CreateIndexMultiFieldTest {
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
         assertEquals("Created index for fields: status, tier, score", response.getMessage());
         assertEquals(Set.of("status", "tier", "score"), registered());
-        verify(spied, times(1)).streamPages(TestGlobals.DB, TestGlobals.COLL);
+        verify(spied, times(1)).streamPages(TestGlobals.PROJECT, TestGlobals.COLL);
         for (final var field : List.of("status", "tier", "score")) {
-            assertFalse(realFs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, field), field);
+            assertFalse(realFs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, field), field);
         }
     }
 
     @Test
     public void test_an_already_registered_field_is_skipped() throws Exception {
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status")).getStatus());
         final var spied = spyTheBuild();
 
         final var response = create(List.of("status", "tier"));
 
         assertEquals(OperationStatus.OK, response.getStatus());
         assertEquals("Created index for field: tier; already existed for field: status", response.getMessage());
-        verify(spied, times(1)).writeIndexFile(eq(TestGlobals.DB), eq(TestGlobals.COLL), eq("tier"), any());
+        verify(spied, times(1)).writeIndexFile(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), eq("tier"), any());
         verify(spied, never()).writeIndexFile(anyString(), anyString(), eq("status"), any());
         assertEquals(Set.of("status", "tier"), registered());
     }
@@ -131,7 +131,7 @@ public class CreateIndexMultiFieldTest {
 
     @Test
     public void test_field_name_and_field_names_are_merged_without_duplicates() {
-        final var request = CreateIndexRequest.ofFields(TestGlobals.DB, TestGlobals.COLL,
+        final var request = CreateIndexRequest.ofFields(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of("tier", "status", "tier"));
         request.setFieldName("score");
 

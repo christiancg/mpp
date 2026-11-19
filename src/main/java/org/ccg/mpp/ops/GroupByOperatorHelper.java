@@ -85,27 +85,27 @@ final class GroupByOperatorHelper {
     }
 
     static Stream<JsonObject> processGroupByStep(GroupByAggregationStep groupByStep, Stream<JsonObject> resultStream,
-            String dbName, String collName, GroupDemand demand, PipelineContext context) throws IOException {
+            String projectName, String collName, GroupDemand demand, PipelineContext context) throws IOException {
         final var fieldName = groupByStep.getFieldName();
         final var path = FieldPath.of(fieldName);
         final var onlyCounted = demand == GroupDemand.KEYS;
         if (resultStream == null && onlyCounted) {
-            final var values = IndexHelper.getDistinctIndexValues(dbName, collName, fieldName, context);
+            final var values = IndexHelper.getDistinctIndexValues(projectName, collName, fieldName, context);
             if (values != null) {
                 return indexedGroupKeys(values, path);
             }
-        } else if (resultStream == null && !ScanPreference.groupByPrefersScan(dbName, collName)) {
-            final var indexEntries = IndexHelper.getIndexEntriesForField(dbName, collName, fieldName, context);
+        } else if (resultStream == null && !ScanPreference.groupByPrefersScan(projectName, collName)) {
+            final var indexEntries = IndexHelper.getIndexEntriesForField(projectName, collName, fieldName, context);
             if (indexEntries != null) {
-                return groupByViaIndex(indexEntries, dbName, collName, path, demand, context);
+                return groupByViaIndex(indexEntries, projectName, collName, path, demand, context);
             }
         }
         if (onlyCounted) {
-            return scannedGroupKeys(context.source(resultStream, dbName, collName), path, context);
+            return scannedGroupKeys(context.source(resultStream, projectName, collName), path, context);
         }
         final var grouped = new HashMap<SaltedKey, List<JsonObject>>();
         final var held = new HeldRows(context);
-        try (var documents = context.source(resultStream, dbName, collName)) {
+        try (var documents = context.source(resultStream, projectName, collName)) {
             documents.filter(path::isIn).forEach(document -> {
                 held.hold(document);
                 groupOf(grouped, new SaltedKey(path.valueIn(document)), held).add(document);
@@ -186,7 +186,7 @@ final class GroupByOperatorHelper {
         return id instanceof JsonString jsonString ? jsonString.getValue() : "";
     }
 
-    private static Stream<JsonObject> groupByViaIndex(List<FieldIndexEntry<?>> indexEntries, String dbName,
+    private static Stream<JsonObject> groupByViaIndex(List<FieldIndexEntry<?>> indexEntries, String projectName,
             String collName, FieldPath path, GroupDemand demand, PipelineContext context) throws IOException {
         final var allIds = new HashSet<String>();
         for (var indexEntry : indexEntries) {
@@ -194,7 +194,7 @@ final class GroupByOperatorHelper {
             allIds.addAll(indexEntry.getIds());
         }
         final var docById = new HashMap<String, JsonObject>();
-        final var fetched = cache.getEntriesByIds(dbName, collName, allIds);
+        final var fetched = cache.getEntriesByIds(projectName, collName, allIds);
         context.scanned(fetched.size());
         final var held = new HeldRows(context);
         for (var dbEntry : fetched) {

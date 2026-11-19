@@ -53,7 +53,7 @@ public class TransactionFailOnUpdateTest {
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("name", new JsonString(name));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         request.setFailOnUpdate(failOnUpdate);
@@ -65,7 +65,7 @@ public class TransactionFailOnUpdateTest {
     }
 
     private OperationResponse deleteTxD(UUID clientId) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("tx-d");
         return processor.processMessage(request, clientId);
     }
@@ -81,7 +81,7 @@ public class TransactionFailOnUpdateTest {
     }
 
     private String nameOf(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse found
                 ? found.getObject().get("name").asJsonString().getValue()

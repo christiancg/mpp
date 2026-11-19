@@ -39,8 +39,8 @@ public final class Descriptors {
 
     public static UserInfo user(Document row) {
         return new UserInfo(text(row, Document.ID_FIELD), flag(row, "admin", false), strings(row, "globalPermissions"),
-                grants(row, "databasePermissions"), grants(row, "collectionPermissions"),
-                grants(row, "scriptPermissions"), strings(row, "ownedDatabases"), row);
+                grants(row, "projectPermissions"), grants(row, "collectionPermissions"),
+                grants(row, "scriptPermissions"), strings(row, "ownedProjects"), row);
     }
 
     public static TransactionInfo transaction(Document row) {
@@ -49,12 +49,12 @@ public final class Descriptors {
     }
 
     public static ScriptRun scriptRun(Document row) {
-        return new ScriptRun(text(row, "runId"), row.getString("node"), text(row, "kind"), row.getString("database"),
+        return new ScriptRun(text(row, "runId"), row.getString("node"), text(row, "kind"), row.getString("project"),
                 row.getString(NAME), row.getString("username"), whole(row, "ageMs"), row);
     }
 
     public static TriggerRun triggerRun(Document row) {
-        return new TriggerRun(text(row, "runId"), text(row, "status"), row.getString("database"),
+        return new TriggerRun(text(row, "runId"), text(row, "status"), row.getString("project"),
                 row.getString("collection"), row.getString("trigger"), row.getString("procedure"),
                 row.getString("event"), whole(row, "attempts"), row.getString("lastError"), row);
     }

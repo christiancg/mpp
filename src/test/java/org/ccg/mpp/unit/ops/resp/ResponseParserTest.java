@@ -19,7 +19,7 @@ import org.ccg.mpp.ops.resp.DeleteManyResponse;
 import org.ccg.mpp.ops.resp.DeleteResponse;
 import org.ccg.mpp.ops.resp.FindByIdResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
-import org.ccg.mpp.ops.resp.ListDatabasesResponse;
+import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.ops.resp.ResponseParser;
 import org.ccg.mpp.ops.resp.SaveResponse;
@@ -100,9 +100,9 @@ public class ResponseParserTest {
     }
 
     @Test
-    public void test_parses_list_databases_response() {
-        final var parsed = roundTrip(new ListDatabasesResponse("ok", List.of("db1")));
-        assertEquals(List.of("db1"), assertInstanceOf(ListDatabasesResponse.class, parsed).getDatabases());
+    public void test_parses_list_projects_response() {
+        final var parsed = roundTrip(new ListProjectsResponse("ok", List.of("project1")));
+        assertEquals(List.of("project1"), assertInstanceOf(ListProjectsResponse.class, parsed).getProjects());
     }
 
     // START_TRANSACTION round-trips as its own type because it carries a transactionId; the other two
@@ -155,9 +155,9 @@ public class ResponseParserTest {
 
     @Test
     public void test_missing_list_field_yields_empty_list() {
-        final var json = "{\"type\":\"LIST_DATABASES\",\"status\":\"OK\",\"message\":\"ok\"}";
-        final var parsed = assertInstanceOf(ListDatabasesResponse.class, ResponseParser.parseResponse(json));
-        assertTrue(parsed.getDatabases().isEmpty());
+        final var json = "{\"type\":\"LIST_PROJECTS\",\"status\":\"OK\",\"message\":\"ok\"}";
+        final var parsed = assertInstanceOf(ListProjectsResponse.class, ResponseParser.parseResponse(json));
+        assertTrue(parsed.getProjects().isEmpty());
     }
 
     @Test

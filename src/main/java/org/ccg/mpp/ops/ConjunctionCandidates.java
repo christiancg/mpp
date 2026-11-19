@@ -34,29 +34,30 @@ final class ConjunctionCandidates {
     private ConjunctionCandidates() {
     }
 
-    static Set<String> of(ConjunctionOperator operator, String dbName, String collName, PipelineContext context)
+    static Set<String> of(ConjunctionOperator operator, String projectName, String collName, PipelineContext context)
             throws IOException {
         if (OperatorPredicate.holdsRanking(operator)) {
             return null;
         }
         final LegResolver filterLeg = leg -> switch (leg.getType()) {
-            case FIELD -> FilterOperatorHelper.indexMatchingIds((FieldOperator) leg, dbName, collName, context);
-            case CONJUNCTION -> of((ConjunctionOperator) leg, dbName, collName, context);
-            case CUSTOM -> GeoSpatialIndexHelper.candidateIds((CustomOperator) leg, dbName, collName, context);
+            case FIELD -> FilterOperatorHelper.indexMatchingIds((FieldOperator) leg, projectName, collName, context);
+            case CONJUNCTION -> of((ConjunctionOperator) leg, projectName, collName, context);
+            case CUSTOM -> GeoSpatialIndexHelper.candidateIds((CustomOperator) leg, projectName, collName, context);
             case SCRIPT -> null;
         };
         return switch (operator.getConjunctionType()) {
             case AND ->
-                intersection(SelectiveLegs.sets(operator, dbName, collName, context, filterLeg::resolve), context);
-            case OR, XOR -> unionOfEvery(legSets(operator, dbName, collName, context, filterLeg), context);
+                intersection(SelectiveLegs.sets(operator, projectName, collName, context, filterLeg::resolve), context);
+            case OR, XOR -> unionOfEvery(legSets(operator, projectName, collName, context, filterLeg), context);
             case NOR, NAND -> null;
         };
     }
 
-    static Set<String> exactAndIds(ConjunctionOperator operator, String dbName, String collName,
+    static Set<String> exactAndIds(ConjunctionOperator operator, String projectName, String collName,
             PipelineContext context) throws IOException {
-        final LegResolver exactLeg = leg -> FilterOperatorHelper.resolveIdsViaIndex(leg, dbName, collName, context);
-        final var sets = legSets(operator, dbName, collName, context, exactLeg);
+        final LegResolver exactLeg = leg -> FilterOperatorHelper.resolveIdsViaIndex(leg, projectName, collName,
+                context);
+        final var sets = legSets(operator, projectName, collName, context, exactLeg);
         return sets.contains(null) ? null : intersection(sets, context);
     }
 
@@ -80,27 +81,27 @@ final class ConjunctionCandidates {
         return leaves;
     }
 
-    static Set<String> rangeMatchingIds(RangeBounds bounds, List<FieldOperator> leaves, String dbName, String collName,
-            PipelineContext context) throws IOException {
+    static Set<String> rangeMatchingIds(RangeBounds bounds, List<FieldOperator> leaves, String projectName,
+            String collName, PipelineContext context) throws IOException {
         final var fieldName = bounds.fieldName();
-        if (cache.hasNoIndex(dbName, collName, fieldName)) {
+        if (cache.hasNoIndex(projectName, collName, fieldName)) {
             return null;
         }
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
-        final var raw = cache.getIdsInRange(dbName, collName, bounds);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
+        final var raw = cache.getIdsInRange(projectName, collName, bounds);
         if (raw == null) {
             return null;
         }
-        context.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
-        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName);
+        context.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
+        final var pendingIds = PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName);
         if (pendingIds.isEmpty()) {
             return raw;
         }
-        return PendingWriteReconciler.correctIds(raw, dbName, collName, pendingIds, fieldName, everyLeaf(leaves),
+        return PendingWriteReconciler.correctIds(raw, projectName, collName, pendingIds, fieldName, everyLeaf(leaves),
                 context);
     }
 
-    private static List<Set<String>> legSets(ConjunctionOperator operator, String dbName, String collName,
+    private static List<Set<String>> legSets(ConjunctionOperator operator, String projectName, String collName,
             PipelineContext context, LegResolver resolver) throws IOException {
         final var sets = new ArrayList<Set<String>>();
         final var rangesByField = new LinkedHashMap<String, List<FieldOperator>>();
@@ -114,7 +115,7 @@ final class ConjunctionCandidates {
         }
         for (final Map.Entry<String, List<FieldOperator>> range : rangesByField.entrySet()) {
             final var bounds = RangeBounds.fromLeaves(range.getKey(), range.getValue());
-            sets.add(rangeMatchingIds(bounds, range.getValue(), dbName, collName, context));
+            sets.add(rangeMatchingIds(bounds, range.getValue(), projectName, collName, context));
         }
         return sets;
     }

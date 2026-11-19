@@ -22,7 +22,7 @@ DELETE_MAX_MATCHES = 5
 UPDATE_MAX_MATCHES = 4
 PURGE_COLL = "purge_items"
 TRANSACTION_MAX_AGE_S = 6.0
-DB = "connlimits_db"
+PROJECT = "connlimits_project"
 COLL = "items"
 CJK_COLL = "cjk_items"
 CJK_DOCS = 40
@@ -133,24 +133,24 @@ def send_only(conn: Conn, payload: dict):
 
 
 def save(doc_id: str) -> dict:
-    return {"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"_id": doc_id, "v": 1}}
+    return {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"_id": doc_id, "v": 1}}
 
 
 def find(doc_id: str) -> dict:
-    return {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": doc_id}
+    return {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": doc_id}
 
 
-def padded_list_databases(size: int) -> str:
-    prefix = '{"type":"LIST_DATABASES","pad":"'
+def padded_list_projects(size: int) -> str:
+    prefix = '{"type":"LIST_PROJECTS","pad":"'
     return prefix + "a" * (size - len(prefix) - 2) + '"}'
 
 
 def setup_collection():
     with Conn.authenticated() as admin:
-        check_status("CREATE_DATABASE for the suite", admin.send({"type": "CREATE_DATABASE", "databaseName": DB}),
+        check_status("CREATE_PROJECT for the suite", admin.send({"type": "CREATE_PROJECT", "projectName": PROJECT}),
                      "OK")
         check_status("CREATE_COLLECTION for the suite",
-                     admin.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL}), "OK")
+                     admin.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL}), "OK")
 
 
 def test_an_oversized_line_is_answered_400_22_and_closed():
@@ -165,27 +165,27 @@ def test_an_oversized_line_is_answered_400_22_and_closed():
               f"frame={frame}")
         check("The server closes the connection", reaches_eof(conn.s))
     with Conn.authenticated() as fresh:
-        check_status("A fresh connection is still served", fresh.send({"type": "LIST_DATABASES"}), "OK")
+        check_status("A fresh connection is still served", fresh.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def test_the_unauthenticated_line_limit_is_64kb():
     section("Before authentication a line is capped at 64Kb")
     sock = raw_socket()
     try:
-        send_in_background(sock, (padded_list_databases(100_000) + "\n").encode())
+        send_in_background(sock, (padded_list_projects(100_000) + "\n").encode())
         frame = read_frame(sock, 5.0)
-        check_code("Unauthenticated 100 000-byte LIST_DATABASES -> 400-22", frame or {}, "ERROR", "400-22")
+        check_code("Unauthenticated 100 000-byte LIST_PROJECTS -> 400-22", frame or {}, "ERROR", "400-22")
         check("The unauthenticated connection is closed", reaches_eof(sock))
     finally:
         sock.close()
     with Conn.authenticated() as conn:
-        check_status("The same line after AUTHENTICATE is served", conn.send_raw(padded_list_databases(100_000)),
+        check_status("The same line after AUTHENTICATE is served", conn.send_raw(padded_list_projects(100_000)),
                      "OK")
 
 
 def test_a_flat_array_over_the_token_budget_is_refused_and_the_connection_survives():
     section("A line denser than the token budget is refused; the connection survives")
-    prefix = '{"type":"LIST_DATABASES","x":[1'
+    prefix = '{"type":"LIST_PROJECTS","x":[1'
     line = prefix + ",1" * ((100_000 - len(prefix) - 2) // 2) + "]}"
     with Conn.authenticated() as conn:
         refused = conn.send_raw(line)
@@ -193,7 +193,7 @@ def test_a_flat_array_over_the_token_budget_is_refused_and_the_connection_surviv
               refused.get("status") == "ERROR" and refused.get("message") == "The command is not valid"
               and refused.get("errorCode") == "400-43" and "type" in refused and refused["type"] is None,
               f"got={str(refused)[:200]}")
-        check_status("The next LIST_DATABASES on the same connection", conn.send({"type": "LIST_DATABASES"}), "OK")
+        check_status("The next LIST_PROJECTS on the same connection", conn.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def test_an_unauthenticated_idle_socket_is_closed_with_408_4():
@@ -244,30 +244,30 @@ def test_an_authenticated_idle_connection_survives_the_timeout():
     section("An authenticated idle connection is not timed")
     with Conn.authenticated() as conn:
         time.sleep(3.0)
-        check_status("LIST_DATABASES after 3 s of silence", conn.send({"type": "LIST_DATABASES"}), "OK")
+        check_status("LIST_PROJECTS after 3 s of silence", conn.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def test_a_listen_connection_survives_the_idle_timeout():
     section("A LISTEN connection is not timed")
     with Conn.authenticated() as listener, Conn.authenticated() as writer:
         steps = [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "kind", "value": "late"}}]
-        registered = listener.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL,
+        registered = listener.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL,
                                     "aggregationSteps": steps})
         check_status("LISTEN registered", registered, "OK")
         time.sleep(3.0)
         check_status("A matching write from another connection",
-                     writer.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                     writer.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                                   "object": {"_id": "late-1", "kind": "late"}}), "OK")
         pushed = listener.recv(timeout=5.0)
         check("The listener still receives the notification after 3 s idle",
               pushed is not None and pushed.get("listenId") == registered.get("listenId"), f"pushed={pushed}")
-        writer.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "late-1"})
+        writer.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "late-1"})
 
 
 def padded_listen(tag: str) -> dict:
     steps = [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "pad",
                                              "value": tag + "p" * LISTEN_PAD_CHARS}}]
-    return {"type": "LISTEN", "databaseName": DB, "collectionName": COLL, "aggregationSteps": steps}
+    return {"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL, "aggregationSteps": steps}
 
 
 def test_listen_retained_budget_503_15():
@@ -396,7 +396,7 @@ def test_a_transaction_past_its_operation_limit_is_refused():
         check_status("START_TRANSACTION", holder.send({"type": "START_TRANSACTION"}), "OK")
         objects = [{"_id": f"many-{i}", "n": i} for i in range(TRANSACTION_MAX_OPS)]
         check_status(f"BULK_SAVE of {TRANSACTION_MAX_OPS} documents fits",
-                     holder.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+                     holder.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
                                   "objects": objects}), "OK")
         check_code("One more SAVE -> 400-26", holder.send(save("many-overflow")), "ERROR", "400-26")
         check_status("The transaction still commits what fitted", holder.send({"type": "COMMIT_TRANSACTION"}), "OK")
@@ -409,23 +409,23 @@ def test_an_update_condition_past_update_max_matches_is_refused_whole():
     with Conn.authenticated() as conn:
         coll = "bump_items"
         check_status("CREATE_COLLECTION for the bump cases",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
         objects = [{"_id": f"bump-{i}", "kind": "old" if i <= UPDATE_MAX_MATCHES else "new"}
                    for i in range(UPDATE_MAX_MATCHES + 3)]
         check_status("BULK_SAVE five old and two new documents",
-                     conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll,
+                     conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll,
                                 "objects": objects}), "OK")
         old = {"fieldOperatorType": "EQUALS", "field": "kind", "value": "old"}
         check_code(f"A condition matching {UPDATE_MAX_MATCHES + 1} documents -> 400-45",
-                   conn.send({"type": "SAVE", "databaseName": DB, "collectionName": coll, "condition": old,
+                   conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": coll, "condition": old,
                               "object": {"bumped": True}}), "ERROR", "400-45")
-        bumped = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll, "aggregationSteps": [
+        bumped = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": [
             {"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "bumped", "value": True}}]})
         check_code("No document carries the patch after the refusal", bumped, "NOT_FOUND", "404-3")
         check_status("Retiring one old document by id",
-                     conn.send({"type": "DELETE", "databaseName": DB, "collectionName": coll, "_id": "bump-0"}),
+                     conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": coll, "_id": "bump-0"}),
                      "OK")
-        reply = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": coll, "condition": old,
+        reply = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": coll, "condition": old,
                            "object": {"bumped": True}})
         check_field(f"A condition matching exactly {UPDATE_MAX_MATCHES} documents updates them all", reply,
                     "updatedCount", UPDATE_MAX_MATCHES)
@@ -435,23 +435,24 @@ def test_a_delete_condition_past_delete_max_matches_is_refused_whole():
     section("A DELETE condition matching more than deleteMaxMatches deletes nothing")
     with Conn.authenticated() as conn:
         check_status("CREATE_COLLECTION for the purge cases",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": PURGE_COLL}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": PURGE_COLL}),
+                     "OK")
         objects = [{"_id": f"purge-{i}", "kind": "stale" if i <= DELETE_MAX_MATCHES else "fresh"}
                    for i in range(DELETE_MAX_MATCHES + 3)]
         check_status("BULK_SAVE six stale and two fresh documents",
-                     conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": PURGE_COLL,
+                     conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": PURGE_COLL,
                                 "objects": objects}), "OK")
         stale = {"fieldOperatorType": "EQUALS", "field": "kind", "value": "stale"}
         check_code(f"A condition matching {DELETE_MAX_MATCHES + 1} documents -> 400-44",
-                   conn.send({"type": "DELETE", "databaseName": DB, "collectionName": PURGE_COLL,
+                   conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": PURGE_COLL,
                               "condition": stale}), "ERROR", "400-44")
-        remaining = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": PURGE_COLL,
+        remaining = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": PURGE_COLL,
                                "aggregationSteps": [{"type": "COUNT"}]})
         check_field("Every document survives the refusal", remaining, "results.0.count", DELETE_MAX_MATCHES + 3)
         check_status("Deleting one stale document by id fits",
-                     conn.send({"type": "DELETE", "databaseName": DB, "collectionName": PURGE_COLL,
+                     conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": PURGE_COLL,
                                 "_id": "purge-0"}), "OK")
-        reply = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": PURGE_COLL, "condition": stale})
+        reply = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": PURGE_COLL, "condition": stale})
         check_field(f"A condition matching exactly {DELETE_MAX_MATCHES} documents deletes them all", reply,
                     "deletedCount", DELETE_MAX_MATCHES)
 
@@ -486,7 +487,7 @@ def test_unparseable_lines_before_authentication_close_the_connection():
 def test_well_formed_requests_before_authentication_close_the_connection():
     section("Five refused requests before authenticating close the connection, not only unparseable ones")
     with raw_socket() as sock:
-        sock.sendall(b'{"type":"LIST_DATABASES"}\n' * 6)
+        sock.sendall(b'{"type":"LIST_PROJECTS"}\n' * 6)
         answers = [read_frame(sock, 3.0) for _ in range(5)]
         check("The first five are answered 401-1",
               all(answer is not None and answer.get("errorCode") == "401-1" for answer in answers),
@@ -498,14 +499,14 @@ def test_an_idle_transaction_is_reaped_while_its_client_is_not_reading():
     section("An idle transaction is reaped even while its client leaves responses unread")
     with Conn.authenticated() as seeder:
         for i in range(40):
-            seeder.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+            seeder.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                          "object": {"_id": f"unread-bulky-{i}", "kind": "bulky", "blob": "x" * 50_000}})
     holder = bu.non_reading_conn()
     try:
         check_status("START_TRANSACTION", holder.send({"type": "START_TRANSACTION"}), "OK")
         check_status("SAVE held-unread inside the transaction", holder.send(save("held-unread")), "OK")
         for _ in range(6):
-            bu.send_without_reading(holder, {"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL,
+            bu.send_without_reading(holder, {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL,
                                              "aggregationSteps": []})
         with Conn.authenticated() as writer:
             send_only(writer, save("standalone-unread"))
@@ -522,8 +523,9 @@ def test_outbound_cap_counts_utf8_bytes(log_path: str):
     section("clientOutboundQueueMaxBytes counts a CJK backlog in UTF-8 bytes, not characters")
     with Conn.authenticated() as admin:
         check_status("CREATE_COLLECTION for the CJK documents",
-                     admin.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CJK_COLL}), "OK")
-        saved = [admin.send({"type": "SAVE", "databaseName": DB, "collectionName": CJK_COLL,
+                     admin.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CJK_COLL}),
+                     "OK")
+        saved = [admin.send({"type": "SAVE", "projectName": PROJECT, "collectionName": CJK_COLL,
                              "object": {"_id": f"cjk-{i}", "text": "界" * CJK_CHARS_PER_DOC}})
                  for i in range(CJK_DOCS)]
         check("Every CJK document is saved", all(r.get("status") == "OK" for r in saved), f"first={saved[0]}")
@@ -534,7 +536,7 @@ def test_outbound_cap_counts_utf8_bytes(log_path: str):
     reader = bu.non_reading_conn()
     try:
         for _ in range(CJK_UNREAD_AGGREGATES):
-            bu.send_without_reading(reader, {"type": "AGGREGATE", "databaseName": DB, "collectionName": CJK_COLL,
+            bu.send_without_reading(reader, {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": CJK_COLL,
                                              "aggregationSteps": []})
         deadline = time.time() + 30.0
         while bu.read_log(log_path).count(OVERFLOW_LOG) == overflows_before and time.time() < deadline:
@@ -546,7 +548,7 @@ def test_outbound_cap_counts_utf8_bytes(log_path: str):
     finally:
         reader.close()
     with Conn.authenticated() as fresh:
-        found = fresh.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": CJK_COLL, "_id": "cjk-0"})
+        found = fresh.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": CJK_COLL, "_id": "cjk-0"})
         check_status("Another connection still reads the CJK documents", found, "OK")
         check("The document comes back intact", (found.get("object") or {}).get("text") == "界" * CJK_CHARS_PER_DOC)
 
@@ -554,9 +556,9 @@ def test_outbound_cap_counts_utf8_bytes(log_path: str):
 def test_an_unauthenticated_request_is_answered_401_1_without_validation():
     section("A request before authenticating is answered 401-1, never validated")
     with raw_socket() as sock:
-        sock.sendall(b'{"type":"SET_DATABASE_OWNERS","databaseName":"anyDb","owners":["nobodyHere"]}\n')
+        sock.sendall(b'{"type":"SET_PROJECT_OWNERS","projectName":"anyProject","owners":["nobodyHere"]}\n')
         frame = read_frame(sock, 3.0) or {}
-        check_code("SET_DATABASE_OWNERS with an unknown owner", frame, "UNAUTHENTICATED", "401-1")
+        check_code("SET_PROJECT_OWNERS with an unknown owner", frame, "UNAUTHENTICATED", "401-1")
         check("The answer does not reveal whether the owner exists", "does not exist" not in json.dumps(frame),
               f"got={frame}")
 
@@ -569,21 +571,21 @@ def write_budget_config(work_dir: str):
 
 
 def budget_aggregate() -> dict:
-    return {"type": "AGGREGATE", "databaseName": DB, "collectionName": BUDGET_COLL, "aggregationSteps": []}
+    return {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": BUDGET_COLL, "aggregationSteps": []}
 
 
 def setup_budget_collection():
     with Conn.authenticated() as admin:
-        check_status("CREATE_DATABASE for the budget phase",
-                     admin.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+        check_status("CREATE_PROJECT for the budget phase",
+                     admin.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
         check_status("CREATE_COLLECTION for the budget phase",
-                     admin.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": BUDGET_COLL}),
+                     admin.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": BUDGET_COLL}),
                      "OK")
-        saved = [admin.send({"type": "SAVE", "databaseName": DB, "collectionName": BUDGET_COLL,
+        saved = [admin.send({"type": "SAVE", "projectName": PROJECT, "collectionName": BUDGET_COLL,
                              "object": {"_id": f"large-{i}", "blob": chr(ord("a") + i % 26) * BUDGET_DOC_CHARS}})
                  for i in range(BUDGET_DOCS)]
         check("Every large document is saved", all(r.get("status") == "OK" for r in saved), f"first={saved[0]}")
-        small = [admin.send({"type": "SAVE", "databaseName": DB, "collectionName": BUDGET_COLL,
+        small = [admin.send({"type": "SAVE", "projectName": PROJECT, "collectionName": BUDGET_COLL,
                              "object": {"_id": f"small-{i}", "n": i}}) for i in range(10)]
         check("Every small document is saved", all(r.get("status") == "OK" for r in small), f"first={small[0]}")
 
@@ -601,10 +603,10 @@ def test_unread_large_reads_exhaust_the_response_budget(log_path: str):
         check_code(f"A fourth ~3 MB AGGREGATE behind {BUDGET_NON_READERS} unread ones", refused, "ERROR", "503-17")
         check("The refusal names the read it refused", refused.get("type") == "AGGREGATE", f"got={refused}")
         check_status("A small FIND_BY_ID is still answered",
-                     reader.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": BUDGET_COLL,
+                     reader.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": BUDGET_COLL,
                                   "_id": "small-1"}), "OK")
         check_status("A write is still answered",
-                     reader.send({"type": "SAVE", "databaseName": DB, "collectionName": BUDGET_COLL,
+                     reader.send({"type": "SAVE", "projectName": PROJECT, "collectionName": BUDGET_COLL,
                                   "object": {"_id": "small-written", "n": 1}}), "OK")
         check("The server gives up on every non-reader once its write stalls past clientWriteStallTimeoutMs",
               bu.wait_until(lambda: bu.read_log(log_path).count(STALL_LOG) - stalls_before >= BUDGET_NON_READERS,
@@ -625,7 +627,7 @@ def test_unread_large_reads_exhaust_the_response_budget(log_path: str):
 def test_pipelined_small_requests_answer_in_order():
     section("Pipelined small requests are answered in order")
     with Conn.authenticated() as conn:
-        lines = [json.dumps({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": BUDGET_COLL,
+        lines = [json.dumps({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": BUDGET_COLL,
                              "_id": f"small-{i % 10}"}) for i in range(PIPELINED_FINDS)]
         conn.s.sendall(("\n".join(lines) + "\n").encode())
         answers = [conn._read_response() for _ in range(PIPELINED_FINDS)]
@@ -648,7 +650,7 @@ def run_budget_phase():
         test_pipelined_small_requests_answer_in_order()
         connection_budgets.test_a_drip_reader_is_closed_and_frees_the_response_budget(
             log_path, budget_aggregate(), WRITE_STALL_TIMEOUT_S, STALL_LOG)
-        connection_budgets.test_buffered_transactions_share_one_budget(DB, BUDGET_COLL)
+        connection_budgets.test_buffered_transactions_share_one_budget(PROJECT, BUDGET_COLL)
     finally:
         bu.stop_server(proc, port=PORT, wait_for_port=True)
     return log_path
@@ -688,7 +690,7 @@ def test_max_connections_admits_exactly_the_limit_under_concurrency():
             opened.close()
     time.sleep(0.5)
     with Conn.authenticated() as fresh:
-        check_status("A new connection is admitted once they closed", fresh.send({"type": "LIST_DATABASES"}), "OK")
+        check_status("A new connection is admitted once they closed", fresh.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def main():

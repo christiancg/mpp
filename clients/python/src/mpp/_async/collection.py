@@ -25,8 +25,8 @@ class AsyncCollection(Generic[T, R]):
         self._ops = ops
 
     @property
-    def database_name(self) -> str:
-        return self._ops.database
+    def project_name(self) -> str:
+        return self._ops.project
 
     @property
     def name(self) -> str:
@@ -35,13 +35,13 @@ class AsyncCollection(Generic[T, R]):
     async def create(self) -> None:
         context = self._ops.context
         await context.channel.send(
-            "CREATE_COLLECTION", context.encoder.create_collection(self._ops.database, self._ops.collection)
+            "CREATE_COLLECTION", context.encoder.create_collection(self._ops.project, self._ops.collection)
         )
 
     async def drop(self) -> None:
         context = self._ops.context
         await context.channel.send(
-            "DROP_COLLECTION", context.encoder.drop_collection(self._ops.database, self._ops.collection)
+            "DROP_COLLECTION", context.encoder.drop_collection(self._ops.project, self._ops.collection)
         )
 
     async def save(self, value: T) -> SaveResult:
@@ -69,13 +69,13 @@ class AsyncCollection(Generic[T, R]):
         return AsyncQuery(self._ops)
 
     def indexes(self) -> AsyncIndexes:
-        return AsyncIndexes(self._ops.context, self._ops.database, self._ops.collection)
+        return AsyncIndexes(self._ops.context, self._ops.project, self._ops.collection)
 
     def schema(self) -> AsyncSchema:
-        return AsyncSchema(self._ops.context, self._ops.database, self._ops.collection)
+        return AsyncSchema(self._ops.context, self._ops.project, self._ops.collection)
 
     def triggers(self) -> AsyncTriggers:
-        return AsyncTriggers(self._ops.context, self._ops.database, self._ops.collection)
+        return AsyncTriggers(self._ops.context, self._ops.project, self._ops.collection)
 
     async def listen(self, handler: Handler[R], query: AsyncQuery[R] | None = None) -> AsyncSubscription:
         return await self._listen(async_callbacks(handler), () if query is None else query.steps)
@@ -84,4 +84,4 @@ class AsyncCollection(Generic[T, R]):
         listens = self._ops.context.listens
         if listens is None:
             raise MppError("listens are not available here")
-        return await listens.listen(self._ops.database, self._ops.collection, steps, self._ops.decode, callbacks)
+        return await listens.listen(self._ops.project, self._ops.collection, steps, self._ops.decode, callbacks)

@@ -15,7 +15,7 @@ import org.ccg.mpp.simplejs.host.BulkSaveOutcome;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class DbModuleChargingTest {
@@ -48,10 +48,10 @@ public class DbModuleChargingTest {
         }
     }
 
-    private static final class BigResultDatabase extends FakeDatabaseAccess {
+    private static final class BigResultProject extends FakeProjectAccess {
         private final CountingList results;
 
-        private BigResultDatabase(int documents) {
+        private BigResultProject(int documents) {
             final var backing = new ArrayList<JsonObject>();
             for (var i = 0; i < documents; i++) {
                 backing.add(document("d" + i));
@@ -95,47 +95,46 @@ public class DbModuleChargingTest {
                 ResourceLimits.UNLIMITED_ARRAY_LENGTH);
     }
 
-    private static ScriptResult run(FakeDatabaseAccess database, String source, long memory) {
-        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), database, null, budget(memory)));
+    private static ScriptResult run(FakeProjectAccess project, String source, long memory) {
+        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), project, null, budget(memory)));
     }
 
     @Test
     public void test_aggregate_charges_each_document() {
-        final var database = new BigResultDatabase(500);
-        final var result = run(database, "import db from \"db\"; return db.aggregate('d', 'c', []).length;", 8192);
+        final var project = new BigResultProject(500);
+        final var result = run(project, "import db from \"db\"; return db.aggregate('d', 'c', []).length;", 8192);
         assertTrue(result.isError());
         assertEquals("ScriptMemoryError", result.getErrorName());
     }
 
     @Test
     public void test_aggregate_aborts_partway_through_conversion() {
-        final var database = new BigResultDatabase(500);
-        run(database, "import db from \"db\"; db.aggregate('d', 'c', []);", 8192);
-        assertTrue(database.results.read > 0, "some documents must have been converted");
-        assertTrue(database.results.read < 500,
-                "the whole list must not have been converted: " + database.results.read);
+        final var project = new BigResultProject(500);
+        run(project, "import db from \"db\"; db.aggregate('d', 'c', []);", 8192);
+        assertTrue(project.results.read > 0, "some documents must have been converted");
+        assertTrue(project.results.read < 500, "the whole list must not have been converted: " + project.results.read);
     }
 
     @Test
     public void test_find_by_id_charges_the_document() {
-        final var database = new BigResultDatabase(1);
-        final var result = run(database, "import db from \"db\"; return db.findById('d', 'c', 'x1');", 128);
+        final var project = new BigResultProject(1);
+        final var result = run(project, "import db from \"db\"; return db.findById('d', 'c', 'x1');", 128);
         assertTrue(result.isError());
         assertEquals("ScriptMemoryError", result.getErrorName());
     }
 
     @Test
     public void test_bulk_save_charges_the_outcome_arrays() {
-        final var database = new BigResultDatabase(1);
-        final var result = run(database, "import db from \"db\"; return db.bulkSave('d', 'c', [{}]);", 16384);
+        final var project = new BigResultProject(1);
+        final var result = run(project, "import db from \"db\"; return db.bulkSave('d', 'c', [{}]);", 16384);
         assertTrue(result.isError());
         assertEquals("ScriptMemoryError", result.getErrorName());
     }
 
     @Test
     public void test_save_argument_is_not_charged_twice() {
-        final var database = new BigResultDatabase(1);
-        final var result = run(database, """
+        final var project = new BigResultProject(1);
+        final var result = run(project, """
                 import db from "db";
                 const document = { _id: "s1", payload: "y".repeat(1000) };
                 return db.save('d', 'c', document)._id;

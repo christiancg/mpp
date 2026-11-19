@@ -26,7 +26,7 @@ Whether the transaction is neither committed nor rolled back.
 
 Names a collection whose reads and writes belong to this transaction.
 
-@param database the database name
+@param project the project name
 @param collection the collection name
 @param codec optional mapping between your type and stored documents
 @returns the collection

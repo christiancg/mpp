@@ -16,12 +16,12 @@ import org.ccg.mpp.ops.req.ArmFaultRequest;
 import org.ccg.mpp.ops.req.AwaitFaultRequest;
 import org.ccg.mpp.ops.req.CloseConnectionRequest;
 import org.ccg.mpp.ops.req.CommitTransactionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
 import org.ccg.mpp.ops.req.FindByIdRequest;
-import org.ccg.mpp.ops.req.GetDatabaseStatsRequest;
+import org.ccg.mpp.ops.req.GetProjectStatsRequest;
 import org.ccg.mpp.ops.req.GetSchemaRequest;
-import org.ccg.mpp.ops.req.ListDatabasesRequest;
+import org.ccg.mpp.ops.req.ListProjectsRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.ops.req.ReleaseFaultRequest;
 import org.ccg.mpp.ops.req.RollbackTransactionRequest;
@@ -44,7 +44,7 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_admin_user_allowed_for_every_operation_type() {
         final var admin = createAdminUser();
-        final var req = new SaveRequest("testDb", "testColl");
+        final var req = new SaveRequest("testProject", "testColl");
         assertTrue(AuthorizationChecker.check(req, admin).isAllowed());
     }
 
@@ -66,29 +66,29 @@ public class AuthorizationCheckerTest {
 
     @Test
     public void test_a_write_inside_a_transaction_is_still_authorized_on_its_own() {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("testDb", PermissionLevel.READ);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>());
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("testProject", PermissionLevel.READ);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>());
 
         assertTrue(AuthorizationChecker.check(new StartTransactionRequest(), user).isAllowed());
-        assertFalse(AuthorizationChecker.check(new SaveRequest("testDb", "testColl"), user).isAllowed(),
+        assertFalse(AuthorizationChecker.check(new SaveRequest("testProject", "testColl"), user).isAllowed(),
                 "opening a transaction must not widen what the user may write");
     }
 
     @Test
     public void test_get_schema_needs_read_on_the_collection() {
         final var readerPerms = new HashMap<String, PermissionLevel>();
-        readerPerms.put("testDb", PermissionLevel.READ);
+        readerPerms.put("testProject", PermissionLevel.READ);
         final var reader = new AdminUserEntry("reader", "hash", false, new HashSet<>(), readerPerms, new HashMap<>());
-        final var request = new GetSchemaRequest("testDb", "testColl");
+        final var request = new GetSchemaRequest("testProject", "testColl");
 
         assertTrue(AuthorizationChecker.check(request, reader).isAllowed());
         assertFalse(AuthorizationChecker.check(request, createNonAdminUser()).isAllowed());
     }
 
     @Test
-    public void test_get_database_stats_is_allowed_for_any_authenticated_user() {
-        final var request = new GetDatabaseStatsRequest();
+    public void test_get_project_stats_is_allowed_for_any_authenticated_user() {
+        final var request = new GetProjectStatsRequest();
 
         assertTrue(AuthorizationChecker.check(request, createNonAdminUser()).isAllowed());
         assertTrue(AuthorizationChecker.check(request, createAdminUser()).isAllowed());
@@ -97,20 +97,21 @@ public class AuthorizationCheckerTest {
 
     @Test
     public void test_can_read_collection_follows_admin_and_grants() {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("testDb", PermissionLevel.READ);
-        final var dbReader = new AdminUserEntry("dbReader", "hash", false, new HashSet<>(), dbPerms, new HashMap<>());
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("testProject", PermissionLevel.READ);
+        final var projectReader = new AdminUserEntry("projectReader", "hash", false, new HashSet<>(), projectPerms,
+                new HashMap<>());
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ_WRITE);
+        collPerms.put("testProject|testColl", PermissionLevel.READ_WRITE);
         final var collWriter = new AdminUserEntry("collWriter", "hash", false, new HashSet<>(), new HashMap<>(),
                 collPerms);
 
-        assertTrue(AuthorizationChecker.canReadCollection(createAdminUser(), "testDb", "testColl"));
-        assertTrue(AuthorizationChecker.canReadCollection(dbReader, "testDb", "otherColl"));
-        assertTrue(AuthorizationChecker.canReadCollection(collWriter, "testDb", "testColl"));
-        assertFalse(AuthorizationChecker.canReadCollection(collWriter, "testDb", "otherColl"));
-        assertFalse(AuthorizationChecker.canReadCollection(createNonAdminUser(), "testDb", "testColl"));
-        assertFalse(AuthorizationChecker.canReadCollection(null, "testDb", "testColl"));
+        assertTrue(AuthorizationChecker.canReadCollection(createAdminUser(), "testProject", "testColl"));
+        assertTrue(AuthorizationChecker.canReadCollection(projectReader, "testProject", "otherColl"));
+        assertTrue(AuthorizationChecker.canReadCollection(collWriter, "testProject", "testColl"));
+        assertFalse(AuthorizationChecker.canReadCollection(collWriter, "testProject", "otherColl"));
+        assertFalse(AuthorizationChecker.canReadCollection(createNonAdminUser(), "testProject", "testColl"));
+        assertFalse(AuthorizationChecker.canReadCollection(null, "testProject", "testColl"));
     }
 
     @Test
@@ -131,37 +132,37 @@ public class AuthorizationCheckerTest {
     }
 
     @Test
-    public void test_create_database_requires_global_permission_allow() {
+    public void test_create_project_requires_global_permission_allow() {
         final var perms = new HashSet<GlobalPermissionType>();
-        perms.add(GlobalPermissionType.CREATE_DATABASE);
+        perms.add(GlobalPermissionType.CREATE_PROJECT);
         final var user = new AdminUserEntry("user", "hash", false, perms, new HashMap<>(), new HashMap<>());
-        final var req = new CreateDatabaseRequest("newDb");
+        final var req = new CreateProjectRequest("newProject");
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
 
     @Test
-    public void test_create_database_requires_global_permission_deny() {
+    public void test_create_project_requires_global_permission_deny() {
         final var user = createNonAdminUser();
-        final var req = new CreateDatabaseRequest("newDb");
+        final var req = new CreateProjectRequest("newProject");
         assertFalse(AuthorizationChecker.check(req, user).isAllowed());
     }
 
     @Test
     public void test_find_by_id_with_collection_permission() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
-        final var req = new FindByIdRequest("testDb", "testColl");
+        final var req = new FindByIdRequest("testProject", "testColl");
         req.set_id("123");
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
 
     @Test
-    public void test_find_by_id_falls_back_to_db_permission() {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("testDb", PermissionLevel.READ);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>());
-        final var req = new FindByIdRequest("testDb", "testColl");
+    public void test_find_by_id_falls_back_to_project_permission() {
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("testProject", PermissionLevel.READ);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>());
+        final var req = new FindByIdRequest("testProject", "testColl");
         req.set_id("123");
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
@@ -169,9 +170,9 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_save_requires_read_write_denied_with_read_only() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
-        final var req = new SaveRequest("testDb", "testColl");
+        final var req = new SaveRequest("testProject", "testColl");
         req.setObject(new org.ccg.mpp.ejson.elements.JsonObject());
         assertFalse(AuthorizationChecker.check(req, user).isAllowed());
     }
@@ -179,17 +180,17 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_save_allowed_with_read_write() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ_WRITE);
+        collPerms.put("testProject|testColl", PermissionLevel.READ_WRITE);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
-        final var req = new SaveRequest("testDb", "testColl");
+        final var req = new SaveRequest("testProject", "testColl");
         req.setObject(new org.ccg.mpp.ejson.elements.JsonObject());
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
 
     @Test
-    public void test_list_databases_always_allowed() {
+    public void test_list_projects_always_allowed() {
         final var user = createNonAdminUser();
-        final var req = new ListDatabasesRequest();
+        final var req = new ListProjectsRequest();
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
 
@@ -203,19 +204,19 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_missing_all_permissions_denied() {
         final var user = createNonAdminUser();
-        final var req = new SaveRequest("testDb", "testColl");
+        final var req = new SaveRequest("testProject", "testColl");
         req.setObject(new org.ccg.mpp.ejson.elements.JsonObject());
         assertFalse(AuthorizationChecker.check(req, user).isAllowed());
     }
 
     @Test
     public void test_null_user() {
-        final var req = new SaveRequest("testDb", "testColl");
+        final var req = new SaveRequest("testProject", "testColl");
         assertFalse(AuthorizationChecker.check(req, null).isAllowed());
     }
 
     private AggregateRequest aggregateWithSteps(List<BaseAggregationStep> steps) {
-        final var req = new AggregateRequest("testDb", "testColl");
+        final var req = new AggregateRequest("testProject", "testColl");
         req.setAggregationSteps(steps);
         return req;
     }
@@ -227,8 +228,8 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_join_user_has_read_on_both_collections_allowed() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
-        collPerms.put("testDb|joinColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|joinColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(joinStep("joinColl"));
@@ -239,7 +240,7 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_join_user_lacks_join_collection_permission_denied() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(joinStep("joinColl"));
@@ -250,10 +251,10 @@ public class AuthorizationCheckerTest {
     }
 
     @Test
-    public void test_aggregate_join_db_level_read_covers_join_collection_allowed() {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("testDb", PermissionLevel.READ);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>());
+    public void test_aggregate_join_project_level_read_covers_join_collection_allowed() {
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("testProject", PermissionLevel.READ);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>());
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(joinStep("joinColl"));
         final var req = aggregateWithSteps(steps);
@@ -263,7 +264,7 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_join_collection_level_main_but_join_missing_denied() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(new FilterAggregationStep(null));
@@ -275,8 +276,8 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_multiple_joins_one_forbidden_denied() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
-        collPerms.put("testDb|joinCollA", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|joinCollA", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(joinStep("joinCollA"));
@@ -288,7 +289,7 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_without_join_unchanged_behavior_allowed() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(new FilterAggregationStep(null));
@@ -299,9 +300,9 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_null_steps_allowed() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
-        final var req = new AggregateRequest("testDb", "testColl");
+        final var req = new AggregateRequest("testProject", "testColl");
         assertTrue(AuthorizationChecker.check(req, user).isAllowed());
     }
 
@@ -317,8 +318,8 @@ public class AuthorizationCheckerTest {
     @Test
     public void test_aggregate_join_read_write_covers_read_allowed() {
         final var collPerms = new HashMap<String, PermissionLevel>();
-        collPerms.put("testDb|testColl", PermissionLevel.READ);
-        collPerms.put("testDb|joinColl", PermissionLevel.READ_WRITE);
+        collPerms.put("testProject|testColl", PermissionLevel.READ);
+        collPerms.put("testProject|joinColl", PermissionLevel.READ_WRITE);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), collPerms);
         final var steps = new ArrayList<BaseAggregationStep>();
         steps.add(joinStep("joinColl"));
@@ -328,60 +329,60 @@ public class AuthorizationCheckerTest {
 
     @Test
     public void test_run_script_allowed_for_admin() {
-        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testDb", "return 1;", null);
+        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testProject", "return 1;", null);
         assertTrue(AuthorizationChecker.check(request, createAdminUser()).isAllowed());
     }
 
     @Test
     public void test_run_script_denied_without_script_permission() {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("testDb", PermissionLevel.READ_WRITE);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>());
-        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testDb", "return 1;", null);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("testProject", PermissionLevel.READ_WRITE);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>());
+        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testProject", "return 1;", null);
         assertFalse(AuthorizationChecker.check(request, user).isAllowed());
     }
 
     @Test
-    public void test_run_script_allowed_with_script_permission_for_that_database() {
+    public void test_run_script_allowed_with_script_permission_for_that_project() {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
-        scriptPerms.put("testDb", ScriptPermissionLevel.RUN);
+        scriptPerms.put("testProject", ScriptPermissionLevel.RUN);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>(),
                 scriptPerms);
-        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testDb", "return 1;", null);
+        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testProject", "return 1;", null);
         assertTrue(AuthorizationChecker.check(request, user).isAllowed());
     }
 
     @Test
-    public void test_run_script_denied_for_a_different_database() {
+    public void test_run_script_denied_for_a_different_project() {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
-        scriptPerms.put("testDb", ScriptPermissionLevel.RUN);
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("otherDb", PermissionLevel.READ_WRITE);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>(),
+        scriptPerms.put("testProject", ScriptPermissionLevel.RUN);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("otherProject", PermissionLevel.READ_WRITE);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>(),
                 scriptPerms);
-        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("otherDb", "return 1;", null);
+        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("otherProject", "return 1;", null);
         assertFalse(AuthorizationChecker.check(request, user).isAllowed());
     }
 
     @Test
     public void test_run_script_denied_when_grant_is_false() {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
-        scriptPerms.put("testDb", ScriptPermissionLevel.NONE);
+        scriptPerms.put("testProject", ScriptPermissionLevel.NONE);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>(),
                 scriptPerms);
-        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testDb", "return 1;", null);
+        final var request = new org.ccg.mpp.ops.req.RunScriptRequest("testProject", "return 1;", null);
         assertFalse(AuthorizationChecker.check(request, user).isAllowed());
     }
 
     @Test
     public void test_run_script_grant_does_not_imply_data_access() {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
-        scriptPerms.put("testDb", ScriptPermissionLevel.RUN);
+        scriptPerms.put("testProject", ScriptPermissionLevel.RUN);
         final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>(),
                 scriptPerms);
         assertTrue(AuthorizationChecker
-                .check(new org.ccg.mpp.ops.req.RunScriptRequest("testDb", "return 1;", null), user).isAllowed());
-        assertFalse(AuthorizationChecker.check(new SaveRequest("testDb", "testColl"), user).isAllowed());
-        assertFalse(AuthorizationChecker.check(new FindByIdRequest("testDb", "testColl"), user).isAllowed());
+                .check(new org.ccg.mpp.ops.req.RunScriptRequest("testProject", "return 1;", null), user).isAllowed());
+        assertFalse(AuthorizationChecker.check(new SaveRequest("testProject", "testColl"), user).isAllowed());
+        assertFalse(AuthorizationChecker.check(new FindByIdRequest("testProject", "testColl"), user).isAllowed());
     }
 }

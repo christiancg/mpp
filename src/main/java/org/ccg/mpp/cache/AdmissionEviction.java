@@ -54,8 +54,8 @@ final class AdmissionEviction {
                 return true;
             }
         } catch (RuntimeException e) {
-            logger.warning("Could not evict lower cache tiers to admit a " + request.tier() + " of " + request.dbName()
-                    + "|" + request.collName() + ": " + e.getMessage());
+            logger.warning("Could not evict lower cache tiers to admit a " + request.tier() + " of "
+                    + request.projectName() + "|" + request.collName() + ": " + e.getMessage());
         }
         retryAfter.set(request.tier().ordinal(), clock.getAsLong() + BACKOFF_NANOS);
         return false;
@@ -76,7 +76,7 @@ final class AdmissionEviction {
     }
 
     boolean makeRoomInTier(AdmissionRequest request, long maxBytes) {
-        final var requester = new CacheableResource(AccessKind.FIELD_INDEX, request.dbName(), request.collName(),
+        final var requester = new CacheableResource(AccessKind.FIELD_INDEX, request.projectName(), request.collName(),
                 request.fieldName(), request.bytes());
         return makeRoomInTier(request, maxBytes, cache.usageTracker().accessCountFor(requester));
     }
@@ -99,15 +99,15 @@ final class AdmissionEviction {
             }
         } catch (RuntimeException e) {
             logger.warning("Could not evict colder indexes to admit the field index " + request.fieldName() + " of "
-                    + request.dbName() + "|" + request.collName() + ": " + e.getMessage());
+                    + request.projectName() + "|" + request.collName() + ": " + e.getMessage());
         }
         sameTierRetryAfter.set(clock.getAsLong() + BACKOFF_NANOS);
         return false;
     }
 
     private static String refusalKeyOf(AdmissionRequest request) {
-        return Cache.getCollectionIdentifier(request.dbName(), request.collName()) + Globals.COLL_IDENTIFIER_SEPARATOR
-                + request.fieldName();
+        return Cache.getCollectionIdentifier(request.projectName(), request.collName())
+                + Globals.COLL_IDENTIFIER_SEPARATOR + request.fieldName();
     }
 
     private List<SameTierVictim> sameTierVictims(AdmissionRequest request, long maxBytes, long requesterAccessCount) {
@@ -135,15 +135,17 @@ final class AdmissionEviction {
 
     private boolean mayBeDisplaced(CacheableResource resource, AdmissionRequest request) {
         final var locks = cache.locks();
-        final var dbName = resource.dbName();
+        final var projectName = resource.projectName();
         final var collName = resource.collName();
         return switch (resource.kind()) {
             case COLLECTION -> false;
             case FIELD_INDEX -> resource.indexKey() != null
-                    && !request.isFieldOf(dbName, collName, CacheableResource.indexedFieldOf(resource.indexKey()))
-                    && !locks.holdsIndexLock(dbName, collName, CacheableResource.indexedFieldOf(resource.indexKey()));
-            case PK_INDEX -> !UserCache.isReservedDatabase(dbName) && !locks.holdsCollectionLock(dbName, collName)
-                    && cache.fs().trustedLiveRows(dbName, collName).isPresent();
+                    && !request.isFieldOf(projectName, collName, CacheableResource.indexedFieldOf(resource.indexKey()))
+                    && !locks.holdsIndexLock(projectName, collName,
+                            CacheableResource.indexedFieldOf(resource.indexKey()));
+            case PK_INDEX ->
+                !UserCache.isReservedProject(projectName) && !locks.holdsCollectionLock(projectName, collName)
+                        && cache.fs().trustedLiveRows(projectName, collName).isPresent();
         };
     }
 
@@ -152,8 +154,8 @@ final class AdmissionEviction {
         if (resource.kind() != AccessKind.PK_INDEX) {
             return usage.accessCountFor(resource);
         }
-        final var documents = new CacheableResource(AccessKind.COLLECTION, resource.dbName(), resource.collName(), null,
-                0L);
+        final var documents = new CacheableResource(AccessKind.COLLECTION, resource.projectName(), resource.collName(),
+                null, 0L);
         return usage.accessCountFor(resource) + usage.accessCountFor(documents);
     }
 
@@ -167,13 +169,13 @@ final class AdmissionEviction {
 
     private void displacePk(CacheableResource resource) {
         final var locks = cache.locks();
-        final var dbName = resource.dbName();
+        final var projectName = resource.projectName();
         final var collName = resource.collName();
-        if (locks.holdsCollectionLock(dbName, collName) || !locks.tryLockWrite(dbName, collName)) {
+        if (locks.holdsCollectionLock(projectName, collName) || !locks.tryLockWrite(projectName, collName)) {
             return;
         }
         try {
-            final var collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+            final var collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
             final var resident = cache.pkIndexes().get(collectionIdentifier);
             if (resident == null) {
                 return;
@@ -182,7 +184,7 @@ final class AdmissionEviction {
             cache.evict(resource);
             cache.sizes().displacePk(collectionIdentifier, Math.max(1L, resource.estimatedSizeBytes() / rows), rows);
         } finally {
-            locks.releaseWrite(dbName, collName);
+            locks.releaseWrite(projectName, collName);
         }
     }
 
@@ -209,39 +211,39 @@ final class AdmissionEviction {
 
     private void evictIfFree(CacheableResource resource, AdmissionRequest request) {
         final var locks = cache.locks();
-        final var dbName = resource.dbName();
+        final var projectName = resource.projectName();
         final var collName = resource.collName();
         final var field = resource.kind() == AccessKind.FIELD_INDEX && resource.indexKey() != null
                 ? CacheableResource.indexedFieldOf(resource.indexKey())
                 : null;
-        if (field != null
-                && (request.isFieldOf(dbName, collName, field) || locks.holdsIndexLock(dbName, collName, field))) {
+        if (field != null && (request.isFieldOf(projectName, collName, field)
+                || locks.holdsIndexLock(projectName, collName, field))) {
             return;
         }
-        final var alreadyHeld = locks.holdsCollectionLock(dbName, collName);
-        if (!alreadyHeld && !tryReadLock(dbName, collName)) {
+        final var alreadyHeld = locks.holdsCollectionLock(projectName, collName);
+        if (!alreadyHeld && !tryReadLock(projectName, collName)) {
             return;
         }
         try {
             if (field == null) {
                 cache.evict(resource);
-            } else if (locks.tryLockIndex(dbName, collName, field)) {
+            } else if (locks.tryLockIndex(projectName, collName, field)) {
                 try {
                     cache.evict(resource);
                 } finally {
-                    locks.releaseIndex(dbName, collName, field);
+                    locks.releaseIndex(projectName, collName, field);
                 }
             }
         } finally {
             if (!alreadyHeld) {
-                locks.releaseRead(dbName, collName);
+                locks.releaseRead(projectName, collName);
             }
         }
     }
 
-    private boolean tryReadLock(String dbName, String collName) {
+    private boolean tryReadLock(String projectName, String collName) {
         try {
-            return cache.locks().tryLockRead(dbName, collName, 0L);
+            return cache.locks().tryLockRead(projectName, collName, 0L);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

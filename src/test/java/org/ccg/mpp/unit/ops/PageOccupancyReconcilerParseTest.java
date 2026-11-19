@@ -38,7 +38,7 @@ public class PageOccupancyReconcilerParseTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(PageOccupancyReconciler.class, "taskManager",
                 BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", new BackgroundTaskManager());
@@ -47,7 +47,7 @@ public class PageOccupancyReconcilerParseTest {
     @AfterEach
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -56,14 +56,14 @@ public class PageOccupancyReconcilerParseTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty("payload", "value-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         assertNotNull(SaveOperationHelper.executeSave(request));
     }
 
     private static Path collectionFile(String suffix) {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + suffix).toPath();
     }
 
@@ -82,7 +82,7 @@ public class PageOccupancyReconcilerParseTest {
             }
             return invocation.callRealMethod();
         })) {
-            assertEquals(expectedRewrite, PageOccupancyReconciler.reconcile(TestGlobals.DB, TestGlobals.COLL));
+            assertEquals(expectedRewrite, PageOccupancyReconciler.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
         }
         return reads.get();
     }
@@ -103,8 +103,8 @@ public class PageOccupancyReconcilerParseTest {
 
         assertEquals(2L, reconcileCountingReads(true));
 
-        final var ids = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream().map(PkIndexEntry::getValue)
-                .sorted().toList();
+        final var ids = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
+                .map(PkIndexEntry::getValue).sorted().toList();
         assertEquals(List.of("a", "orphan"), ids);
     }
 
@@ -112,7 +112,7 @@ public class PageOccupancyReconcilerParseTest {
     public void test_a_retirement_parses_the_pk_index_again_before_adopting() throws Exception {
         save("a");
         save("b");
-        final var kept = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var kept = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(row -> row.getValue().equals("a")).findFirst().orElseThrow();
         try (var page = new RandomAccessFile(collectionFile("-0.dat").toFile(), Globals.RW_PERMISSIONS)) {
             page.setLength(kept.getPosition() + kept.getLength());
@@ -121,7 +121,7 @@ public class PageOccupancyReconcilerParseTest {
         final var reads = reconcileCountingReads(true);
 
         assertTrue(reads >= 2L, "the rows read before the retirement are stale once it rewrote pk.idx");
-        assertFalse(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        assertFalse(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .anyMatch(row -> row.getValue().equals("b")));
     }
 }

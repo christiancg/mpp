@@ -7,8 +7,8 @@ import java.util.Locale;
 import java.util.function.Consumer;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.simplejs.SimpleJs;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,7 @@ public class HostBindingsLocaleTest {
         }
 
         @Override
-        public DatabaseAccess database() {
+        public ProjectAccess project() {
             return null;
         }
 

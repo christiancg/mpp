@@ -16,7 +16,7 @@ import org.ccg.mpp.conn.ClientTracker;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminTransactionEntry;
 import org.ccg.mpp.data.admin.AdminTriggerRunEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
@@ -45,7 +45,7 @@ public final class AdminOperationHelper {
     private static final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private static final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
     private static final Logger logger = Logger.logFor(AdminOperationHelper.class);
-    private static final Set<String> VERSIONED_RECORDS = Set.of(Globals.ADMIN_DATABASES_COLLECTION_NAME,
+    private static final Set<String> VERSIONED_RECORDS = Set.of(Globals.ADMIN_PROJECTS_COLLECTION_NAME,
             Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
 
     private static final AdminRecordStore<AdminTransactionEntry> TRANSACTION_OPS = new AdminRecordStore<>(
@@ -56,39 +56,39 @@ public final class AdminOperationHelper {
             Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, "trigger run", cache::getPkIndexTriggerRun,
             AdminTriggerRunEntry::fromJsonObject);
 
-    public static void bulkUpdateEntryCount(String dbName, String collName, EventType type, List<EntityRef> inserted,
-            long incarnation) throws InterruptedException, IOException {
-        AdminPageHelper.bulkUpdateEntryCount(dbName, collName, type, inserted, incarnation);
+    public static void bulkUpdateEntryCount(String projectName, String collName, EventType type,
+            List<EntityRef> inserted, long incarnation) throws InterruptedException, IOException {
+        AdminPageHelper.bulkUpdateEntryCount(projectName, collName, type, inserted, incarnation);
     }
 
     @SuppressWarnings("RedundantThrows")
-    public static void updateEntryCount(String dbName, String collName, EventType type, EntityRef entity,
+    public static void updateEntryCount(String projectName, String collName, EventType type, EntityRef entity,
             long incarnation) throws InterruptedException, IOException {
-        AdminPageHelper.updateEntryCount(dbName, collName, type, entity, incarnation);
+        AdminPageHelper.updateEntryCount(projectName, collName, type, entity, incarnation);
     }
 
-    public static void bookWritePathPages(String dbName, String collName, List<EntityRef> created,
+    public static void bookWritePathPages(String projectName, String collName, List<EntityRef> created,
             List<EntityRef> others, long incarnation) throws InterruptedException {
-        AdminPageHelper.bookWritePathPages(dbName, collName, created, others, incarnation);
+        AdminPageHelper.bookWritePathPages(projectName, collName, created, others, incarnation);
     }
 
-    public static void createPageCollections(String dbName, String collName) throws IOException {
-        AdminPageHelper.createPageCollections(dbName, collName);
+    public static void createPageCollections(String projectName, String collName) throws IOException {
+        AdminPageHelper.createPageCollections(projectName, collName);
     }
 
-    public static void deletePageCollections(String dbName, String collName) {
-        AdminPageHelper.deletePageCollections(dbName, collName);
+    public static void deletePageCollections(String projectName, String collName) {
+        AdminPageHelper.deletePageCollections(projectName, collName);
     }
 
     private static void lockAdmin(String collName) throws InterruptedException {
-        locks.lock(Globals.ADMIN_DB_NAME, collName);
+        locks.lock(Globals.ADMIN_PROJECT_NAME, collName);
     }
 
     private static void releaseAdmin(String collName) {
-        locks.release(Globals.ADMIN_DB_NAME, collName);
+        locks.release(Globals.ADMIN_PROJECT_NAME, collName);
     }
 
-    // The caller owns the lock: policy differs per collection (saveCollectionEntry also holds databases).
+    // The caller owns the lock: policy differs per collection (saveCollectionEntry also holds projects).
     private static PkIndexEntry writeAdminEntry(String collName, DbEntry entry, PkIndexEntry existingPk)
             throws IOException {
         if (VERSIONED_RECORDS.contains(collName) && entry.getVersion() <= 0) {
@@ -98,11 +98,11 @@ public final class AdminOperationHelper {
         if (existingPk != null) {
             entry.setPage(existingPk.getPage());
             final var updatedPk = fs.updateFromCollection(entry, existingPk, encodedLine, null,
-                    AdminResidentRows.of(collName), cache.pageOccupancy(Globals.ADMIN_DB_NAME, collName));
+                    AdminResidentRows.of(collName), cache.pageOccupancy(Globals.ADMIN_PROJECT_NAME, collName));
             applyAdminPageDelta(collName, EventType.UPDATED, entry);
             return updatedPk;
         }
-        entry.setPage(cache.selectPageForInsert(Globals.ADMIN_DB_NAME, collName, encodedLine.length));
+        entry.setPage(cache.selectPageForInsert(Globals.ADMIN_PROJECT_NAME, collName, encodedLine.length));
         final var pk = fs.insertIntoCollection(entry, encodedLine);
         applyAdminPageDelta(collName, EventType.CREATED, entry);
         return pk;
@@ -129,59 +129,59 @@ public final class AdminOperationHelper {
         applyAdminPageDelta(collName, EventType.DELETED, entry);
     }
 
-    public static void saveDatabaseEntry(AdminDbEntry dbEntry) throws IOException, InterruptedException {
-        lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+    public static void saveProjectEntry(AdminProjectEntry dbEntry) throws IOException, InterruptedException {
+        lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         try {
-            final var adminDbEntry = writeAdminEntry(Globals.ADMIN_DATABASES_COLLECTION_NAME, dbEntry,
-                    cache.getPkIndexAdminDbEntry(dbEntry.get_id()));
-            cache.putAdminDbEntry(dbEntry, adminDbEntry);
+            final var adminProjectEntry = writeAdminEntry(Globals.ADMIN_PROJECTS_COLLECTION_NAME, dbEntry,
+                    cache.getPkIndexAdminProjectEntry(dbEntry.get_id()));
+            cache.putAdminProjectEntry(dbEntry, adminProjectEntry);
         } finally {
-            releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         }
     }
 
-    public static void deleteDatabaseEntry(String dbName) throws IOException, InterruptedException {
-        var adminIndexPkDbEntry = cache.getPkIndexAdminDbEntry(dbName);
+    public static void deleteProjectEntry(String projectName) throws IOException, InterruptedException {
+        var adminIndexPkDbEntry = cache.getPkIndexAdminProjectEntry(projectName);
         if (adminIndexPkDbEntry != null) {
-            lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
             try {
-                final var adminDbEntry = cache.getAdminDbEntry(dbName);
-                final var collectionsSnapshot = new ArrayList<>(adminDbEntry.getCollections());
+                final var adminProjectEntry = cache.getAdminProjectEntry(projectName);
+                final var collectionsSnapshot = new ArrayList<>(adminProjectEntry.getCollections());
                 for (var collection : collectionsSnapshot) {
-                    deleteCollectionEntry(dbName, collection);
-                    AdminPageHelper.deletePageCollections(dbName, collection);
+                    deleteCollectionEntry(projectName, collection);
+                    AdminPageHelper.deletePageCollections(projectName, collection);
                 }
-                final var pkAfterCollectionRemoval = cache.getPkIndexAdminDbEntry(dbName);
-                final var entryAfterCollectionRemoval = cache.getAdminDbEntry(dbName);
-                eraseAdminEntry(Globals.ADMIN_DATABASES_COLLECTION_NAME, entryAfterCollectionRemoval,
+                final var pkAfterCollectionRemoval = cache.getPkIndexAdminProjectEntry(projectName);
+                final var entryAfterCollectionRemoval = cache.getAdminProjectEntry(projectName);
+                eraseAdminEntry(Globals.ADMIN_PROJECTS_COLLECTION_NAME, entryAfterCollectionRemoval,
                         pkAfterCollectionRemoval);
-                cache.removeAdminDbEntry(dbName);
+                cache.removeAdminProjectEntry(projectName);
             } finally {
-                releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+                releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
             }
         }
     }
 
-    public static boolean updateDatabaseOwners(String dbName, List<String> owners)
+    public static boolean updateProjectOwners(String projectName, List<String> owners)
             throws IOException, InterruptedException {
-        lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         try {
-            final var dbEntry = cache.getAdminDbEntry(dbName);
-            final var pk = cache.getPkIndexAdminDbEntry(dbName);
+            final var dbEntry = cache.getAdminProjectEntry(projectName);
+            final var pk = cache.getPkIndexAdminProjectEntry(projectName);
             if (dbEntry == null || pk == null) {
                 return false;
             }
-            final var updated = new AdminDbEntry(dbName, new ArrayList<>(dbEntry.getCollections()),
+            final var updated = new AdminProjectEntry(projectName, new ArrayList<>(dbEntry.getCollections()),
                     new ArrayList<>(owners));
-            cache.putAdminDbEntry(updated, writeAdminEntry(Globals.ADMIN_DATABASES_COLLECTION_NAME, updated, pk));
+            cache.putAdminProjectEntry(updated, writeAdminEntry(Globals.ADMIN_PROJECTS_COLLECTION_NAME, updated, pk));
             return true;
         } finally {
-            releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         }
     }
 
     public static void saveCollectionEntry(AdminCollEntry dbEntry) throws IOException, InterruptedException {
-        lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         try {
             lockAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
             final var existingCollectionPk = cache.getPkIndexAdminCollEntry(dbEntry.get_id());
@@ -189,7 +189,7 @@ public final class AdminOperationHelper {
                     existingCollectionPk);
             cache.putAdminCollectionEntry(dbEntry, pkIndexEntry);
             try {
-                listCollectionInItsDatabase(dbEntry);
+                listCollectionInItsProject(dbEntry);
             } catch (IOException | InterruptedException | RuntimeException failure) {
                 if (existingCollectionPk == null) {
                     unregisterNewCollectionRow(dbEntry, failure);
@@ -198,19 +198,19 @@ public final class AdminOperationHelper {
             }
         } finally {
             releaseAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
-            releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         }
     }
 
-    private static void listCollectionInItsDatabase(AdminCollEntry collEntry) throws IOException, InterruptedException {
+    private static void listCollectionInItsProject(AdminCollEntry collEntry) throws IOException, InterruptedException {
         final var split = collEntry.get_id().split(Globals.COLL_IDENTIFIER_SEPARATOR_REGEX);
-        final var current = cache.getAdminDbEntry(split[0]);
+        final var current = cache.getAdminProjectEntry(split[0]);
         if (current.getCollections().contains(split[1])) {
             return;
         }
         final var collections = new ArrayList<>(current.getCollections());
         collections.add(split[1]);
-        publishDatabaseEntry(new AdminDbEntry(split[0], collections, new ArrayList<>(current.getOwners())));
+        publishProjectEntry(new AdminProjectEntry(split[0], collections, new ArrayList<>(current.getOwners())));
     }
 
     private static void unregisterNewCollectionRow(AdminCollEntry collEntry, Exception cause) {
@@ -223,67 +223,69 @@ public final class AdminOperationHelper {
         }
     }
 
-    private static void publishDatabaseEntry(AdminDbEntry updated) throws IOException {
-        publishDatabaseEntry(updated, RewriteVersion.KEEP);
+    private static void publishProjectEntry(AdminProjectEntry updated) throws IOException {
+        publishProjectEntry(updated, RewriteVersion.KEEP);
     }
 
-    private static void publishDatabaseEntry(AdminDbEntry updated, RewriteVersion version) throws IOException {
-        final var pk = cache.getPkIndexAdminDbEntry(updated.get_id());
+    private static void publishProjectEntry(AdminProjectEntry updated, RewriteVersion version) throws IOException {
+        final var pk = cache.getPkIndexAdminProjectEntry(updated.get_id());
         updated.setVersion(version == RewriteVersion.KEEP ? versionOf(pk) : 0L);
-        cache.putAdminDbEntry(updated, writeAdminEntry(Globals.ADMIN_DATABASES_COLLECTION_NAME, updated, pk));
+        cache.putAdminProjectEntry(updated, writeAdminEntry(Globals.ADMIN_PROJECTS_COLLECTION_NAME, updated, pk));
     }
 
-    public static void deleteCollectionEntry(String dbName, String collName) throws IOException, InterruptedException {
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+    public static void deleteCollectionEntry(String projectName, String collName)
+            throws IOException, InterruptedException {
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         if (cache.getPkIndexAdminCollEntry(collIdentifier) != null) {
-            // Also mutates the parent AdminDbEntry in admin/databases; hold the databases lock too,
-            // acquired before collections to match deleteDatabaseEntry's order.
-            lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            // Also mutates the parent AdminProjectEntry in admin/projects; hold the projects lock too,
+            // acquired before collections to match deleteProjectEntry's order.
+            lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
             try {
                 lockAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
                 eraseAdminEntry(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
-                        cache.getAdminCollectionEntry(dbName, collName),
+                        cache.getAdminCollectionEntry(projectName, collName),
                         cache.getPkIndexAdminCollEntry(collIdentifier));
                 cache.removeAdminCollEntry(collIdentifier);
-                final var adminDbEntry = cache.getAdminDbEntry(dbName);
-                final var remaining = new ArrayList<>(adminDbEntry.getCollections());
+                final var adminProjectEntry = cache.getAdminProjectEntry(projectName);
+                final var remaining = new ArrayList<>(adminProjectEntry.getCollections());
                 remaining.remove(collName);
-                publishDatabaseEntry(new AdminDbEntry(dbName, remaining, new ArrayList<>(adminDbEntry.getOwners())));
+                publishProjectEntry(
+                        new AdminProjectEntry(projectName, remaining, new ArrayList<>(adminProjectEntry.getOwners())));
             } finally {
                 releaseAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
-                releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+                releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
             }
         }
     }
 
-    public static AdminCollEntry getCollectionEntry(String dbName, String collName) {
-        return cache.getAdminCollectionEntry(dbName, collName);
+    public static AdminCollEntry getCollectionEntry(String projectName, String collName) {
+        return cache.getAdminCollectionEntry(projectName, collName);
     }
 
-    public static void saveNewIndex(String dbName, String collName, String fieldName)
+    public static void saveNewIndex(String projectName, String collName, String fieldName)
             throws IOException, InterruptedException {
-        internalUpdateAdminColl(dbName, collName, fieldName, true);
+        internalUpdateAdminColl(projectName, collName, fieldName, true);
     }
 
-    public static void deleteIndex(String dbName, String collName, String fieldName)
+    public static void deleteIndex(String projectName, String collName, String fieldName)
             throws IOException, InterruptedException {
-        internalUpdateAdminColl(dbName, collName, fieldName, false);
+        internalUpdateAdminColl(projectName, collName, fieldName, false);
     }
 
-    private static void internalUpdateAdminColl(String dbName, String collName, String fieldName, boolean add)
+    private static void internalUpdateAdminColl(String projectName, String collName, String fieldName, boolean add)
             throws IOException, InterruptedException {
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         if (cache.getPkIndexAdminCollEntry(collIdentifier) != null) {
             lockAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
             try {
-                final var cachedEntry = cache.getAdminCollectionEntry(dbName, collName);
+                final var cachedEntry = cache.getAdminCollectionEntry(projectName, collName);
                 final var indexes = new HashSet<>(cachedEntry.getIndexes());
                 if (add) {
                     indexes.add(fieldName);
                 } else {
                     indexes.remove(fieldName);
                 }
-                final var adminCollEntry = new AdminCollEntry(dbName, collName, indexes);
+                final var adminCollEntry = new AdminCollEntry(projectName, collName, indexes);
                 adminCollEntry.setIncarnation(cachedEntry.getIncarnation());
                 cache.putAdminCollectionEntry(adminCollEntry, writeAdminEntry(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
                         adminCollEntry, cache.getPkIndexAdminCollEntry(collIdentifier)));
@@ -342,40 +344,40 @@ public final class AdminOperationHelper {
         }
     }
 
-    public static List<String> rewriteDatabases(UnaryOperator<AdminDbEntry> rewrite, RewriteVersion version)
+    public static List<String> rewriteProjects(UnaryOperator<AdminProjectEntry> rewrite, RewriteVersion version)
             throws IOException, InterruptedException {
-        lockAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        lockAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         try {
             final var rewrittenIds = new ArrayList<String>();
-            for (final var database : new ArrayList<>(cache.getAllAdminDbEntries())) {
-                final var rewritten = rewrite.apply(database);
+            for (final var project : new ArrayList<>(cache.getAllAdminProjectEntries())) {
+                final var rewritten = rewrite.apply(project);
                 if (rewritten != null) {
-                    publishDatabaseEntry(rewritten, version);
-                    rewrittenIds.add(database.get_id());
+                    publishProjectEntry(rewritten, version);
+                    rewrittenIds.add(project.get_id());
                 }
             }
             return rewrittenIds;
         } finally {
-            releaseAdmin(Globals.ADMIN_DATABASES_COLLECTION_NAME);
+            releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         }
     }
 
     public static void relistUnlistedCollections() throws IOException, InterruptedException {
-        rewriteDatabases(AdminOperationHelper::withRegisteredCollectionsListed, RewriteVersion.KEEP);
+        rewriteProjects(AdminOperationHelper::withRegisteredCollectionsListed, RewriteVersion.KEEP);
     }
 
-    private static AdminDbEntry withRegisteredCollectionsListed(AdminDbEntry database) {
-        final var listed = new ArrayList<>(database.getCollections());
-        final var unlisted = cache.getCollectionNamesForDatabase(database.get_id()).stream()
+    private static AdminProjectEntry withRegisteredCollectionsListed(AdminProjectEntry project) {
+        final var listed = new ArrayList<>(project.getCollections());
+        final var unlisted = cache.getCollectionNamesForProject(project.get_id()).stream()
                 .filter(name -> !listed.contains(name)).toList();
         if (unlisted.isEmpty()) {
             return null;
         }
-        logger.warning("Re-listing " + unlisted + " in database " + database.get_id()
-                + ": registered but missing from the database's list, which a process killed during"
+        logger.warning("Re-listing " + unlisted + " in project " + project.get_id()
+                + ": registered but missing from the project's list, which a process killed during"
                 + " CREATE_COLLECTION leaves");
         listed.addAll(unlisted);
-        return new AdminDbEntry(database.get_id(), listed, new ArrayList<>(database.getOwners()));
+        return new AdminProjectEntry(project.get_id(), listed, new ArrayList<>(project.getOwners()));
     }
 
     public static void saveTransactionOp(AdminTransactionEntry entry) throws IOException, InterruptedException {
@@ -401,11 +403,11 @@ public final class AdminOperationHelper {
     public static void applyDeferredTransactionRecords(long timeoutMillis) {
         final var collName = Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME;
         try {
-            if (!locks.tryLockWrite(Globals.ADMIN_DB_NAME, collName, timeoutMillis)) {
+            if (!locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, collName, timeoutMillis)) {
                 return;
             }
             try {
-                fs.applyDeferredWrites(Globals.ADMIN_DB_NAME, collName);
+                fs.applyDeferredWrites(Globals.ADMIN_PROJECT_NAME, collName);
             } finally {
                 releaseAdmin(collName);
             }

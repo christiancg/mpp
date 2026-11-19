@@ -26,7 +26,7 @@ public final class StagedTriggerRuns {
 
     private final List<StagedRun> runs;
 
-    record StagedRun(String dbName, String collName, String triggerName, String procedureName, EventType type,
+    record StagedRun(String projectName, String collName, String triggerName, String procedureName, EventType type,
             boolean batchMode, String actingUser, int depth, List<String> ids, List<DbEntry> entries, String runId,
             long firedAt) {
     }
@@ -63,10 +63,10 @@ public final class StagedTriggerRuns {
         return ids;
     }
 
-    public void submitLanded(Map<EventType, Set<String>> landedIds, String dbName, String collName, String actingUser,
-            int depth) {
+    public void submitLanded(Map<EventType, Set<String>> landedIds, String projectName, String collName,
+            String actingUser, int depth) {
         if (runs.isEmpty()) {
-            submitUnclaimed(landedIds, Map.of(), dbName, collName, actingUser, depth);
+            submitUnclaimed(landedIds, Map.of(), projectName, collName, actingUser, depth);
             return;
         }
         final var claimed = new HashMap<EventType, Set<String>>();
@@ -87,7 +87,7 @@ public final class StagedTriggerRuns {
         }
         submitWithCurrentEntries(keptRuns, vanished);
         TriggerRunLog.discardAll(nonNull(vanished));
-        submitUnclaimed(landedIds, claimed, dbName, collName, actingUser, depth);
+        submitUnclaimed(landedIds, claimed, projectName, collName, actingUser, depth);
     }
 
     public void submitAll() {
@@ -154,7 +154,7 @@ public final class StagedTriggerRuns {
         for (final var collection : idsByCollection.entrySet()) {
             final var target = targets.get(collection.getKey());
             final var byId = new HashMap<String, DbEntry>();
-            for (final var entry : TriggerHelper.readEntriesWithRetry(target.dbName(), target.collName(),
+            for (final var entry : TriggerHelper.readEntriesWithRetry(target.projectName(), target.collName(),
                     collection.getValue())) {
                 byId.put(entry.get_id(), entry);
             }
@@ -164,7 +164,7 @@ public final class StagedTriggerRuns {
     }
 
     private static String collectionOf(StagedRun run) {
-        return Cache.getCollectionIdentifier(run.dbName(), run.collName());
+        return Cache.getCollectionIdentifier(run.projectName(), run.collName());
     }
 
     private static List<DbEntry> deletedEntriesOf(StagedRun run, List<String> kept) {
@@ -196,7 +196,7 @@ public final class StagedTriggerRuns {
     }
 
     private static void submitUnclaimed(Map<EventType, Set<String>> landedIds, Map<EventType, Set<String>> claimed,
-            String dbName, String collName, String actingUser, int depth) {
+            String projectName, String collName, String actingUser, int depth) {
         for (final var type : UNCLAIMED_TYPES) {
             final var landed = landedIds.get(type);
             if (landed == null || landed.isEmpty()) {
@@ -205,7 +205,7 @@ public final class StagedTriggerRuns {
             final var claimedOfType = claimed.getOrDefault(type, Set.of());
             final var unclaimed = landed.stream().filter(id -> !claimedOfType.contains(id)).toList();
             if (!unclaimed.isEmpty()) {
-                TriggerHelper.afterWriteIds(dbName, collName, type, unclaimed, actingUser, depth);
+                TriggerHelper.afterWriteIds(projectName, collName, type, unclaimed, actingUser, depth);
             }
         }
     }
@@ -215,7 +215,7 @@ public final class StagedTriggerRuns {
             return;
         }
         triggerExecutor.submit(
-                new TriggerEvent(run.type(), run.dbName(), run.collName(), run.triggerName(), run.procedureName(),
+                new TriggerEvent(run.type(), run.projectName(), run.collName(), run.triggerName(), run.procedureName(),
                         run.batchMode(), entries, run.actingUser(), run.depth(), run.runId(), 1, run.firedAt()));
     }
 }

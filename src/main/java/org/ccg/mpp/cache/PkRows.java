@@ -6,5 +6,5 @@ import org.ccg.mpp.data.PkIndexEntry;
 
 @FunctionalInterface
 public interface PkRows {
-    List<PkIndexEntry> rows(String dbName, String collName) throws IOException;
+    List<PkIndexEntry> rows(String projectName, String collName) throws IOException;
 }

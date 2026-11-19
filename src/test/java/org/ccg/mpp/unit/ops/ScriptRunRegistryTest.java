@@ -39,7 +39,7 @@ public class ScriptRunRegistryTest {
         final var listed = registry.list().getFirst();
         assertSame(run, listed);
         assertEquals(ScriptRunKind.CALL_PROCEDURE, listed.kind());
-        assertEquals("shop", listed.database());
+        assertEquals("shop", listed.project());
         assertEquals("reprice", listed.name());
         assertEquals("alice", listed.username());
         assertEquals(clientId, listed.clientId());

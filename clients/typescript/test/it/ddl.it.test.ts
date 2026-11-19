@@ -4,33 +4,33 @@ import { serverIt } from "./server-it.js";
 
 const it = serverIt();
 
-describe("databases, collections, indexes and schemas", () => {
-    test("databases and collections are created, listed and dropped", async () => {
-        const database = it.client.database("ddl_it");
-        await database.create();
-        expect(await it.client.listDatabases()).toContain("ddl_it");
-        const orders = database.collection("orders");
+describe("projects, collections, indexes and schemas", () => {
+    test("projects and collections are created, listed and dropped", async () => {
+        const project = it.client.project("ddl_it");
+        await project.create();
+        expect(await it.client.listProjects()).toContain("ddl_it");
+        const orders = project.collection("orders");
         await orders.create();
-        expect(await database.listCollections()).toEqual(["orders"]);
+        expect(await project.listCollections()).toEqual(["orders"]);
         await orders.drop();
-        expect(await database.listCollections()).toEqual([]);
-        await database.drop();
-        expect(await it.client.listDatabases()).not.toContain("ddl_it");
+        expect(await project.listCollections()).toEqual([]);
+        await project.drop();
+        expect(await it.client.listProjects()).not.toContain("ddl_it");
     });
 
     test("names differing only by case and reserved names are refused", async () => {
-        await it.client.database("Case_db").create();
-        const conflict = it.client.database("case_DB").create();
+        await it.client.project("Case_db").create();
+        const conflict = it.client.project("case_DB").create();
         await expect(conflict).rejects.toBeInstanceOf(ConflictError);
         await expect(conflict).rejects.toMatchObject({ rawCode: "409-11" });
-        await expect(it.client.database("Admin").create()).rejects.toBeInstanceOf(MppError);
-        expect(() => it.client.database("no")).toThrow(TypeError);
+        await expect(it.client.project("Admin").create()).rejects.toBeInstanceOf(MppError);
+        expect(() => it.client.project("no")).toThrow(TypeError);
     });
 
     test("indexes are created several at once, recreated, dropped and rebuilt", async () => {
-        const database = it.client.database("index_it");
-        await database.create();
-        const users = database.collection("users");
+        const project = it.client.project("index_it");
+        await project.create();
+        const users = project.collection("users");
         await users.create();
         await users.saveAll([
             { _id: "u1", email: "a@x", status: "on" },
@@ -48,9 +48,9 @@ describe("databases, collections, indexes and schemas", () => {
     });
 
     test("a schema is enforced until deleted", async () => {
-        const database = it.client.database("schema_it");
-        await database.create();
-        const people = database.collection("people");
+        const project = it.client.project("schema_it");
+        await project.create();
+        const people = project.collection("people");
         await people.create();
         expect(await people.schema().get()).toBeUndefined();
         await people.schema().save({

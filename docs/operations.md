@@ -258,10 +258,10 @@ shutdownTimeoutMs=8000
 | `schemaValidationBudget` | `5000000` | Validation steps one write may spend on its schema, then `400-23`. A big `BULK_SAVE` may need more |
 | `schemaMaxPatternLength` | `4096` | Longest regular expression in a schema, then `400-31`. Keep it equal on every node |
 | `schemaMaxPatterns` | `256` | Regular expressions in one schema, then `400-39`. Keep it equal on every node |
-| `maxDatabases` | `1000` | User databases, then `400-41` |
-| `maxCollectionsPerDatabase` | `1000` | Collections per database, then `400-40` |
+| `maxProjects` | `1000` | User projects, then `400-41` |
+| `maxCollectionsPerProject` | `1000` | Collections per project, then `400-40` |
 | `maxIndexesPerCollection` | `64` | Field indexes per collection, then `400-42` |
-| `maxProceduresPerDatabase` | `500` | Stored procedures per database, then `400-34` |
+| `maxProceduresPerProject` | `500` | Stored procedures per project, then `400-34` |
 
 ### Scripts
 
@@ -283,7 +283,7 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `scriptMaxLogLines` | `1000` | `console` lines returned, newest kept |
 | `scriptMaxLogLineChars` | `4096` | Characters kept per `console` line |
 | `scriptTextImportEnabled` | `false` | Allow `importText`, which runs a string as a module |
-| `scriptProcedureImportEnabled` | `true` | Allow importing a stored procedure of the same database as a module |
+| `scriptProcedureImportEnabled` | `true` | Allow importing a stored procedure of the same project as a module |
 | `scriptTimeZone` | `UTC` | Time zone scripts see, so every node answers the same |
 | `scriptLocale` | `en-US` | Locale scripts format and compare with |
 | `aggregationScriptInstructionBudget` | `1000000` | Instructions all script operators of one pipeline may run, then `400-11` |
@@ -291,7 +291,7 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `aggregationScriptMaxSourceBytes` | `16Kb` | Largest script operator, then `400-10` |
 | `maxConcurrentScripts` | `16` | Client script runs at once on the node, then `503-6` |
 | `maxConcurrentScriptsPerUser` | `4` | Script runs at once per user, triggers and schedules included |
-| `maxConcurrentScriptsPerDatabase` | `8` | Script runs at once per database. The last slot is kept for owners and admins |
+| `maxConcurrentScriptsPerProject` | `8` | Script runs at once per project. The last slot is kept for owners and admins |
 | `scriptQueueWaitMs` | `250` | How long a run waits for a free slot before `503-6` |
 
 ### Script fetch
@@ -308,12 +308,12 @@ What scripts can do is in [simplejs.md](simplejs.md).
 
 | Key | Default | What it does |
 |---|---|---|
-| `scriptRunHistoryEnabled` | `true` | Record finished runs in each database's `script_runs` collection, best effort |
+| `scriptRunHistoryEnabled` | `true` | Record finished runs in each project's `script_runs` collection, best effort |
 | `scriptRunHistoryKinds` | `CALL_PROCEDURE,TRIGGER,SCHEDULE` | Kinds recorded. `RUN_SCRIPT` and `BEFORE_HOOK` (failures only) can be added |
 | `scriptRunHistoryIncludeLogs` | `false` | Keep the run's console output on its row |
 | `scriptRunHistoryMaxErrorChars` | `2000` | Characters of an error message kept |
 | `scriptRunHistoryMaxQueued` | `10000` | Rows waiting to be written. More are dropped and counted |
-| `scriptRunHistoryMaxRows` | `100000` | Rows kept per database. `0` means no cap |
+| `scriptRunHistoryMaxRows` | `100000` | Rows kept per project. `0` means no cap |
 | `scriptRunHistoryRetentionMs` | `604800000` | How long a row is kept (7 days) |
 | `scriptRunHistorySweepMs` | `3600000` | How often old rows are deleted |
 
@@ -334,7 +334,7 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `triggerRetryBackoffMs` | `1000` | Pause before a retry, doubled each time |
 | `triggerRetryMaxBackoffMs` | `60000` | Longest pause between retries |
 | `triggerDeadLetterRetentionMs` | `604800000` | How long a dead-lettered run is kept (7 days) |
-| `triggerDeadLetterMaxRuns` | `10000` | Dead-lettered runs kept per database. `0` means no cap |
+| `triggerDeadLetterMaxRuns` | `10000` | Dead-lettered runs kept per project. `0` means no cap |
 | `beforeHookInstructionBudget` | `200000` | Instructions all the before triggers of one request may run |
 | `beforeHookTimeoutMs` | `200` | Time for the same. Past it the write is refused with `408-1` |
 
@@ -349,8 +349,8 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `scheduleRefreshMs` | `60000` | How often the schedule list is reloaded from disk |
 | `scheduleTimeoutMs` | `30000` | Default time per run |
 | `scheduleMaxTimeoutMs` | `300000` | Largest `timeoutMs` a schedule may ask for, then `400-29` |
-| `scheduleMaxPerDatabase` | `100` | Schedules per database |
-| `scheduleMaxTotalPerUser` | `500` | Schedules one user defines across all databases, then `400-33` |
+| `scheduleMaxPerProject` | `100` | Schedules per project |
+| `scheduleMaxTotalPerUser` | `500` | Schedules one user defines across all projects, then `400-33` |
 | `scheduleMinIntervalMs` | `1000` | Smallest `intervalMs`, below it `400-35` |
 
 ### Cluster
@@ -382,7 +382,7 @@ How a cluster behaves is in [clustering.md](clustering.md).
 | `antiEntropyIntervalMs` | `60000` | How often a node reconciles its collections with its peers |
 | `tombstoneRetentionMs` | `86400000` | How long delete markers are kept. Longer than any node downtime you expect |
 | `scriptRoutingEnabled` | `true` | Let a script run on a less loaded node. The script settings must match on every node |
-| `scriptLocalityWeight` | `50` | 0-100, how much script placement prefers a node owning the database's collections over load |
+| `scriptLocalityWeight` | `50` | 0-100, how much script placement prefers a node owning the project's collections over load |
 
 ### Testing only
 
@@ -448,12 +448,12 @@ And the server as a whole:
 | What | Up to |
 |---|---|
 | Snapshots while a dump runs | `snapshotMaxBytes` (1 GB) for each of up to `snapshotMaxOpen` (4), deleted when released |
-| Script run history | `scriptRunHistoryMaxRows` (100,000) rows per database, for `scriptRunHistoryRetentionMs` (7 days) |
-| Dead-lettered trigger runs | `triggerDeadLetterMaxRuns` (10,000) per database |
+| Script run history | `scriptRunHistoryMaxRows` (100,000) rows per project, for `scriptRunHistoryRetentionMs` (7 days) |
+| Dead-lettered trigger runs | `triggerDeadLetterMaxRuns` (10,000) per project |
 | Cluster tombstones | One line per deleted document, for `tombstoneRetentionMs` (1 day) |
 | Logs | `(maxLogFiles + 1) x 2 x maxLogFileSize`, 1.6 GB with the defaults |
 
-`mpp_live_bytes` and [`GET_DATABASE_STATS`](protocol.md#get_database_stats) give the live document bytes. Keep free
+`mpp_live_bytes` and [`GET_PROJECT_STATS`](protocol.md#get_project_stats) give the live document bytes. Keep free
 at least the size of the biggest collection's files, plus twice `walCheckpointBytes` for every collection written at
 once, plus `snapshotMaxBytes` while dumps run. On a full disk the server stays up and recovers once space is back
 ([Disk full](#disk-full)), but every write fails until then.
@@ -506,7 +506,7 @@ folder, the log folder, the keystore and `mpp.cfg` (which holds the admin, keyst
 or other users can read them, and prints the `chmod` that fixes it. A Docker volume is often created `0755`, so expect
 that warning until you tighten it.
 
-Log cleanup only deletes old `yyyy-MM-dd.log` files, never anything else in `logPath`, and dropping a database or
+Log cleanup only deletes old `yyyy-MM-dd.log` files, never anything else in `logPath`, and dropping a project or
 collection never follows a symbolic link.
 
 ## Monitoring
@@ -529,7 +529,7 @@ scrape_configs:
 In Docker, set `metricsBindAddress=0.0.0.0` and a `metricsToken`, and publish the port (`-p 9100:9100`).
 
 Every metric starts with `mpp_`. A scrape takes no lock, so it answers while a collection is busy. Totals cover all
-user databases, never one collection.
+user projects, never one collection.
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
@@ -552,7 +552,7 @@ user databases, never one collection.
 | `in_doubt_transactions` | gauge | | Distributed transactions prepared here and not resolved yet |
 | `fsync_total`, `fsync_failures_total` | counter | | Forces to disk, and the ones that failed |
 | `fsync_duration_seconds` | histogram | | Time of one force |
-| `databases`, `collections`, `documents`, `live_bytes` | gauge | | Totals across all user databases |
+| `projects`, `collections`, `documents`, `live_bytes` | gauge | | Totals across all user projects |
 
 The histogram buckets go from 0.5 ms to 10 s.
 
@@ -622,7 +622,7 @@ Every refusal is one `FATAL` line and exit status `1`. Nothing on disk changes, 
 | `JVM -Xmx (...) is more than 2x the configured maxMemory` | Raise `maxMemory` towards half the heap, or use `auto` |
 | `The primary-key index of ... needs at least` | That collection's keys don't fit in `maxMemory`, so keyed access reads from disk. Raise `maxMemory` |
 | `These names share one on-disk path and collide on a case-insensitive filesystem` | Two names differ only in case on a filesystem that ignores case. Move the data to a case-sensitive one |
-| `Database '...' is stored in the folder this node keeps its cluster state in` | Copy that database's data elsewhere before enabling clustering |
+| `Project '...' is stored in the folder this node keeps its cluster state in` | Copy that project's data elsewhere before enabling clustering |
 
 ### Errors while running
 
@@ -636,17 +636,17 @@ Every refusal is one `FATAL` line and exit status `1`. Nothing on disk changes, 
 | `The shutdown budget ran out with ... write-ahead log(s) not checkpointed` | Nothing is lost, the next start replays them. Raise `shutdownTimeoutMs` if it happens every time |
 | `... request(s) still running at the end of the shutdown budget` / `Shutdown step '...' failed` | Check the next start for the index warnings above |
 
-After a crash, `Repaired the field indexes of db|coll for N document(s) in X ms` is the healthy line: the start
+After a crash, `Repaired the field indexes of project|coll for N document(s) in X ms` is the healthy line: the start
 finished the index work the crash interrupted.
 
 ## Backups
 
-A dump is the backup. [`--dump`](../README.md#client-shell-exec-dumprestore) reads each database from one snapshot
+A dump is the backup. [`--dump`](../README.md#client-shell-exec-dumprestore) reads each project from one snapshot
 while writes go on, and writes plain requests that `--restore` replays. The README describes the flags and the format.
 
 ### A scheduled dump
 
-Run it as the admin so every database is included, and keep the password in `MPP_PASSWORD`, not on the command line:
+Run it as the admin so every project is included, and keep the password in `MPP_PASSWORD`, not on the command line:
 
 ```sh
 #!/bin/sh
@@ -664,10 +664,10 @@ dropped. Run it again.
 
 ### What a dump does not carry
 
-Users, grants and database owners never leave the server: password hashes aren't exported, and
+Users, grants and project owners never leave the server: password hashes aren't exported, and
 [`CREATE_USER`](protocol.md#create_user-admin-only) only takes a plaintext password. Keep a script that recreates them
 with `CREATE_USER`, [`CHANGE_PERMISSIONS`](protocol.md#change_permissions-admin-only) and
-[`SET_DATABASE_OWNERS`](protocol.md#set_database_owners-admin-only), and run it after a restore.
+[`SET_PROJECT_OWNERS`](protocol.md#set_project_owners-admin-only), and run it after a restore.
 [`LIST_USERS`](protocol.md#list_users-admin-only) shows what it needs to cover. Restored procedures, triggers and
 schedules belong to the user who ran the restore, and run with that user's permissions.
 
@@ -683,7 +683,7 @@ printf 'port=9899\ndefaultAdminPassword=%s\n' "$DRILL_PASSWORD" > mpp.cfg
 java -XX:+UseG1GC -jar /opt/mpp/mpp.jar &
 until java -jar /opt/mpp/mpp.jar --health --port 9899 > /dev/null 2>&1; do sleep 1; done
 MPP_PASSWORD="$DRILL_PASSWORD" java -jar /opt/mpp/mpp.jar --restore --port 9899 < /backups/mpp-2026-11-12.ldump.gz
-MPP_PASSWORD="$DRILL_PASSWORD" java -jar /opt/mpp/mpp.jar --exec '{"type":"GET_DATABASE_STATS"}' --port 9899
+MPP_PASSWORD="$DRILL_PASSWORD" java -jar /opt/mpp/mpp.jar --exec '{"type":"GET_PROJECT_STATS"}' --port 9899
 ```
 
 Compare each collection's `entryCount` with production at the time of the dump, then stop the scratch server and
@@ -773,7 +773,7 @@ When the startup log names collections with index work outstanding, or a query t
 scan finds, rebuild the indexes from the documents:
 
 ```json
-{"type":"REINDEX","databaseName":"shop","collectionName":"orders"}
+{"type":"REINDEX","projectName":"shop","collectionName":"orders"}
 ```
 
 `fieldNames` limits it to some fields ([`REINDEX`](protocol.md#reindex)).
@@ -784,7 +784,7 @@ When every request to one collection fails with an error about its `pk.idx`, or 
 by id, rebuild it from the page files:
 
 ```json
-{"type":"REINDEX","databaseName":"shop","collectionName":"orders","primaryKey":true}
+{"type":"REINDEX","projectName":"shop","collectionName":"orders","primaryKey":true}
 ```
 
 If it answers `409-15`, restart the server and run it again.
@@ -794,7 +794,7 @@ If it answers `409-15`, restart the server and run it again.
 A trigger that fails `triggerMaxAttempts` times is set aside with its last error.
 [`LIST_TRIGGER_RUNS`](protocol.md#list_trigger_runs-admin-only) lists them. Fix the cause, then replay or discard each
 one with [`RESOLVE_TRIGGER_RUN`](protocol.md#resolve_trigger_run-admin-only). They are deleted after
-`triggerDeadLetterRetentionMs`, or past `triggerDeadLetterMaxRuns` per database.
+`triggerDeadLetterRetentionMs`, or past `triggerDeadLetterMaxRuns` per project.
 
 ### In-doubt distributed transactions
 

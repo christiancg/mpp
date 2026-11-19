@@ -39,7 +39,7 @@ public class ListUsersTest {
         req.setPassword("password123");
         req.setAdmin(admin);
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(req);
     }
@@ -70,9 +70,9 @@ public class ListUsersTest {
         assertNotNull(first.get("_id"));
         assertNotNull(first.get("admin"));
         assertNotNull(first.get("globalPermissions"));
-        assertNotNull(first.get("databasePermissions"));
+        assertNotNull(first.get("projectPermissions"));
         assertNotNull(first.get("collectionPermissions"));
-        assertNotNull(first.get("ownedDatabases"));
+        assertNotNull(first.get("ownedProjects"));
     }
 
     @Test

@@ -69,10 +69,10 @@ one, and it reads the password from `MPP_PASSWORD`:
 ```bash
 export MPP_PASSWORD=<the-password-you-chose>
 java -jar mpp.jar \
-  --exec '{"type":"CREATE_DATABASE","databaseName":"my_db"}' \
-  --exec '{"type":"CREATE_COLLECTION","databaseName":"my_db","collectionName":"people"}' \
-  --exec '{"type":"SAVE","databaseName":"my_db","collectionName":"people","object":{"_id":"user-1","name":"Alice","age":31}}' \
-  --exec '{"type":"AGGREGATE","databaseName":"my_db","collectionName":"people","aggregationSteps":[{"type":"FILTER","operator":{"fieldOperatorType":"GREATER_THAN","field":"age","value":30}}]}'
+  --exec '{"type":"CREATE_PROJECT","projectName":"my_project"}' \
+  --exec '{"type":"CREATE_COLLECTION","projectName":"my_project","collectionName":"people"}' \
+  --exec '{"type":"SAVE","projectName":"my_project","collectionName":"people","object":{"_id":"user-1","name":"Alice","age":31}}' \
+  --exec '{"type":"AGGREGATE","projectName":"my_project","collectionName":"people","aggregationSteps":[{"type":"FILTER","operator":{"fieldOperatorType":"GREATER_THAN","field":"age","value":30}}]}'
 ```
 
 With Docker the client is already in the container, so replace `java -jar mpp.jar` with
@@ -104,7 +104,7 @@ from mpp import ClientSettings, Credentials, MppClient, Order, field
 settings = ClientSettings(credentials=Credentials("admin", os.environ["MPP_PASSWORD"]))
 
 with MppClient.connect(settings) as client:
-    people = client.database("my_db").collection("people")
+    people = client.project("my_project").collection("people")
     people.save({"_id": "user-2", "name": "Bob", "age": 45})
     adults = people.query().filter(field("age") > 30).sort("age", Order.DESC).to_list()
     print(adults)
@@ -118,7 +118,7 @@ import { field, MppClient, Order } from "mpp-client";
 await using client = await MppClient.connect({
     credentials: { username: "admin", password: process.env.MPP_PASSWORD ?? "" },
 });
-const people = client.database("my_db").collection("people");
+const people = client.project("my_project").collection("people");
 await people.save({ _id: "user-2", name: "Bob", age: 45 });
 const adults = await people.query().filter(field("age").gt(30)).sort("age", Order.DESC).toArray();
 console.log(adults);
@@ -142,7 +142,7 @@ Authenticate first with [`AUTHENTICATE`](docs/protocol.md#authenticate).
 - [Indexes](docs/protocol.md#create_index): queries scan the collection until the fields they filter on are indexed.
 - [Users and permissions](docs/protocol.md#users--permissions): create a user for your application instead of using `admin`.
 - [TLS](docs/operations.md#tls--secure-connections): encrypt connections before exposing the server beyond your machine.
-- [Backups](README.md#client-shell-exec-dumprestore): `--dump` and `--restore`. A dump reads each database from one
+- [Backups](README.md#client-shell-exec-dumprestore): `--dump` and `--restore`. A dump reads each project from one
   consistent snapshot, so you can take it while your application keeps writing.
 - [Guarantees](README.md#guarantees): what survives a crash or a power loss, and what doesn't.
 - [Upgrading](docs/compatibility.md): when a new release can use your data folder as it is, and when it needs a dump

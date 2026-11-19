@@ -40,7 +40,7 @@ public class HeldRowsBudgetTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var documents = new StringBuilder(DOCUMENTS * 256);
         for (var i = 0; i < DOCUMENTS; i++) {
             documents.append(i == 0 ? "" : ",").append("{\"_id\":\"d").append(i).append("\",\"n\":").append(i)
@@ -78,7 +78,7 @@ public class HeldRowsBudgetTest {
     }
 
     private static String write(String type, String collection, String payload) {
-        return "{\"type\":\"" + type + "\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"" + type + "\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + collection + "\"," + payload + "}";
     }
 
@@ -107,7 +107,7 @@ public class HeldRowsBudgetTest {
 
     private void index(String collection, String field) {
         assertOk(run(write("CREATE_INDEX", collection, "\"fieldName\":\"" + field + "\"")));
-        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, collection);
+        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, collection);
     }
 
     @Test
@@ -160,8 +160,8 @@ public class HeldRowsBudgetTest {
 
     @Test
     public void joinUnindexedRemoteKeepsOnlyMatchingRows() throws Exception {
-        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                + REMOTE + "\"}"));
+        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
+                + "\",\"collectionName\":\"" + REMOTE + "\"}"));
         final var remote = new StringBuilder(REMOTE_DOCUMENTS * 2_048);
         remote.append("{\"_id\":\"none\"},{\"_id\":\"nil\",\"key\":null},")
                 .append("{\"_id\":\"num\",\"key\":1},{\"_id\":\"twin\",\"key\":\"g1\"}");
@@ -194,8 +194,8 @@ public class HeldRowsBudgetTest {
 
     @Test
     public void joinIndexedRemoteChargesOnlyTheRowsItKeeps() throws Exception {
-        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                + REMOTE + "\"}"));
+        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
+                + "\",\"collectionName\":\"" + REMOTE + "\"}"));
         final var remote = new StringBuilder(CASE_VARIANTS * 2_048);
         remote.append("{\"_id\":\"exact\",\"key\":\"g1\"}");
         for (var i = 0; i < CASE_VARIANTS; i++) {
@@ -244,8 +244,8 @@ public class HeldRowsBudgetTest {
                 + "{\"_id\":\"m4\",\"v\":\"A\"},{\"_id\":\"m5\",\"v\":\"a\"},{\"_id\":\"m6\",\"v\":true},"
                 + "{\"_id\":\"m7\",\"v\":{\"x\":1}},{\"_id\":\"m8\",\"v\":{\"x\":1}},{\"_id\":\"m9\",\"v\":[1,2]},"
                 + "{\"_id\":\"m10\",\"v\":\"A\"}";
-        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                + MIXED + "\"}"));
+        assertOk(run("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
+                + "\",\"collectionName\":\"" + MIXED + "\"}"));
         assertOk(run(write("BULK_SAVE", MIXED, "\"objects\":[" + mixed + "]")));
         final var scanFirst = "{\"type\":\"SKIP\",\"skip\":0}," + groupBy("v");
         final var scanGroups = results(run(aggregate(MIXED, scanFirst))).size();

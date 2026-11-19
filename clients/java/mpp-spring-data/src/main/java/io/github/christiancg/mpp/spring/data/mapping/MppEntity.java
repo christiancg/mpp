@@ -16,5 +16,5 @@ import org.springframework.data.annotation.Persistent;
 public @interface MppEntity {
     String collection() default "";
 
-    String database() default "";
+    String project() default "";
 }

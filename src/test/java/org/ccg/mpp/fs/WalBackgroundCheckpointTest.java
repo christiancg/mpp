@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalBackgroundCheckpointTest {
-    private static final String DB = "bgDb";
+    private static final String PROJECT = "bgProject";
     private static final String COLL = "bgColl";
     private static final long SHIPPED_CHECKPOINT_BYTES = 8L * 1024 * 1024;
     private static final String[] SEEDED = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"};
@@ -34,20 +34,20 @@ public class WalBackgroundCheckpointTest {
 
     private final CollectionTryLock recordingLocks = new CollectionTryLock() {
         @Override
-        public boolean tryLock(String dbName, String collName) {
+        public boolean tryLock(String projectName, String collName) {
             lockCalls.add("lock " + collName);
             return true;
         }
 
         @Override
-        public void unlock(String dbName, String collName) {
+        public void unlock(String projectName, String collName) {
             lockCalls.add("unlock " + collName);
         }
     };
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, SEEDED);
         WalCheckpointRequests.takeAll();
         WalCheckpointRequests.listenWith(() -> {
@@ -66,7 +66,7 @@ public class WalBackgroundCheckpointTest {
     }
 
     private File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private int records() throws IOException {
@@ -121,12 +121,12 @@ public class WalBackgroundCheckpointTest {
         rf.replace("a", "new-a", 0, PagePlacement.APPEND);
         final var refused = new CollectionTryLock() {
             @Override
-            public boolean tryLock(String dbName, String collName) {
+            public boolean tryLock(String projectName, String collName) {
                 return false;
             }
 
             @Override
-            public void unlock(String dbName, String collName) {
+            public void unlock(String projectName, String collName) {
                 throw new AssertionError("nothing was locked");
             }
         };
@@ -143,25 +143,25 @@ public class WalBackgroundCheckpointTest {
     public void anOpenGroupOrAnUnappliedLogIsLeftToItsWriter() throws Exception {
         rf.replace("a", "new-a", 0, PagePlacement.APPEND);
         final var wal = new WriteAheadLog(rf.fx.paths);
-        wal.openGroup(DB, COLL);
+        wal.openGroup(PROJECT, COLL);
         try {
-            assertFalse(wal.checkpointRequested(DB, COLL), "a group's records wait for its own settle");
+            assertFalse(wal.checkpointRequested(PROJECT, COLL), "a group's records wait for its own settle");
         } finally {
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
         }
-        wal.markUnapplied(DB, COLL);
-        assertFalse(wal.checkpointRequested(DB, COLL), "a replay needs the collection write lock");
+        wal.markUnapplied(PROJECT, COLL);
+        assertFalse(wal.checkpointRequested(PROJECT, COLL), "a replay needs the collection write lock");
 
-        assertTrue(wal.requireApplied(DB, COLL), "the collection's next user applies the log");
+        assertTrue(wal.requireApplied(PROJECT, COLL), "the collection's next user applies the log");
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
-        assertTrue(wal.checkpointRequested(DB, COLL), "the log is applied");
+        assertTrue(wal.checkpointRequested(PROJECT, COLL), "the log is applied");
         assertEquals(0, records());
     }
 
     @Test
     public void aDroppedCollectionForgetsItsRequest() throws Exception {
         rf.replace("a", "new-a", 0, PagePlacement.APPEND);
-        final var folder = rf.fx.paths.collectionFolder(DB, COLL);
+        final var folder = rf.fx.paths.collectionFolder(PROJECT, COLL);
 
         assertTrue(FileTreeDeleter.delete(folder));
 

@@ -318,11 +318,11 @@ public class IndexScanAgreementTest extends FilterResolutionSupport {
 
     private List<String> lockedRowsJson(BaseAggregationStep... steps) throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             return rowsJson(steps);
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -348,10 +348,10 @@ public class IndexScanAgreementTest extends FilterResolutionSupport {
         final var moved = new JsonObject();
         moved.add(org.ccg.mpp.config.Globals.PK_FIELD, new JsonString("n_two_a"));
         moved.add("score", parsed("9"));
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
-                org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, moved));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, moved));
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, List.of("n_two_a"));
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, List.of("n_two_a"));
         try {
             for (final var literal : List.of("2", "9", "0")) {
                 for (final var type : List.of(FieldOperatorType.EQUALS, FieldOperatorType.GREATER_THAN_EQUALS,
@@ -360,7 +360,7 @@ public class IndexScanAgreementTest extends FilterResolutionSupport {
                 }
             }
         } finally {
-            pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -374,9 +374,10 @@ public class IndexScanAgreementTest extends FilterResolutionSupport {
         insert("c2", "complete", parsed("2"));
         indexField("complete");
 
-        assertEquals(Set.of("complete"), cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).getIndexes(),
+        assertEquals(Set.of("complete"),
+                cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).getIndexes(),
                 "the field must be registered, or every query above silently proves nothing");
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "complete",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "complete",
                 ReadObserver.NONE);
         assertFalse(entries == null || entries.isEmpty(),
                 "the index must hold entries, or agreement is only scan-against-scan");

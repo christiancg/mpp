@@ -166,7 +166,7 @@ public class CompiledScriptCacheTest {
         assertEquals(0, cache.size());
     }
 
-    // A parse tree has no database affinity, so byte-identical sources deliberately share one entry
+    // A parse tree has no project affinity, so byte-identical sources deliberately share one entry
     @Test
     public void test_identical_sources_share_one_entry_regardless_of_caller() {
         final var cache = new CompiledScriptCache();

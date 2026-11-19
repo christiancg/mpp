@@ -48,7 +48,7 @@ public class DumpTest {
     @BeforeEach
     void setUp() throws IOException {
         server = new FakeLineServer();
-        source = new FakeSource().database("shop", "orders", "script_runs", "empty").database("crm", "leads")
+        source = new FakeSource().project("shop", "orders", "script_runs", "empty").project("crm", "leads")
                 .documents("shop", "orders", 2500, 10).documents("shop", "script_runs", 3, 10)
                 .documents("crm", "leads", 2, 10).index("shop", "orders", "customer", "total")
                 .schema("shop", "orders", "{\"type\":\"object\"}").procedure("shop", TOTAL).procedure("shop", UNUSED)
@@ -96,7 +96,7 @@ public class DumpTest {
             final var target = Connection.stringOf(request, "name") != null
                     ? Connection.stringOf(request, "name")
                     : Connection.stringOf(request, "collectionName");
-            summaries.add(Connection.stringOf(request, "type") + " " + Connection.stringOf(request, "databaseName")
+            summaries.add(Connection.stringOf(request, "type") + " " + Connection.stringOf(request, "projectName")
                     + (target == null ? "" : "." + target));
         }
         return summaries;
@@ -116,11 +116,11 @@ public class DumpTest {
         assertEquals(ClientException.OK, dump());
 
         assertEquals(
-                List.of("CREATE_DATABASE shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
+                List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
                         "CREATE_COLLECTION shop.empty", "SAVE_SCHEMA shop.orders", "CREATE_INDEX shop.orders",
                         "SAVE_PROCEDURE shop.unused", "SAVE_PROCEDURE shop.helper", "SAVE_PROCEDURE shop.total",
                         "SAVE_TRIGGER shop.audit", "SAVE_TRIGGER shop.notify", "SAVE_SCHEDULE shop.nightly",
-                        "CREATE_DATABASE crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads"),
+                        "CREATE_PROJECT crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads"),
                 summaries(emitted()));
         assertTrue(errors().contains("shop.orders: 2500 documents"), errors());
         assertTrue(errors().contains("shop.empty: 0 documents"), errors());
@@ -151,7 +151,7 @@ public class DumpTest {
 
     @Test
     public void test_pages_by_last_id_until_done() throws IOException {
-        dump("--databases", "shop");
+        dump("--projects", "shop");
 
         final var afterIds = server.requests().stream()
                 .filter(request -> "READ_SNAPSHOT".equals(Connection.stringOf(request, "type"))
@@ -165,7 +165,7 @@ public class DumpTest {
     public void test_bulk_save_lines_split_at_the_byte_cap() throws IOException {
         source.documents("crm", "leads", 9, 1_000_000);
 
-        dump("--databases", "crm");
+        dump("--projects", "crm");
 
         final var saves = emitted().stream().filter(request -> "BULK_SAVE".equals(Connection.stringOf(request, "type")))
                 .toList();
@@ -176,16 +176,16 @@ public class DumpTest {
     }
 
     @Test
-    public void test_databases_filter() throws IOException {
-        dump("--databases", "crm");
+    public void test_projects_filter() throws IOException {
+        dump("--projects", "crm");
 
-        assertEquals(List.of("CREATE_DATABASE crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads"),
+        assertEquals(List.of("CREATE_PROJECT crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads"),
                 summaries(emitted()));
     }
 
     @Test
-    public void test_unknown_database_in_filter_fails() {
-        final var error = assertThrows(ClientException.class, () -> dump("--databases", "crm,ghost"));
+    public void test_unknown_project_in_filter_fails() {
+        final var error = assertThrows(ClientException.class, () -> dump("--projects", "crm,ghost"));
 
         assertEquals(ClientException.FAILED, error.exitCode());
         assertEquals(0, stdout.size());
@@ -193,7 +193,7 @@ public class DumpTest {
 
     @Test
     public void test_no_schema_emits_no_save_schema() throws IOException {
-        dump("--databases", "crm");
+        dump("--projects", "crm");
 
         assertTrue(emitted().stream().noneMatch(request -> "SAVE_SCHEMA".equals(Connection.stringOf(request, "type"))));
     }
@@ -204,7 +204,7 @@ public class DumpTest {
         server.reply("LIST_PROCEDURES", FakeLineServer.error("LIST_PROCEDURES", "FORBIDDEN", "403-2"));
         server.reply("LIST_SCHEDULES", FakeLineServer.error("LIST_SCHEDULES", "FORBIDDEN", "403-2"));
 
-        assertEquals(ClientException.OK, runDump("--databases", "shop"));
+        assertEquals(ClientException.OK, runDump("--projects", "shop"));
 
         final var types = emittedTypes();
         assertFalse(types.contains("SAVE_PROCEDURE"));
@@ -221,7 +221,7 @@ public class DumpTest {
         source.serveOn(server);
         server.reply("LIST_PROCEDURES", FakeLineServer.error("LIST_PROCEDURES", "FORBIDDEN", "403-6"));
 
-        assertEquals(ClientException.OK, runDump("--databases", "shop"));
+        assertEquals(ClientException.OK, runDump("--projects", "shop"));
 
         final var types = emittedTypes();
         assertFalse(types.contains("SAVE_PROCEDURE"));
@@ -236,7 +236,7 @@ public class DumpTest {
         source.serveOn(server);
         server.reply("LIST_SCHEDULES", FakeLineServer.error("LIST_SCHEDULES", "FORBIDDEN", "403-6"));
 
-        assertEquals(ClientException.OK, runDump("--databases", "shop"));
+        assertEquals(ClientException.OK, runDump("--projects", "shop"));
 
         final var types = emittedTypes();
         assertFalse(types.contains("SAVE_SCHEDULE"));
@@ -245,26 +245,26 @@ public class DumpTest {
     }
 
     @Test
-    public void test_whole_server_dump_skips_a_forbidden_database_with_a_note() throws IOException {
+    public void test_whole_server_dump_skips_a_forbidden_project_with_a_note() throws IOException {
         source.serveOn(server);
         server.respond("LIST_COLLECTIONS",
-                request -> "crm".equals(Connection.stringOf(request, "databaseName"))
+                request -> "crm".equals(Connection.stringOf(request, "projectName"))
                         ? FakeLineServer.error("LIST_COLLECTIONS", "FORBIDDEN", "403-1")
                         : FakeLineServer.ok("LIST_COLLECTIONS", "\"collections\":[\"orders\"]"));
 
         assertEquals(ClientException.OK, runDump());
 
-        assertTrue(emitted().stream().noneMatch(request -> "crm".equals(Connection.stringOf(request, "databaseName"))));
+        assertTrue(emitted().stream().noneMatch(request -> "crm".equals(Connection.stringOf(request, "projectName"))));
         assertTrue(emittedTypes().contains("BULK_SAVE"));
         assertTrue(errors().contains("note: crm was not dumped"), errors());
     }
 
     @Test
-    public void test_a_forbidden_database_named_in_databases_fails() {
+    public void test_a_forbidden_project_named_in_projects_fails() {
         source.serveOn(server);
         server.reply("LIST_COLLECTIONS", FakeLineServer.error("LIST_COLLECTIONS", "FORBIDDEN", "403-1"));
 
-        final var error = assertThrows(ClientException.class, () -> runDump("--databases", "crm"));
+        final var error = assertThrows(ClientException.class, () -> runDump("--projects", "crm"));
 
         assertEquals(ClientException.FAILED, error.exitCode());
         assertEquals(0, stdout.size());
@@ -282,7 +282,7 @@ public class DumpTest {
     public void test_a_refused_listing_stops_the_dump() throws IOException {
         source.serveOn(server);
         server.reply("LIST_TRIGGERS", FakeLineServer.error("LIST_TRIGGERS", "ERROR", "500-8"));
-        final var options = ClientOptions.parse(new String[]{"--dump", "--databases", "crm"}, Map.of());
+        final var options = ClientOptions.parse(new String[]{"--dump", "--projects", "crm"}, Map.of());
         try (var connection = server.connect()) {
             final var dump = new Dump(connection, options, stdout,
                     new PrintStream(stderr, true, StandardCharsets.UTF_8));
@@ -321,7 +321,7 @@ public class DumpTest {
 
         try (var gunzip = new GZIPInputStream(new ByteArrayInputStream(stdout.toByteArray()))) {
             final var partial = emitted(gunzip.readAllBytes());
-            assertEquals(List.of("CREATE_DATABASE shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
+            assertEquals(List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
                     "CREATE_COLLECTION shop.empty"), summaries(partial));
         }
     }
@@ -331,7 +331,7 @@ public class DumpTest {
         dump("--collections", "shop.orders");
 
         final var summaries = summaries(emitted());
-        assertEquals(List.of("CREATE_DATABASE shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
+        assertEquals(List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
                 "SAVE_SCHEMA shop.orders", "CREATE_INDEX shop.orders", "SAVE_PROCEDURE shop.helper",
                 "SAVE_PROCEDURE shop.total", "SAVE_TRIGGER shop.audit"), summaries);
     }
@@ -340,7 +340,7 @@ public class DumpTest {
     public void test_collections_keep_only_their_triggers() throws IOException {
         dump("--collections", "shop.empty");
 
-        assertEquals(List.of("CREATE_DATABASE shop", "CREATE_COLLECTION shop.empty", "SAVE_PROCEDURE shop.unused",
+        assertEquals(List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.empty", "SAVE_PROCEDURE shop.unused",
                 "SAVE_TRIGGER shop.notify"), summaries(emitted()));
     }
 
@@ -364,11 +364,11 @@ public class DumpTest {
     }
 
     @Test
-    public void test_collections_from_two_databases_emit_both_databases_in_listed_order() throws IOException {
+    public void test_collections_from_two_projects_emit_both_projects_in_listed_order() throws IOException {
         dump("--collections", "crm.leads,shop.empty");
 
-        assertEquals(List.of("CREATE_DATABASE crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads",
-                "CREATE_DATABASE shop", "CREATE_COLLECTION shop.empty", "SAVE_PROCEDURE shop.unused",
+        assertEquals(List.of("CREATE_PROJECT crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads",
+                "CREATE_PROJECT shop", "CREATE_COLLECTION shop.empty", "SAVE_PROCEDURE shop.unused",
                 "SAVE_TRIGGER shop.notify"), summaries(emitted()));
     }
 
@@ -389,7 +389,7 @@ public class DumpTest {
 
     @Test
     public void test_page_limit_adapts_to_bytes() throws IOException {
-        source = new FakeSource().database("shop", "big").documents("shop", "big", 1500, 10_000);
+        source = new FakeSource().project("shop", "big").documents("shop", "big", 1500, 10_000);
 
         assertEquals(ClientException.OK, dump());
 
@@ -410,7 +410,7 @@ public class DumpTest {
 
     @Test
     public void test_multi_field_create_index_emitted() throws IOException {
-        dump("--databases", "shop");
+        dump("--projects", "shop");
 
         final var createIndexes = emitted().stream()
                 .filter(request -> "CREATE_INDEX".equals(Connection.stringOf(request, "type"))).toList();

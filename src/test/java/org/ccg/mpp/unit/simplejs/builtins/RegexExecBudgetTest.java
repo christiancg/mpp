@@ -11,8 +11,8 @@ import java.util.function.Consumer;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.CancellationToken;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.junit.jupiter.api.Test;
@@ -23,7 +23,7 @@ public class RegexExecBudgetTest {
 
     private final SimpleJs engine = new SimpleJs();
 
-    private record LimitedBindings(JsonObject args, DatabaseAccess database, Consumer<String> console,
+    private record LimitedBindings(JsonObject args, ProjectAccess project, Consumer<String> console,
             ResourceLimits limits, CancellationToken cancellation) implements HostBindings {
     }
 

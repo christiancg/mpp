@@ -32,7 +32,7 @@ public class MppDataAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public MppMappingContext mppMappingContext(MppProperties properties, BeanFactory beanFactory) {
-        final var context = new MppMappingContext(properties.database());
+        final var context = new MppMappingContext(properties.project());
         context.setInitialEntitySet(scanEntities(beanFactory));
         return context;
     }

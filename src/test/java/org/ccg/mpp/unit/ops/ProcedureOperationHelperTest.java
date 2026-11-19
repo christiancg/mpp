@@ -32,7 +32,7 @@ public class ProcedureOperationHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -48,25 +48,25 @@ public class ProcedureOperationHelperTest {
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
     }
 
     private static SaveProcedureRequest saveRequest(String script) {
-        return new SaveProcedureRequest(TestGlobals.DB, "p", script);
+        return new SaveProcedureRequest(TestGlobals.PROJECT, "p", script);
     }
 
     @Test
     public void test_a_save_invalidates_the_compiled_entry() throws Exception {
         final var compiledProcedures = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.ops.CompiledProcedureCache.class);
         save("return 1;");
-        final var stale = compiledProcedures.get(TestGlobals.DB, "p", 1L, "return 1;");
+        final var stale = compiledProcedures.get(TestGlobals.PROJECT, "p", 1L, "return 1;");
 
         save("return 2;");
 
-        assertNotSame(stale, compiledProcedures.get(TestGlobals.DB, "p", 1L, "return 1;"),
+        assertNotSame(stale, compiledProcedures.get(TestGlobals.PROJECT, "p", 1L, "return 1;"),
                 "an in-flight compile can re-publish a key after a delete, so the save must invalidate too");
     }
 
@@ -86,11 +86,11 @@ public class ProcedureOperationHelperTest {
     }
 
     @Test
-    public void test_save_rejects_unknown_database() throws Exception {
+    public void test_save_rejects_unknown_project() throws Exception {
         final var response = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest("missingDb", "p", "return 1;"), ACTOR);
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
-        assertTrue(response.getMessage().contains("missingDb"));
+                .executeSave(new SaveProcedureRequest("missingProject", "p", "return 1;"), ACTOR);
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
+        assertTrue(response.getMessage().contains("missingProject"));
     }
 
     @Test
@@ -105,7 +105,7 @@ public class ProcedureOperationHelperTest {
         final var response = ProcedureOperationHelper.executeSave(saveRequest("return (;"), ACTOR);
         assertEquals(ErrorCode.INVALID_PROCEDURE.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().contains("line"), response.getMessage());
-        assertNull(cache.getProcedure(TestGlobals.DB, "p"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "p"));
     }
 
     @Test
@@ -113,21 +113,21 @@ public class ProcedureOperationHelperTest {
         assertEquals(1L, save("return 1;").getVersion());
         assertEquals(2L, save("return 2;").getVersion());
         assertEquals(3L, save("return 3;").getVersion());
-        assertEquals("return 3;", cache.getProcedure(TestGlobals.DB, "p").getSource());
+        assertEquals("return 3;", cache.getProcedure(TestGlobals.PROJECT, "p").getSource());
     }
 
     @Test
     public void test_save_preserves_created_at_on_update() throws Exception {
         save("return 1;");
-        final var createdAt = cache.getProcedure(TestGlobals.DB, "p").getCreatedAt();
+        final var createdAt = cache.getProcedure(TestGlobals.PROJECT, "p").getCreatedAt();
         save("return 2;");
-        assertEquals(createdAt, cache.getProcedure(TestGlobals.DB, "p").getCreatedAt());
+        assertEquals(createdAt, cache.getProcedure(TestGlobals.PROJECT, "p").getCreatedAt());
     }
 
     @Test
     public void test_save_records_the_acting_user() throws Exception {
         save("return 1;");
-        assertEquals(ACTOR, cache.getProcedure(TestGlobals.DB, "p").getUpdatedBy());
+        assertEquals(ACTOR, cache.getProcedure(TestGlobals.PROJECT, "p").getUpdatedBy());
     }
 
     @Test
@@ -137,7 +137,7 @@ public class ProcedureOperationHelperTest {
         request.setIfVersion(99L);
         final var response = ProcedureOperationHelper.executeSave(request, ACTOR);
         assertEquals(ErrorCode.PROCEDURE_VERSION_CONFLICT.getCode(), response.getErrorCode());
-        assertEquals("return 1;", cache.getProcedure(TestGlobals.DB, "p").getSource());
+        assertEquals("return 1;", cache.getProcedure(TestGlobals.PROJECT, "p").getSource());
     }
 
     @Test
@@ -146,7 +146,7 @@ public class ProcedureOperationHelperTest {
         final var request = saveRequest("return 2;");
         request.setIfVersion(1L);
         assertInstanceOf(SaveProcedureResponse.class, ProcedureOperationHelper.executeSave(request, ACTOR));
-        assertEquals("return 2;", cache.getProcedure(TestGlobals.DB, "p").getSource());
+        assertEquals("return 2;", cache.getProcedure(TestGlobals.PROJECT, "p").getSource());
     }
 
     @Test
@@ -163,7 +163,7 @@ public class ProcedureOperationHelperTest {
     @Test
     public void test_delete_is_idempotent_when_absent() throws Exception {
         final var response = ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, "never-existed"), ACTOR);
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, "never-existed"), ACTOR);
         assertEquals(OperationStatus.OK, response.getStatus());
     }
 
@@ -171,43 +171,43 @@ public class ProcedureOperationHelperTest {
     public void test_delete_removes_the_procedure() throws Exception {
         save("return 1;");
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, "p"), ACTOR).getStatus());
-        assertNull(cache.getProcedure(TestGlobals.DB, "p"));
-        assertTrue(fs.metadataFiles().listProcedureNames(TestGlobals.DB).isEmpty());
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, "p"), ACTOR).getStatus());
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "p"));
+        assertTrue(fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT).isEmpty());
     }
 
     @Test
-    public void test_delete_rejects_unknown_database() throws Exception {
-        final var response = ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest("missingDb", "p"),
+    public void test_delete_rejects_unknown_project() throws Exception {
+        final var response = ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest("missingProject", "p"),
                 ACTOR);
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
     public void test_list_omits_source_unless_requested() throws Exception {
         save("return 1;");
         final var withoutSource = (ListProceduresResponse) ProcedureOperationHelper
-                .executeList(new ListProceduresRequest(TestGlobals.DB), null);
+                .executeList(new ListProceduresRequest(TestGlobals.PROJECT), null);
         assertEquals(1, withoutSource.getProcedures().size());
         assertFalse(withoutSource.getProcedures().getFirst().has("source"));
 
-        final var request = new ListProceduresRequest(TestGlobals.DB);
+        final var request = new ListProceduresRequest(TestGlobals.PROJECT);
         request.setIncludeSource(true);
         final var withSource = (ListProceduresResponse) ProcedureOperationHelper.executeList(request, null);
         assertEquals("return 1;", withSource.getProcedures().getFirst().get("source").asJsonString().getValue());
     }
 
     @Test
-    public void test_list_is_empty_for_a_database_with_no_procedures() {
+    public void test_list_is_empty_for_a_project_with_no_procedures() {
         final var response = (ListProceduresResponse) ProcedureOperationHelper
-                .executeList(new ListProceduresRequest(TestGlobals.DB), null);
+                .executeList(new ListProceduresRequest(TestGlobals.PROJECT), null);
         assertTrue(response.getProcedures().isEmpty());
     }
 
     @Test
-    public void test_list_rejects_unknown_database() {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(),
-                ProcedureOperationHelper.executeList(new ListProceduresRequest("missingDb"), null).getErrorCode());
+    public void test_list_rejects_unknown_project() {
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(),
+                ProcedureOperationHelper.executeList(new ListProceduresRequest("missingProject"), null).getErrorCode());
     }
 
     @Test
@@ -215,7 +215,7 @@ public class ProcedureOperationHelperTest {
         final var request = saveRequest("return 1;");
         request.setEnabled(false);
         ProcedureOperationHelper.executeSave(request, ACTOR);
-        assertFalse(cache.getProcedure(TestGlobals.DB, "p").isEnabled());
+        assertFalse(cache.getProcedure(TestGlobals.PROJECT, "p").isEnabled());
     }
 
     @Test
@@ -223,7 +223,7 @@ public class ProcedureOperationHelperTest {
         final var request = saveRequest("return 1;");
         request.setDescription("recalculates the totals");
         ProcedureOperationHelper.executeSave(request, ACTOR);
-        assertEquals("recalculates the totals", cache.getProcedure(TestGlobals.DB, "p").getDescription());
+        assertEquals("recalculates the totals", cache.getProcedure(TestGlobals.PROJECT, "p").getDescription());
     }
 
 }

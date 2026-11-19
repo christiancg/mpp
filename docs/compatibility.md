@@ -14,7 +14,7 @@ Four numbers describe a deployment:
 | `storageFormatVersion` | `SERVER_INFO`, for any authenticated user, and `{filePath}/format.json` | Every file the server writes under `filePath` |
 | Client library versions | Maven Central, npm, NuGet, PyPI | Each client's own API. A client speaks one `protocolVersion` |
 
-`protocolVersion` and `storageFormatVersion` are both `1` today. They move independently of the release, and most
+`protocolVersion` and `storageFormatVersion` are both `2` today. They move independently of the release, and most
 releases change neither.
 
 ## What may change in 0.x
@@ -32,7 +32,7 @@ and says when either one moved.
 The server records the storage format in `{filePath}/format.json`:
 
 ```json
-{"formatVersion":1,"writtenBy":"0.1.0"}
+{"formatVersion":2,"writtenBy":"0.2.0"}
 ```
 
 `writtenBy` is the release that created the stamp. The stamp is never rewritten, so it keeps naming that release. At
@@ -41,7 +41,7 @@ startup, before it writes or deletes anything, the server reads it:
 | The folder holds | What the server does |
 |---|---|
 | Nothing yet | Starts and stamps it with its own format |
-| Data but no stamp (written before the stamp existed) | Reads it as format `1`, starts and stamps it |
+| Data but no stamp (written before the stamp existed) | Reads it as format `1`, so it refuses to start |
 | A stamp with its own format | Starts |
 | A stamp with a newer or older format | Refuses to start |
 | A stamp it can't read or parse | Refuses to start, and never treats the folder as empty |
@@ -71,20 +71,20 @@ or the image, and start it on the same `filePath`.
 
 If it is different:
 
-1. With the old release still running, dump everything as an admin, so every database is included:
+1. With the old release still running, dump everything as an admin, so every project is included:
    ```bash
    java -jar mpp.jar --dump --password ... > backup.jsonl
    ```
 2. Stop the old server and keep its folder until the new one is verified.
 3. Start the new release on an empty `filePath`, with a `defaultAdminPassword` for its first admin.
-4. Recreate the other users, their grants and the database owners. A dump has none of them, since password hashes
+4. Recreate the other users, their grants and the project owners. A dump has none of them, since password hashes
    never leave the server ([operations.md](operations.md#what-a-dump-does-not-carry)).
 5. Restore into it:
    ```bash
    java -jar mpp.jar --restore --password ... < backup.jsonl
    ```
 
-A dump reads each database from one consistent snapshot, so step 1 can run while the application keeps writing. Writes
+A dump reads each project from one consistent snapshot, so step 1 can run while the application keeps writing. Writes
 made after it are not in the dump.
 
 In a cluster, run every node on the same release. Nodes exchange documents, never files, so the storage format is local

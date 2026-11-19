@@ -10,14 +10,14 @@ public class IndexRepairEvent extends CollectionScopedEvent {
     private final String resumeField;
     private final int resumeAt;
 
-    public IndexRepairEvent(String dbName, String collName, List<String> ids, long incarnation,
+    public IndexRepairEvent(String projectName, String collName, List<String> ids, long incarnation,
             long pendingGeneration) {
-        this(dbName, collName, ids, incarnation, pendingGeneration, Set.of(), null, 0);
+        this(projectName, collName, ids, incarnation, pendingGeneration, Set.of(), null, 0);
     }
 
-    public IndexRepairEvent(String dbName, String collName, List<String> ids, long incarnation, long pendingGeneration,
-            Set<String> repairedFields, String resumeField, int resumeAt) {
-        super(EventType.UPDATED, dbName, collName, incarnation, pendingGeneration);
+    public IndexRepairEvent(String projectName, String collName, List<String> ids, long incarnation,
+            long pendingGeneration, Set<String> repairedFields, String resumeField, int resumeAt) {
+        super(EventType.UPDATED, projectName, collName, incarnation, pendingGeneration);
         this.ids = List.copyOf(ids);
         this.repairedFields = Set.copyOf(repairedFields);
         this.resumeField = resumeField;
@@ -59,7 +59,7 @@ public class IndexRepairEvent extends CollectionScopedEvent {
 
     @Override
     public String toString() {
-        return "IndexRepairEvent(dbName=" + getDbName() + ", collName=" + getCollName() + ", incarnation="
+        return "IndexRepairEvent(projectName=" + getProjectName() + ", collName=" + getCollName() + ", incarnation="
                 + getIncarnation() + ", pendingGeneration=" + getPendingGeneration() + ", ids=" + ids.size()
                 + ", repairedFields=" + repairedFields + ", resumeField=" + resumeField + ", resumeAt=" + resumeAt
                 + ")";

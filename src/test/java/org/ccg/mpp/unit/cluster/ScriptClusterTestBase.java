@@ -57,7 +57,7 @@ abstract class ScriptClusterTestBase {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         createAdminUser();
         origScripts = config.isScriptsEnabled();
@@ -95,7 +95,7 @@ abstract class ScriptClusterTestBase {
     String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
             final var coll = "script-routed-" + i;
-            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, coll)) {
                 return coll;
             }
         }
@@ -103,12 +103,12 @@ abstract class ScriptClusterTestBase {
     }
 
     void createCollection(String coll) throws Exception {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, coll));
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
     }
 
     OperationStatus findStatus(String coll, String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, coll);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, coll);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
@@ -124,17 +124,17 @@ abstract class ScriptClusterTestBase {
 
     // The peer carries the higher load, so load alone keeps the run here - no tie, and so no dependence
     // on how an undecided pair is resolved.
-    void configureMembershipWithAPeerOwningTheWholeDatabase() throws Exception {
-        final var collections = IocContainer.get(Cache.class).getCollectionNamesForDatabase(TestGlobals.DB);
-        assertFalse(collections.isEmpty(), "the fixture database must have at least one collection");
+    void configureMembershipWithAPeerOwningTheWholeProject() throws Exception {
+        final var collections = IocContainer.get(Cache.class).getCollectionNamesForProject(TestGlobals.PROJECT);
+        assertFalse(collections.isEmpty(), "the fixture project must have at least one collection");
         for (var i = 0; i < 500; i++) {
             final var peer = cappedNode("z-owner-" + i, cluster.serverPort(), PEER_LOAD);
             configureMembership(2, cappedNode("self", 19990, 0), peer);
             if (collections.stream()
-                    .allMatch(coll -> peer.getNodeId().equals(ownership.ownerFor(TestGlobals.DB, coll)))) {
+                    .allMatch(coll -> peer.getNodeId().equals(ownership.ownerFor(TestGlobals.PROJECT, coll)))) {
                 return;
             }
         }
-        throw new IllegalStateException("no peer id owning every collection of the database");
+        throw new IllegalStateException("no peer id owning every collection of the project");
     }
 }

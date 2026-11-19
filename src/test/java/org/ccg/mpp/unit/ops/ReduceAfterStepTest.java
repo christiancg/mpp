@@ -74,11 +74,11 @@ public class ReduceAfterStepTest extends FilterResolutionSupport {
     }
 
     private static void save(String id, String tag) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         request.setObject(doc(id, tag));
         IocContainer.get(OperationProcessor.class).processMessage(request);
-        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.DB, TestGlobals.COLL, id, 0L);
+        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.PROJECT, TestGlobals.COLL, id, 0L);
     }
 
     @Test

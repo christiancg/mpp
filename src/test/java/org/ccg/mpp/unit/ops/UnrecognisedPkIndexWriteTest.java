@@ -27,7 +27,7 @@ public class UnrecognisedPkIndexWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -37,7 +37,7 @@ public class UnrecognisedPkIndexWriteTest {
     }
 
     private static File pkIndexFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR
                 + Globals.PK_INDEX_FILE_NAME + Globals.INDEX_FILE_EXTENSION);
     }
@@ -46,20 +46,20 @@ public class UnrecognisedPkIndexWriteTest {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty("payload", "value-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
 
     private OperationStatus find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
 
     private byte[] plantOldGrammarPkIndex() throws Exception {
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         Files.writeString(pkIndexFile().toPath(), "first|0|20|0|0\nsecond|20|20|0|0\n", StandardCharsets.UTF_8,
                 StandardOpenOption.TRUNCATE_EXISTING);
         return Files.readAllBytes(pkIndexFile().toPath());

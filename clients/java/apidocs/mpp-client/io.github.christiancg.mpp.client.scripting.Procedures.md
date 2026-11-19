@@ -1,11 +1,11 @@
-The stored procedures of one database. Obtained from `Database.procedures()`.
+The stored procedures of one project. Obtained from `Project.procedures()`.
 
 ## Procedures(ClientContext, String)
 
-Internal: use `Database.procedures()`.
+Internal: use `Project.procedures()`.
 
 @param context the client's internal context
-@param database the database
+@param project the project
 
 ## save(ProcedureDefinition)
 

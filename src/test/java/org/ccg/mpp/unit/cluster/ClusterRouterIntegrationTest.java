@@ -57,7 +57,7 @@ public class ClusterRouterIntegrationTest {
     public void setUp() throws Exception {
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptsEnabled", true);
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.start();
     }
 
@@ -71,7 +71,7 @@ public class ClusterRouterIntegrationTest {
     private String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
             final var coll = "routed-" + i;
-            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, coll)) {
                 return coll;
             }
         }
@@ -79,18 +79,18 @@ public class ClusterRouterIntegrationTest {
     }
 
     private void createCollection(String coll) throws Exception {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, coll));
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
     }
 
     private String rawFind(String coll, String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, coll);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, coll);
         request.set_id(id);
         return eJson.toJson(request);
     }
 
     private String rawSave(String coll, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(doc(id));
         request.set_id(id);
         return eJson.toJson(request);
@@ -103,16 +103,15 @@ public class ClusterRouterIntegrationTest {
         final var coll = collectionOwnedByOther();
         createCollection(coll);
         ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, coll, ReplicationOp.UPSERT, List.of(priced("s1", 5)), null),
+                new ReplicationPayload(TestGlobals.PROJECT, coll, ReplicationOp.UPSERT, List.of(priced("s1", 5)), null),
                 TestGlobals.APPLY_BUDGET_MS);
-        ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, coll, ReplicationOp.UPSERT, List.of(priced("s2", 50)), null),
-                TestGlobals.APPLY_BUDGET_MS);
+        ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, coll, ReplicationOp.UPSERT,
+                List.of(priced("s2", 50)), null), TestGlobals.APPLY_BUDGET_MS);
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(
                 List.of(new FilterAggregationStep(new ScriptOperator("export default (doc) => doc.price > 10;"))));
-        final var raw = "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var raw = "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + coll + "\",\"aggregationSteps\":[{\"type\":\"FILTER\",\"operator\":"
                 + "{\"script\":\"export default (doc) => doc.price > 10;\"}}]}";
         final var relayed = router.forward(request, raw, false, ClusterTestHarness.ACTING_ADMIN, null);
@@ -134,10 +133,10 @@ public class ClusterRouterIntegrationTest {
         final var coll = collectionOwnedByOther();
         createCollection(coll);
         ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, coll, ReplicationOp.UPSERT, List.of(doc("f1")), null),
+                new ReplicationPayload(TestGlobals.PROJECT, coll, ReplicationOp.UPSERT, List.of(doc("f1")), null),
                 TestGlobals.APPLY_BUDGET_MS);
 
-        final var request = new FindByIdRequest(TestGlobals.DB, coll);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, coll);
         request.set_id("f1");
         final var relayed = router.forward(request, rawFind(coll, "f1"), false, ClusterTestHarness.ACTING_ADMIN, null);
 
@@ -148,7 +147,7 @@ public class ClusterRouterIntegrationTest {
     @Test
     public void test_router_executes_locally_when_self_owns() throws Exception {
         cluster.configureMembership(1, node("self", cluster.serverPort()));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(doc("local"));
         assertNull(router.forward(request, rawSave(TestGlobals.COLL, "local"), false, ClusterTestHarness.ACTING_ADMIN,
                 null));
@@ -158,7 +157,7 @@ public class ClusterRouterIntegrationTest {
     public void test_read_falls_back_to_local_when_owner_unreachable() throws Exception {
         cluster.configureMembership(2, node("self", 19990), node("other", 1));
         final var coll = collectionOwnedByOther();
-        final var request = new FindByIdRequest(TestGlobals.DB, coll);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, coll);
         request.set_id("x");
         assertNull(router.forward(request, rawFind(coll, "x"), false, ClusterTestHarness.ACTING_ADMIN, null));
     }
@@ -169,11 +168,11 @@ public class ClusterRouterIntegrationTest {
             cluster.configureMembership(2, node("self", 19990), node("other", silent.getLocalPort()));
             TestUtils.setPrivateField(Configuration.getInstance(), "replicationAckTimeoutMs", 300L);
             final var coll = collectionOwnedByOther();
-            final var find = new FindByIdRequest(TestGlobals.DB, coll);
+            final var find = new FindByIdRequest(TestGlobals.PROJECT, coll);
             find.set_id("slow");
-            final var aggregate = new AggregateRequest(TestGlobals.DB, coll);
+            final var aggregate = new AggregateRequest(TestGlobals.PROJECT, coll);
             aggregate.setAggregationSteps(List.of());
-            final var rawAggregate = "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB
+            final var rawAggregate = "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT
                     + "\",\"collectionName\":\"" + coll + "\",\"aggregationSteps\":[]}";
 
             final var findAnswer = router.forward(find, rawFind(coll, "slow"), false, ClusterTestHarness.ACTING_ADMIN,
@@ -192,7 +191,7 @@ public class ClusterRouterIntegrationTest {
     public void test_write_errors_when_owner_unreachable() throws Exception {
         cluster.configureMembership(2, node("self", 19990), node("other", 1));
         final var coll = collectionOwnedByOther();
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(doc("y"));
         final var relayed = router.forward(request, rawSave(coll, "y"), false, ClusterTestHarness.ACTING_ADMIN, null);
         assertNotNull(relayed);
@@ -203,7 +202,7 @@ public class ClusterRouterIntegrationTest {
     public void test_an_error_reply_to_a_write_is_outcome_unknown() throws Exception {
         cluster.configureMembership(2, node("self", 19990), node("other", cluster.serverPort()));
         final var coll = collectionOwnedByOther();
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(doc("z"));
 
         final var relayed = router.forward(request, "{not json", false, ClusterTestHarness.ACTING_ADMIN, null);
@@ -224,7 +223,7 @@ public class ClusterRouterIntegrationTest {
 
         assertEquals(ClusterMessageType.FORWARD_RESPONSE, response.getType());
         assertTrue(response.getForwardBody().contains("h1"));
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("h1");
         assertEquals(OperationStatus.OK, processor.processMessage(find).getStatus());
     }

@@ -28,11 +28,11 @@ public class TransactionIT extends ServerIT {
 
     @BeforeAll
     public void createCollections() {
-        final var database = client.database("tx_it");
-        database.create();
-        database.collection("accounts").create();
-        database.collection("ledger").create();
-        accounts = database.collection("accounts");
+        final var project = client.project("tx_it");
+        project.create();
+        project.collection("accounts").create();
+        project.collection("ledger").create();
+        accounts = project.collection("accounts");
     }
 
     @Test

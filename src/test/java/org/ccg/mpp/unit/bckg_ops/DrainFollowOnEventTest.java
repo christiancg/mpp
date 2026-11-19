@@ -48,7 +48,7 @@ public class DrainFollowOnEventTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origThreads = configuration.getBackgroundProcessingThreads();
         TestUtils.setPrivateField(configuration, "backgroundProcessingThreads", 2);
         TestUtils.setPrivateField(configuration, "scriptRunHistoryEnabled", true);
@@ -69,7 +69,7 @@ public class DrainFollowOnEventTest {
     }
 
     private static ScriptRunRecord row(String runId) {
-        return new ScriptRunRecord(runId, ScriptRunKind.TRIGGER, TestGlobals.DB, "audit", "proc", TestGlobals.COLL,
+        return new ScriptRunRecord(runId, ScriptRunKind.TRIGGER, TestGlobals.PROJECT, "audit", "proc", TestGlobals.COLL,
                 "CREATED", "admin", "admin", 1L, 2L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, null,
                 false);
     }
@@ -94,10 +94,10 @@ public class DrainFollowOnEventTest {
     public void test_a_history_row_written_during_the_drain_keeps_its_index_event() throws Exception {
         backgroundTaskManager.startBackgroundWorkers();
         ScriptRunHistory.write(row("warm-up"));
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME));
         awaitTrue(() -> backgroundTaskManager.pending() == 0);
 
-        locks.lock(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        locks.lock(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         final CompletableFuture<Boolean> drained;
         try {
             ScriptRunHistory.record(row("during-drain"));
@@ -105,29 +105,29 @@ public class DrainFollowOnEventTest {
             drained = CompletableFuture.supplyAsync(() -> backgroundTaskManager.drain(WAIT_MILLIS));
             awaitTrue(this::isDraining);
         } finally {
-            locks.release(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+            locks.release(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         }
 
         assertTrue(drained.get(WAIT_MILLIS * 2, TimeUnit.MILLISECONDS), "the drain must wait for the follow-on event");
         assertEquals(0, backgroundTaskManager.pending());
         assertNotNull(
-                cache.getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("during-drain"));
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME).isEmpty(),
+                cache.getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("during-drain"));
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME).isEmpty(),
                 "a rejected index event left the row pending, and the next start reported an unclean stop");
     }
 
     private int pendingAfterASaveWhileDraining(boolean followOn) throws Exception {
         TestUtils.setPrivateField(backgroundTaskManager, "draining", true);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var document = new JsonObject();
         document.addProperty("name", "row");
         request.setObject(document);
         request.setBackgroundFollowOn(followOn);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             assertEquals(OperationStatus.OK, SaveOperationHelper.executeSave(request).getStatus());
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(backgroundTaskManager, "draining", false);
         }
         return backgroundTaskManager.pending();
@@ -135,18 +135,18 @@ public class DrainFollowOnEventTest {
 
     private int pendingAfterABulkSaveWhileDraining(boolean followOn) throws Exception {
         TestUtils.setPrivateField(backgroundTaskManager, "draining", true);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var first = new JsonObject();
         first.addProperty("name", "first");
         final var second = new JsonObject();
         second.addProperty("name", "second");
         request.setObjects(List.of(first, second));
         request.setBackgroundFollowOn(followOn);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             assertEquals(OperationStatus.OK, SaveOperationHelper.executeBulkSave(request).getStatus());
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(backgroundTaskManager, "draining", false);
         }
         return backgroundTaskManager.pending();
@@ -180,15 +180,16 @@ public class DrainFollowOnEventTest {
     public void aRepairPassResubmittingDuringTheDrainIsCutAtTheDrainTimeout() throws Exception {
         final var lockTimeout = configuration.getTransactionLockTimeoutMs();
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", REPAIR_LOCK_WAIT_MS);
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add("name");
         entry.setIndexes(indexes);
         backgroundTaskManager.startBackgroundWorkers();
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            assertTrue(backgroundTaskManager.submitMaintenance(new IndexRepairEvent(TestGlobals.DB, TestGlobals.COLL,
-                    List.of("busy"), CollectionIncarnation.current(TestGlobals.DB, TestGlobals.COLL), 0L)));
+            assertTrue(backgroundTaskManager
+                    .submitMaintenance(new IndexRepairEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of("busy"),
+                            CollectionIncarnation.current(TestGlobals.PROJECT, TestGlobals.COLL), 0L)));
             final var started = System.nanoTime();
 
             assertFalse(backgroundTaskManager.drain(DRAIN_MILLIS), "the repair pass keeps resubmitting itself");
@@ -196,7 +197,7 @@ public class DrainFollowOnEventTest {
             assertTrue(System.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(WAIT_MILLIS),
                     "the drain is bounded by its timeout, whatever the maintenance queue does");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", lockTimeout);
         }
     }

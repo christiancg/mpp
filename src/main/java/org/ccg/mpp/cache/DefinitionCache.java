@@ -23,24 +23,24 @@ final class DefinitionCache<T> {
         this.loader = loader;
     }
 
-    T get(String dbName, String name) {
-        final var id = Cache.getCollectionIdentifier(dbName, name);
+    T get(String projectName, String name) {
+        final var id = Cache.getCollectionIdentifier(projectName, name);
         final var cached = values.get().get(id);
         if (cached != null) {
             return cached;
         }
-        if (misses.get().contains(dbName, missPrefix + id)) {
+        if (misses.get().contains(projectName, missPrefix + id)) {
             return null;
         }
         final var generationAtLoad = generation.current();
-        final var loaded = loader.apply(dbName, name);
-        generation.publishIfCurrent(generationAtLoad, () -> publishLoad(dbName, id, loaded));
+        final var loaded = loader.apply(projectName, name);
+        generation.publishIfCurrent(generationAtLoad, () -> publishLoad(projectName, id, loaded));
         return loaded;
     }
 
-    private void publishLoad(String dbName, String id, T loaded) {
+    private void publishLoad(String projectName, String id, T loaded) {
         if (loaded == null) {
-            misses.get().put(dbName, missPrefix + id);
+            misses.get().put(projectName, missPrefix + id);
         } else {
             values.get().put(id, loaded);
         }
@@ -48,7 +48,7 @@ final class DefinitionCache<T> {
 
     void put(String id, T value) {
         generation.invalidate(() -> {
-            misses.get().remove(databaseOf(id), missPrefix + id);
+            misses.get().remove(projectOf(id), missPrefix + id);
             values.get().put(id, value);
         });
     }
@@ -56,15 +56,15 @@ final class DefinitionCache<T> {
     void remove(String id) {
         generation.invalidate(() -> {
             values.get().remove(id);
-            misses.get().remove(databaseOf(id), missPrefix + id);
+            misses.get().remove(projectOf(id), missPrefix + id);
         });
     }
 
-    void removeForDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    void removeForProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         generation.invalidate(() -> {
             values.get().removeIf(id -> id.startsWith(prefix));
-            misses.get().removeIf(dbName, id -> id.startsWith(missPrefix + prefix));
+            misses.get().removeIf(projectName, id -> id.startsWith(missPrefix + prefix));
         });
     }
 
@@ -72,7 +72,7 @@ final class DefinitionCache<T> {
         generation.invalidate(() -> values.get().removeIf(keyMatches));
     }
 
-    private static String databaseOf(String id) {
+    private static String projectOf(String id) {
         final var separator = id.indexOf(Globals.COLL_IDENTIFIER_SEPARATOR);
         return separator < 0 ? id : id.substring(0, separator);
     }

@@ -68,8 +68,8 @@ const it = serverIt({ maxListensPerConnection: "2" });
 let orders: Collection<Document, Stored<Document>>;
 
 beforeAll(async () => {
-    await it.client.database("listen_it").create();
-    orders = it.client.database("listen_it").collection("orders");
+    await it.client.project("listen_it").create();
+    orders = it.client.project("listen_it").collection("orders");
     await orders.create();
 });
 
@@ -106,7 +106,7 @@ describe("live queries", () => {
     });
 
     test("dropping the collection ends the listen", async () => {
-        const doomed = it.client.database("listen_it").collection("doomed");
+        const doomed = it.client.project("listen_it").collection("doomed");
         await doomed.create();
         const events = new Events();
         const subscription = await doomed.listen(events);

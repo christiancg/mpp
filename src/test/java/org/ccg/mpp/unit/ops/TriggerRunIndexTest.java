@@ -44,7 +44,7 @@ public class TriggerRunIndexTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(Configuration.getInstance(), "triggerRunLogEnabled", true);
         TriggerTestSupport.consumeAllPendingRuns();
     }
@@ -58,16 +58,17 @@ public class TriggerRunIndexTest {
     private static DbEntry document(String id) {
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString(id));
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
     }
 
     private static TriggerRunLog.TriggerRunDescriptor descriptor(List<DbEntry> entries) {
-        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit", "recalc",
+        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc",
                 EventType.CREATED, false, "alice", 0, System.currentTimeMillis(), entries);
     }
 
-    static AdminTriggerRunEntry run(String runId, String nodeId, String dbName, long firedAt, TriggerRunStatus status) {
-        final var entry = new AdminTriggerRunEntry(runId, 0, nodeId, dbName, TestGlobals.COLL, "audit", "recalc",
+    static AdminTriggerRunEntry run(String runId, String nodeId, String projectName, long firedAt,
+            TriggerRunStatus status) {
+        final var entry = new AdminTriggerRunEntry(runId, 0, nodeId, projectName, TestGlobals.COLL, "audit", "recalc",
                 EventType.CREATED, false, "alice", 0, firedAt, List.of("a"), List.of());
         entry.markAttempt(status, status == TriggerRunStatus.DEAD ? 3 : 0, null, 0L);
         return entry;
@@ -75,14 +76,14 @@ public class TriggerRunIndexTest {
 
     private static List<String> describe(TriggerRunIndex.Summary run) {
         return List.of(run.recordId(), run.runId(), String.valueOf(run.nodeId()), run.status().name(),
-                String.valueOf(run.firedAt()), String.valueOf(run.lastErrorAt()), String.valueOf(run.dbName()),
+                String.valueOf(run.firedAt()), String.valueOf(run.lastErrorAt()), String.valueOf(run.projectName()),
                 String.valueOf(run.collName()), String.valueOf(run.txId()));
     }
 
     private static List<String> describe(AdminTriggerRunEntry entry) {
         return List.of(entry.get_id(), entry.getRunId(), String.valueOf(entry.getNodeId()), entry.getStatus().name(),
                 String.valueOf(entry.getFiredAt()), String.valueOf(entry.getLastErrorAt()),
-                String.valueOf(entry.getDbName()), String.valueOf(entry.getCollName()),
+                String.valueOf(entry.getTargetProject()), String.valueOf(entry.getCollName()),
                 String.valueOf(entry.getTxId()));
     }
 
@@ -124,8 +125,8 @@ public class TriggerRunIndexTest {
         final var dead = TriggerRunLog.record(descriptor(List.of(document("c"))));
         TriggerRunLog.markAttempt(dead, TriggerRunStatus.DEAD, 3, "boom", 0L);
         TriggerRunLog.discard(TriggerRunLog.record(descriptor(List.of(document("d")))));
-        final var deterministic = TriggerRunLog.deterministicRunId("tx-1", TestGlobals.DB, TestGlobals.COLL, "audit",
-                EventType.CREATED, null);
+        final var deterministic = TriggerRunLog.deterministicRunId("tx-1", TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", EventType.CREATED, null);
         assertNotNull(TriggerRunLog.recordDeterministic(descriptor(List.of(document("e"))), "tx-1", deterministic));
         final var replayed = new ArrayList<AdminTriggerRunEntry>();
         assertNotNull(TriggerRunLog.recordStaged(descriptor(List.of(document("e"))), Map.of("e", 5L), replayed::add));
@@ -146,11 +147,13 @@ public class TriggerRunIndexTest {
         final var runs = new ArrayList<AdminTriggerRunEntry>();
         final var stranded = new ArrayList<String>();
         for (var index = 0; index < 30; index++) {
-            runs.add(run("own-" + index, TriggerRunLog.currentNodeId(), TestGlobals.DB, now, TriggerRunStatus.PENDING));
-            runs.add(run("dead-" + index, TriggerRunLog.currentNodeId(), TestGlobals.DB, now, TriggerRunStatus.DEAD));
+            runs.add(run("own-" + index, TriggerRunLog.currentNodeId(), TestGlobals.PROJECT, now,
+                    TriggerRunStatus.PENDING));
+            runs.add(run("dead-" + index, TriggerRunLog.currentNodeId(), TestGlobals.PROJECT, now,
+                    TriggerRunStatus.DEAD));
         }
         for (var index = 0; index < 5; index++) {
-            final var foreign = run("foreign-" + index, "another-node", TestGlobals.DB, now - SEVEN_DAYS_MS,
+            final var foreign = run("foreign-" + index, "another-node", TestGlobals.PROJECT, now - SEVEN_DAYS_MS,
                     TriggerRunStatus.PENDING);
             runs.add(foreign);
             stranded.add(foreign.get_id());
@@ -172,11 +175,11 @@ public class TriggerRunIndexTest {
         final var runs = new ArrayList<AdminTriggerRunEntry>();
         final var expected = new HashSet<String>();
         for (var index = 0; index < 2_500; index++) {
-            runs.add(run("run-" + index, TriggerRunLog.currentNodeId(), TestGlobals.DB, System.currentTimeMillis(),
+            runs.add(run("run-" + index, TriggerRunLog.currentNodeId(), TestGlobals.PROJECT, System.currentTimeMillis(),
                     TriggerRunStatus.PENDING));
             expected.add("run-" + index);
         }
-        runs.add(run("dead", TriggerRunLog.currentNodeId(), TestGlobals.DB, System.currentTimeMillis(),
+        runs.add(run("dead", TriggerRunLog.currentNodeId(), TestGlobals.PROJECT, System.currentTimeMillis(),
                 TriggerRunStatus.DEAD));
         AdminOperationHelper.saveTriggerRuns(runs);
         reloadTriggerRunRowsFromDisk();
@@ -198,7 +201,7 @@ public class TriggerRunIndexTest {
 
     private static void reloadTriggerRunRowsFromDisk() throws Exception {
         final var reloaded = new ConcurrentSkipListMap<String, PkIndexEntry>();
-        for (final var row : IocContainer.get(FileSystem.class).readWholePkIndexFile(Globals.ADMIN_DB_NAME,
+        for (final var row : IocContainer.get(FileSystem.class).readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME,
                 Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME)) {
             reloaded.put(row.getValue(), row);
         }

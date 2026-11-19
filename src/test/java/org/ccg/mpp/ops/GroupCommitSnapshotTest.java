@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
 public class GroupCommitSnapshotTest {
     private static final long WAIT_MS = GroupCommitFixture.WAIT_MS;
     private static final long BLOCKED_MS = 300L;
-    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private static final String USER = "group-snapper";
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
     private final SnapshotRegistry registry = IocContainer.get(SnapshotRegistry.class);
@@ -51,7 +51,7 @@ public class GroupCommitSnapshotTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.ensureAdminUser(USER);
         recorder = RecordingForcer.install(true);
         fixture = new GroupCommitFixture(recorder);
@@ -76,7 +76,7 @@ public class GroupCommitSnapshotTest {
     }
 
     private OperationResponse readSnapshot(String snapshotId) {
-        final var request = new ReadSnapshotRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new ReadSnapshotRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setSnapshotId(snapshotId);
         request.setLimit(100);
         return SnapshotOperationHelper.read(request, client);
@@ -85,7 +85,8 @@ public class GroupCommitSnapshotTest {
     @Test
     public void test_a_snapshot_page_waits_for_the_group_force_and_reads_the_images_its_plans_kept() throws Exception {
         final var snapshotId = assertInstanceOf(StartSnapshotResponse.class,
-                SnapshotOperationHelper.start(new StartSnapshotRequest(TestGlobals.DB), client, USER)).getSnapshotId();
+                SnapshotOperationHelper.start(new StartSnapshotRequest(TestGlobals.PROJECT), client, USER))
+                .getSnapshotId();
         faultInjector.arm(FaultPoint.WAL_GROUP_APPENDED, FaultAction.PAUSE, SUBJECT);
         final var writes = new ArrayList<Supplier<OperationResponse>>();
         writes.add(() -> fixture.save("seed", "grouped"));

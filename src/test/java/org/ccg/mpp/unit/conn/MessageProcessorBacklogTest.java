@@ -43,7 +43,7 @@ public class MessageProcessorBacklogTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         final var manager = IocContainer.get(BackgroundTaskManager.class);
         TestUtils.setPrivateField(configuration, "backgroundQueueMaxEvents", manager.pending() + 1);
@@ -83,12 +83,12 @@ public class MessageProcessorBacklogTest {
     }
 
     private static String save(String id) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
     }
 
     private static String findById(String id) {
-        return "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}";
     }
 
@@ -124,8 +124,8 @@ public class MessageProcessorBacklogTest {
         final var waiter = new Thread(() -> outcome.set(gate.admitClientRequest(OperationType.SAVE, false)));
         waiter.start();
 
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL, 1_000L));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL, 1_000L));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(waiter.isAlive(), "the write is still waiting for room while the collection is free");
 
         drainFakeBacklog();

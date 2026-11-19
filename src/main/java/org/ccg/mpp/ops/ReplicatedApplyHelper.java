@@ -46,31 +46,31 @@ public final class ReplicatedApplyHelper {
 
     public static boolean apply(ReplicationPayload payload, long timeoutMillis) {
         if (payload == null || payload.getOp() == null
-                || !PeerNames.collection(payload.getDbName(), payload.getCollName())) {
+                || !PeerNames.collection(payload.getProjectName(), payload.getCollName())) {
             return false;
         }
-        final var dbName = payload.getDbName();
+        final var projectName = payload.getProjectName();
         final var collName = payload.getCollName();
         var locked = false;
         try {
-            locked = locks.tryLockWrite(dbName, collName, timeoutMillis);
+            locked = locks.tryLockWrite(projectName, collName, timeoutMillis);
             if (!locked) {
-                logger.warning("Skipping the replicated apply to " + dbName + "|" + collName
+                logger.warning("Skipping the replicated apply to " + projectName + "|" + collName
                         + ": its write lock stayed held for " + timeoutMillis + "ms");
                 return false;
             }
-            faultInjector.at(FaultPoint.REPLICATED_APPLY_LOCKED, Cache.getCollectionIdentifier(dbName, collName));
+            faultInjector.at(FaultPoint.REPLICATED_APPLY_LOCKED, Cache.getCollectionIdentifier(projectName, collName));
             return applyLocked(payload);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.warning("Interrupted applying a replicated write to " + dbName + "|" + collName);
+            logger.warning("Interrupted applying a replicated write to " + projectName + "|" + collName);
             return false;
         } catch (Exception e) {
-            logger.error("Failed to apply replicated write to " + dbName + "|" + collName, e);
+            logger.error("Failed to apply replicated write to " + projectName + "|" + collName, e);
             return false;
         } finally {
             if (locked) {
-                locks.release(dbName, collName);
+                locks.release(projectName, collName);
             }
         }
     }
@@ -88,14 +88,14 @@ public final class ReplicatedApplyHelper {
             return false;
         }
         if (belongsToAnotherIncarnation(payload)) {
-            logger.warning("Refusing a replicated " + payload.getOp() + " to " + payload.getDbName() + "|"
+            logger.warning("Refusing a replicated " + payload.getOp() + " to " + payload.getProjectName() + "|"
                     + payload.getCollName() + ": it belongs to incarnation " + payload.incarnationValue()
                     + " and this node holds incarnation "
-                    + CollectionIncarnation.current(payload.getDbName(), payload.getCollName()));
+                    + CollectionIncarnation.current(payload.getProjectName(), payload.getCollName()));
             return false;
         }
         try (var batch = listenManager.openBatch(outer,
-                List.of(Cache.getCollectionIdentifier(payload.getDbName(), payload.getCollName())))) {
+                List.of(Cache.getCollectionIdentifier(payload.getProjectName(), payload.getCollName())))) {
             return switch (payload.getOp()) {
                 case UPSERT -> applyUpsert(payload, batch);
                 case DELETE -> applyDelete(payload, batch);
@@ -105,7 +105,8 @@ public final class ReplicatedApplyHelper {
 
     public static boolean belongsToAnotherIncarnation(ReplicationPayload payload) {
         final var stamped = payload.incarnationValue();
-        return stamped != 0L && !CollectionIncarnation.isCurrent(payload.getDbName(), payload.getCollName(), stamped);
+        return stamped != 0L
+                && !CollectionIncarnation.isCurrent(payload.getProjectName(), payload.getCollName(), stamped);
     }
 
     private static boolean applyUpsert(ReplicationPayload payload, DirtySink sink) throws Exception {
@@ -113,8 +114,8 @@ public final class ReplicatedApplyHelper {
         final var versions = payload.getVersions();
         final var acceptedDocuments = new ArrayList<JsonObject>();
         final var acceptedVersions = new ArrayList<Long>();
-        final var tombstones = fs.tombstones().view(payload.getDbName(), payload.getCollName());
-        final var stored = storedRowsOf(payload.getDbName(), payload.getCollName(),
+        final var tombstones = fs.tombstones().view(payload.getProjectName(), payload.getCollName());
+        final var stored = storedRowsOf(payload.getProjectName(), payload.getCollName(),
                 versionedIdsOf(documents, versions));
         for (var i = 0; i < documents.size(); i++) {
             final var document = documents.get(i);
@@ -134,10 +135,10 @@ public final class ReplicatedApplyHelper {
         if (acceptedDocuments.isEmpty()) {
             return true;
         }
-        final var request = new BulkSaveRequest(payload.getDbName(), payload.getCollName());
+        final var request = new BulkSaveRequest(payload.getProjectName(), payload.getCollName());
         request.setObjects(acceptedDocuments);
         return SaveOperationHelper.executeBulkSave(request, acceptedVersions, sink,
-                servesCollection(payload.getDbName(), payload.getCollName())) instanceof BulkSaveResponse;
+                servesCollection(payload.getProjectName(), payload.getCollName())) instanceof BulkSaveResponse;
     }
 
     public static boolean versionsWithinSkew(ReplicationPayload payload) {
@@ -146,7 +147,7 @@ public final class ReplicatedApplyHelper {
         }
         for (final var raw : payload.getVersions()) {
             if (raw != null && !hybridClock.withinSkew(Long.parseLong(raw), clusterConfig.maxClockSkewMs())) {
-                logger.warning("Refusing a replicated " + payload.getOp() + " to " + payload.getDbName() + "|"
+                logger.warning("Refusing a replicated " + payload.getOp() + " to " + payload.getProjectName() + "|"
                         + payload.getCollName() + ": its version " + raw
                         + " is more than clusterMaxClockSkewMs ahead of this node's clock");
                 return false;
@@ -184,9 +185,9 @@ public final class ReplicatedApplyHelper {
         return ids;
     }
 
-    private static WriterPkRows storedRowsOf(String dbName, String collName, Collection<String> ids)
+    private static WriterPkRows storedRowsOf(String projectName, String collName, Collection<String> ids)
             throws IOException {
-        return ids.isEmpty() ? WriterPkRows.of(List.of()) : cache.pkRowsForWriter(dbName, collName, ids);
+        return ids.isEmpty() ? WriterPkRows.of(List.of()) : cache.pkRowsForWriter(projectName, collName, ids);
     }
 
     private static Long versionAt(List<String> versions, int index) {
@@ -198,12 +199,12 @@ public final class ReplicatedApplyHelper {
     }
 
     private static boolean applyDelete(ReplicationPayload payload, DirtySink sink) throws Exception {
-        final var dbName = payload.getDbName();
+        final var projectName = payload.getProjectName();
         final var collName = payload.getCollName();
         final var ids = payload.getIds();
         final var versions = payload.getVersions();
-        final var tombstones = fs.tombstones().view(dbName, collName);
-        final var storedRows = storedRowsOf(dbName, collName, ids);
+        final var tombstones = fs.tombstones().view(projectName, collName);
+        final var storedRows = storedRowsOf(projectName, collName, ids);
         final var missingIds = new ArrayList<String>();
         final var missingVersions = new ArrayList<Long>();
         final var deletable = new ArrayList<String>(ids.size());
@@ -222,14 +223,16 @@ public final class ReplicatedApplyHelper {
                 deletable.add(id);
             }
         }
-        final var pending = fs.tombstones().appendAllDeferred(dbName, collName, missingIds, missingVersions);
-        faultInjector.at(FaultPoint.REPLICATED_TOMBSTONES_APPENDED, Cache.getCollectionIdentifier(dbName, collName));
-        DeleteOperationHelper.executeBulkDelete(dbName, collName, deletable, sink, servesCollection(dbName, collName));
+        final var pending = fs.tombstones().appendAllDeferred(projectName, collName, missingIds, missingVersions);
+        faultInjector.at(FaultPoint.REPLICATED_TOMBSTONES_APPENDED,
+                Cache.getCollectionIdentifier(projectName, collName));
+        DeleteOperationHelper.executeBulkDelete(projectName, collName, deletable, sink,
+                servesCollection(projectName, collName));
         pending.await();
         return true;
     }
 
-    private static boolean servesCollection(String dbName, String collName) {
-        return coordinator.stillOwns(dbName, collName);
+    private static boolean servesCollection(String projectName, String collName) {
+        return coordinator.stillOwns(projectName, collName);
     }
 }

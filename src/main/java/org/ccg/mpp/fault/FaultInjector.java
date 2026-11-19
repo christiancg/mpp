@@ -43,9 +43,9 @@ public class FaultInjector {
         }
     }
 
-    public void at(FaultPoint point, String dbName, String collName) {
+    public void at(FaultPoint point, String projectName, String collName) {
         if (enabled) {
-            at(point, dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
+            at(point, projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
         }
     }
 

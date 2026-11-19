@@ -14,7 +14,7 @@ public sealed class ConnectionLimitsIT(ConnectionLimitsIT.Server fixture) : ICla
     [Fact]
     public async Task AnOversizedRequestClosesItsConnectionAndThePoolRecovers()
     {
-        var notes = fixture.Client.Database("limits_it").Collection("notes");
+        var notes = fixture.Client.Project("limits_it").Collection("notes");
         var refused = await Assert.ThrowsAsync<ServerClosedConnectionException>(() => notes.SaveAsync(Document.Of("_id", "big", "text", new string('x', 200 * 1024))));
         Assert.Equal("400-22", refused.RawCode);
         await notes.SaveAsync(Document.Of("_id", "small", "text", "ok"));
@@ -88,8 +88,8 @@ public sealed class ConnectionLimitsIT(ConnectionLimitsIT.Server fixture) : ICla
 
         protected override async Task SeedAsync()
         {
-            await Client.Database("limits_it").CreateAsync();
-            await Client.Database("limits_it").Collection("notes").CreateAsync();
+            await Client.Project("limits_it").CreateAsync();
+            await Client.Project("limits_it").Collection("notes").CreateAsync();
         }
     }
 }

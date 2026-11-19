@@ -13,16 +13,16 @@ PORT = int(os.environ.get("API_TEST_PORT", "8989"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "schema_test_db"
+PROJECT = "schema_test_project"
 COLL = "people"
 
 bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
 
-def create_user(c, username, password, admin=False, global_perms=None, db_perms=None, coll_perms=None):
+def create_user(c, username, password, admin=False, global_perms=None, project_perms=None, coll_perms=None):
     return c.send({
         "type": "CREATE_USER", "username": username, "password": password, "admin": admin,
-        "globalPermissions": global_perms or [], "databasePermissions": db_perms or {},
+        "globalPermissions": global_perms or [], "projectPermissions": project_perms or {},
         "collectionPermissions": coll_perms or {},
     })
 
@@ -31,44 +31,44 @@ def delete_user(c, username) -> dict:
     return c.send({"type": "DELETE_USER", "username": username})
 
 
-def set_database_owners(c, database_name, owners) -> dict:
-    return c.send({"type": "SET_DATABASE_OWNERS", "databaseName": database_name, "owners": owners})
+def set_project_owners(c, project_name, owners) -> dict:
+    return c.send({"type": "SET_PROJECT_OWNERS", "projectName": project_name, "owners": owners})
 
 
-def create_db(c, name=DB) -> dict:
-    return c.send({"type": "CREATE_DATABASE", "databaseName": name})
+def create_project(c, name=PROJECT) -> dict:
+    return c.send({"type": "CREATE_PROJECT", "projectName": name})
 
 
-def drop_db(c, name=DB) -> dict:
-    return c.send({"type": "DROP_DATABASE", "databaseName": name})
+def drop_project(c, name=PROJECT) -> dict:
+    return c.send({"type": "DROP_PROJECT", "projectName": name})
 
 
-def create_coll(c, coll, db=DB) -> dict:
-    return c.send({"type": "CREATE_COLLECTION", "databaseName": db, "collectionName": coll})
+def create_coll(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "CREATE_COLLECTION", "projectName": project, "collectionName": coll})
 
 
-def save(c, coll, obj, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": obj})
+def save(c, coll, obj, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": obj})
 
 
-def bulk_save(c, coll, objs, db=DB) -> dict:
-    return c.send({"type": "BULK_SAVE", "databaseName": db, "collectionName": coll, "objects": objs})
+def bulk_save(c, coll, objs, project=PROJECT) -> dict:
+    return c.send({"type": "BULK_SAVE", "projectName": project, "collectionName": coll, "objects": objs})
 
 
-def find_by_id(c, coll, _id, db=DB) -> dict:
-    return c.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": _id})
+def find_by_id(c, coll, _id, project=PROJECT) -> dict:
+    return c.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": _id})
 
 
-def save_schema(c, coll, schema, db=DB) -> dict:
-    return c.send({"type": "SAVE_SCHEMA", "databaseName": db, "collectionName": coll, "schema": schema})
+def save_schema(c, coll, schema, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE_SCHEMA", "projectName": project, "collectionName": coll, "schema": schema})
 
 
-def delete_schema(c, coll, db=DB) -> dict:
-    return c.send({"type": "DELETE_SCHEMA", "databaseName": db, "collectionName": coll})
+def delete_schema(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "DELETE_SCHEMA", "projectName": project, "collectionName": coll})
 
 
-def get_schema(c, coll, db=DB) -> dict:
-    return c.send({"type": "GET_SCHEMA", "databaseName": db, "collectionName": coll})
+def get_schema(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "GET_SCHEMA", "projectName": project, "collectionName": coll})
 
 
 PERSON_SCHEMA = {
@@ -84,12 +84,12 @@ PERSON_SCHEMA = {
 
 
 def teardown(c):
-    drop_db(c, DB)
+    drop_project(c, PROJECT)
 
 
 def setup(c):
     teardown(c)
-    check_status("setup: create database", create_db(c, DB), "OK")
+    check_status("setup: create project", create_project(c, PROJECT), "OK")
     check_status("setup: create collection", create_coll(c, COLL), "OK")
 
 
@@ -254,7 +254,7 @@ def test_the_id_is_invisible_to_the_schema(c):
 
 
 def test_a_recreated_collection_validates_against_its_new_schema(c):
-    section("a dropped and re-created collection or database validates against its new schema")
+    section("a dropped and re-created collection or project validates against its new schema")
     coll = "recreated"
     for round_number, (pattern, good, bad) in enumerate((("^a+$", "aaa", "bbb"), ("^b+$", "bbb", "aaa"))):
         create_coll(c, coll)
@@ -264,22 +264,22 @@ def test_a_recreated_collection_validates_against_its_new_schema(c):
         check_code(f"round {round_number}: {bad!r} is refused",
                    save(c, coll, {"_id": "b", "v": bad}), "ERROR", "400-7")
         check_status(f"round {round_number}: drop the collection",
-                     c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                     c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     create_coll(c, coll)
     check_status("a re-created collection without a schema accepts anything",
                  save(c, coll, {"_id": "any", "v": "zzz"}), "OK")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": coll})
-    other_db = "schema_recreate_db"
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": coll})
+    other_project = "schema_recreate_project"
     for round_number, (pattern, good, bad) in enumerate((("^a+$", "aaa", "bbb"), ("^b+$", "bbb", "aaa"))):
-        drop_db(c, other_db)
-        create_db(c, other_db)
-        create_coll(c, coll, db=other_db)
-        save_schema(c, coll, {"type": "object", "properties": {"v": {"pattern": pattern}}}, db=other_db)
-        check_status(f"database round {round_number}: {good!r} is accepted",
-                     save(c, coll, {"_id": "g", "v": good}, db=other_db), "OK")
-        check_code(f"database round {round_number}: {bad!r} is refused",
-                   save(c, coll, {"_id": "b", "v": bad}, db=other_db), "ERROR", "400-7")
-    drop_db(c, other_db)
+        drop_project(c, other_project)
+        create_project(c, other_project)
+        create_coll(c, coll, project=other_project)
+        save_schema(c, coll, {"type": "object", "properties": {"v": {"pattern": pattern}}}, project=other_project)
+        check_status(f"project round {round_number}: {good!r} is accepted",
+                     save(c, coll, {"_id": "g", "v": good}, project=other_project), "OK")
+        check_code(f"project round {round_number}: {bad!r} is refused",
+                   save(c, coll, {"_id": "b", "v": bad}, project=other_project), "ERROR", "400-7")
+    drop_project(c, other_project)
 
 
 HOSTILE = "x" * 800 + "!"
@@ -554,7 +554,7 @@ def test_get_schema(c):
 def test_get_schema_permissions(c):
     section("GET_SCHEMA permissions: READ is enough")
     save_schema(c, COLL, PERSON_SCHEMA)
-    create_user(c, "schema_viewer", "schema_viewer1234", db_perms={DB: "READ"})
+    create_user(c, "schema_viewer", "schema_viewer1234", project_perms={PROJECT: "READ"})
     create_user(c, "schema_outsider", "schema_outsider1234")
 
     with Conn() as rc:
@@ -572,14 +572,14 @@ def test_get_schema_permissions(c):
 def test_permissions(c):
     section("Permissions: admin/owner only")
     create_user(c, "schema_owner", "schema_owner1234")
-    create_user(c, "schema_reader", "schema_reader1234", db_perms={DB: "READ"})
-    set_database_owners(c, DB, ["schema_owner"])
+    create_user(c, "schema_reader", "schema_reader1234", project_perms={PROJECT: "READ"})
+    set_project_owners(c, PROJECT, ["schema_owner"])
 
     with Conn() as oc:
         oc.authenticate("schema_owner", "schema_owner1234")
-        check_status("database owner can save a schema",
+        check_status("project owner can save a schema",
               save_schema(oc, COLL, {"type": "object"}), "OK")
-        check_status("database owner can delete a schema", delete_schema(oc, COLL), "OK")
+        check_status("project owner can delete a schema", delete_schema(oc, COLL), "OK")
 
     with Conn() as rc:
         rc.authenticate("schema_reader", "schema_reader1234")
@@ -588,7 +588,7 @@ def test_permissions(c):
         check_status("read-only user cannot delete a schema",
               delete_schema(rc, COLL), "FORBIDDEN")
 
-    set_database_owners(c, DB, [])
+    set_project_owners(c, PROJECT, [])
     delete_user(c, "schema_owner")
     delete_user(c, "schema_reader")
 

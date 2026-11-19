@@ -19,9 +19,9 @@ public final class CommitAuthorization {
         final var user = cache.getAdminUserEntry(username);
         for (final var collectionId : transaction.getHeldLocks()) {
             final var separator = collectionId.indexOf(Globals.COLL_IDENTIFIER_SEPARATOR);
-            final var dbName = collectionId.substring(0, separator);
+            final var projectName = collectionId.substring(0, separator);
             final var collName = collectionId.substring(separator + 1);
-            if (!AuthorizationChecker.mayWrite(user, dbName, collName)) {
+            if (!AuthorizationChecker.mayWrite(user, projectName, collName)) {
                 return false;
             }
         }

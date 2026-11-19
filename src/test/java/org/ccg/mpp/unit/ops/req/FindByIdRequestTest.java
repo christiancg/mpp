@@ -9,28 +9,28 @@ import org.junit.jupiter.api.Test;
 public class FindByIdRequestTest {
     @Test
     public void constructor_sets_find_by_id_operation_type() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
 
-        FindByIdRequest request = new FindByIdRequest(dbName, collName);
+        FindByIdRequest request = new FindByIdRequest(projectName, collName);
 
         assertEquals(OperationType.FIND_BY_ID, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collName, request.getCollectionName());
     }
 
     @Test
     public void test_getters_and_setters() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
         String id = "12345";
 
-        FindByIdRequest request = new FindByIdRequest(dbName, collName);
+        FindByIdRequest request = new FindByIdRequest(projectName, collName);
         request.set_id(id);
 
         assertEquals(id, request.get_id());
         assertEquals(OperationType.FIND_BY_ID, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collName, request.getCollectionName());
     }
 }

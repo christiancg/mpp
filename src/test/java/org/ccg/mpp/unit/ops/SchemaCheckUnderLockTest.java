@@ -40,7 +40,7 @@ public class SchemaCheckUnderLockTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -52,12 +52,13 @@ public class SchemaCheckUnderLockTest {
     @BeforeEach
     void reset() throws Exception {
         TestUtils.releaseAllLocks();
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private void schemaSavedAfterTheEdgeCheck() {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson(STRICT_SCHEMA, JsonObject.class));
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
+                eJson.fromJson(STRICT_SCHEMA, JsonObject.class));
     }
 
     private static JsonObject document(String id, String name) {
@@ -70,20 +71,20 @@ public class SchemaCheckUnderLockTest {
     }
 
     private static SaveRequest save(JsonObject document) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         request.set_id(document.get(Globals.PK_FIELD).asJsonString().getValue());
         return request;
     }
 
     private static BulkSaveRequest bulkSave(JsonObject... documents) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(documents));
         return request;
     }
 
     private boolean stored(String id) throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of(id)).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of(id)).isEmpty();
     }
 
     private static void assertRefusedBySchema(OperationResponse response) {

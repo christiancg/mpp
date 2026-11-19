@@ -24,12 +24,12 @@ public final class FakeSource {
     private final Map<String, List<String>> triggers = new LinkedHashMap<>();
     private final Map<String, List<String>> schedules = new LinkedHashMap<>();
 
-    public FakeSource database(String database, String... collectionNames) {
-        collections.put(database, List.of(collectionNames));
+    public FakeSource project(String project, String... collectionNames) {
+        collections.put(project, List.of(collectionNames));
         return this;
     }
 
-    public FakeSource documents(String database, String collection, int count, int padding) {
+    public FakeSource documents(String project, String collection, int count, int padding) {
         final var list = new ArrayList<JsonObject>();
         for (var i = 0; i < count; i++) {
             final var document = new JsonObject();
@@ -37,66 +37,65 @@ public final class FakeSource {
             document.add("pad", new JsonString("x".repeat(padding)));
             list.add(document);
         }
-        documents.put(database + "." + collection, list);
+        documents.put(project + "." + collection, list);
         return this;
     }
 
-    public FakeSource index(String database, String collection, String... fields) {
-        indexes.put(database + "." + collection, List.of(fields));
+    public FakeSource index(String project, String collection, String... fields) {
+        indexes.put(project + "." + collection, List.of(fields));
         return this;
     }
 
-    public FakeSource schema(String database, String collection, String schema) {
-        schemas.put(database + "." + collection, schema);
+    public FakeSource schema(String project, String collection, String schema) {
+        schemas.put(project + "." + collection, schema);
         return this;
     }
 
-    public FakeSource procedure(String database, String json) {
-        procedures.computeIfAbsent(database, ignored -> new ArrayList<>()).add(json);
+    public FakeSource procedure(String project, String json) {
+        procedures.computeIfAbsent(project, ignored -> new ArrayList<>()).add(json);
         return this;
     }
 
-    public FakeSource trigger(String database, String json) {
-        triggers.computeIfAbsent(database, ignored -> new ArrayList<>()).add(json);
+    public FakeSource trigger(String project, String json) {
+        triggers.computeIfAbsent(project, ignored -> new ArrayList<>()).add(json);
         return this;
     }
 
-    public FakeSource schedule(String database, String json) {
-        schedules.computeIfAbsent(database, ignored -> new ArrayList<>()).add(json);
+    public FakeSource schedule(String project, String json) {
+        schedules.computeIfAbsent(project, ignored -> new ArrayList<>()).add(json);
         return this;
     }
 
     public void serveOn(FakeLineServer server) {
-        server.respond("LIST_DATABASES", ignored -> FakeLineServer.ok("LIST_DATABASES",
-                "\"databases\":" + strings(List.copyOf(collections.keySet()))));
+        server.respond("LIST_PROJECTS", ignored -> FakeLineServer.ok("LIST_PROJECTS",
+                "\"projects\":" + strings(List.copyOf(collections.keySet()))));
         server.respond("LIST_COLLECTIONS", request -> {
-            final var names = collections.get(database(request));
+            final var names = collections.get(project(request));
             return names == null
                     ? FakeLineServer.error("LIST_COLLECTIONS", "NOT_FOUND", "404-4")
                     : FakeLineServer.ok("LIST_COLLECTIONS", "\"collections\":" + strings(names));
         });
-        server.respond("GET_DATABASE_STATS",
-                ignored -> FakeLineServer.ok("GET_DATABASE_STATS", "\"stats\":" + stats()));
+        server.respond("GET_PROJECT_STATS", ignored -> FakeLineServer.ok("GET_PROJECT_STATS", "\"stats\":" + stats()));
         server.respond("START_SNAPSHOT", this::startSnapshot);
         server.respond("READ_SNAPSHOT", this::page);
         server.respond("RELEASE_SNAPSHOT", ignored -> FakeLineServer.ok("RELEASE_SNAPSHOT", "\"done\":true"));
         server.respond("GET_SCHEMA", request -> {
-            final var schema = schemas.get(database(request) + "." + collection(request));
+            final var schema = schemas.get(project(request) + "." + collection(request));
             return schema == null
                     ? FakeLineServer.error("GET_SCHEMA", "NOT_FOUND", "404-12")
                     : FakeLineServer.ok("GET_SCHEMA", "\"schema\":" + schema);
         });
         server.respond("LIST_PROCEDURES", request -> FakeLineServer.ok("LIST_PROCEDURES",
-                "\"procedures\":[" + String.join(",", procedures.getOrDefault(database(request), List.of())) + "]"));
+                "\"procedures\":[" + String.join(",", procedures.getOrDefault(project(request), List.of())) + "]"));
         server.respond("LIST_TRIGGERS", request -> FakeLineServer.ok("LIST_TRIGGERS",
-                "\"triggers\":[" + String.join(",", triggers.getOrDefault(database(request), List.of())) + "]"));
+                "\"triggers\":[" + String.join(",", triggers.getOrDefault(project(request), List.of())) + "]"));
         server.respond("LIST_SCHEDULES", request -> FakeLineServer.ok("LIST_SCHEDULES",
-                "\"schedules\":[" + String.join(",", schedules.getOrDefault(database(request), List.of())) + "]"));
+                "\"schedules\":[" + String.join(",", schedules.getOrDefault(project(request), List.of())) + "]"));
     }
 
     public String startSnapshot(JsonObject request) {
-        final var database = database(request);
-        final var existing = collections.getOrDefault(database, List.of());
+        final var project = project(request);
+        final var existing = collections.getOrDefault(project, List.of());
         final var captured = new ArrayList<String>();
         for (final var name : request.get("collectionNames").asJsonArray()) {
             if (existing.contains(name.asJsonString().getValue())) {
@@ -110,7 +109,7 @@ public final class FakeSource {
     public String page(JsonObject request) {
         final var afterId = Connection.stringOf(request, "afterId");
         final var limit = request.get("limit").asJsonNumber().getValue().intValue();
-        final var sorted = sortedDocuments(database(request) + "." + collection(request));
+        final var sorted = sortedDocuments(project(request) + "." + collection(request));
         var start = 0;
         while (afterId != null && start < sorted.size() && idOf(sorted.get(start)).compareTo(afterId) <= 0) {
             start++;
@@ -125,8 +124,8 @@ public final class FakeSource {
                 + ",\"done\":" + (end == sorted.size()));
     }
 
-    public List<String> sortedIds(String database, String collection) {
-        return sortedDocuments(database + "." + collection).stream().map(FakeSource::idOf).toList();
+    public List<String> sortedIds(String project, String collection) {
+        return sortedDocuments(project + "." + collection).stream().map(FakeSource::idOf).toList();
     }
 
     private List<JsonObject> sortedDocuments(String key) {
@@ -140,10 +139,10 @@ public final class FakeSource {
     }
 
     private String stats() {
-        final var databases = new JsonArray();
+        final var projects = new JsonArray();
         for (final var entry : collections.entrySet()) {
-            final var database = new JsonObject();
-            database.add("name", new JsonString(entry.getKey()));
+            final var project = new JsonObject();
+            project.add("name", new JsonString(entry.getKey()));
             final var collectionStats = new JsonArray();
             for (final var name : entry.getValue()) {
                 final var collection = new JsonObject();
@@ -153,11 +152,11 @@ public final class FakeSource {
                 collection.add("indexes", fields);
                 collectionStats.add(collection);
             }
-            database.add("collections", collectionStats);
-            databases.add(database);
+            project.add("collections", collectionStats);
+            projects.add(project);
         }
         final var stats = new JsonObject();
-        stats.add("databases", databases);
+        stats.add("projects", projects);
         return eJson.toJson(stats);
     }
 
@@ -167,8 +166,8 @@ public final class FakeSource {
         return eJson.toJson(array);
     }
 
-    private static String database(JsonObject request) {
-        return Connection.stringOf(request, "databaseName");
+    private static String project(JsonObject request) {
+        return Connection.stringOf(request, "projectName");
     }
 
     private static String collection(JsonObject request) {

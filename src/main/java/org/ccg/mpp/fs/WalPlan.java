@@ -24,7 +24,7 @@ final class WalPlan {
     private final FilePaths paths;
     private final PkIndexStore pkIndexStore;
     private final WriteAheadLog wal;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final TreeMap<Long, PageChanges> pages = new TreeMap<>();
     private final List<PkRow> pkRows = new ArrayList<>();
@@ -63,18 +63,18 @@ final class WalPlan {
     private record PkSlice(int start, int length) {
     }
 
-    WalPlan(FilePaths paths, PkIndexStore pkIndexStore, String dbName, String collName) throws IOException {
+    WalPlan(FilePaths paths, PkIndexStore pkIndexStore, String projectName, String collName) throws IOException {
         this.paths = paths;
         this.pkIndexStore = pkIndexStore;
         this.wal = pkIndexStore.wal();
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.retiredCopies = pkIndexStore.retiredCopies();
-        final var watched = retiredCopies.watches(dbName);
+        final var watched = retiredCopies.watches(projectName);
         this.retired = watched ? new ArrayList<>() : null;
         this.born = watched ? new ArrayList<>() : null;
-        if (wal.requireApplied(dbName, collName)) {
-            throw new IOException("Applied the earlier logged writes of " + WriteAheadLog.subject(dbName, collName)
+        if (wal.requireApplied(projectName, collName)) {
+            throw new IOException("Applied the earlier logged writes of " + WriteAheadLog.subject(projectName, collName)
                     + " just before this write, which had read the collection before them; nothing of it was written");
         }
     }
@@ -125,20 +125,20 @@ final class WalPlan {
             return;
         }
         if (retired != null) {
-            retiredCopies.retiring(dbName, collName, retired, born,
+            retiredCopies.retiring(projectName, collName, retired, born,
                     copy -> DocumentPageStore.retiredLineOf(changesOf(copy.page()).file, copy));
         }
-        final var pkLock = FileLocks.lockWrite(paths.pkIndexFile(dbName, collName));
+        final var pkLock = FileLocks.lockWrite(paths.pkIndexFile(projectName, collName));
         try {
-            final var pk = pkRows.isEmpty() ? null : pkIndexStore.prepareAppend(dbName, collName);
+            final var pk = pkRows.isEmpty() ? null : pkIndexStore.prepareAppend(projectName, collName);
             final var record = new WalCodec.RecordBuffer(expectedPayload(pk));
             encodePages(record);
             final var pkSlice = pk == null ? null : encodePkRows(record, pk);
-            final var walLock = wal.lock(dbName, collName);
+            final var walLock = wal.lock(projectName, collName);
             try {
-                final var seq = wal.append(dbName, collName, record, pages.keySet());
+                final var seq = wal.append(projectName, collName, record, pages.keySet());
                 fire(afterLog);
-                final var group = wal.openGroupOf(dbName, collName);
+                final var group = wal.openGroupOf(projectName, collName);
                 if (group != null) {
                     rememberLengths(group, pk);
                 }
@@ -148,9 +148,9 @@ final class WalPlan {
                 walLock.unlock();
             }
             if (pk != null) {
-                pkIndexStore.appended(dbName, collName, pk, pkSlice.length(), pkRows.size(), liveDelta());
+                pkIndexStore.appended(projectName, collName, pk, pkSlice.length(), pkRows.size(), liveDelta());
             }
-            wal.checkpointIfFull(dbName, collName);
+            wal.checkpointIfFull(projectName, collName);
         } finally {
             pkLock.unlock();
         }
@@ -174,14 +174,14 @@ final class WalPlan {
         if (known != null) {
             return known;
         }
-        final var changes = new PageChanges(paths.collectionPage(dbName, collName, page));
+        final var changes = new PageChanges(paths.collectionPage(projectName, collName, page));
         pages.put(page, changes);
         return changes;
     }
 
     private void fire(FaultPoint point) {
         if (point != null) {
-            faultInjector.at(point, dbName, collName);
+            faultInjector.at(point, projectName, collName);
         }
     }
 
@@ -268,7 +268,7 @@ final class WalPlan {
         } catch (IOException e) {
             closeKeptChannels(e);
             if (!abort(seq, pk, e)) {
-                throw new LoggedWriteNotAppliedException(WriteAheadLog.subject(dbName, collName), e);
+                throw new LoggedWriteNotAppliedException(WriteAheadLog.subject(projectName, collName), e);
             }
             throw e;
         }
@@ -292,16 +292,16 @@ final class WalPlan {
         }
         if (cutBack) {
             try {
-                wal.abort(dbName, collName, seq);
+                wal.abort(projectName, collName, seq);
                 return true;
             } catch (IOException abortFailure) {
                 failure.addSuppressed(abortFailure);
             }
         }
-        wal.markUnapplied(dbName, collName);
-        DeferredApplies.flag(dbName, collName);
+        wal.markUnapplied(projectName, collName);
+        DeferredApplies.flag(projectName, collName);
         logger.error(
-                "Logged a write to " + WriteAheadLog.subject(dbName, collName) + " but could not apply it or"
+                "Logged a write to " + WriteAheadLog.subject(projectName, collName) + " but could not apply it or"
                         + " take it back; it is applied before the collection is next used, or at the next startup",
                 failure);
         return false;
@@ -332,8 +332,8 @@ final class WalPlan {
             } catch (IOException e) {
                 closeKeptChannels(e);
                 PageLengths.forget(changes.file);
-                wal.markUnapplied(dbName, collName);
-                DeferredApplies.flag(dbName, collName);
+                wal.markUnapplied(projectName, collName);
+                DeferredApplies.flag(projectName, collName);
                 logger.error("Committed a write to " + changes.file.getName() + " but could not blank the copies it"
                         + " superseded; they are blanked before the collection is next used, or at the next startup",
                         e);

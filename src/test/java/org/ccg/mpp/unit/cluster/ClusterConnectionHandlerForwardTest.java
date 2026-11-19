@@ -41,13 +41,13 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>(Map.of(TestGlobals.DB, PermissionLevel.READ)));
+        request.setProjectPermissions(new HashMap<>(Map.of(TestGlobals.PROJECT, PermissionLevel.READ)));
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
 
     private static String save(String db, String coll, String id) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + db + "\",\"collectionName\":\"" + coll
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + db + "\",\"collectionName\":\"" + coll
                 + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
     }
 
@@ -66,7 +66,7 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
 
     @Test
     public void aForwardedSaveWithoutPermissionAnswers403_1AndWritesNothing() throws Exception {
-        final var response = forward(save(TestGlobals.DB, TestGlobals.COLL, "denied"), READER);
+        final var response = forward(save(TestGlobals.PROJECT, TestGlobals.COLL, "denied"), READER);
         assertEquals(ErrorCode.NO_PERMISSIONS.getCode(), response.getErrorCode());
         assertEquals(OperationStatus.NOT_FOUND, findById("denied").getStatus());
     }
@@ -79,17 +79,17 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
 
     @Test
     public void aForwardedRequestWithoutAnActingUserAnswers401_1() throws Exception {
-        final var response = forward(save(TestGlobals.DB, TestGlobals.COLL, "anon"), null);
+        final var response = forward(save(TestGlobals.PROJECT, TestGlobals.COLL, "anon"), null);
         assertEquals(ErrorCode.MUST_AUTHENTICATE_FIRST.getCode(), response.getErrorCode());
         assertEquals(OperationStatus.NOT_FOUND, findById("anon").getStatus());
     }
 
     @Test
     public void aForwardedScriptRunsHistoryWriteWithoutAUserIsApplied() throws Exception {
-        final var create = forward("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB
+        final var create = forward("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"script_runs\"}", null);
         assertEquals(OperationStatus.OK, create.getStatus(), create.getMessage());
-        final var saved = forward(save(TestGlobals.DB, "script_runs", "run-1"), null);
+        final var saved = forward(save(TestGlobals.PROJECT, "script_runs", "run-1"), null);
         assertEquals(OperationStatus.OK, saved.getStatus(), saved.getMessage());
     }
 
@@ -97,7 +97,7 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
     public void aReindexBroadcastWithABadNameIsRefused() throws Exception {
         final var message = envelope(ClusterMessageType.REINDEX_BROADCAST);
         message.setForwardBody(
-                "{\"type\":\"REINDEX\",\"databaseName\":\"../x\",\"collectionName\":\"" + TestGlobals.COLL + "\"}");
+                "{\"type\":\"REINDEX\",\"projectName\":\"../x\",\"collectionName\":\"" + TestGlobals.COLL + "\"}");
         final var reply = send(message);
         assertEquals(ClusterMessageType.ERROR, reply.getType());
         assertTrue(reply.getErrorMessage().startsWith("Refused the index rebuild"), reply.getErrorMessage());
@@ -110,7 +110,7 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
         message.setActingUser(READER);
         message.setTxSessionId(sessionId);
         message.setTxId(UUID.randomUUID().toString());
-        message.setForwardBody(save(TestGlobals.DB, TestGlobals.COLL, "txdenied"));
+        message.setForwardBody(save(TestGlobals.PROJECT, TestGlobals.COLL, "txdenied"));
         final var reply = send(message);
         assertEquals(ClusterMessageType.FORWARD_RESPONSE, reply.getType());
         final var response = eJson.fromJson(reply.getForwardBody(), OperationResponse.class);
@@ -133,15 +133,15 @@ public class ClusterConnectionHandlerForwardTest extends ClusterConnectionHandle
     @Test
     public void aReplicatedTransactionWithOneBadEntryIsRefused() throws Exception {
         final var message = envelope(ClusterMessageType.REPLICATE_TX);
-        message.setTxReplication(new TxReplicationPayload(List.of(
-                new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.DELETE, null, List.of("a/b")))));
+        message.setTxReplication(new TxReplicationPayload(List.of(new ReplicationPayload(TestGlobals.PROJECT,
+                TestGlobals.COLL, ReplicationOp.DELETE, null, List.of("a/b")))));
         final var reply = send(message);
         assertEquals(ClusterMessageType.ERROR, reply.getType());
         assertEquals(INVALID_PAYLOAD, reply.getErrorMessage());
     }
 
     @Test
-    public void digestAndPullForAReservedDatabaseAreRefused() throws Exception {
+    public void digestAndPullForAReservedProjectAreRefused() throws Exception {
         for (final var type : List.of(ClusterMessageType.DIGEST, ClusterMessageType.PULL)) {
             final var message = envelope(type);
             message.setAntiEntropy(new AntiEntropyPayload("admin", "users"));

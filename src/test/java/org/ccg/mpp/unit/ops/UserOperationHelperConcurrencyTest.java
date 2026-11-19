@@ -19,15 +19,15 @@ import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.UserOperationHelper;
-import org.ccg.mpp.ops.admin.DatabaseOperationHelper;
+import org.ccg.mpp.ops.admin.ProjectOperationHelper;
 import org.ccg.mpp.ops.admin.RestampedRecords;
 import org.ccg.mpp.ops.req.AuthenticateRequest;
 import org.ccg.mpp.ops.req.ChangePermissionsRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.test.LockHolder;
 import org.ccg.mpp.test.TestGlobals;
@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Test;
 
 public class UserOperationHelperConcurrencyTest {
     private static final long BUDGET_MS = 10_000L;
-    private static final String NEW_DB = "ownerracedb";
+    private static final String NEW_PROJECT = "ownerracedb";
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final Cache cache = IocContainer.get(Cache.class);
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
@@ -47,7 +47,7 @@ public class UserOperationHelperConcurrencyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         createUser("alpha", true);
         createUser("beta", true);
         createUser("gamma", false);
@@ -152,7 +152,7 @@ public class UserOperationHelperConcurrencyTest {
         holder.run(() -> {
             final var current = cache.getAdminUserEntry("gamma");
             AdminOperationHelper.saveUserEntry(new AdminUserEntry("gamma", current.getPasswordHash(), false,
-                    Set.of(GlobalPermissionType.CREATE_DATABASE), new HashMap<>(), new HashMap<>()));
+                    Set.of(GlobalPermissionType.CREATE_PROJECT), new HashMap<>(), new HashMap<>()));
             return null;
         });
         holder.release();
@@ -161,7 +161,7 @@ public class UserOperationHelperConcurrencyTest {
         assertEquals(OperationStatus.OK, result.get().getStatus());
         final var stored = cache.getAdminUserEntry("gamma");
         assertTrue(PasswordHasher.verify("renewed-password", stored.getPasswordHash()));
-        assertEquals(Set.of(GlobalPermissionType.CREATE_DATABASE), stored.getGlobalPermissions());
+        assertEquals(Set.of(GlobalPermissionType.CREATE_PROJECT), stored.getGlobalPermissions());
     }
 
     @Test
@@ -176,7 +176,7 @@ public class UserOperationHelperConcurrencyTest {
         holder.run(() -> {
             final var current = cache.getAdminUserEntry("gamma");
             AdminOperationHelper.saveUserEntry(new AdminUserEntry("gamma", PasswordHasher.hash("reset-by-admin"), false,
-                    current.getGlobalPermissions(), current.getDatabasePermissions(),
+                    current.getGlobalPermissions(), current.getProjectPermissions(),
                     current.getCollectionPermissions()));
             return null;
         });
@@ -242,7 +242,7 @@ public class UserOperationHelperConcurrencyTest {
         holder.run(() -> {
             final var gamma = cache.getAdminUserEntry("gamma");
             AdminOperationHelper.saveUserEntry(new AdminUserEntry("gamma", PasswordHasher.hash("renewed-password"),
-                    gamma.isAdmin(), gamma.getGlobalPermissions(), gamma.getDatabasePermissions(),
+                    gamma.isAdmin(), gamma.getGlobalPermissions(), gamma.getProjectPermissions(),
                     gamma.getCollectionPermissions(), gamma.getScriptPermissions()));
             return null;
         });
@@ -284,7 +284,7 @@ public class UserOperationHelperConcurrencyTest {
         request.setPassword(passwordPrefix + "-password");
         request.setAdmin(false);
         request.setGlobalPermissions(new java.util.HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         return request;
     }
@@ -300,7 +300,7 @@ public class UserOperationHelperConcurrencyTest {
         request.setUsername(username);
         request.setAdmin(false);
         request.setGlobalPermissions(new java.util.HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         return request;
     }
@@ -314,9 +314,9 @@ public class UserOperationHelperConcurrencyTest {
 
     private void holdUsersLock() throws Exception {
         holder.hold(() -> {
-            locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
+            locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
             return true;
-        }, () -> locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
+        }, () -> locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME));
     }
 
     private void deleteUserOnHolder(String username) throws Exception {
@@ -326,8 +326,8 @@ public class UserOperationHelperConcurrencyTest {
         });
     }
 
-    private static SetDatabaseOwnersRequest ownersRequest(List<String> owners) {
-        final var request = new SetDatabaseOwnersRequest(TestGlobals.DB);
+    private static SetProjectOwnersRequest ownersRequest(List<String> owners) {
+        final var request = new SetProjectOwnersRequest(TestGlobals.PROJECT);
         request.setOwners(owners);
         return request;
     }
@@ -337,56 +337,56 @@ public class UserOperationHelperConcurrencyTest {
         holdUsersLock();
         final var result = new AtomicReference<OperationResponse>();
         final var setOwners = startParked(
-                () -> DatabaseOperationHelper.processSetDatabaseOwners(ownersRequest(List.of("gamma"))), result);
+                () -> ProjectOperationHelper.processSetProjectOwners(ownersRequest(List.of("gamma"))), result);
 
         deleteUserOnHolder("gamma");
         holder.release();
         setOwners.join(BUDGET_MS);
 
         assertEquals(ErrorCode.USER_NOT_FOUND.getCode(), result.get().getErrorCode());
-        assertFalse(cache.getAdminDbEntry(TestGlobals.DB).getOwners().contains("gamma"),
-                "a deleted name left as owner hands the database to the next user created under it");
+        assertFalse(cache.getAdminProjectEntry(TestGlobals.PROJECT).getOwners().contains("gamma"),
+                "a deleted name left as owner hands the project to the next user created under it");
     }
 
     @Test
-    public void test_create_database_is_ownerless_when_its_caller_was_deleted_meanwhile() throws Exception {
+    public void test_create_project_is_ownerless_when_its_caller_was_deleted_meanwhile() throws Exception {
         final var callerId = clientTracker.registerForwardedClient("delta");
         holdUsersLock();
         final var result = new AtomicReference<OperationResponse>();
-        final var create = startParked(() -> DatabaseOperationHelper
-                .processCreateDatabaseOperation(new CreateDatabaseRequest(NEW_DB), callerId), result);
+        final var create = startParked(() -> ProjectOperationHelper
+                .processCreateProjectOperation(new CreateProjectRequest(NEW_PROJECT), callerId), result);
 
         deleteUserOnHolder("delta");
         holder.release();
         create.join(BUDGET_MS);
 
         assertEquals(OperationStatus.OK, result.get().getStatus());
-        assertTrue(cache.getAdminDbEntry(NEW_DB).getOwners().isEmpty());
+        assertTrue(cache.getAdminProjectEntry(NEW_PROJECT).getOwners().isEmpty());
     }
 
     @Test
-    public void test_create_database_is_owned_by_its_existing_caller() {
+    public void test_create_project_is_owned_by_its_existing_caller() {
         final var callerId = clientTracker.registerForwardedClient("delta");
 
-        DatabaseOperationHelper.processCreateDatabaseOperation(new CreateDatabaseRequest(NEW_DB), callerId);
+        ProjectOperationHelper.processCreateProjectOperation(new CreateProjectRequest(NEW_PROJECT), callerId);
 
-        assertEquals(List.of("delta"), cache.getAdminDbEntry(NEW_DB).getOwners());
+        assertEquals(List.of("delta"), cache.getAdminProjectEntry(NEW_PROJECT).getOwners());
     }
 
     @Test
     public void test_set_owners_of_existing_users_is_written() {
-        final var response = DatabaseOperationHelper.processSetDatabaseOwners(ownersRequest(List.of("gamma", "delta")));
+        final var response = ProjectOperationHelper.processSetProjectOwners(ownersRequest(List.of("gamma", "delta")));
 
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertEquals(List.of("gamma", "delta"), cache.getAdminDbEntry(TestGlobals.DB).getOwners());
+        assertEquals(List.of("gamma", "delta"), cache.getAdminProjectEntry(TestGlobals.PROJECT).getOwners());
     }
 
     @Test
-    public void test_set_owners_of_a_missing_database_answers_not_found() {
-        final var request = new SetDatabaseOwnersRequest("no_such_db");
+    public void test_set_owners_of_a_missing_project_answers_not_found() {
+        final var request = new SetProjectOwnersRequest("no_such_project");
         request.setOwners(List.of("gamma"));
 
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(),
-                DatabaseOperationHelper.processSetDatabaseOwners(request).getErrorCode());
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(),
+                ProjectOperationHelper.processSetProjectOwners(request).getErrorCode());
     }
 }

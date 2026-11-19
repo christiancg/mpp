@@ -14,9 +14,9 @@ The node it runs on.
 
 What started it.
 
-## database
+## project
 
-Its database.
+Its project.
 
 ## name
 

@@ -5,8 +5,8 @@ import org.ccg.mpp.ops.OperationType;
 public class ReleaseSnapshotRequest extends OperationRequest {
     private String snapshotId;
 
-    public ReleaseSnapshotRequest(String databaseName) {
-        super(OperationType.RELEASE_SNAPSHOT, databaseName, null);
+    public ReleaseSnapshotRequest(String projectName) {
+        super(OperationType.RELEASE_SNAPSHOT, projectName, null);
     }
 
     public String getSnapshotId() {

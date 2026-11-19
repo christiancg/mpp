@@ -35,7 +35,7 @@ public class OperationProcessorAdminTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -47,17 +47,17 @@ public class OperationProcessorAdminTest {
     @Test
     public void test_aggregation_with_analyze_reports_index_used() {
         final var coll = "analyzeIndexColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("status", new JsonString("active"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
         // Index creation is synchronous, so the index is available to the next aggregation.
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "status"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "status"));
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAnalyze(true);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "status", new JsonString("active")))));
@@ -68,21 +68,21 @@ public class OperationProcessorAdminTest {
         assertTrue(analyzeResult.isIndexUsed());
         assertTrue(analyzeResult.getIndexesUsed().contains("status"));
         assertTrue(analyzeResult.getLocksAcquired()
-                .contains(Cache.getCollectionIdentifier(TestGlobals.DB, coll) + "|status"));
+                .contains(Cache.getCollectionIdentifier(TestGlobals.PROJECT, coll) + "|status"));
     }
 
     @Test
     public void test_aggregation_with_analyze_no_index_suggests_creation() {
         final var coll = "analyzeNoIndexColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var saveRequest = new SaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var saveRequest = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("a1"));
         obj.add("notIndexed", new JsonString("v"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
 
-        final var aggregateRequest = new AggregateRequest(TestGlobals.DB, coll);
+        final var aggregateRequest = new AggregateRequest(TestGlobals.PROJECT, coll);
         aggregateRequest.setAnalyze(true);
         aggregateRequest.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(FieldOperatorType.EQUALS, "notIndexed", new JsonString("v")))));
@@ -97,53 +97,56 @@ public class OperationProcessorAdminTest {
 
     @Test
     public void test_find_by_id_records_pk_index_access() {
-        SaveRequest saveRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        SaveRequest saveRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("usage-id-2"));
         saveRequest.setObject(obj);
         processor.processMessage(saveRequest);
         final var mm = IocContainer.get(org.ccg.mpp.cache.MemoryManagement.class);
-        final var before = mm.getCounter(org.ccg.mpp.cache.AccessKind.PK_INDEX, TestGlobals.DB, TestGlobals.COLL, null);
+        final var before = mm.getCounter(org.ccg.mpp.cache.AccessKind.PK_INDEX, TestGlobals.PROJECT, TestGlobals.COLL,
+                null);
         final var beforeCount = before == null ? 0L : before.getAccessCount();
-        FindByIdRequest request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        FindByIdRequest request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("usage-id-2");
         processor.processMessage(request);
-        final var after = mm.getCounter(org.ccg.mpp.cache.AccessKind.PK_INDEX, TestGlobals.DB, TestGlobals.COLL, null);
+        final var after = mm.getCounter(org.ccg.mpp.cache.AccessKind.PK_INDEX, TestGlobals.PROJECT, TestGlobals.COLL,
+                null);
         assertNotNull(after);
         assertTrue(after.getAccessCount() > beforeCount);
     }
 
     @Test
     public void test_reindex_all_fields_rebuilds_registered_indexes() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexField"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexField"));
         try {
-            ReindexRequest request = new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, null);
+            ReindexRequest request = new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, null);
             ReindexResponse response = (ReindexResponse) processor.processMessage(request);
             assertEquals(OperationStatus.OK, response.getStatus());
             assertTrue(response.getRebuiltFields().contains("reindexField"));
         } finally {
-            processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexField"));
+            processor.processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexField"));
         }
     }
 
     @Test
     public void test_reindex_specific_field_rebuilds_only_that_field() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexFieldA"));
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexFieldB"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexFieldA"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexFieldB"));
         try {
-            ReindexRequest request = new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("reindexFieldA"));
+            ReindexRequest request = new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL,
+                    List.of("reindexFieldA"));
             ReindexResponse response = (ReindexResponse) processor.processMessage(request);
             assertEquals(OperationStatus.OK, response.getStatus());
             assertEquals(List.of("reindexFieldA"), response.getRebuiltFields());
         } finally {
-            processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexFieldA"));
-            processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "reindexFieldB"));
+            processor.processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexFieldA"));
+            processor.processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "reindexFieldB"));
         }
     }
 
     @Test
     public void test_reindex_unknown_field_returns_error() {
-        ReindexRequest request = new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("noSuchIndex"));
+        ReindexRequest request = new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("noSuchIndex"));
         OperationResponse response = processor.processMessage(request);
         assertEquals(OperationStatus.NOT_FOUND, response.getStatus());
         assertEquals("404-6", response.getErrorCode());

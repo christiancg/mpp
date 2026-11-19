@@ -40,7 +40,7 @@ public class GroupCommitSideEffectsTest {
     private static final String ACTOR = "alice";
     private static final String RUNS_WAL = "trigger_runs.wal";
     private static final long COLD_HOOK_TIMEOUT_MS = 30_000L;
-    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private final Cache cache = IocContainer.get(Cache.class);
     private final TriggerExecutor triggerExecutor = IocContainer.get(TriggerExecutor.class);
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
@@ -53,7 +53,7 @@ public class GroupCommitSideEffectsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         hookTimeout = configuration.getBeforeHookTimeoutMs();
@@ -82,12 +82,12 @@ public class GroupCommitSideEffectsTest {
 
     private void install(String name, String timing, String source) throws Exception {
         final var procedure = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, name, source), ACTOR);
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, name, source), ACTOR);
         assertEquals(OperationStatus.OK, procedure.getStatus(), procedure.getMessage());
-        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         existing.add(new TriggerDefinition(name, new LinkedHashSet<>(Set.of(EventType.CREATED, EventType.UPDATED)),
                 name, TriggerDefinition.MODE_DOCUMENT, timing, false, true, ACTOR, 1L, 1L, 1L, ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, existing);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, existing);
     }
 
     private void installHook(String source) throws Exception {

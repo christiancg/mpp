@@ -76,7 +76,7 @@ public final class ControlRequestValidator {
     }
 
     static ValidationResult validateListen(ListenRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, false);
+        final var base = NameValidations.validateProjectAndColl(request, false);
         if (!base.isValid()) {
             return base;
         }

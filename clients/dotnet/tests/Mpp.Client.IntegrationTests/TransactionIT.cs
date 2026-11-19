@@ -10,7 +10,7 @@ namespace Mpp.Client.IntegrationTests;
 
 public sealed class TransactionIT(TransactionIT.Server fixture) : IClassFixture<TransactionIT.Server>
 {
-    private Collection<Document> Accounts => fixture.Client.Database("tx_it").Collection("accounts");
+    private Collection<Document> Accounts => fixture.Client.Project("tx_it").Collection("accounts");
 
     [Fact]
     public async Task ACommitIsVisibleAndReadsInsideSeeTheirOwnWrites()
@@ -97,9 +97,9 @@ public sealed class TransactionIT(TransactionIT.Server fixture) : IClassFixture<
 
         protected override async Task SeedAsync()
         {
-            var database = Client.Database("tx_it");
-            await database.CreateAsync();
-            await database.Collection("accounts").CreateAsync();
+            var project = Client.Project("tx_it");
+            await project.CreateAsync();
+            await project.Collection("accounts").CreateAsync();
         }
     }
 }

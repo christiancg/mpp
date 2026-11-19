@@ -3,12 +3,12 @@ package org.ccg.mpp.ops;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.ioc.IocContainer;
 
-record StoredTotals(long databases, long collections, long pages, long entries, long sizeBytes) {
+record StoredTotals(long projects, long collections, long pages, long entries, long sizeBytes) {
     private static final Cache cache = IocContainer.get(Cache.class);
     static final StoredTotals NONE = new StoredTotals(0L, 0L, 0L, 0L, 0L);
 
-    static StoredTotals ofCollection(String dbName, String collName) {
-        final var pageEntries = cache.getAdminPageEntries(dbName, collName);
+    static StoredTotals ofCollection(String projectName, String collName) {
+        final var pageEntries = cache.getAdminPageEntries(projectName, collName);
         if (pageEntries == null) {
             return new StoredTotals(0L, 1L, 0L, 0L, 0L);
         }
@@ -21,20 +21,20 @@ record StoredTotals(long databases, long collections, long pages, long entries, 
         return new StoredTotals(0L, 1L, pageEntries.size(), entryCount, sizeBytes);
     }
 
-    static StoredTotals ofEveryUserDatabase() {
+    static StoredTotals ofEveryUserProject() {
         var totals = NONE;
-        for (var dbName : cache.getUserDatabaseNames()) {
-            var database = new StoredTotals(1L, 0L, 0L, 0L, 0L);
-            for (var collName : cache.getCollectionNamesForDatabase(dbName)) {
-                database = database.plus(ofCollection(dbName, collName));
+        for (var projectName : cache.getUserProjectNames()) {
+            var project = new StoredTotals(1L, 0L, 0L, 0L, 0L);
+            for (var collName : cache.getCollectionNamesForProject(projectName)) {
+                project = project.plus(ofCollection(projectName, collName));
             }
-            totals = totals.plus(database);
+            totals = totals.plus(project);
         }
         return totals;
     }
 
     StoredTotals plus(StoredTotals other) {
-        return new StoredTotals(databases + other.databases, collections + other.collections, pages + other.pages,
+        return new StoredTotals(projects + other.projects, collections + other.collections, pages + other.pages,
                 entries + other.entries, sizeBytes + other.sizeBytes);
     }
 }

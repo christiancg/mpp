@@ -34,7 +34,7 @@ public class AntiEntropyShutdownTest extends AntiEntropyTestBase {
         when(pool.request(any(), any(), anyLong())).thenAnswer(invocation -> {
             final ClusterMessage message = invocation.getArgument(1);
             final var response = new ClusterMessage();
-            final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+            final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
             if (message.getType() == ClusterMessageType.DIGEST) {
                 Thread.currentThread().interrupt();
                 response.setType(ClusterMessageType.DIGEST_ACK);
@@ -58,7 +58,7 @@ public class AntiEntropyShutdownTest extends AntiEntropyTestBase {
     public void test_a_sweep_interrupted_mid_digest_pulls_nothing() throws Exception {
         final var pool = peerInterruptingOnDigest(new DigestEntry(ID, 1000L, false));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
         final var stillInterrupted = Thread.interrupted();
 
         assertTrue(stillInterrupted, "the shutdown interrupt must survive the digest round");
@@ -72,7 +72,7 @@ public class AntiEntropyShutdownTest extends AntiEntropyTestBase {
         peerInterruptingOnDigest(
                 new DigestEntry(ID, HybridClock.pack(System.currentTimeMillis() + 1_000_000L, 0), true));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
         final var stillInterrupted = Thread.interrupted();
 
         assertTrue(stillInterrupted, "the shutdown interrupt must survive the digest round");

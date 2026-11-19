@@ -26,7 +26,7 @@ final class JoinLookup {
     private JoinLookup() {
     }
 
-    static Map<SaltedKey, JsonArray> build(String dbName, String joinCollectionName, String remoteField,
+    static Map<SaltedKey, JsonArray> build(String projectName, String joinCollectionName, String remoteField,
             List<JsonObject> leftEntries, String localField, Transaction transaction, PipelineContext context)
             throws IOException {
         final var localValues = new SaltedElementSet();
@@ -38,29 +38,29 @@ final class JoinLookup {
             }
         }
         final var overlay = transaction != null
-                ? transaction.overlayFor(Cache.getCollectionIdentifier(dbName, joinCollectionName))
+                ? transaction.overlayFor(Cache.getCollectionIdentifier(projectName, joinCollectionName))
                 : null;
         if (JsonUtils.isPrimaryKeyPath(remoteField)) {
-            final var matchingIds = PrimaryKeyIndexResolver.existingIds(localValues, dbName, joinCollectionName,
+            final var matchingIds = PrimaryKeyIndexResolver.existingIds(localValues, projectName, joinCollectionName,
                     context);
             return lookupFromMatches(
                     OverlayRead.withBuffered(overlay,
-                            fetchMatches(dbName, joinCollectionName, matchingIds, KeptRows.ALL, context)),
+                            fetchMatches(projectName, joinCollectionName, matchingIds, KeptRows.ALL, context)),
                     remoteField, context);
         }
-        final var matchingIds = IndexHelper.getMatchingIdsForJoin(dbName, joinCollectionName, remoteField, localValues,
-                context);
+        final var matchingIds = IndexHelper.getMatchingIdsForJoin(projectName, joinCollectionName, remoteField,
+                localValues, context);
         if (matchingIds != null) {
             return lookupFromMatches(
                     OverlayRead.withBuffered(overlay,
-                            fetchMatches(dbName, joinCollectionName, matchingIds,
+                            fetchMatches(projectName, joinCollectionName, matchingIds,
                                     new KeptRows(FieldPath.of(remoteField), localValues), context)),
                     remoteField, context);
         }
         if (localValues.isEmpty()) {
             return Map.of();
         }
-        final var committed = context.source(null, dbName, joinCollectionName);
+        final var committed = context.source(null, projectName, joinCollectionName);
         return groupByRemoteField(overlay != null && !overlay.isEmpty()
                 ? OverlayRead.reconcile(overlay, committed, _ -> true)
                 : committed, remoteField, localValues, context);
@@ -78,7 +78,7 @@ final class JoinLookup {
         }
     }
 
-    private static List<JsonObject> fetchMatches(String dbName, String joinCollectionName, Set<String> matchingIds,
+    private static List<JsonObject> fetchMatches(String projectName, String joinCollectionName, Set<String> matchingIds,
             KeptRows kept, PipelineContext context) throws IOException {
         if (matchingIds.isEmpty()) {
             return List.of();
@@ -86,26 +86,26 @@ final class JoinLookup {
         final var held = new HeldRows(context);
         final var documents = new ArrayList<JsonObject>(Math.min(matchingIds.size(), FETCH_CHUNK));
         if (matchingIds.size() <= FETCH_CHUNK) {
-            fetchChunk(dbName, joinCollectionName, matchingIds, kept, documents, held, context);
+            fetchChunk(projectName, joinCollectionName, matchingIds, kept, documents, held, context);
             return documents;
         }
         final var chunk = new HashSet<String>(FETCH_CHUNK * 2);
         for (final var id : matchingIds) {
             chunk.add(id);
             if (chunk.size() == FETCH_CHUNK) {
-                fetchChunk(dbName, joinCollectionName, chunk, kept, documents, held, context);
+                fetchChunk(projectName, joinCollectionName, chunk, kept, documents, held, context);
                 chunk.clear();
             }
         }
         if (!chunk.isEmpty()) {
-            fetchChunk(dbName, joinCollectionName, chunk, kept, documents, held, context);
+            fetchChunk(projectName, joinCollectionName, chunk, kept, documents, held, context);
         }
         return documents;
     }
 
-    private static void fetchChunk(String dbName, String joinCollectionName, Set<String> ids, KeptRows kept,
+    private static void fetchChunk(String projectName, String joinCollectionName, Set<String> ids, KeptRows kept,
             List<JsonObject> documents, HeldRows held, PipelineContext context) throws IOException {
-        final var matchedDocs = cache.getEntriesByIds(dbName, joinCollectionName, ids, context::pinnedPkIndex);
+        final var matchedDocs = cache.getEntriesByIds(projectName, joinCollectionName, ids, context::pinnedPkIndex);
         context.scanned(matchedDocs.size());
         for (final var entry : matchedDocs) {
             final var data = entry.getData();

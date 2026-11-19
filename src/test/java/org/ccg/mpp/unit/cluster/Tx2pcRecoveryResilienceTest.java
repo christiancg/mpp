@@ -49,7 +49,7 @@ public class Tx2pcRecoveryResilienceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origAckTimeoutMs = config.getReplicationAckTimeoutMs();
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 200L);
         cluster.enableAlone();
@@ -112,10 +112,10 @@ public class Tx2pcRecoveryResilienceTest {
         final var releasedOnSignal = new AtomicBoolean();
         final var holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 holding.countDown();
                 releasedOnSignal.set(release.await(5, TimeUnit.SECONDS));
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

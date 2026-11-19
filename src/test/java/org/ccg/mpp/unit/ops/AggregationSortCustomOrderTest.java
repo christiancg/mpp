@@ -95,7 +95,7 @@ public class AggregationSortCustomOrderTest extends FilterResolutionSupport {
         seedEqualInstantsOutOfIdOrder();
         indexField(FIELD);
 
-        final var orderedIds = IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var orderedIds = IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 (left, right) -> JsonUtils.compareSortKeysAscending(IndexHelper.indexValueToElement(left.getValue()),
                         IndexHelper.indexValueToElement(right.getValue())),
                 Long.MAX_VALUE, ReadObserver.NONE);
