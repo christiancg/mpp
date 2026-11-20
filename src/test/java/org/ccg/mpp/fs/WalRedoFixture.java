@@ -10,17 +10,17 @@ import java.util.TreeMap;
 import org.ccg.mpp.data.PkIndexEntry;
 
 final class WalRedoFixture {
-    static final String DB = "redoDb";
+    static final String PROJECT = "redoProject";
     static final String COLL = "redoColl";
 
     final ReplacerFixture rf;
 
     WalRedoFixture(File root) throws IOException {
-        rf = new ReplacerFixture(root, DB, COLL);
+        rf = new ReplacerFixture(root, PROJECT, COLL);
         for (final var id : List.of("a", "b", "c")) {
             insert(id);
         }
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
     }
 
     void insert(String id) throws IOException {
@@ -28,17 +28,17 @@ final class WalRedoFixture {
     }
 
     List<PkIndexEntry> redo() throws IOException {
-        PowerLossFixture.restart(rf.fx.paths, DB, COLL);
+        PowerLossFixture.restart(rf.fx.paths, PROJECT, COLL);
         return WalRedo.redoAll(rf.fx.paths);
     }
 
     File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     Map<String, String> scanned() throws IOException {
         final var values = new TreeMap<String, String>();
-        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(DB, COLL)) {
+        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(PROJECT, COLL)) {
             entries.forEach(entry -> values.merge(entry.get_id(), entry.getData().get("v").asJsonString().getValue(),
                     (first, second) -> first + "," + second));
         }

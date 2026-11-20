@@ -14,9 +14,9 @@ import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.TransactionOperationHelper;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.ops.req.ListProceduresRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
@@ -38,7 +38,7 @@ public class OperationProcessorProcedureTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -56,31 +56,32 @@ public class OperationProcessorProcedureTest {
         TestUtils.setPrivateField(configuration, "scriptTimeoutMs", 5_000L);
         TestUtils.setPrivateField(configuration, "scriptMaxDepth", 200);
         TestUtils.setPrivateField(configuration, "scriptMaxMemoryBytes", 67_108_864L);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         // A leftover cached trigger would make a procedure delete fail the reference check
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     @Test
     public void test_dispatches_save_call_list_and_delete() {
         assertInstanceOf(SaveProcedureResponse.class,
-                processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "p", "return 7;")));
-        final var listed = (ListProceduresResponse) processor.processMessage(new ListProceduresRequest(TestGlobals.DB));
+                processor.processMessage(new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 7;")));
+        final var listed = (ListProceduresResponse) processor
+                .processMessage(new ListProceduresRequest(TestGlobals.PROJECT));
         assertEquals(1, listed.getProcedures().size());
-        final var called = processor.processMessage(new CallProcedureRequest(TestGlobals.DB, "p", null));
+        final var called = processor.processMessage(new CallProcedureRequest(TestGlobals.PROJECT, "p", null));
         assertEquals(OperationStatus.OK, called.getStatus(), called.getMessage());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DeleteProcedureRequest(TestGlobals.DB, "p")).getStatus());
+                processor.processMessage(new DeleteProcedureRequest(TestGlobals.PROJECT, "p")).getStatus());
     }
 
     @Test
     public void test_dispatches_list_triggers() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
     }
 
     // A procedure opens its own transaction through db.transaction; nesting is not supported, so all four
@@ -91,9 +92,10 @@ public class OperationProcessorProcedureTest {
         final var clientId = IocContainer.get(ClientTracker.class).registerForwardedClient("someone");
         assertEquals(OperationStatus.OK, TransactionOperationHelper.start(clientId).getStatus());
         try {
-            for (final var request : java.util.List.of(new SaveProcedureRequest(TestGlobals.DB, "p", "return 1;"),
-                    new DeleteProcedureRequest(TestGlobals.DB, "p"), new ListProceduresRequest(TestGlobals.DB),
-                    new CallProcedureRequest(TestGlobals.DB, "p", null))) {
+            for (final var request : java.util.List.of(new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 1;"),
+                    new DeleteProcedureRequest(TestGlobals.PROJECT, "p"),
+                    new ListProceduresRequest(TestGlobals.PROJECT),
+                    new CallProcedureRequest(TestGlobals.PROJECT, "p", null))) {
                 final var response = processor.processMessage(request, clientId);
                 assertEquals(ErrorCode.OPERATION_NOT_ALLOWED_IN_TRANSACTION.getCode(), response.getErrorCode(),
                         request.getType().name());
@@ -103,34 +105,34 @@ public class OperationProcessorProcedureTest {
         }
     }
 
-    // Dropping the database takes its procedure files with the folder; the cached definitions and the
-    // compiled programs must go too, because a re-created database restarts its versions at 1.
+    // Dropping the project takes its procedure files with the folder; the cached definitions and the
+    // compiled programs must go too, because a re-created project restarts its versions at 1.
     @Test
-    public void test_drop_database_removes_procedures_and_their_compiled_programs() throws Exception {
-        final var dbName = "procdropdb";
-        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest(dbName)).getStatus());
+    public void test_drop_project_removes_procedures_and_their_compiled_programs() throws Exception {
+        final var projectName = "procdropdb";
+        assertEquals(OperationStatus.OK, processor.processMessage(new CreateProjectRequest(projectName)).getStatus());
         assertInstanceOf(SaveProcedureResponse.class,
-                processor.processMessage(new SaveProcedureRequest(dbName, "p", "return 1;")));
+                processor.processMessage(new SaveProcedureRequest(projectName, "p", "return 1;")));
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CallProcedureRequest(dbName, "p", null)).getStatus());
+                processor.processMessage(new CallProcedureRequest(projectName, "p", null)).getStatus());
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(dbName)).getStatus());
-        assertNull(cache.getProcedure(dbName, "p"));
-        assertTrue(fs.metadataFiles().listProcedureNames(dbName).isEmpty());
+        assertEquals(OperationStatus.OK, processor.processMessage(new DropProjectRequest(projectName)).getStatus());
+        assertNull(cache.getProcedure(projectName, "p"));
+        assertTrue(fs.metadataFiles().listProcedureNames(projectName).isEmpty());
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest(dbName)).getStatus());
+        assertEquals(OperationStatus.OK, processor.processMessage(new CreateProjectRequest(projectName)).getStatus());
         assertInstanceOf(SaveProcedureResponse.class,
-                processor.processMessage(new SaveProcedureRequest(dbName, "p", "return 2;")));
-        final var called = processor.processMessage(new CallProcedureRequest(dbName, "p", null));
+                processor.processMessage(new SaveProcedureRequest(projectName, "p", "return 2;")));
+        final var called = processor.processMessage(new CallProcedureRequest(projectName, "p", null));
         assertEquals(2d, ((org.ccg.mpp.ops.resp.CallProcedureResponse) called).getResult().asJsonNumber().getValue()
                 .doubleValue());
-        processor.processMessage(new DropDatabaseRequest(dbName));
+        processor.processMessage(new DropProjectRequest(projectName));
     }
 
     @Test
     public void test_save_failure_is_reported_as_an_error_code() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", false);
-        final var response = processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "p", "return 1;"));
+        final var response = processor.processMessage(new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 1;"));
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), response.getErrorCode());
     }
 
@@ -140,8 +142,8 @@ public class OperationProcessorProcedureTest {
 
     @Test
     public void test_call_with_an_unknown_client_id_still_runs() {
-        processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "p", "return 1;"));
+        processor.processMessage(new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 1;"));
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CallProcedureRequest(TestGlobals.DB, "p", null), unusedClient()).getStatus());
+                .processMessage(new CallProcedureRequest(TestGlobals.PROJECT, "p", null), unusedClient()).getStatus());
     }
 }

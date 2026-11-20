@@ -10,6 +10,6 @@ Spring Data's view of an entity's id and location.
 
 @return the collection
 
-## database()
+## project()
 
-@return the database
+@return the project

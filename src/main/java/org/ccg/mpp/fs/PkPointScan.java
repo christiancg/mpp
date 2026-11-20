@@ -19,7 +19,7 @@ final class PkPointScan {
     private static final byte LINE_FEED = '\n';
     private static final byte CARRIAGE_RETURN = '\r';
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final byte[][] keys;
     private final String[] ids;
@@ -28,8 +28,8 @@ final class PkPointScan {
     private boolean recognised;
     private boolean malformed;
 
-    private PkPointScan(String dbName, String collName, Collection<String> wanted) {
-        this.dbName = dbName;
+    private PkPointScan(String projectName, String collName, Collection<String> wanted) {
+        this.projectName = projectName;
         this.collName = collName;
         var capacity = 2;
         while (capacity < wanted.size() * 2) {
@@ -50,14 +50,14 @@ final class PkPointScan {
         }
     }
 
-    static Map<String, PkIndexEntry> rowsFor(InputStream in, File indexFile, String dbName, String collName,
+    static Map<String, PkIndexEntry> rowsFor(InputStream in, File indexFile, String projectName, String collName,
             Collection<String> ids) throws IOException {
-        final var scan = new PkPointScan(dbName, collName, ids);
+        final var scan = new PkPointScan(projectName, collName, ids);
         scan.read(in, indexFile.length());
         if (scan.malformed && !scan.recognised) {
             throw new IOException("No line in " + indexFile.getName() + " could be read as a PK index entry; it is"
                     + " left untouched. Rebuild it with REINDEX and \"primaryKey\": true, or repair or restore it,"
-                    + " before reading " + dbName + "|" + collName);
+                    + " before reading " + projectName + "|" + collName);
         }
         return scan.found();
     }
@@ -124,7 +124,7 @@ final class PkPointScan {
             return;
         }
         try {
-            final var parsed = PkIndexEntry.fromIndexFileBytes(dbName, collName, bytes, start, end);
+            final var parsed = PkIndexEntry.fromIndexFileBytes(projectName, collName, bytes, start, end);
             parsed.setValue(ids[slot]);
             rows[slot] = parsed;
             recognised = true;
@@ -139,7 +139,7 @@ final class PkPointScan {
             return;
         }
         try {
-            PkIndexEntry.fromIndexFileBytes(dbName, collName, bytes, start, end);
+            PkIndexEntry.fromIndexFileBytes(projectName, collName, bytes, start, end);
             recognised = true;
         } catch (RuntimeException e) {
             malformed = true;

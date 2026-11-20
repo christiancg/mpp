@@ -10,24 +10,25 @@ public class BulkEntityEvent extends CollectionScopedEvent {
     private final List<EntityRef> inserted;
     private final List<EntityRef> updated;
 
-    public BulkEntityEvent(String dbName, String collName, List<DbEntry> insertedEntries,
+    public BulkEntityEvent(String projectName, String collName, List<DbEntry> insertedEntries,
             List<DbEntry> updatedEntries) {
-        this(dbName, collName, insertedEntries, updatedEntries, 0L);
+        this(projectName, collName, insertedEntries, updatedEntries, 0L);
     }
 
-    public BulkEntityEvent(String dbName, String collName, List<DbEntry> insertedEntries, List<DbEntry> updatedEntries,
-            long incarnation) {
-        this(dbName, collName, insertedEntries, updatedEntries, incarnation, 0L);
+    public BulkEntityEvent(String projectName, String collName, List<DbEntry> insertedEntries,
+            List<DbEntry> updatedEntries, long incarnation) {
+        this(projectName, collName, insertedEntries, updatedEntries, incarnation, 0L);
     }
 
-    public BulkEntityEvent(String dbName, String collName, List<DbEntry> insertedEntries, List<DbEntry> updatedEntries,
-            long incarnation, long pendingGeneration) {
-        this(dbName, collName, insertedEntries, updatedEntries, incarnation, pendingGeneration, null);
+    public BulkEntityEvent(String projectName, String collName, List<DbEntry> insertedEntries,
+            List<DbEntry> updatedEntries, long incarnation, long pendingGeneration) {
+        this(projectName, collName, insertedEntries, updatedEntries, incarnation, pendingGeneration, null);
     }
 
-    public BulkEntityEvent(String dbName, String collName, List<DbEntry> insertedEntries, List<DbEntry> updatedEntries,
-            long incarnation, long pendingGeneration, Map<String, Map<String, IndexedValue>> priorsById) {
-        super(EventType.CREATED, dbName, collName, incarnation, pendingGeneration);
+    public BulkEntityEvent(String projectName, String collName, List<DbEntry> insertedEntries,
+            List<DbEntry> updatedEntries, long incarnation, long pendingGeneration,
+            Map<String, Map<String, IndexedValue>> priorsById) {
+        super(EventType.CREATED, projectName, collName, incarnation, pendingGeneration);
         this.inserted = EntityRef.allOf(insertedEntries, priorsById);
         this.updated = EntityRef.allOf(updatedEntries, priorsById);
     }
@@ -58,8 +59,8 @@ public class BulkEntityEvent extends CollectionScopedEvent {
 
     @Override
     public String toString() {
-        return "BulkEntityEvent(super=" + super.toString() + ", dbName=" + getDbName() + ", collName=" + getCollName()
-                + ", incarnation=" + getIncarnation() + ", pendingGeneration=" + getPendingGeneration() + ", inserted="
-                + inserted + ", updated=" + updated + ")";
+        return "BulkEntityEvent(super=" + super.toString() + ", projectName=" + getProjectName() + ", collName="
+                + getCollName() + ", incarnation=" + getIncarnation() + ", pendingGeneration=" + getPendingGeneration()
+                + ", inserted=" + inserted + ", updated=" + updated + ")";
     }
 }

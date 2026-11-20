@@ -1,6 +1,6 @@
 # Procedures
 
-The stored procedures of one database.
+The stored procedures of one project.
 
 ## save
 

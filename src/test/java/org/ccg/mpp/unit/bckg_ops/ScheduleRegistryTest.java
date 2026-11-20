@@ -12,7 +12,7 @@ import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.ScheduleDefinition;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.ioc.IocContainer;
@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 public class ScheduleRegistryTest {
-    private static final String OTHER_DB = "otherDb";
-    private static final String DROPPED_DB = "droppedDb";
+    private static final String OTHER_PROJECT = "otherProject";
+    private static final String DROPPED_PROJECT = "droppedProject";
     private static final long RACE_WAIT_SECONDS = 5L;
     private static final long MUTATION_HEAD_START_MILLIS = 300L;
     private static final Configuration configuration = Configuration.getInstance();
@@ -39,9 +39,9 @@ public class ScheduleRegistryTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(OTHER_DB));
-        IocContainer.get(FileSystem.class).createDatabaseFolder(OTHER_DB);
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(OTHER_PROJECT));
+        IocContainer.get(FileSystem.class).createProjectFolder(OTHER_PROJECT);
     }
 
     @AfterAll
@@ -54,11 +54,11 @@ public class ScheduleRegistryTest {
     @BeforeEach
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
-        for (final var dbName : new String[]{TestGlobals.DB, OTHER_DB}) {
-            for (final var name : fs.metadataFiles().listScheduleNames(dbName)) {
-                fs.metadataFiles().deleteSchedule(dbName, name);
+        for (final var projectName : new String[]{TestGlobals.PROJECT, OTHER_PROJECT}) {
+            for (final var name : fs.metadataFiles().listScheduleNames(projectName)) {
+                fs.metadataFiles().deleteSchedule(projectName, name);
             }
-            cache.removeSchedulesForDatabase(dbName);
+            cache.removeSchedulesForProject(projectName);
         }
         registry.clear();
     }
@@ -67,35 +67,35 @@ public class ScheduleRegistryTest {
         void run() throws Exception;
     }
 
-    private void writeSchedule(String dbName, String name, String cron, long intervalMs) throws Exception {
-        writeSchedule(dbName, name, cron, intervalMs, true);
+    private void writeSchedule(String projectName, String name, String cron, long intervalMs) throws Exception {
+        writeSchedule(projectName, name, cron, intervalMs, true);
     }
 
-    private void writeSchedule(String dbName, String name, String cron, long intervalMs, boolean enabled)
+    private void writeSchedule(String projectName, String name, String cron, long intervalMs, boolean enabled)
             throws Exception {
         final var definition = new ScheduleDefinition(name, "p", cron, intervalMs, null, 0L, enabled, "alice", null, 1L,
                 1L, 1L, "alice");
-        fs.metadataFiles().writeSchedule(dbName, name, eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(dbName, name);
+        fs.metadataFiles().writeSchedule(projectName, name, eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(projectName, name);
     }
 
     private void writeCorruptSchedule(String name) throws Exception {
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, name, "{\"name\": \"" + name);
-        cache.removeSchedule(TestGlobals.DB, name);
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, name, "{\"name\": \"" + name);
+        cache.removeSchedule(TestGlobals.PROJECT, name);
     }
 
     @Test
     public void test_a_folder_that_cannot_be_listed_keeps_the_registered_schedules() throws Exception {
-        writeSchedule(OTHER_DB, "kept", null, 2000L);
-        registry.reload(OTHER_DB);
-        assertNotNull(registry.get(OTHER_DB, "kept"));
-        final var folder = new File(TestUtils.getDbPath(fs), OTHER_DB + File.separator + Globals.SCHEDULES_FOLDER);
+        writeSchedule(OTHER_PROJECT, "kept", null, 2000L);
+        registry.reload(OTHER_PROJECT);
+        assertNotNull(registry.get(OTHER_PROJECT, "kept"));
+        final var folder = new File(TestUtils.getDbPath(fs), OTHER_PROJECT + File.separator + Globals.SCHEDULES_FOLDER);
         TestUtils.deleteFolder(folder);
         Files.writeString(folder.toPath(), "not a folder");
         try {
-            registry.reload(OTHER_DB);
+            registry.reload(OTHER_PROJECT);
 
-            assertNotNull(registry.get(OTHER_DB, "kept"), "a listing that failed is not an empty folder");
+            assertNotNull(registry.get(OTHER_PROJECT, "kept"), "a listing that failed is not an empty folder");
         } finally {
             Files.delete(folder.toPath());
         }
@@ -103,33 +103,33 @@ public class ScheduleRegistryTest {
 
     @Test
     public void test_an_unreadable_definition_is_skipped_and_its_siblings_still_load() throws Exception {
-        writeSchedule(TestGlobals.DB, "good", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "good", null, 2000L);
         writeCorruptSchedule("torn");
 
         assertDoesNotThrow(registry::loadAll, "one torn file must not stop the node booting");
 
-        assertNotNull(registry.get(TestGlobals.DB, "good"));
-        assertNull(registry.get(TestGlobals.DB, "torn"), "an unreadable definition is not registered");
+        assertNotNull(registry.get(TestGlobals.PROJECT, "good"));
+        assertNull(registry.get(TestGlobals.PROJECT, "torn"), "an unreadable definition is not registered");
     }
 
     @Test
     public void test_an_unreadable_definition_does_not_unregister_a_working_entry() throws Exception {
-        writeSchedule(TestGlobals.DB, "flaky", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "flaky", null, 2000L);
         registry.loadAll();
-        assertNotNull(registry.get(TestGlobals.DB, "flaky"));
+        assertNotNull(registry.get(TestGlobals.PROJECT, "flaky"));
 
         writeCorruptSchedule("flaky");
-        registry.reload(TestGlobals.DB);
+        registry.reload(TestGlobals.PROJECT);
 
-        assertNotNull(registry.get(TestGlobals.DB, "flaky"),
+        assertNotNull(registry.get(TestGlobals.PROJECT, "flaky"),
                 "a read failure is not an absence, so the entry must survive the reload's removeIf");
     }
 
     @Test
     public void test_an_interval_run_advances_from_the_scheduled_instant() throws Exception {
-        writeSchedule(TestGlobals.DB, "ticker", null, 60_000L);
+        writeSchedule(TestGlobals.PROJECT, "ticker", null, 60_000L);
         registry.loadAll();
-        final var entry = registry.get(TestGlobals.DB, "ticker");
+        final var entry = registry.get(TestGlobals.PROJECT, "ticker");
         assertNotNull(entry);
         entry.setNextRunAt(1_000_000L);
 
@@ -139,9 +139,9 @@ public class ScheduleRegistryTest {
 
     @Test
     public void test_an_interval_run_skips_rather_than_storms_after_downtime() throws Exception {
-        writeSchedule(TestGlobals.DB, "ticker", null, 60_000L);
+        writeSchedule(TestGlobals.PROJECT, "ticker", null, 60_000L);
         registry.loadAll();
-        final var entry = registry.get(TestGlobals.DB, "ticker");
+        final var entry = registry.get(TestGlobals.PROJECT, "ticker");
         assertNotNull(entry);
         entry.setNextRunAt(1_000_000L);
 
@@ -153,93 +153,93 @@ public class ScheduleRegistryTest {
 
     @Test
     public void test_a_first_interval_run_is_one_period_from_now() throws Exception {
-        writeSchedule(TestGlobals.DB, "fresh", null, 60_000L);
+        writeSchedule(TestGlobals.PROJECT, "fresh", null, 60_000L);
         registry.loadAll();
-        final var entry = registry.get(TestGlobals.DB, "fresh");
+        final var entry = registry.get(TestGlobals.PROJECT, "fresh");
         assertNotNull(entry);
 
         assertTrue(entry.getNextRunAt() > System.currentTimeMillis() + 50_000L);
     }
 
     @Test
-    public void test_load_all_picks_up_every_database() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
-        writeSchedule(OTHER_DB, "b", "0 3 * * *", 0L);
+    public void test_load_all_picks_up_every_project() throws Exception {
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
+        writeSchedule(OTHER_PROJECT, "b", "0 3 * * *", 0L);
         registry.loadAll();
         assertEquals(2, registry.size());
-        assertNotNull(registry.get(TestGlobals.DB, "a"));
-        assertNotNull(registry.get(OTHER_DB, "b"));
+        assertNotNull(registry.get(TestGlobals.PROJECT, "a"));
+        assertNotNull(registry.get(OTHER_PROJECT, "b"));
     }
 
     @Test
-    public void test_reload_replaces_one_database_only() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
-        writeSchedule(OTHER_DB, "b", null, 2000L);
+    public void test_reload_replaces_one_project_only() throws Exception {
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
+        writeSchedule(OTHER_PROJECT, "b", null, 2000L);
         registry.loadAll();
 
-        fs.metadataFiles().deleteSchedule(TestGlobals.DB, "a");
-        cache.removeSchedule(TestGlobals.DB, "a");
-        registry.reload(TestGlobals.DB);
-        assertNull(registry.get(TestGlobals.DB, "a"));
-        assertNotNull(registry.get(OTHER_DB, "b"));
+        fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, "a");
+        cache.removeSchedule(TestGlobals.PROJECT, "a");
+        registry.reload(TestGlobals.PROJECT);
+        assertNull(registry.get(TestGlobals.PROJECT, "a"));
+        assertNotNull(registry.get(OTHER_PROJECT, "b"));
     }
 
     @Test
-    public void test_remove_database_drops_its_entries() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
-        writeSchedule(OTHER_DB, "b", null, 2000L);
+    public void test_remove_project_drops_its_entries() throws Exception {
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
+        writeSchedule(OTHER_PROJECT, "b", null, 2000L);
         registry.loadAll();
-        registry.removeDatabase(TestGlobals.DB);
-        assertNull(registry.get(TestGlobals.DB, "a"));
-        assertNotNull(registry.get(OTHER_DB, "b"));
+        registry.removeProject(TestGlobals.PROJECT);
+        assertNull(registry.get(TestGlobals.PROJECT, "a"));
+        assertNotNull(registry.get(OTHER_PROJECT, "b"));
     }
 
     @Test
     public void test_next_run_at_is_in_the_future_after_load() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
-        writeSchedule(TestGlobals.DB, "b", "0 3 * * *", 0L);
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "b", "0 3 * * *", 0L);
         registry.loadAll();
         final var now = System.currentTimeMillis();
-        assertTrue(registry.get(TestGlobals.DB, "a").getNextRunAt() > now);
-        assertTrue(registry.get(TestGlobals.DB, "b").getNextRunAt() > now);
+        assertTrue(registry.get(TestGlobals.PROJECT, "a").getNextRunAt() > now);
+        assertTrue(registry.get(TestGlobals.PROJECT, "b").getNextRunAt() > now);
     }
 
     @Test
     public void test_reload_preserves_the_next_run_of_an_unchanged_schedule() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
         registry.loadAll();
-        final var first = registry.get(TestGlobals.DB, "a").getNextRunAt();
-        registry.reload(TestGlobals.DB);
-        assertEquals(first, registry.get(TestGlobals.DB, "a").getNextRunAt());
+        final var first = registry.get(TestGlobals.PROJECT, "a").getNextRunAt();
+        registry.reload(TestGlobals.PROJECT);
+        assertEquals(first, registry.get(TestGlobals.PROJECT, "a").getNextRunAt());
     }
 
     @Test
     public void test_an_unsatisfiable_cron_yields_no_next_run() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", "0 0 30 2 *", 0L);
+        writeSchedule(TestGlobals.PROJECT, "a", "0 0 30 2 *", 0L);
         registry.loadAll();
-        assertEquals(0L, registry.get(TestGlobals.DB, "a").getNextRunAt());
+        assertEquals(0L, registry.get(TestGlobals.PROJECT, "a").getNextRunAt());
     }
 
     @Test
     public void test_an_unparseable_cron_is_not_registered() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", "not a cron", 0L);
+        writeSchedule(TestGlobals.PROJECT, "a", "not a cron", 0L);
         registry.loadAll();
-        assertNull(registry.get(TestGlobals.DB, "a"));
+        assertNull(registry.get(TestGlobals.PROJECT, "a"));
     }
 
     @Test
     public void test_entries_exposes_the_definition_and_key() throws Exception {
-        writeSchedule(TestGlobals.DB, "a", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "a", null, 2000L);
         registry.loadAll();
         final var entry = registry.entries().iterator().next();
-        assertEquals(TestGlobals.DB, entry.getDbName());
+        assertEquals(TestGlobals.PROJECT, entry.getProjectName());
         assertEquals("a", entry.getName());
-        assertEquals(TestGlobals.DB + "|a", entry.key());
+        assertEquals(TestGlobals.PROJECT + "|a", entry.key());
         assertNull(entry.getCron());
         assertEquals("p", entry.getDefinition().getProcedureName());
     }
 
-    private void refreshRacing(String dbName, Mutation mutation) throws Exception {
+    private void refreshRacing(String projectName, Mutation mutation) throws Exception {
         final var definitionRead = new CountDownLatch(1);
         final var release = new CountDownLatch(1);
         final var firstRead = new AtomicBoolean(true);
@@ -254,7 +254,7 @@ public class ScheduleRegistryTest {
         }).when(stalledCache).getSchedule(Mockito.anyString(), Mockito.anyString());
         TestUtils.setPrivateField(registry, "cache", stalledCache);
         try {
-            final var refresh = Thread.ofPlatform().start(() -> registry.reload(dbName));
+            final var refresh = Thread.ofPlatform().start(() -> registry.reload(projectName));
             assertTrue(definitionRead.await(RACE_WAIT_SECONDS, TimeUnit.SECONDS));
             final var failure = new Exception[1];
             final var mutator = Thread.ofPlatform().start(() -> {
@@ -276,49 +276,49 @@ public class ScheduleRegistryTest {
 
     @Test
     public void test_a_refresh_that_read_a_definition_before_its_delete_does_not_reinstate_it() throws Exception {
-        writeSchedule(TestGlobals.DB, "deleted", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "deleted", null, 2000L);
         registry.loadAll();
 
-        refreshRacing(TestGlobals.DB, () -> {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, "deleted");
-            cache.removeSchedule(TestGlobals.DB, "deleted");
-            registry.reload(TestGlobals.DB);
+        refreshRacing(TestGlobals.PROJECT, () -> {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, "deleted");
+            cache.removeSchedule(TestGlobals.PROJECT, "deleted");
+            registry.reload(TestGlobals.PROJECT);
         });
 
-        assertNull(registry.get(TestGlobals.DB, "deleted"),
+        assertNull(registry.get(TestGlobals.PROJECT, "deleted"),
                 "an acknowledged DELETE_SCHEDULE must not be undone by a refresh that read the old file");
     }
 
     @Test
     public void test_a_refresh_racing_a_disable_does_not_re_enable() throws Exception {
-        writeSchedule(TestGlobals.DB, "paused", null, 2000L);
+        writeSchedule(TestGlobals.PROJECT, "paused", null, 2000L);
         registry.loadAll();
 
-        refreshRacing(TestGlobals.DB, () -> {
-            writeSchedule(TestGlobals.DB, "paused", null, 2000L, false);
-            registry.reload(TestGlobals.DB);
+        refreshRacing(TestGlobals.PROJECT, () -> {
+            writeSchedule(TestGlobals.PROJECT, "paused", null, 2000L, false);
+            registry.reload(TestGlobals.PROJECT);
         });
 
-        assertFalse(registry.get(TestGlobals.DB, "paused").getDefinition().isEnabled(),
+        assertFalse(registry.get(TestGlobals.PROJECT, "paused").getDefinition().isEnabled(),
                 "the disabled definition saved last must be the one registered");
     }
 
     @Test
-    public void test_a_refresh_racing_drop_database_leaves_no_entry() throws Exception {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(DROPPED_DB));
-        fs.createDatabaseFolder(DROPPED_DB);
-        writeSchedule(DROPPED_DB, "ghost", null, 2000L);
+    public void test_a_refresh_racing_drop_project_leaves_no_entry() throws Exception {
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(DROPPED_PROJECT));
+        fs.createProjectFolder(DROPPED_PROJECT);
+        writeSchedule(DROPPED_PROJECT, "ghost", null, 2000L);
         registry.loadAll();
 
-        refreshRacing(DROPPED_DB, () -> {
-            fs.deleteDatabase(DROPPED_DB);
-            cache.evictDatabase(DROPPED_DB);
-            AdminOperationHelper.deleteDatabaseEntry(DROPPED_DB);
-            registry.removeDatabase(DROPPED_DB);
+        refreshRacing(DROPPED_PROJECT, () -> {
+            fs.deleteProject(DROPPED_PROJECT);
+            cache.evictProject(DROPPED_PROJECT);
+            AdminOperationHelper.deleteProjectEntry(DROPPED_PROJECT);
+            registry.removeProject(DROPPED_PROJECT);
         });
         registry.loadAll();
 
-        assertNull(registry.get(DROPPED_DB, "ghost"),
-                "a dropped database's schedule must not outlive the drop until the next restart");
+        assertNull(registry.get(DROPPED_PROJECT, "ghost"),
+                "a dropped project's schedule must not outlive the drop until the next restart");
     }
 }

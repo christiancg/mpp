@@ -12,25 +12,25 @@ public final class ProcedureModuleResolver implements ModuleResolver {
     private static final CompiledProcedureCache compiledProcedures = IocContainer.get(CompiledProcedureCache.class);
     public static final String SPECIFIER_PREFIX = ModuleReferences.PROCEDURE_SPECIFIER_PREFIX;
 
-    private final String scopedDatabase;
+    private final String scopedProject;
     private final boolean revealsSource;
 
-    public ProcedureModuleResolver(String scopedDatabase) {
-        this(scopedDatabase, true);
+    public ProcedureModuleResolver(String scopedProject) {
+        this(scopedProject, true);
     }
 
-    public ProcedureModuleResolver(String scopedDatabase, boolean revealsSource) {
-        this.scopedDatabase = scopedDatabase;
+    public ProcedureModuleResolver(String scopedProject, boolean revealsSource) {
+        this.scopedProject = scopedProject;
         this.revealsSource = revealsSource;
     }
 
     @Override
     public ResolvedModule resolve(String specifier, String referrer) {
         final var name = ModuleReferences.procedureNameOf(specifier);
-        if (scopedDatabase == null || !NameValidations.isValidProcedureName(name)) {
+        if (scopedProject == null || !NameValidations.isValidProcedureName(name)) {
             return null;
         }
-        final var definition = cache.getProcedure(scopedDatabase, name);
+        final var definition = cache.getProcedure(scopedProject, name);
         if (definition == null || !definition.isEnabled() || definition.getSource() == null) {
             return null;
         }
@@ -40,11 +40,11 @@ public final class ProcedureModuleResolver implements ModuleResolver {
             return ResolvedModule.withHiddenSource(moduleId(name, version), source, SPECIFIER_PREFIX + name);
         }
         return new ResolvedModule(moduleId(name, version), source,
-                compiledProcedures.get(scopedDatabase, name, version, source), SPECIFIER_PREFIX + name);
+                compiledProcedures.get(scopedProject, name, version, source), SPECIFIER_PREFIX + name);
     }
 
     private String moduleId(String name, long version) {
-        return "procedure:" + scopedDatabase + Globals.COLL_IDENTIFIER_SEPARATOR + name
+        return "procedure:" + scopedProject + Globals.COLL_IDENTIFIER_SEPARATOR + name
                 + Globals.COLL_IDENTIFIER_SEPARATOR + version;
     }
 }

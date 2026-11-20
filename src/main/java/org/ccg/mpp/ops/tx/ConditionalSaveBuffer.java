@@ -23,17 +23,17 @@ public final class ConditionalSaveBuffer {
     }
 
     public static OperationResponse buffer(SaveRequest request, Transaction transaction, Runnable onLockTimeout) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         return OperationResponse.respondOrError(OperationType.SAVE, ErrorCode.ERROR_TRANSACTION, () -> {
-            final var lockResult = TransactionBuffer.lockedRefusal(transaction, OperationType.SAVE, dbName, collName, 1,
-                    onLockTimeout);
+            final var lockResult = TransactionBuffer.lockedRefusal(transaction, OperationType.SAVE, projectName,
+                    collName, 1, onLockTimeout);
             if (lockResult != null) {
                 return lockResult;
             }
             final List<JsonObject> matches;
             try {
-                matches = ConditionMatches.of(dbName, collName, request.getCondition(), transaction);
+                matches = ConditionMatches.of(projectName, collName, request.getCondition(), transaction);
             } catch (ScriptCallableException scriptFailure) {
                 return new OperationResponse(OperationType.SAVE, scriptFailure.getMessage(),
                         ScriptOperationHelper.errorCodeFor(scriptFailure.getErrorName()));

@@ -29,11 +29,11 @@ public final class ScriptRunPrune {
     private ScriptRunPrune() {
     }
 
-    public static int prune(String dbName, long cutoff, long maxRows) throws Exception {
-        if (cache.getAdminCollectionEntry(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME) == null) {
+    public static int prune(String projectName, long cutoff, long maxRows) throws Exception {
+        if (cache.getAdminCollectionEntry(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME) == null) {
             return 0;
         }
-        final var selected = selectRows(dbName, cutoff, maxRows);
+        final var selected = selectRows(projectName, cutoff, maxRows);
         selected.sort(PAGE_ORDER);
         var deleted = 0;
         for (var from = 0; from < selected.size(); from += ROWS_PER_CHUNK) {
@@ -42,25 +42,25 @@ public final class ScriptRunPrune {
                 ids.add(row.id());
             }
             final var chunk = new int[1];
-            final var response = OperationLocks.withCollectionLock(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME,
-                    OperationType.DELETE, ErrorCode.ERROR_DELETING, () -> deleteChunk(dbName, ids, chunk));
+            final var response = OperationLocks.withCollectionLock(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME,
+                    OperationType.DELETE, ErrorCode.ERROR_DELETING, () -> deleteChunk(projectName, ids, chunk));
             deleted += chunk[0];
             if (response.getStatus() != OperationStatus.OK) {
-                logger.warning("Stopped pruning the script run history of '" + dbName + "' after " + deleted
+                logger.warning("Stopped pruning the script run history of '" + projectName + "' after " + deleted
                         + " row(s): " + response.getMessage());
                 break;
             }
         }
         if (deleted > 0) {
-            logger.info("Pruned " + deleted + " script run history row(s) from '" + dbName + "'");
+            logger.info("Pruned " + deleted + " script run history row(s) from '" + projectName + "'");
         }
         return deleted;
     }
 
-    private static List<Row> selectRows(String dbName, long cutoff, long maxRows) throws Exception {
+    private static List<Row> selectRows(String projectName, long cutoff, long maxRows) throws Exception {
         final var stale = new ArrayList<Row>();
         final var kept = new ArrayList<Row>();
-        try (var entries = cache.streamCollection(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME)) {
+        try (var entries = cache.streamCollection(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME)) {
             entries.forEach(entry -> {
                 final var data = entry.getData();
                 final var startedAt = data != null && data.has(STARTED_AT)
@@ -77,18 +77,19 @@ public final class ScriptRunPrune {
         return stale;
     }
 
-    private static OperationResponse deleteChunk(String dbName, List<String> ids, int[] deleted) throws Exception {
+    private static OperationResponse deleteChunk(String projectName, List<String> ids, int[] deleted) throws Exception {
         final var collName = Globals.SCRIPT_RUNS_COLLECTION_NAME;
-        final var refusal = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, dbName, collName);
+        final var refusal = ClusterWriteHelper.refusalUnderLock(OperationType.DELETE, projectName, collName);
         if (refusal != null) {
             return refusal;
         }
-        final var reserved = ClusterWriteHelper.deleteReservedBesideForce(clusterCoordinator, dbName, collName, ids);
+        final var reserved = ClusterWriteHelper.deleteReservedBesideForce(clusterCoordinator, projectName, collName,
+                ids);
         if (reserved == null) {
             return new OperationResponse(OperationType.DELETE, ErrorCode.NOT_COLLECTION_OWNER);
         }
         deleted[0] = reserved.removed().size();
-        ClusterWriteHelper.replicateReserved(clusterCoordinator, dbName, collName, reserved);
+        ClusterWriteHelper.replicateReserved(clusterCoordinator, projectName, collName, reserved);
         return new DeleteResponse("Pruned " + deleted[0] + " row(s)");
     }
 }

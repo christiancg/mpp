@@ -76,7 +76,7 @@ public class TransactionBufferVersionTest extends VersionedReplaySupport {
     @Test
     public void test_the_versions_survive_a_round_trip_through_the_admin_record() {
         final var op = new AdminTransactionEntry("tx", "client", 4, AdminTransactionEntry.OP_TYPE_BULK_SAVE,
-                TestGlobals.DB, TestGlobals.COLL, document("r", "v"));
+                TestGlobals.PROJECT, TestGlobals.COLL, document("r", "v"));
         op.setVersions(List.of(Long.MAX_VALUE - 1, 42L));
 
         final var stored = op.getData().deepCopy();

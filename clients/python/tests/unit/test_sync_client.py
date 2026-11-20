@@ -61,9 +61,9 @@ def test_connect_failure_stops_the_runtime() -> None:
 
 
 def test_sync_calls_return_plain_values(client: MppClient) -> None:
-    orders = client.database("shop").collection("orders")
+    orders = client.project("shop").collection("orders")
     assert orders.name == "orders"
-    assert orders.database_name == "shop"
+    assert orders.project_name == "shop"
     found = orders.find_by_id("o-1")
     assert found is not None
     assert found["_id"] == "o-1"
@@ -97,7 +97,7 @@ def test_a_sync_listen_handler_runs_on_its_own_thread_and_may_call_the_client(
     client: MppClient, server: tuple[Portal, FakeServer]
 ) -> None:
     portal, fake = server
-    orders = client.database("shop").collection("orders")
+    orders = client.project("shop").collection("orders")
     seen: list[tuple[bool, str, Any]] = []
     arrived = threading.Event()
 
@@ -125,15 +125,15 @@ async def _send(session: Session, frame: JsonObject) -> None:
 
 def test_close_is_idempotent_and_later_calls_are_refused(server: tuple[Portal, FakeServer]) -> None:
     client = MppClient._connect(server[1].settings(), no_backoff, open_streams)
-    database = client.database("shop")
+    project = client.project("shop")
     client.close()
     client.close()
     with pytest.raises(MppError, match="closed"):
-        database.list_collections()
+        project.list_collections()
 
 
 def test_the_client_is_a_context_manager(server: tuple[Portal, FakeServer]) -> None:
     with MppClient._connect(server[1].settings(), no_backoff, open_streams) as client:
-        assert client.list_databases() == ()
+        assert client.list_projects() == ()
     with pytest.raises(MppError):
         client.server_info()

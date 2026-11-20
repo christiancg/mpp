@@ -24,10 +24,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class UserCachePkRefusalTest {
-    private static final String DB = "refusalDb";
+    private static final String PROJECT = "refusalProject";
     private static final String COLL = "refusalColl";
     private static final int ROWS = 1000;
-    private static final String COLL_ID = Cache.getCollectionIdentifier(DB, COLL);
+    private static final String COLL_ID = Cache.getCollectionIdentifier(PROJECT, COLL);
 
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final Configuration configuration = Configuration.getInstance();
@@ -42,9 +42,9 @@ public class UserCachePkRefusalTest {
         final var fs = mock(FileSystem.class);
         final var rows = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < ROWS; i++) {
-            rows.add(new PkIndexEntry(DB, COLL, "row-" + String.format("%05d", i), i * 10L, 10, 0));
+            rows.add(new PkIndexEntry(PROJECT, COLL, "row-" + String.format("%05d", i), i * 10L, 10, 0));
         }
-        when(fs.readWholePkIndexFile(DB, COLL)).thenReturn(rows);
+        when(fs.readWholePkIndexFile(PROJECT, COLL)).thenReturn(rows);
         TestUtils.setPrivateField(cache, "fs", fs);
     }
 
@@ -60,11 +60,11 @@ public class UserCachePkRefusalTest {
     }
 
     private List<PkIndexEntry> loadUnderLock() throws Exception {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            return cache.getPkIndexAndLoadIfNecessary(DB, COLL);
+            return cache.getPkIndexAndLoadIfNecessary(PROJECT, COLL);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
@@ -95,14 +95,14 @@ public class UserCachePkRefusalTest {
     }
 
     @Test
-    public void aRefusalIsForgottenWithItsCollectionAndDatabase() throws Exception {
+    public void aRefusalIsForgottenWithItsCollectionAndProject() throws Exception {
         maxMemory(1024L);
         loadUnderLock();
-        cache.evictCollection(DB, COLL);
+        cache.evictCollection(PROJECT, COLL);
         assertNull(cache.sizes().refusedPk(COLL_ID));
 
         loadUnderLock();
-        cache.evictDatabase(DB);
+        cache.evictProject(PROJECT);
         assertNull(cache.sizes().refusedPk(COLL_ID));
     }
 
@@ -111,12 +111,12 @@ public class UserCachePkRefusalTest {
         maxMemory(1024L);
         loadUnderLock();
         maxMemory(64L << 20);
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            assertNotNull(cache.pkRowFor(DB, COLL, "row-00007"));
-            assertEquals(ROWS, cache.pkCountForCoverage(DB, COLL));
+            assertNotNull(cache.pkRowFor(PROJECT, COLL, "row-00007"));
+            assertEquals(ROWS, cache.pkCountForCoverage(PROJECT, COLL));
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
 
         assertTrue(cache.pkIndexes().containsKey(COLL_ID), "a memo is re-checked on every read");

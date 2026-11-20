@@ -1,11 +1,11 @@
-The scheduled procedures of one database. Obtained from `Database.schedules()`.
+The scheduled procedures of one project. Obtained from `Project.schedules()`.
 
 ## Schedules(ClientContext, String)
 
-Internal: use `Database.schedules()`.
+Internal: use `Project.schedules()`.
 
 @param context the client's internal context
-@param database the database
+@param project the project
 
 ## save(ScheduleDefinition)
 

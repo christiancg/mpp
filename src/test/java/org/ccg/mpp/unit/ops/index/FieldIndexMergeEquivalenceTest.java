@@ -27,7 +27,7 @@ public class FieldIndexMergeEquivalenceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -59,8 +59,8 @@ public class FieldIndexMergeEquivalenceTest {
     public void batchesChangingManyDistinctValuesMatchTheLegacyResult(long seed) throws Exception {
         final var random = new Random(seed);
         final var support = new FieldIndexBatchSupport();
-        final var legacy = new LegacyIndexMaintenance(IocContainer.get(FileSystem.class), FieldIndexBatchSupport.DB,
-                FieldIndexBatchSupport.COLL, LEGACY_FIELD);
+        final var legacy = new LegacyIndexMaintenance(IocContainer.get(FileSystem.class),
+                FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, LEGACY_FIELD);
         for (var round = 1; round <= ROUNDS; round++) {
             final var ids = FieldIndexBatchSupport.randomIds(random, 100 + random.nextInt(500), ID_POOL);
             for (final var id : ids) {

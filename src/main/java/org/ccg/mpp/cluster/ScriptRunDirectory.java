@@ -21,7 +21,7 @@ public class ScriptRunDirectory {
     public List<RunningScript> localRuns() {
         final var rows = new ArrayList<RunningScript>();
         for (final var run : registry.list()) {
-            rows.add(new RunningScript(run.runId(), run.kind().name(), run.database(), run.name(), run.username(),
+            rows.add(new RunningScript(run.runId(), run.kind().name(), run.project(), run.name(), run.username(),
                     run.startedAt()));
         }
         return rows;
@@ -73,7 +73,7 @@ public class ScriptRunDirectory {
         row.addProperty("runId", run.getRunId());
         row.addProperty("node", nodeAddress);
         row.addProperty("kind", run.getKind());
-        row.addProperty("database", run.getDatabase());
+        row.addProperty("project", run.getProject());
         row.addProperty("name", run.getName());
         row.addProperty("username", run.getUsername());
         row.addProperty("ageMs", now - run.getStartedAt());

@@ -29,20 +29,20 @@ public class ScheduleRegistry {
     private final Map<String, Boolean> warned = new ConcurrentHashMap<>();
 
     public static final class Entry {
-        private final String dbName;
+        private final String projectName;
         private final ScheduleDefinition definition;
         private final CronExpression cron;
         private volatile long nextRunAt;
 
-        Entry(String dbName, ScheduleDefinition definition, CronExpression cron, long nextRunAt) {
-            this.dbName = dbName;
+        Entry(String projectName, ScheduleDefinition definition, CronExpression cron, long nextRunAt) {
+            this.projectName = projectName;
             this.definition = definition;
             this.cron = cron;
             this.nextRunAt = nextRunAt;
         }
 
-        public String getDbName() {
-            return dbName;
+        public String getProjectName() {
+            return projectName;
         }
 
         public ScheduleDefinition getDefinition() {
@@ -54,7 +54,7 @@ public class ScheduleRegistry {
         }
 
         public String key() {
-            return Cache.getCollectionIdentifier(dbName, definition.getName());
+            return Cache.getCollectionIdentifier(projectName, definition.getName());
         }
 
         public long getNextRunAt() {
@@ -71,17 +71,17 @@ public class ScheduleRegistry {
     }
 
     public void loadAll() {
-        for (final var dbName : new ArrayList<>(cache.getUserDatabaseNames())) {
-            reload(dbName);
+        for (final var projectName : new ArrayList<>(cache.getUserProjectNames())) {
+            reload(projectName);
         }
     }
 
-    public synchronized void reload(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public synchronized void reload(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         final var listingKey = prefix + Globals.SCHEDULES_FOLDER;
         final List<String> names;
         try {
-            names = fs.metadataFiles().listScheduleNames(dbName);
+            names = fs.metadataFiles().listScheduleNames(projectName);
         } catch (IOException e) {
             warnOnce(listingKey, "the schedules folder could not be listed, so the registered schedules are kept: "
                     + e.getMessage());
@@ -90,10 +90,10 @@ public class ScheduleRegistry {
         warned.remove(listingKey);
         final var seen = new ArrayList<String>();
         for (final var name : names) {
-            final var key = Cache.getCollectionIdentifier(dbName, name);
+            final var key = Cache.getCollectionIdentifier(projectName, name);
             final ScheduleDefinition definition;
             try {
-                definition = cache.getSchedule(dbName, name);
+                definition = cache.getSchedule(projectName, name);
             } catch (MetadataReadException e) {
                 seen.add(key);
                 warnOnce(key, "the definition could not be read and was skipped: " + e.getMessage());
@@ -103,13 +103,13 @@ public class ScheduleRegistry {
                 continue;
             }
             seen.add(key);
-            put(key, dbName, definition);
+            put(key, projectName, definition);
         }
         entries.keySet().removeIf(key -> key.startsWith(prefix) && !seen.contains(key));
     }
 
-    public synchronized void removeDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public synchronized void removeProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         entries.keySet().removeIf(key -> key.startsWith(prefix));
         warned.keySet().removeIf(key -> key.startsWith(prefix));
     }
@@ -123,8 +123,8 @@ public class ScheduleRegistry {
         return List.copyOf(entries.values());
     }
 
-    public Entry get(String dbName, String name) {
-        return entries.get(Cache.getCollectionIdentifier(dbName, name));
+    public Entry get(String projectName, String name) {
+        return entries.get(Cache.getCollectionIdentifier(projectName, name));
     }
 
     public int size() {
@@ -171,7 +171,7 @@ public class ScheduleRegistry {
         }
     }
 
-    private void put(String key, String dbName, ScheduleDefinition definition) {
+    private void put(String key, String projectName, ScheduleDefinition definition) {
         final var existing = entries.get(key);
         if (existing != null && existing.getDefinition().equals(definition)) {
             return;
@@ -186,7 +186,7 @@ public class ScheduleRegistry {
             entries.remove(key);
             return;
         }
-        final var entry = new Entry(dbName, definition, cron, 0L);
+        final var entry = new Entry(projectName, definition, cron, 0L);
         warned.remove(key);
         entry.setNextRunAt(nextRunAfter(entry, System.currentTimeMillis()));
         entries.put(key, entry);

@@ -11,7 +11,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
 
 final class SpringServer {
-    static final String DATABASE = "spring_it";
+    static final String PROJECT = "spring_it";
     static final String ORDERS = "orders";
 
     private SpringServer() {
@@ -20,11 +20,11 @@ final class SpringServer {
     static void createOrders(ServerProcess server) {
         try (var client = MppClient.connect(ClientSettings.builder().host("localhost", server.port())
                 .credentials(ServerProcess.ADMIN, ServerProcess.PASSWORD).build())) {
-            if (!client.listDatabases().contains(DATABASE)) {
-                client.database(DATABASE).create();
+            if (!client.listProjects().contains(PROJECT)) {
+                client.project(PROJECT).create();
             }
-            if (!client.database(DATABASE).listCollections().contains(ORDERS)) {
-                client.database(DATABASE).collection(ORDERS).create();
+            if (!client.project(PROJECT).listCollections().contains(ORDERS)) {
+                client.project(PROJECT).collection(ORDERS).create();
             }
         }
     }
@@ -34,7 +34,7 @@ final class SpringServer {
         properties.put("mpp.hosts", "localhost:" + server.port());
         properties.put("mpp.username", ServerProcess.ADMIN);
         properties.put("mpp.password", ServerProcess.PASSWORD);
-        properties.put("mpp.database", DATABASE);
+        properties.put("mpp.project", PROJECT);
         properties.put("spring.main.banner-mode", "off");
         properties.putAll(extra);
         final var arguments = new ArrayList<String>();

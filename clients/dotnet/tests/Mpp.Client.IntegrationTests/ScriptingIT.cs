@@ -11,7 +11,7 @@ namespace Mpp.Client.IntegrationTests;
 
 public sealed class ScriptingIT(ScriptingIT.Server fixture) : IClassFixture<ScriptingIT.Server>
 {
-    private Database Shop => fixture.Client.Database("script_it");
+    private Project Shop => fixture.Client.Project("script_it");
 
     [Fact]
     public async Task RunScriptReturnsItsValueAndLogs()
@@ -113,7 +113,7 @@ public sealed class ScriptingIT(ScriptingIT.Server fixture) : IClassFixture<Scri
 
         protected override async Task SeedAsync()
         {
-            var shop = Client.Database("script_it");
+            var shop = Client.Project("script_it");
             await shop.CreateAsync();
             await shop.Collection("orders").CreateAsync();
             await shop.Collection("audit").CreateAsync();

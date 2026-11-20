@@ -60,50 +60,51 @@ def send(port: int, payload: dict) -> dict:
     return reply
 
 
-def documents_of(conn: Conn, db: str, coll: str) -> list:
-    response = conn.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll, "aggregationSteps": []})
+def documents_of(conn: Conn, project: str, coll: str) -> list:
+    response = conn.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll, "aggregationSteps": []})
     return sorted(json.dumps(doc, sort_keys=True) for doc in response.get("results") or [])
 
 
 def snapshot(port: int, skip_documents=()) -> dict:
     with admin(port) as conn:
         state = {}
-        databases = sorted(conn.send({"type": "LIST_DATABASES"}).get("databases") or [])
-        stats = conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("databases", [])
-        indexes = {(db["name"], coll["name"]): sorted(coll.get("indexes", [])) for db in stats
-                   for coll in db.get("collections", [])}
-        for db in databases:
-            collections = sorted(conn.send({"type": "LIST_COLLECTIONS", "databaseName": db}).get("collections") or [])
+        projects = sorted(conn.send({"type": "LIST_PROJECTS"}).get("projects") or [])
+        stats = conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("projects", [])
+        indexes = {(project["name"], coll["name"]): sorted(coll.get("indexes", [])) for project in stats
+                   for coll in project.get("collections", [])}
+        for project in projects:
+            collections = sorted(conn.send({"type": "LIST_COLLECTIONS",
+                                            "projectName": project}).get("collections") or [])
             entry = {"collections": collections, "documents": {}, "schemas": {}, "indexes": {}}
             for coll in collections:
-                if (db, coll) not in skip_documents and coll != "script_runs":
-                    entry["documents"][coll] = documents_of(conn, db, coll)
-                entry["schemas"][coll] = conn.send({"type": "GET_SCHEMA", "databaseName": db,
+                if (project, coll) not in skip_documents and coll != "script_runs":
+                    entry["documents"][coll] = documents_of(conn, project, coll)
+                entry["schemas"][coll] = conn.send({"type": "GET_SCHEMA", "projectName": project,
                                                     "collectionName": coll}).get("schema")
-                entry["indexes"][coll] = indexes.get((db, coll), [])
-            procedures = conn.send({"type": "LIST_PROCEDURES", "databaseName": db, "includeSource": True})
+                entry["indexes"][coll] = indexes.get((project, coll), [])
+            procedures = conn.send({"type": "LIST_PROCEDURES", "projectName": project, "includeSource": True})
             entry["procedures"] = sorted((p["name"], p.get("source"), p.get("enabled"))
                                          for p in procedures.get("procedures") or [])
-            triggers = conn.send({"type": "LIST_TRIGGERS", "databaseName": db}).get("triggers") or []
+            triggers = conn.send({"type": "LIST_TRIGGERS", "projectName": project}).get("triggers") or []
             entry["triggers"] = sorted(json.dumps({key: t.get(key) for key in (
                 "collectionName", "name", "events", "procedureName", "mode", "timing", "allowCascade", "enabled")},
                 sort_keys=True) for t in triggers if t.get("collectionName") != "script_runs")
-            schedules = conn.send({"type": "LIST_SCHEDULES", "databaseName": db, "includeArgs": True})
+            schedules = conn.send({"type": "LIST_SCHEDULES", "projectName": project, "includeArgs": True})
             entry["schedules"] = sorted(json.dumps({key: s.get(key) for key in (
                 "name", "procedureName", "cron", "intervalMs", "args", "timeoutMs", "enabled")}, sort_keys=True)
                 for s in schedules.get("schedules") or [])
-            state[db] = entry
+            state[project] = entry
     return state
 
 
 def user_view(state: dict) -> dict:
     view = {}
-    for db, entry in state.items():
+    for project, entry in state.items():
         copy = dict(entry)
         copy["collections"] = [coll for coll in entry["collections"] if coll != "script_runs"]
         copy["schemas"] = {coll: schema for coll, schema in entry["schemas"].items() if coll != "script_runs"}
         copy["indexes"] = {coll: idx for coll, idx in entry["indexes"].items() if coll != "script_runs"}
-        view[db] = copy
+        view[project] = copy
     return view
 
 
@@ -116,70 +117,70 @@ def order(i: int) -> dict:
 def seed_source():
     section("Seed the source server")
     with admin(SOURCE_PORT) as c:
-        for db in (SHOP, CRM):
-            check_status(f"create {db}", c.send({"type": "CREATE_DATABASE", "databaseName": db}), "OK")
+        for project in (SHOP, CRM):
+            check_status(f"create {project}", c.send({"type": "CREATE_PROJECT", "projectName": project}), "OK")
         for coll in (ORDERS, ITEMS, FIRED):
-            check_status(f"create {SHOP}.{coll}", c.send({"type": "CREATE_COLLECTION", "databaseName": SHOP,
+            check_status(f"create {SHOP}.{coll}", c.send({"type": "CREATE_COLLECTION", "projectName": SHOP,
                                                          "collectionName": coll}), "OK")
-        check_status("create crm.leads", c.send({"type": "CREATE_COLLECTION", "databaseName": CRM,
+        check_status("create crm.leads", c.send({"type": "CREATE_COLLECTION", "projectName": CRM,
                                                  "collectionName": LEADS}), "OK")
         for name, source in (("lib", LIB_SOURCE), ("normalizer", NORMALIZER_SOURCE), ("notifier", NOTIFIER_SOURCE),
                              ("rollup", ROLLUP_SOURCE)):
-            check_status(f"save procedure {name}", c.send({"type": "SAVE_PROCEDURE", "databaseName": SHOP,
+            check_status(f"save procedure {name}", c.send({"type": "SAVE_PROCEDURE", "projectName": SHOP,
                                                           "name": name, "script": source}), "OK")
         check_status("install the before hook", c.send({
-            "type": "SAVE_TRIGGER", "databaseName": SHOP, "collectionName": ORDERS, "name": "normalize",
+            "type": "SAVE_TRIGGER", "projectName": SHOP, "collectionName": ORDERS, "name": "normalize",
             "events": ["CREATED", "UPDATED"], "procedureName": "normalizer", "timing": "before"}), "OK")
         for start in range(0, ORDER_COUNT, 500):
             check_status(f"save orders {start}..", c.send({
-                "type": "BULK_SAVE", "databaseName": SHOP, "collectionName": ORDERS,
+                "type": "BULK_SAVE", "projectName": SHOP, "collectionName": ORDERS,
                 "objects": [order(i) for i in range(start, start + 500)]}), "OK")
-        check_status("save items", c.send({"type": "BULK_SAVE", "databaseName": SHOP, "collectionName": ITEMS,
+        check_status("save items", c.send({"type": "BULK_SAVE", "projectName": SHOP, "collectionName": ITEMS,
                                            "objects": [{"_id": f"i{i}", "name": f"item {i}"} for i in range(5)]}),
                      "OK")
-        check_status("create crm.notes", c.send({"type": "CREATE_COLLECTION", "databaseName": CRM,
+        check_status("create crm.notes", c.send({"type": "CREATE_COLLECTION", "projectName": CRM,
                                                  "collectionName": NOTES}), "OK")
         for start in range(0, NOTE_COUNT, 400):
             check_status(f"save notes {start}..", c.send({
-                "type": "BULK_SAVE", "databaseName": CRM, "collectionName": NOTES,
+                "type": "BULK_SAVE", "projectName": CRM, "collectionName": NOTES,
                 "objects": [{"_id": f"n{i:05d}", "body": f"{i}:" + "n" * 2000} for i in range(start, start + 400)]}),
                 "OK")
-        check_status("save leads", c.send({"type": "BULK_SAVE", "databaseName": CRM, "collectionName": LEADS,
+        check_status("save leads", c.send({"type": "BULK_SAVE", "projectName": CRM, "collectionName": LEADS,
                                            "objects": [{"_id": f"l{i}", "score": i} for i in range(7)]}), "OK")
-        check_status("index orders.customer", c.send({"type": "CREATE_INDEX", "databaseName": SHOP,
+        check_status("index orders.customer", c.send({"type": "CREATE_INDEX", "projectName": SHOP,
                                                       "collectionName": ORDERS, "fieldName": "customer"}), "OK")
-        check_status("schema on orders", c.send({"type": "SAVE_SCHEMA", "databaseName": SHOP,
+        check_status("schema on orders", c.send({"type": "SAVE_SCHEMA", "projectName": SHOP,
                                                  "collectionName": ORDERS,
                                                  "schema": {"type": "object", "required": ["qty"]}}), "OK")
         check_status("install the after trigger", c.send({
-            "type": "SAVE_TRIGGER", "databaseName": SHOP, "collectionName": ORDERS, "name": "notify",
+            "type": "SAVE_TRIGGER", "projectName": SHOP, "collectionName": ORDERS, "name": "notify",
             "events": ["CREATED"], "procedureName": "notifier"}), "OK")
         check_status("install a schedule with args", c.send({
-            "type": "SAVE_SCHEDULE", "databaseName": SHOP, "name": "nightly", "procedureName": "rollup",
+            "type": "SAVE_SCHEDULE", "projectName": SHOP, "name": "nightly", "procedureName": "rollup",
             "cron": "0 3 * * *", "args": {"limit": 7}}), "OK")
-        check_status("one RUN_SCRIPT", c.send({"type": "RUN_SCRIPT", "databaseName": SHOP, "script": "return 1;"}),
+        check_status("one RUN_SCRIPT", c.send({"type": "RUN_SCRIPT", "projectName": SHOP, "script": "return 1;"}),
                      "OK")
         check("script_runs exists on the source", bu.wait_until(lambda: "script_runs" in (c.send({
-            "type": "LIST_COLLECTIONS", "databaseName": SHOP}).get("collections") or []), 15.0))
+            "type": "LIST_COLLECTIONS", "projectName": SHOP}).get("collections") or []), 15.0))
 
 
-def page_files(work_dir: str, db: str, coll: str) -> int:
-    folder = os.path.join(work_dir, "db", db, coll)
+def page_files(work_dir: str, project: str, coll: str) -> int:
+    folder = os.path.join(work_dir, "db", project, coll)
     return sum(1 for name in os.listdir(folder) if name.endswith(".dat")) if os.path.isdir(folder) else 0
 
 
 def test_exec(cwd: str):
     section("--exec")
-    single = client(cwd, "--exec", '{"type":"LIST_DATABASES"}')
+    single = client(cwd, "--exec", '{"type":"LIST_PROJECTS"}')
     lines = single.stdout.decode().splitlines()
     check("one command exits 0", single.returncode == 0, single.stderr.decode())
     check("and prints one OK line", len(lines) == 1 and json.loads(lines[0]).get("status") == "OK", str(lines))
-    double = client(cwd, "--exec", '{"type":"LIST_DATABASES"}', "--exec", '{"type":"LIST_DATABASES"}')
+    double = client(cwd, "--exec", '{"type":"LIST_PROJECTS"}', "--exec", '{"type":"LIST_PROJECTS"}')
     check("two --exec flags print two lines", len(double.stdout.decode().splitlines()) == 2)
-    piped = client(cwd, "--exec", stdin=b'{"type":"LIST_DATABASES"}\n{"type":"LIST_DATABASES"}\n')
+    piped = client(cwd, "--exec", stdin=b'{"type":"LIST_PROJECTS"}\n{"type":"LIST_PROJECTS"}\n')
     check("commands piped on stdin work", piped.returncode == 0 and len(piped.stdout.decode().splitlines()) == 2,
           piped.stderr.decode())
-    missing = client(cwd, "--exec", json.dumps({"type": "FIND_BY_ID", "databaseName": SHOP, "collectionName": ORDERS,
+    missing = client(cwd, "--exec", json.dumps({"type": "FIND_BY_ID", "projectName": SHOP, "collectionName": ORDERS,
                                                 "_id": "nope"}))
     check("a failing command exits 1", missing.returncode == 1, missing.stdout.decode())
     check("a wrong password exits 3", client(cwd, "--exec", "{}", password="wrong").returncode == 3)
@@ -203,15 +204,15 @@ def test_health(cwd: str, log_path: str):
 
 def test_shell(cwd: str):
     section("--shell")
-    script = (json.dumps({"type": "CREATE_DATABASE", "databaseName": "client_shell_db"}) + "\n"
-              + '{"type":"LIST_DATABASES"}\nexit\n').encode()
+    script = (json.dumps({"type": "CREATE_PROJECT", "projectName": "client_shell_project"}) + "\n"
+              + '{"type":"LIST_PROJECTS"}\nexit\n').encode()
     result = client(cwd, "--shell", stdin=script)
     out = result.stdout.decode()
     check("the shell exits 0", result.returncode == 0, result.stderr.decode())
     check("replies are pretty-printed", '\n  "status": "OK"' in out, out[:300])
-    check("the database exists afterwards", "client_shell_db" in (send(SOURCE_PORT, {"type": "LIST_DATABASES"})
-                                                                  .get("databases") or []))
-    send(SOURCE_PORT, {"type": "DROP_DATABASE", "databaseName": "client_shell_db"})
+    check("the project exists afterwards", "client_shell_project" in (send(SOURCE_PORT, {"type": "LIST_PROJECTS"})
+                                                                  .get("projects") or []))
+    send(SOURCE_PORT, {"type": "DROP_PROJECT", "projectName": "client_shell_project"})
 
 
 def test_round_trip(cwd: str, source_state: dict) -> bytes:
@@ -235,8 +236,9 @@ def test_round_trip(cwd: str, source_state: dict) -> bytes:
     check("restore reports its count", f"restored {len(lines)} requests" in restored.stderr.decode(),
           restored.stderr.decode()[-300:])
     target_state = snapshot(TARGET_PORT)
-    for db in (SHOP, CRM):
-        check(f"{db} matches the source", user_view(target_state).get(db) == user_view(source_state).get(db))
+    for project in (SHOP, CRM):
+        check(f"{project} matches the source",
+              user_view(target_state).get(project) == user_view(source_state).get(project))
     check("no script_runs on the target", "script_runs" not in target_state[SHOP]["collections"])
     check("the after trigger did not fire during the restore",
           bu.holds_throughout(lambda: not documents_of_port(TARGET_PORT, SHOP, FIRED), 3.0))
@@ -249,44 +251,44 @@ def test_round_trip(cwd: str, source_state: dict) -> bytes:
     return plain.stdout
 
 
-def documents_of_port(port: int, db: str, coll: str) -> list:
+def documents_of_port(port: int, project: str, coll: str) -> list:
     with admin(port) as conn:
-        documents = documents_of(conn, db, coll)
+        documents = documents_of(conn, project, coll)
     return documents
 
 
-def test_restore_one_database(cwd: str):
-    section("Restore one database")
-    dumped = client(cwd, "--dump", "--databases", CRM)
+def test_restore_one_project(cwd: str):
+    section("Restore one project")
+    dumped = client(cwd, "--dump", "--projects", CRM)
     requests = [json.loads(line) for line in dumped.stdout.decode().splitlines()]
-    check("the subset dump holds only that database", {r["databaseName"] for r in requests} == {CRM})
+    check("the subset dump holds only that project", {r["projectName"] for r in requests} == {CRM})
     shop_before = user_view(snapshot(TARGET_PORT, {(SHOP, FIRED)}))[SHOP]
-    check_status("drop it on the target", send(TARGET_PORT, {"type": "DROP_DATABASE", "databaseName": CRM}), "OK")
+    check_status("drop it on the target", send(TARGET_PORT, {"type": "DROP_PROJECT", "projectName": CRM}), "OK")
     restored = client(cwd, "--restore", port=TARGET_PORT, stdin=dumped.stdout)
     check("restoring the subset exits 0", restored.returncode == 0, restored.stderr.decode())
-    check("the database matches the source", snapshot(TARGET_PORT)[CRM] == snapshot(SOURCE_PORT)[CRM])
-    check("the other database is untouched", user_view(snapshot(TARGET_PORT, {(SHOP, FIRED)}))[SHOP] == shop_before)
+    check("the project matches the source", snapshot(TARGET_PORT)[CRM] == snapshot(SOURCE_PORT)[CRM])
+    check("the other project is untouched", user_view(snapshot(TARGET_PORT, {(SHOP, FIRED)}))[SHOP] == shop_before)
 
 
 def test_restore_one_collection_into_a_live_server(cwd: str):
     section("Restore one collection into a live server")
     with admin(TARGET_PORT) as c:
         for i in range(3):
-            c.send({"type": "SAVE", "databaseName": SHOP, "collectionName": ORDERS,
+            c.send({"type": "SAVE", "projectName": SHOP, "collectionName": ORDERS,
                     "object": {**order(i), "qty": 1000 + i}})
         for i in (10, 11):
-            check_status(f"delete o{i} on the target", c.send({"type": "DELETE", "databaseName": SHOP,
+            check_status(f"delete o{i} on the target", c.send({"type": "DELETE", "projectName": SHOP,
                                                                "collectionName": ORDERS, "_id": f"o{i}"}), "OK")
         check_status("add a document the source lacks", c.send({
-            "type": "SAVE", "databaseName": SHOP, "collectionName": ORDERS, "object": {**order(99999)}}), "OK")
+            "type": "SAVE", "projectName": SHOP, "collectionName": ORDERS, "object": {**order(99999)}}), "OK")
     items_before = documents_of_port(TARGET_PORT, SHOP, ITEMS)
     schedules_before = snapshot(TARGET_PORT, {(SHOP, FIRED)})[SHOP]["schedules"]
 
     dumped = client(cwd, "--dump", "--collections", f"{SHOP}.{ORDERS}")
     requests = [json.loads(line) for line in dumped.stdout.decode().splitlines()]
     types = [r["type"] for r in requests]
-    check("one CREATE_DATABASE and one CREATE_COLLECTION",
-          types.count("CREATE_DATABASE") == 1 and types.count("CREATE_COLLECTION") == 1, str(types[:5]))
+    check("one CREATE_PROJECT and one CREATE_COLLECTION",
+          types.count("CREATE_PROJECT") == 1 and types.count("CREATE_COLLECTION") == 1, str(types[:5]))
     check("its triggers and the procedures they need, imports included",
           sorted(r["name"] for r in requests if r["type"] == "SAVE_PROCEDURE") == ["lib", "normalizer", "notifier"]
           and sorted(r["name"] for r in requests if r["type"] == "SAVE_TRIGGER") == ["normalize", "notify"])
@@ -295,7 +297,7 @@ def test_restore_one_collection_into_a_live_server(cwd: str):
           and "SAVE_SCHEDULE" not in types)
 
     restored = client(cwd, "--restore", port=TARGET_PORT, stdin=dumped.stdout)
-    check("the merge exits 0 although the database exists", restored.returncode == 0, restored.stderr.decode())
+    check("the merge exits 0 although the project exists", restored.returncode == 0, restored.stderr.decode())
     target = {json.loads(d)["_id"]: json.loads(d) for d in documents_of_port(TARGET_PORT, SHOP, ORDERS)}
     source = {json.loads(d)["_id"]: json.loads(d) for d in documents_of_port(SOURCE_PORT, SHOP, ORDERS)}
     check("the changed documents match the source again", all(target.get(f"o{i}") == source[f"o{i}"] for i in range(3)))
@@ -312,10 +314,11 @@ def test_restore_one_collection_into_a_live_server(cwd: str):
 USER_PASSWORD = "client_user_pass1"
 
 
-def create_user(port: int, name: str, db_perms=None, script_perms=None):
+def create_user(port: int, name: str, project_perms=None, script_perms=None):
     check_status(f"create {name} on {port}", send(port, {
         "type": "CREATE_USER", "username": name, "password": USER_PASSWORD, "admin": False, "globalPermissions": [],
-        "databasePermissions": db_perms or {}, "collectionPermissions": {}, "scriptPermissions": script_perms or {}}),
+        "projectPermissions": project_perms or {}, "collectionPermissions": {},
+                                                         "scriptPermissions": script_perms or {}}),
                  "OK")
 
 
@@ -323,16 +326,17 @@ def as_user(cwd: str, user: str, *args, port: int = SOURCE_PORT, stdin: bytes = 
     return client(cwd, *args, "--user", user, port=port, stdin=stdin, password=USER_PASSWORD)
 
 
-def database_names(dump: bytes) -> set:
-    return {json.loads(line).get("databaseName") for line in dump.decode().splitlines()}
+def project_names(dump: bytes) -> set:
+    return {json.loads(line).get("projectName") for line in dump.decode().splitlines()}
 
 
 def dumped_types(dump: bytes) -> list:
     return [json.loads(line)["type"] for line in dump.decode().splitlines()]
 
 
-def document_of(port: int, db: str, coll: str, doc_id: str) -> dict:
-    return send(port, {"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id}).get("object")
+def document_of(port: int, project: str, coll: str, doc_id: str) -> dict:
+    return send(port, {"type": "FIND_BY_ID", "projectName": project, "collectionName": coll,
+                       "_id": doc_id}).get("object")
 
 
 def test_non_admin_dump_and_restore(cwd: str):
@@ -340,28 +344,28 @@ def test_non_admin_dump_and_restore(cwd: str):
     for port in (SOURCE_PORT, TARGET_PORT):
         create_user(port, "client_owner", script_perms={CRM: "RUN"})
         check_status(f"client_owner owns {SHOP} on {port}", send(port, {
-            "type": "SET_DATABASE_OWNERS", "databaseName": SHOP, "owners": ["client_owner"]}), "OK")
-        create_user(port, "client_reader", db_perms={CRM: "READ"})
-        create_user(port, "client_writer", db_perms={SHOP: "READ_WRITE"}, script_perms={SHOP: "MANAGE"})
+            "type": "SET_PROJECT_OWNERS", "projectName": SHOP, "owners": ["client_owner"]}), "OK")
+        create_user(port, "client_reader", project_perms={CRM: "READ"})
+        create_user(port, "client_writer", project_perms={SHOP: "READ_WRITE"}, script_perms={SHOP: "MANAGE"})
     create_user(SOURCE_PORT, "client_nobody")
 
-    owner_dump = as_user(cwd, "client_owner", "--dump", "--databases", SHOP)
-    check("an owner dumps their database", owner_dump.returncode == 0, owner_dump.stderr.decode())
-    admin_dump = client(cwd, "--dump", "--databases", SHOP)
+    owner_dump = as_user(cwd, "client_owner", "--dump", "--projects", SHOP)
+    check("an owner dumps their project", owner_dump.returncode == 0, owner_dump.stderr.decode())
+    admin_dump = client(cwd, "--dump", "--projects", SHOP)
     check("and gets the same dump an admin gets", owner_dump.stdout == admin_dump.stdout)
     check_status("change an order on the target", send(TARGET_PORT, {
-        "type": "SAVE", "databaseName": SHOP, "collectionName": ORDERS, "object": {**order(5), "qty": 777}}), "OK")
+        "type": "SAVE", "projectName": SHOP, "collectionName": ORDERS, "object": {**order(5), "qty": 777}}), "OK")
     owner_restore = as_user(cwd, "client_owner", "--restore", port=TARGET_PORT, stdin=owner_dump.stdout)
-    check("the owner restores into their existing database", owner_restore.returncode == 0,
+    check("the owner restores into their existing project", owner_restore.returncode == 0,
           owner_restore.stderr.decode()[-400:])
-    check("without sending its CREATE_DATABASE", "skipped 1 existing databases" in owner_restore.stderr.decode(),
+    check("without sending its CREATE_PROJECT", "skipped 1 existing projects" in owner_restore.stderr.decode(),
           owner_restore.stderr.decode()[-200:])
     check("the changed order matches the source again",
           document_of(TARGET_PORT, SHOP, ORDERS, "o5") == document_of(SOURCE_PORT, SHOP, ORDERS, "o5"))
     whole = as_user(cwd, "client_owner", "--dump")
     check("the owner's whole-server dump exits 0", whole.returncode == 0, whole.stderr.decode())
-    check("and holds only the readable database", database_names(whole.stdout) == {SHOP},
-          str(database_names(whole.stdout)))
+    check("and holds only the readable project", project_names(whole.stdout) == {SHOP},
+          str(project_names(whole.stdout)))
     check("and notes the visible but unreadable one", f"note: {CRM} was not dumped" in whole.stderr.decode(),
           whole.stderr.decode())
 
@@ -378,24 +382,24 @@ def test_non_admin_dump_and_restore(cwd: str):
     check("an admin re-saves the collection's definitions on the target", readmin.returncode == 0,
           readmin.stderr.decode()[-300:])
     check_status("change an order on the target", send(TARGET_PORT, {
-        "type": "SAVE", "databaseName": SHOP, "collectionName": ORDERS, "object": {**order(6), "qty": 888}}), "OK")
+        "type": "SAVE", "projectName": SHOP, "collectionName": ORDERS, "object": {**order(6), "qty": 888}}), "OK")
     check_status("delete an order on the target", send(TARGET_PORT, {
-        "type": "DELETE", "databaseName": SHOP, "collectionName": ORDERS, "_id": "o7"}), "OK")
+        "type": "DELETE", "projectName": SHOP, "collectionName": ORDERS, "_id": "o7"}), "OK")
     owner_orders_restore = as_user(cwd, "client_owner", "--restore", port=TARGET_PORT, stdin=owner_orders.stdout)
     check("the owner restores the collection over definitions the admin defined",
           owner_orders_restore.returncode == 0, owner_orders_restore.stderr.decode()[-400:])
-    check("without sending its CREATE_DATABASE",
-          "skipped 1 existing databases" in owner_orders_restore.stderr.decode(),
+    check("without sending its CREATE_PROJECT",
+          "skipped 1 existing projects" in owner_orders_restore.stderr.decode(),
           owner_orders_restore.stderr.decode()[-200:])
     check("the changed and deleted orders match the source again",
           all(document_of(TARGET_PORT, SHOP, ORDERS, doc_id) == document_of(SOURCE_PORT, SHOP, ORDERS, doc_id)
               for doc_id in ("o6", "o7")))
-    target_triggers = send(TARGET_PORT, {"type": "LIST_TRIGGERS", "databaseName": SHOP}).get("triggers") or []
+    target_triggers = send(TARGET_PORT, {"type": "LIST_TRIGGERS", "projectName": SHOP}).get("triggers") or []
     check("and the collection's triggers are now defined by the owner",
           sorted(t["definer"] for t in target_triggers if t.get("collectionName") == ORDERS)
           == ["client_owner", "client_owner"], str([(t["name"], t.get("definer")) for t in target_triggers]))
 
-    reader_dump = as_user(cwd, "client_reader", "--dump", "--databases", CRM)
+    reader_dump = as_user(cwd, "client_reader", "--dump", "--projects", CRM)
     reader_types = dumped_types(reader_dump.stdout)
     check("a READ user dumps data", reader_dump.returncode == 0 and "BULK_SAVE" in reader_types,
           reader_dump.stderr.decode())
@@ -405,11 +409,11 @@ def test_non_admin_dump_and_restore(cwd: str):
           reader_dump.stderr.decode())
     reader_restore = as_user(cwd, "client_reader", "--restore", port=TARGET_PORT, stdin=reader_dump.stdout)
     check("a READ user cannot restore", reader_restore.returncode == 1, reader_restore.stderr.decode())
-    check("and is stopped right after the skipped CREATE_DATABASE", "line 2: " in reader_restore.stderr.decode()
+    check("and is stopped right after the skipped CREATE_PROJECT", "line 2: " in reader_restore.stderr.decode()
           and "FORBIDDEN" in reader_restore.stderr.decode(), reader_restore.stderr.decode()[-300:])
 
     check_status("add an item the source lacks", send(TARGET_PORT, {
-        "type": "SAVE", "databaseName": SHOP, "collectionName": ITEMS, "object": {"_id": "i_extra", "name": "x"}}),
+        "type": "SAVE", "projectName": SHOP, "collectionName": ITEMS, "object": {"_id": "i_extra", "name": "x"}}),
                  "OK")
     items_dump = as_user(cwd, "client_writer", "--dump", "--collections", f"{SHOP}.{ITEMS}")
     check("a READ_WRITE + MANAGE user dumps a collection", items_dump.returncode == 0, items_dump.stderr.decode())
@@ -446,27 +450,27 @@ HALVED_ROW_BYTES = 200_000
 HALVED_REPLY_CAP = 2_000_000
 
 
-def registered_indexes(port: int, db: str, coll: str) -> list:
-    stats = send(port, {"type": "GET_DATABASE_STATS"}).get("stats", {}).get("databases", [])
-    return sorted(index for d in stats if d.get("name") == db for c in d.get("collections", [])
+def registered_indexes(port: int, project: str, coll: str) -> list:
+    stats = send(port, {"type": "GET_PROJECT_STATS"}).get("stats", {}).get("projects", [])
+    return sorted(index for d in stats if d.get("name") == project for c in d.get("collections", [])
                   if c.get("name") == coll for index in c.get("indexes") or [])
 
 
 def test_dump_restore_multi_field_index_round_trip(cwd: str):
     section("Dump and restore of several indexes as one CREATE_INDEX")
     with admin(SOURCE_PORT) as c:
-        check_status(f"create {MULTI}", c.send({"type": "CREATE_DATABASE", "databaseName": MULTI}), "OK")
-        check_status(f"create {MULTI}.{PRODUCTS}", c.send({"type": "CREATE_COLLECTION", "databaseName": MULTI,
+        check_status(f"create {MULTI}", c.send({"type": "CREATE_PROJECT", "projectName": MULTI}), "OK")
+        check_status(f"create {MULTI}.{PRODUCTS}", c.send({"type": "CREATE_COLLECTION", "projectName": MULTI,
                                                            "collectionName": PRODUCTS}), "OK")
-        check_status("save products", c.send({"type": "BULK_SAVE", "databaseName": MULTI, "collectionName": PRODUCTS,
+        check_status("save products", c.send({"type": "BULK_SAVE", "projectName": MULTI, "collectionName": PRODUCTS,
                                               "objects": [{"_id": f"p{i}", "sku": f"s{i}", "color": f"c{i % 4}",
                                                            "price": i, "tags": [f"t{i % 3}"]} for i in range(300)]}),
                      "OK")
         check_status("index four fields with one request", c.send({
-            "type": "CREATE_INDEX", "databaseName": MULTI, "collectionName": PRODUCTS,
+            "type": "CREATE_INDEX", "projectName": MULTI, "collectionName": PRODUCTS,
             "fieldNames": ["sku", "color", "price", "tags"]}), "OK")
-    dumped = client(cwd, "--dump", "--databases", MULTI)
-    check("--dump of the database exits 0", dumped.returncode == 0, dumped.stderr.decode())
+    dumped = client(cwd, "--dump", "--projects", MULTI)
+    check("--dump of the project exits 0", dumped.returncode == 0, dumped.stderr.decode())
     create_index_lines = [json.loads(line) for line in dumped.stdout.decode().splitlines()
                           if json.loads(line).get("type") == "CREATE_INDEX"]
     check("the dump holds one CREATE_INDEX for the collection", len(create_index_lines) == 1, str(create_index_lines))
@@ -478,7 +482,7 @@ def test_dump_restore_multi_field_index_round_trip(cwd: str):
           registered_indexes(TARGET_PORT, MULTI, PRODUCTS) == registered_indexes(SOURCE_PORT, MULTI, PRODUCTS)
           == ["color", "price", "sku", "tags"], str(registered_indexes(TARGET_PORT, MULTI, PRODUCTS)))
     for field, value in (("color", "c2"), ("tags", ["t1"])):
-        query = {"type": "AGGREGATE", "databaseName": MULTI, "collectionName": PRODUCTS,
+        query = {"type": "AGGREGATE", "projectName": MULTI, "collectionName": PRODUCTS,
                  "aggregationSteps": [bu.filter_step(field, "EQUALS", value)], "analyze": True}
         target = send(TARGET_PORT, query)
         check(f"the restored {field} index answers like the source",
@@ -488,20 +492,20 @@ def test_dump_restore_multi_field_index_round_trip(cwd: str):
     again = client(cwd, "--restore", port=TARGET_PORT, stdin=dumped.stdout)
     check("restoring it again is idempotent", again.returncode == 0, again.stderr.decode())
     for port in (SOURCE_PORT, TARGET_PORT):
-        send(port, {"type": "DROP_DATABASE", "databaseName": MULTI})
+        send(port, {"type": "DROP_PROJECT", "projectName": MULTI})
 
 
 def test_exec_large_result_small_client_heap(cwd: str):
     section("--exec relays a large result through a small client heap")
     with admin(SOURCE_PORT) as c:
-        check_status(f"create {CRM}.{BIG}", c.send({"type": "CREATE_COLLECTION", "databaseName": CRM,
+        check_status(f"create {CRM}.{BIG}", c.send({"type": "CREATE_COLLECTION", "projectName": CRM,
                                                      "collectionName": BIG}), "OK")
         for start in range(0, BIG_ROWS, 40):
             check_status(f"save big rows {start}..", c.send({
-                "type": "BULK_SAVE", "databaseName": CRM, "collectionName": BIG,
+                "type": "BULK_SAVE", "projectName": CRM, "collectionName": BIG,
                 "objects": [{"_id": f"b{i:04d}", "body": f"{i}:" + "b" * BIG_ROW_BYTES}
                             for i in range(start, start + 40)]}), "OK")
-    request = json.dumps({"type": "AGGREGATE", "databaseName": CRM, "collectionName": BIG, "aggregationSteps": []})
+    request = json.dumps({"type": "AGGREGATE", "projectName": CRM, "collectionName": BIG, "aggregationSteps": []})
     command = ["java", SMALL_CLIENT_HEAP, "-jar", bu.JAR_PATH, "--exec", request, "--port", str(SOURCE_PORT),
                "--password", bu.PASSWORD]
     result = subprocess.run(command, capture_output=True, cwd=cwd, timeout=CLIENT_TIMEOUT_S)
@@ -512,22 +516,22 @@ def test_exec_large_result_small_client_heap(cwd: str):
     check(f"holding all {BIG_ROWS} rows (about {BIG_ROWS * BIG_ROW_BYTES // 1_000_000} MB)",
           reply.get("status") == "OK" and len(reply.get("results") or []) == BIG_ROWS,
           f"{len(result.stdout)} bytes")
-    send(SOURCE_PORT, {"type": "DROP_COLLECTION", "databaseName": CRM, "collectionName": BIG})
+    send(SOURCE_PORT, {"type": "DROP_COLLECTION", "projectName": CRM, "collectionName": BIG})
 
 
 def test_dump_restore_of_multi_megabyte_lines(cwd: str):
     section("Dump and restore of multi-megabyte BULK_SAVE lines")
     with admin(SOURCE_PORT) as c:
-        check_status(f"create {WIDE}", c.send({"type": "CREATE_DATABASE", "databaseName": WIDE}), "OK")
-        check_status(f"create {WIDE}.{BIG}", c.send({"type": "CREATE_COLLECTION", "databaseName": WIDE,
+        check_status(f"create {WIDE}", c.send({"type": "CREATE_PROJECT", "projectName": WIDE}), "OK")
+        check_status(f"create {WIDE}.{BIG}", c.send({"type": "CREATE_COLLECTION", "projectName": WIDE,
                                                      "collectionName": BIG}), "OK")
         for start in range(0, WIDE_ROWS, 20):
             check_status(f"save wide rows {start}..", c.send({
-                "type": "BULK_SAVE", "databaseName": WIDE, "collectionName": BIG,
+                "type": "BULK_SAVE", "projectName": WIDE, "collectionName": BIG,
                 "objects": [{"_id": f"w{i:04d}", "body": f"{i}:" + "w" * WIDE_ROW_BYTES, "n": i}
                             for i in range(start, start + 20)]}), "OK")
-    dumped = client(cwd, "--dump", "--databases", WIDE)
-    check("--dump of the wide database exits 0", dumped.returncode == 0, dumped.stderr.decode())
+    dumped = client(cwd, "--dump", "--projects", WIDE)
+    check("--dump of the wide project exits 0", dumped.returncode == 0, dumped.stderr.decode())
     longest = max(len(line) for line in dumped.stdout.splitlines())
     check("its BULK_SAVE lines are several megabytes, past many write chunks", longest > WIDE_LINE_BYTES,
           f"longest line {longest} bytes")
@@ -536,26 +540,26 @@ def test_dump_restore_of_multi_megabyte_lines(cwd: str):
     check("every wide document is restored byte for byte",
           documents_of_port(TARGET_PORT, WIDE, BIG) == documents_of_port(SOURCE_PORT, WIDE, BIG)
           and len(documents_of_port(TARGET_PORT, WIDE, BIG)) == WIDE_ROWS)
-    update = {"type": "SAVE", "databaseName": WIDE, "collectionName": BIG,
+    update = {"type": "SAVE", "projectName": WIDE, "collectionName": BIG,
               "object": {"_id": "w0007", "body": "rewritten", "n": 7}}
     check_status("the restored collection takes a write", send(TARGET_PORT, update), "OK")
     check("and reads it back", (document_of(TARGET_PORT, WIDE, BIG, "w0007") or {}).get("body") == "rewritten")
     for port in (SOURCE_PORT, TARGET_PORT):
-        send(port, {"type": "DROP_DATABASE", "databaseName": WIDE})
+        send(port, {"type": "DROP_PROJECT", "projectName": WIDE})
 
 
 def test_dump_halves_a_page_past_the_reply_cap(cwd: str):
     section(f"--dump halves a page whose reply passes the client's cap ({HALVED_REPLY_CAP} bytes)")
     with admin(SOURCE_PORT) as c:
-        check_status(f"create {HALVED}", c.send({"type": "CREATE_DATABASE", "databaseName": HALVED}), "OK")
-        check_status(f"create {HALVED}.{BIG}", c.send({"type": "CREATE_COLLECTION", "databaseName": HALVED,
+        check_status(f"create {HALVED}", c.send({"type": "CREATE_PROJECT", "projectName": HALVED}), "OK")
+        check_status(f"create {HALVED}.{BIG}", c.send({"type": "CREATE_COLLECTION", "projectName": HALVED,
                                                        "collectionName": BIG}), "OK")
         for start in range(0, HALVED_ROWS, 5):
             check_status(f"save halved rows {start}..", c.send({
-                "type": "BULK_SAVE", "databaseName": HALVED, "collectionName": BIG,
+                "type": "BULK_SAVE", "projectName": HALVED, "collectionName": BIG,
                 "objects": [{"_id": f"h{i:03d}", "body": "h" * HALVED_ROW_BYTES, "n": i}
                             for i in range(start, start + 5)]}), "OK")
-    dumped = client(cwd, "--dump", "--databases", HALVED, "--max-reply-bytes", str(HALVED_REPLY_CAP))
+    dumped = client(cwd, "--dump", "--projects", HALVED, "--max-reply-bytes", str(HALVED_REPLY_CAP))
     check("--dump with a small reply cap exits 0", dumped.returncode == 0, dumped.stderr.decode())
     check("it reports every document", f"{HALVED}.{BIG}: {HALVED_ROWS} documents" in dumped.stderr.decode(),
           dumped.stderr.decode())
@@ -564,11 +568,11 @@ def test_dump_halves_a_page_past_the_reply_cap(cwd: str):
     check("every document is restored byte for byte",
           documents_of_port(TARGET_PORT, HALVED, BIG) == documents_of_port(SOURCE_PORT, HALVED, BIG)
           and len(documents_of_port(TARGET_PORT, HALVED, BIG)) == HALVED_ROWS)
-    too_small = client(cwd, "--dump", "--databases", HALVED, "--max-reply-bytes", str(HALVED_ROW_BYTES // 2))
+    too_small = client(cwd, "--dump", "--projects", HALVED, "--max-reply-bytes", str(HALVED_ROW_BYTES // 2))
     check("a document larger than the cap fails the dump and names where it was",
           too_small.returncode != 0 and "after the start" in too_small.stderr.decode(), too_small.stderr.decode())
     for port in (SOURCE_PORT, TARGET_PORT):
-        send(port, {"type": "DROP_DATABASE", "databaseName": HALVED})
+        send(port, {"type": "DROP_PROJECT", "projectName": HALVED})
 
 
 def test_hygiene(cwd: str, plain_dump: bytes):
@@ -584,17 +588,17 @@ def test_tls(cwd: str, work_dir: str, log_path: str):
                  tlsKeystorePassword="changeit")
     proc = bu.start_server(work_dir, log_path, port=SOURCE_PORT)
     try:
-        trusted = bu.wait_until(lambda: client(cwd, "--tls", "--insecure", "--exec", '{"type":"LIST_DATABASES"}')
+        trusted = bu.wait_until(lambda: client(cwd, "--tls", "--insecure", "--exec", '{"type":"LIST_PROJECTS"}')
                                 .returncode == 0, 30.0)
         check("--tls --insecure exits 0", bool(trusted))
         health = client(cwd, "--health", "--tls", "--insecure", password=None)
         check("--health --tls --insecure exits 0", health.returncode == 0, health.stderr.decode())
-        insecure = client(cwd, "--tls", "--insecure", "--exec", '{"type":"LIST_DATABASES"}')
+        insecure = client(cwd, "--tls", "--insecure", "--exec", '{"type":"LIST_PROJECTS"}')
         check("--insecure warns on stderr", insecure.stderr.decode().startswith("WARNING: --insecure is active"),
               insecure.stderr.decode())
         check("and keeps stdout to the reply alone", json.loads(insecure.stdout.decode()).get("status") == "OK",
               insecure.stdout.decode()[:200])
-        verified = client(cwd, "--tls", "--exec", '{"type":"LIST_DATABASES"}')
+        verified = client(cwd, "--tls", "--exec", '{"type":"LIST_PROJECTS"}')
         check("--tls against the self-signed certificate exits 3", verified.returncode == 3, verified.stderr.decode())
         check("a verified --tls prints no insecure warning", "--insecure" not in verified.stderr.decode(),
               verified.stderr.decode())
@@ -629,7 +633,7 @@ def main():
         test_health(client_dir, source_log)
         test_shell(client_dir)
         plain_dump = test_round_trip(client_dir, source_state)
-        test_restore_one_database(client_dir)
+        test_restore_one_project(client_dir)
         test_restore_one_collection_into_a_live_server(client_dir)
         test_non_admin_dump_and_restore(client_dir)
         test_dump_restore_multi_field_index_round_trip(client_dir)

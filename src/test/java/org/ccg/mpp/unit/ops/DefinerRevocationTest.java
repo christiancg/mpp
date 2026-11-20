@@ -33,7 +33,7 @@ import org.ccg.mpp.ops.admin.AdminRecordKey;
 import org.ccg.mpp.ops.admin.RestampedRecords;
 import org.ccg.mpp.ops.req.ChangePermissionsRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.ccg.mpp.test.TriggerTestSupport;
@@ -55,7 +55,7 @@ public class DefinerRevocationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -69,10 +69,10 @@ public class DefinerRevocationTest {
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TriggerTestSupport.clearTriggersAndProcedures();
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
         registry.clear();
         grant(DEFINER, true);
         grant(OTHER, true);
@@ -80,7 +80,7 @@ public class DefinerRevocationTest {
 
     @AfterEach
     void restoreOwners() throws Exception {
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of());
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of());
     }
 
     private static ChangePermissionsRequest withoutScriptRun(String username) {
@@ -88,19 +88,19 @@ public class DefinerRevocationTest {
         change.setUsername(username);
         change.setAdmin(false);
         change.setGlobalPermissions(new HashSet<>());
-        change.setDatabasePermissions(new HashMap<>(java.util.Map.of(TestGlobals.DB, PermissionLevel.READ_WRITE)));
+        change.setProjectPermissions(new HashMap<>(java.util.Map.of(TestGlobals.PROJECT, PermissionLevel.READ_WRITE)));
         change.setCollectionPermissions(new HashMap<>());
         change.setScriptPermissions(new HashMap<>());
         return change;
     }
 
     private static void grant(String username, boolean mayRun) throws Exception {
-        final var databasePermissions = new HashMap<String, PermissionLevel>();
-        databasePermissions.put(TestGlobals.DB, PermissionLevel.READ_WRITE);
+        final var projectPermissions = new HashMap<String, PermissionLevel>();
+        projectPermissions.put(TestGlobals.PROJECT, PermissionLevel.READ_WRITE);
         final var scriptPermissions = new HashMap<String, ScriptPermissionLevel>();
-        scriptPermissions.put(TestGlobals.DB, mayRun ? ScriptPermissionLevel.RUN : ScriptPermissionLevel.NONE);
+        scriptPermissions.put(TestGlobals.PROJECT, mayRun ? ScriptPermissionLevel.RUN : ScriptPermissionLevel.NONE);
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(username, "hash", false, new HashSet<>(),
-                databasePermissions, new HashMap<>(), scriptPermissions));
+                projectPermissions, new HashMap<>(), scriptPermissions));
     }
 
     private static TriggerDefinition trigger(String name, String definer, boolean enabled) {
@@ -109,18 +109,18 @@ public class DefinerRevocationTest {
     }
 
     private void installTriggers(TriggerDefinition... triggers) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(triggers));
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(triggers));
     }
 
     private void installSchedule(String name, String definer) throws Exception {
         final var definition = new ScheduleDefinition(name, "job", null, 60_000L, null, 0L, true, definer, null, 1L, 1L,
                 1L, definer);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, name, eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, name);
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, name, eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, name);
     }
 
     private TriggerDefinition storedTrigger(String name) {
-        return cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(trigger -> trigger.getName().equals(name)).findFirst().orElseThrow();
     }
 
@@ -134,9 +134,9 @@ public class DefinerRevocationTest {
 
         final var stored = storedTrigger("audit");
         assertFalse(stored.isEnabled());
-        assertTrue(stored.getDisabledReason().contains("script RUN on database"), stored.getDisabledReason());
-        assertTrue(fs.metadataFiles().readTriggers(TestGlobals.DB, TestGlobals.COLL).contains("disabledReason"));
-        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL)), restamped.keys());
+        assertTrue(stored.getDisabledReason().contains("script RUN on project"), stored.getDisabledReason());
+        assertTrue(fs.metadataFiles().readTriggers(TestGlobals.PROJECT, TestGlobals.COLL).contains("disabledReason"));
+        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL)), restamped.keys());
     }
 
     @Test
@@ -147,10 +147,10 @@ public class DefinerRevocationTest {
 
         DefinerRevocation.forDefiner(DEFINER, restamped);
 
-        final var stored = cache.getSchedule(TestGlobals.DB, "nightly");
+        final var stored = cache.getSchedule(TestGlobals.PROJECT, "nightly");
         assertFalse(stored.isEnabled());
-        assertTrue(stored.getDisabledReason().contains("script RUN on database"), stored.getDisabledReason());
-        assertEquals(List.of(AdminRecordKey.schedule(TestGlobals.DB, "nightly")), restamped.keys());
+        assertTrue(stored.getDisabledReason().contains("script RUN on project"), stored.getDisabledReason());
+        assertEquals(List.of(AdminRecordKey.schedule(TestGlobals.PROJECT, "nightly")), restamped.keys());
     }
 
     @Test
@@ -165,7 +165,7 @@ public class DefinerRevocationTest {
 
         assertFalse(storedTrigger("mine").isEnabled());
         assertTrue(storedTrigger("theirs").isEnabled(), "only the changed user's definitions are re-checked");
-        assertTrue(cache.getSchedule(TestGlobals.DB, "theirs").isEnabled());
+        assertTrue(cache.getSchedule(TestGlobals.PROJECT, "theirs").isEnabled());
     }
 
     @Test
@@ -177,7 +177,7 @@ public class DefinerRevocationTest {
         DefinerRevocation.forDefiner(DEFINER, restamped);
 
         assertTrue(storedTrigger("audit").isEnabled());
-        assertTrue(cache.getSchedule(TestGlobals.DB, "nightly").isEnabled());
+        assertTrue(cache.getSchedule(TestGlobals.PROJECT, "nightly").isEnabled());
         assertTrue(restamped.keys().isEmpty());
     }
 
@@ -194,27 +194,27 @@ public class DefinerRevocationTest {
     }
 
     @Test
-    public void test_owner_removal_rechecks_every_definer_in_that_database() throws Exception {
+    public void test_owner_removal_rechecks_every_definer_in_that_project() throws Exception {
         installTriggers(trigger("mine", DEFINER, true), trigger("theirs", OTHER, true));
         installSchedule("theirs", OTHER);
         grant(DEFINER, false);
         grant(OTHER, false);
         final var restamped = new RestampedRecords();
 
-        DefinerRevocation.forDatabase(TestGlobals.DB, restamped);
+        DefinerRevocation.forProject(TestGlobals.PROJECT, restamped);
 
         assertFalse(storedTrigger("mine").isEnabled());
         assertFalse(storedTrigger("theirs").isEnabled());
-        assertFalse(cache.getSchedule(TestGlobals.DB, "theirs").isEnabled());
-        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL),
-                AdminRecordKey.schedule(TestGlobals.DB, "theirs")), restamped.keys());
+        assertFalse(cache.getSchedule(TestGlobals.PROJECT, "theirs").isEnabled());
+        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL),
+                AdminRecordKey.schedule(TestGlobals.PROJECT, "theirs")), restamped.keys());
     }
 
     @Test
     public void test_an_unreadable_schedule_folder_is_logged_and_the_sweep_continues() throws Exception {
         installTriggers(trigger("audit", DEFINER, true));
         grant(DEFINER, false);
-        final var schedulesFolder = Path.of(TestGlobals.PATH, TestGlobals.DB, Globals.SCHEDULES_FOLDER);
+        final var schedulesFolder = Path.of(TestGlobals.PATH, TestGlobals.PROJECT, Globals.SCHEDULES_FOLDER);
         if (Files.exists(schedulesFolder)) {
             TestUtils.deleteFolder(schedulesFolder.toFile());
         }
@@ -227,7 +227,7 @@ public class DefinerRevocationTest {
         }
 
         assertFalse(storedTrigger("audit").isEnabled(), "the triggers are still re-checked");
-        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL)), restamped.keys());
+        assertEquals(List.of(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL)), restamped.keys());
     }
 
     @Test
@@ -239,7 +239,7 @@ public class DefinerRevocationTest {
 
         assertEquals(OperationStatus.OK, response.getStatus());
         assertFalse(storedTrigger("audit").isEnabled());
-        assertTrue(restamped.keys().contains(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL)));
+        assertTrue(restamped.keys().contains(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
@@ -255,7 +255,7 @@ public class DefinerRevocationTest {
         final var stored = storedTrigger("audit");
         assertFalse(stored.isEnabled());
         assertTrue(stored.getDisabledReason().contains("no longer exists"), stored.getDisabledReason());
-        assertTrue(restamped.keys().contains(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL)));
+        assertTrue(restamped.keys().contains(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
@@ -272,10 +272,10 @@ public class DefinerRevocationTest {
 
     @Test
     public void test_removing_an_owner_disables_the_triggers_only_ownership_allowed() throws Exception {
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(DEFINER));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(DEFINER));
         grant(DEFINER, false);
         installTriggers(trigger("audit", DEFINER, true));
-        final var owners = new SetDatabaseOwnersRequest(TestGlobals.DB);
+        final var owners = new SetProjectOwnersRequest(TestGlobals.PROJECT);
         owners.setOwners(List.of(OTHER));
 
         final var response = IocContainer.get(OperationProcessor.class).processMessage(owners);

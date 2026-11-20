@@ -64,7 +64,7 @@ public class UserCacheWholeLoadTest {
     private static List<PkIndexEntry> threeRows() {
         final var rows = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < 3; i++) {
-            rows.add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "row-" + i, i * 10L, 10, 0));
+            rows.add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "row-" + i, i * 10L, 10, 0));
         }
         return rows;
     }
@@ -84,11 +84,11 @@ public class UserCacheWholeLoadTest {
         TestUtils.setPrivateField(cache, "fs", fsMock);
         final var permits = wholeLoads.availablePermits();
 
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            assertEquals(3, cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size());
+            assertEquals(3, cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertEquals(permits - 1, permitsDuringRead.get(), "a load the estimate cannot fit runs under a permit");
@@ -109,12 +109,12 @@ public class UserCacheWholeLoadTest {
         });
         TestUtils.setPrivateField(cache, "fs", fsMock);
 
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
             assertFalse(cache.listCacheableResources().isEmpty(), "the load was admitted");
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertEquals(wholeLoads.availablePermits(), permitsDuringRead.get());
@@ -139,8 +139,8 @@ public class UserCacheWholeLoadTest {
         });
         TestUtils.setPrivateField(cache, "fs", fsMock);
 
-        cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "f", String.class);
-        cache.getHashIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "f", IndexKind.OBJECT);
+        cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "f", String.class);
+        cache.getHashIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "f", IndexKind.OBJECT);
 
         assertEquals(List.of(permits - 1, permits - 1), permitsDuringRead);
     }
@@ -165,7 +165,7 @@ public class UserCacheWholeLoadTest {
                     final var collName = TestGlobals.COLL + i;
                     pool.execute(() -> {
                         try {
-                            wholeLoads.transientPkIndex(TestGlobals.DB, collName);
+                            wholeLoads.transientPkIndex(TestGlobals.PROJECT, collName);
                         } catch (Exception e) {
                             throw new IllegalStateException(e);
                         }
@@ -266,11 +266,11 @@ public class UserCacheWholeLoadTest {
         TestUtils.setPrivateField(cache, "fs", pkReadsBlockingFirst(reads, release));
 
         final var callers = startAll(8, () -> {
-            locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
-                return cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+                return cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
             } finally {
-                locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         awaitParked(callers);
@@ -300,7 +300,8 @@ public class UserCacheWholeLoadTest {
         });
         final var wholeLoads = new WholeLoads(() -> fsMock, 2);
 
-        final var callers = startAll(4, () -> wholeLoads.pkIndex(TestGlobals.DB, TestGlobals.COLL, true, _ -> true));
+        final var callers = startAll(4,
+                () -> wholeLoads.pkIndex(TestGlobals.PROJECT, TestGlobals.COLL, true, _ -> true));
         awaitParked(callers);
         release.countDown();
         joinAll(callers);
@@ -311,7 +312,7 @@ public class UserCacheWholeLoadTest {
         }
         assertEquals(1, reads.get());
         assertEquals(0, wholeLoads.loadsInFlight());
-        assertEquals(3, wholeLoads.pkIndex(TestGlobals.DB, TestGlobals.COLL, true, _ -> true).size());
+        assertEquals(3, wholeLoads.pkIndex(TestGlobals.PROJECT, TestGlobals.COLL, true, _ -> true).size());
         assertEquals(2, reads.get(), "the next call after a failure reads again");
     }
 
@@ -321,7 +322,7 @@ public class UserCacheWholeLoadTest {
         final var release = new CountDownLatch(1);
         final var fsMock = pkReadsBlockingFirst(reads, release);
         final var wholeLoads = new WholeLoads(() -> fsMock, 2);
-        final Call load = () -> wholeLoads.pkIndex(TestGlobals.DB, TestGlobals.COLL, true, _ -> true);
+        final Call load = () -> wholeLoads.pkIndex(TestGlobals.PROJECT, TestGlobals.COLL, true, _ -> true);
         final var leader = startAll(1, load);
         awaitParked(leader);
         final var waiter = startAll(1, load);
@@ -354,7 +355,7 @@ public class UserCacheWholeLoadTest {
             return threeRows();
         });
         final var wholeLoads = new WholeLoads(() -> fsMock, 2);
-        final Call load = () -> wholeLoads.pkIndex(TestGlobals.DB, TestGlobals.COLL, true, _ -> true);
+        final Call load = () -> wholeLoads.pkIndex(TestGlobals.PROJECT, TestGlobals.COLL, true, _ -> true);
         final var leader = startAll(1, load);
         awaitParked(leader);
         final var waiter = startAll(1, load);
@@ -381,7 +382,7 @@ public class UserCacheWholeLoadTest {
         });
         final var wholeLoads = new WholeLoads(() -> fsMock, 2);
         final var collection = new AtomicInteger();
-        final var callers = startAll(2, () -> wholeLoads.pkIndex(TestGlobals.DB,
+        final var callers = startAll(2, () -> wholeLoads.pkIndex(TestGlobals.PROJECT,
                 TestGlobals.COLL + collection.incrementAndGet(), true, _ -> true));
         joinAll(callers);
 
@@ -397,10 +398,11 @@ public class UserCacheWholeLoadTest {
         final var release = new CountDownLatch(1);
         final var fsMock = pkReadsBlockingFirst(reads, release);
         final var wholeLoads = new WholeLoads(() -> fsMock, 2);
-        final var locked = startAll(1, () -> wholeLoads.pkIndex(TestGlobals.DB, TestGlobals.COLL, true, _ -> true));
+        final var locked = startAll(1,
+                () -> wholeLoads.pkIndex(TestGlobals.PROJECT, TestGlobals.COLL, true, _ -> true));
         awaitParked(locked);
 
-        final var unlocked = wholeLoads.transientPkIndex(TestGlobals.DB, TestGlobals.COLL);
+        final var unlocked = wholeLoads.transientPkIndex(TestGlobals.PROJECT, TestGlobals.COLL);
         release.countDown();
         joinAll(locked);
 
@@ -410,22 +412,22 @@ public class UserCacheWholeLoadTest {
 
     @Test
     public void estimateCountsDeadPkRowsAndTheIndexLog() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var fs = IocContainer.get(FileSystem.class);
         final var inserted = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < 200; i++) {
             final var data = new JsonObject();
             data.addProperty(Globals.PK_FIELD, UUID.randomUUID().toString());
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
             entry.setPage(0L);
             inserted.add(fs.insertIntoCollection(entry));
         }
-        final var liveBytesBefore = fs.pkIndexFileBytes(TestGlobals.DB, TestGlobals.COLL);
+        final var liveBytesBefore = fs.pkIndexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL);
         for (var i = 0; i < 100; i++) {
             fs.deleteFromCollection(inserted.get(i));
         }
-        final var live = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
-        final var pkFileBytes = fs.pkIndexFileBytes(TestGlobals.DB, TestGlobals.COLL);
+        final var live = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pkFileBytes = fs.pkIndexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(100, live.size());
         assertTrue(pkFileBytes > liveBytesBefore, "the delete rows stay in the log");
@@ -437,25 +439,25 @@ public class UserCacheWholeLoadTest {
             ids.add(row.getValue());
         }
         final Map<Class<?>, List<FieldIndexEntry<?>>> base = Map.of(String.class,
-                List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "open", new HashSet<>(ids))));
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, "status", base);
-        final var baseBytes = fs.indexFileBytes(TestGlobals.DB, TestGlobals.COLL, "status", "String");
+                List.of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "open", new HashSet<>(ids))));
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, "status", base);
+        final var baseBytes = fs.indexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL, "status", "String");
         final var added = new ArrayList<String>();
         for (var i = 0; i < 50; i++) {
             added.add(UUID.randomUUID().toString());
         }
         final List<FieldIndexEntry<?>> survivors = List.of(base.get(String.class).getFirst(),
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "closed", new HashSet<>(added)));
-        fs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, "status", "String",
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "closed", new HashSet<>(added)));
+        fs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, "status", "String",
                 List.of(new IndexLogChange("closed", added, List.of())), survivors, false);
-        final var loaded = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, "status", String.class);
-        final var indexBytes = fs.indexFileBytes(TestGlobals.DB, TestGlobals.COLL, "status", "String");
+        final var loaded = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, "status", String.class);
+        final var indexBytes = fs.indexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL, "status", "String");
 
         assertEquals(Set.of("open", "closed"), Set.copyOf(loaded.stream().map(FieldIndexEntry::getValue).toList()));
         assertTrue(indexBytes > baseBytes, "the .idxlog counts too");
         final List<FieldIndexEntry<?>> resident = new ArrayList<>(loaded);
         assertTrue(CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(indexBytes) >= CacheSizeEstimator
                 .estimateFieldIndexSize(resident));
-        assertEquals(0L, fs.indexFileBytes(TestGlobals.DB, TestGlobals.COLL, Globals.PK_FIELD, "String"));
+        assertEquals(0L, fs.indexFileBytes(TestGlobals.PROJECT, TestGlobals.COLL, Globals.PK_FIELD, "String"));
     }
 }

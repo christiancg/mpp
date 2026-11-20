@@ -8,7 +8,7 @@ internal static partial class Names
     private const string NameRule = "3-64 characters from A-Z a-z 0-9 _ -";
     private const string IdRule = "1-64 characters from A-Z a-z 0-9 _ -";
 
-    public static string Database(string? name) => Check(name, NamePattern(), "database name", NameRule);
+    public static string Project(string? name) => Check(name, NamePattern(), "project name", NameRule);
 
     public static string Collection(string? name) => Check(name, NamePattern(), "collection name", NameRule);
 

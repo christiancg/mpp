@@ -22,8 +22,8 @@ import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
 import org.ccg.mpp.data.admin.AdminPageEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ejson.elements.JsonString;
 import org.ccg.mpp.fs.FileSystem;
@@ -61,12 +61,12 @@ public class EventProcessorHelperTest {
 
     @Test
     public void processScriptRunHistoryEventTest() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryEnabled", true);
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryKinds", "TRIGGER");
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryMaxErrorChars", 2000);
         ScriptRunHistory.reset();
-        final var record = new ScriptRunRecord("evt-run-1", ScriptRunKind.TRIGGER, TestGlobals.DB, "job", "proc",
+        final var record = new ScriptRunRecord("evt-run-1", ScriptRunKind.TRIGGER, TestGlobals.PROJECT, "job", "proc",
                 TestGlobals.COLL, "CREATED", "u1", "u2", System.currentTimeMillis(), 3L, 1, ScriptRunRecord.OUTCOME_OK,
                 null, null, null, null, null, false);
 
@@ -74,7 +74,7 @@ public class EventProcessorHelperTest {
 
         Assertions.assertEquals(1L, ScriptRunHistory.getRecorded());
         final var stored = IocContainer.get(Cache.class)
-                .getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("evt-run-1");
+                .getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("evt-run-1");
         Assertions.assertNotNull(stored);
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryEnabled", false);
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryKinds",
@@ -84,16 +84,16 @@ public class EventProcessorHelperTest {
 
     @Test
     public void processBulkEntityEventTest() throws IOException, InterruptedException {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var testObj = new JsonObject();
         testObj.add("myField", "myValue");
         List<DbEntry> insertedEntries = new ArrayList<>();
-        insertedEntries.add(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, testObj));
-        final var bulkEntityEvent = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, insertedEntries,
+        insertedEntries.add(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, testObj));
+        final var bulkEntityEvent = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, insertedEntries,
                 new ArrayList<>());
         EventProcessorHelper.processEvent(bulkEntityEvent);
         final var cache = IocContainer.get(Cache.class);
-        final var pageEntries = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pageEntries = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         final var totalCount = pageEntries == null
                 ? 0
                 : pageEntries.stream().mapToInt(AdminPageEntry::getEntryCount).sum();
@@ -102,14 +102,15 @@ public class EventProcessorHelperTest {
 
     @Test
     public void processCreateEntityEventTest() throws IOException, InterruptedException {
-        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, new DbEntry());
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL,
+                new DbEntry());
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         EventProcessorHelper.processEvent(entityEvent);
-        final var collEntry = AdminOperationHelper.getCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var collEntry = AdminOperationHelper.getCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         Assertions.assertNotNull(collEntry);
         final var cache = IocContainer.get(Cache.class);
-        final var pageEntries = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pageEntries = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         final var totalCount = pageEntries == null
                 ? 0
                 : pageEntries.stream().mapToInt(AdminPageEntry::getEntryCount).sum();
@@ -118,24 +119,25 @@ public class EventProcessorHelperTest {
 
     @Test
     public void processCollectionUsageEventUpsertsUsageEntry() throws IOException, InterruptedException {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         final var mm = IocContainer.get(MemoryManagement.class);
-        mm.recordAccess(AccessKind.COLLECTION, TestGlobals.DB, TestGlobals.COLL, null);
+        mm.recordAccess(AccessKind.COLLECTION, TestGlobals.PROJECT, TestGlobals.COLL, null);
         EventProcessorHelper.processMaintenance(new UsageProfileFlushEvent());
         final var cache = IocContainer.get(Cache.class);
-        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "");
+        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL,
+                "");
         Assertions.assertNotNull(cache.getPkIndexCollectionUsage(id));
     }
 
     @Test
-    public void processCollectionUsageEventIgnoresAdminDb() throws IOException, InterruptedException {
-        AdminOperationHelper
-                .flushCollectionUsage(java.util.List.of(new org.ccg.mpp.cache.UsageCounter(AccessKind.COLLECTION,
-                        org.ccg.mpp.config.Globals.ADMIN_DB_NAME, "databases", null, 1L, System.currentTimeMillis())));
+    public void processCollectionUsageEventIgnoresAdminProject() throws IOException, InterruptedException {
+        AdminOperationHelper.flushCollectionUsage(java.util.List.of(
+                new org.ccg.mpp.cache.UsageCounter(AccessKind.COLLECTION, org.ccg.mpp.config.Globals.ADMIN_PROJECT_NAME,
+                        "projects", null, 1L, System.currentTimeMillis())));
         final var cache = IocContainer.get(Cache.class);
         final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry
-                .buildId(org.ccg.mpp.config.Globals.ADMIN_DB_NAME, "databases", "");
+                .buildId(org.ccg.mpp.config.Globals.ADMIN_PROJECT_NAME, "projects", "");
         Assertions.assertNull(cache.getPkIndexCollectionUsage(id));
     }
 
@@ -144,33 +146,33 @@ public class EventProcessorHelperTest {
         final var pending = IocContainer.get(PendingIndexWrites.class);
         final var entry = new DbEntry();
         entry.set_id("ghost");
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, "ghost");
-        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry);
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "ghost");
+        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry);
 
         Assertions.assertDoesNotThrow(() -> EventProcessorHelper.processEvent(entityEvent));
 
-        Assertions.assertFalse(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains("ghost"));
+        Assertions.assertFalse(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains("ghost"));
         final var cache = IocContainer.get(Cache.class);
-        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL));
+        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void processEntityEvent_no_orphan_pages_when_collection_dropped_mid_flight()
             throws IOException, InterruptedException {
         // Register the collection so the early guard in processEntityEvent passes...
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         // ...then simulate the concurrent drop completing before baseUpdateEntryCount runs.
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
-        AdminOperationHelper.deletePageCollections(TestGlobals.DB, TestGlobals.COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        AdminOperationHelper.deletePageCollections(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var entry = new DbEntry();
         entry.set_id("mid-flight-entity");
-        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry);
+        final var entityEvent = new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         Assertions.assertDoesNotThrow(() -> EventProcessorHelper.processEvent(entityEvent));
 
         final var cache = IocContainer.get(Cache.class);
-        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL),
+        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL),
                 "No orphan page metadata must be created for a dropped collection");
     }
 
@@ -178,20 +180,20 @@ public class EventProcessorHelperTest {
     public void processBulkEntityEvent_no_orphan_pages_when_collection_dropped_mid_flight()
             throws IOException, InterruptedException {
         // Register the collection so the early guard in processBulkEntityEvent passes...
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         // ...then simulate the concurrent drop completing before baseUpdateEntryCount runs.
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
-        AdminOperationHelper.deletePageCollections(TestGlobals.DB, TestGlobals.COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        AdminOperationHelper.deletePageCollections(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var entry = new DbEntry();
         entry.set_id("mid-flight-bulk");
-        final var bulkEvent = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, new ArrayList<>(List.of(entry)),
-                new ArrayList<>());
+        final var bulkEvent = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL,
+                new ArrayList<>(List.of(entry)), new ArrayList<>());
         Assertions.assertDoesNotThrow(() -> EventProcessorHelper.processEvent(bulkEvent));
 
         final var cache = IocContainer.get(Cache.class);
-        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL),
+        Assertions.assertNull(cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL),
                 "No orphan page metadata must be created for a dropped collection");
     }
 
@@ -199,7 +201,7 @@ public class EventProcessorHelperTest {
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString(id));
         data.addProperty("f", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, collName, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, data);
         entry.set_id(id);
         return entry;
     }
@@ -210,19 +212,19 @@ public class EventProcessorHelperTest {
         var value = 1;
         for (final var id : ids) {
             final var entry = indexedEntry(collName, id, value++);
-            cache.addEntryToCache(TestGlobals.DB, collName, entry);
-            events.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, collName, entry));
+            cache.addEntryToCache(TestGlobals.PROJECT, collName, entry);
+            events.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, collName, entry));
         }
         return events;
     }
 
     private static void indexField(String collName) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, collName, "f");
-        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.DB, collName).setIndexes(Set.of("f"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, collName, "f");
+        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.PROJECT, collName).setIndexes(Set.of("f"));
     }
 
     private void runBatchWithAFailingFirstGroup() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         final var batch = new ArrayList<>(cacheAndBuild(TestGlobals.COLL, List.of("a1", "a2")));
         indexField(TestGlobals.COLL);
@@ -230,7 +232,8 @@ public class EventProcessorHelperTest {
         batch.addAll(cacheAndBuild(TestGlobals.JOIN_COLL, List.of("b1", "b2")));
 
         final var fs = IocContainer.get(FileSystem.class);
-        TestUtils.deleteFolder(new File(TestUtils.getDbPath(fs), TestGlobals.DB + File.separator + TestGlobals.COLL));
+        TestUtils.deleteFolder(
+                new File(TestUtils.getDbPath(fs), TestGlobals.PROJECT + File.separator + TestGlobals.COLL));
 
         EventProcessorHelper.processBatch(batch);
     }
@@ -239,7 +242,7 @@ public class EventProcessorHelperTest {
     public void test_one_failing_group_does_not_skip_the_rest() throws Exception {
         runBatchWithAFailingFirstGroup();
 
-        final var index = IocContainer.get(Cache.class).getFieldIndexAndLoadIfNecessary(TestGlobals.DB,
+        final var index = IocContainer.get(Cache.class).getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT,
                 TestGlobals.JOIN_COLL, "f", Number.class);
         Assertions.assertNotNull(index, "the second group must still have been indexed");
         final var indexed = index.stream().flatMap(e -> e.getIds().stream()).collect(Collectors.toSet());
@@ -250,27 +253,28 @@ public class EventProcessorHelperTest {
     @Test
     public void test_a_failing_group_keeps_its_pending_ids() throws Exception {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, List.of("a1", "a2"));
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a1", "a2"));
 
         runBatchWithAFailingFirstGroup();
 
-        Assertions.assertEquals(Set.of("a1", "a2"), pending.idsFor(TestGlobals.DB, TestGlobals.COLL),
+        Assertions.assertEquals(Set.of("a1", "a2"), pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL),
                 "the rebuild never ran, so the overlay is what keeps index-backed reads exact for those ids;"
                         + " REINDEX is what retires them");
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private static EntityEvent indexedEvent() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "f");
-        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("f"));
+        TestUtils.createTestProjectAndCollection();
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "f");
+        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL)
+                .setIndexes(Set.of("f"));
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString("a1"));
         data.addProperty("f", 1);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("a1");
-        IocContainer.get(Cache.class).addEntryToCache(TestGlobals.DB, TestGlobals.COLL, entry);
-        return new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry);
+        IocContainer.get(Cache.class).addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        return new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     @Test

@@ -78,10 +78,10 @@ public class PrimaryKeyAliasTest {
     @Test
     public void test_an_index_on_the_primary_key_alias_is_refused() {
         for (final var field : new String[]{"_id", "_id.", "_id.."}) {
-            assertFalse(RequestValidator.validate(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, field))
+            assertFalse(RequestValidator.validate(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, field))
                     .isValid(), field);
         }
-        assertTrue(
-                RequestValidator.validate(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "_id.x")).isValid());
+        assertTrue(RequestValidator.validate(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "_id.x"))
+                .isValid());
     }
 }

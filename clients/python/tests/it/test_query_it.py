@@ -34,7 +34,7 @@ ROWS: list[dict[str, Any]] = [
 
 @pytest.fixture
 async def orders(client: AsyncMppClient) -> AsyncIterator[AsyncCollection[Any, Any]]:
-    shop = client.database("query_it")
+    shop = client.project("query_it")
     await shop.create()
     collection = shop.collection("orders")
     await collection.create()

@@ -55,7 +55,7 @@ public class MppRepositoryFactory extends RepositoryFactorySupport {
         final var entity = (MppPersistentEntity<T>) operations.getMappingContext().getRequiredPersistentEntity(type);
         entity.requiredIdProperty();
         entity.collection();
-        entity.database();
+        entity.project();
         return new MppEntityInformation<>(entity);
     }
 }

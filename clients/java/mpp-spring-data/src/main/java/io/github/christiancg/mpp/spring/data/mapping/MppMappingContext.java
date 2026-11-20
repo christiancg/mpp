@@ -19,20 +19,20 @@ public class MppMappingContext extends AbstractMappingContext<MppPersistentEntit
     private static final Set<Class<?>> STORED_AS_VALUES = Set.of(Document.class, GeoPoint.class, Vector.class,
             LocalDateTime.class, LocalTime.class, Instant.class, OffsetDateTime.class, ZonedDateTime.class);
 
-    private final @Nullable String defaultDatabase;
+    private final @Nullable String defaultProject;
 
-    public MppMappingContext(@Nullable String defaultDatabase) {
-        this.defaultDatabase = defaultDatabase;
+    public MppMappingContext(@Nullable String defaultProject) {
+        this.defaultProject = defaultProject;
         setSimpleTypeHolder(new SimpleTypeHolder(STORED_AS_VALUES, true));
     }
 
-    public @Nullable String defaultDatabase() {
-        return defaultDatabase;
+    public @Nullable String defaultProject() {
+        return defaultProject;
     }
 
     @Override
     protected <T> MppPersistentEntity<T> createPersistentEntity(TypeInformation<T> typeInformation) {
-        return new MppPersistentEntity<>(typeInformation, defaultDatabase);
+        return new MppPersistentEntity<>(typeInformation, defaultProject);
     }
 
     @Override

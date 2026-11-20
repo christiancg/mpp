@@ -35,13 +35,13 @@ public class ScriptOperationHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var request = new CreateUserRequest();
         request.setUsername(ADMIN);
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -73,8 +73,8 @@ public class ScriptOperationHelperTest {
     }
 
     private static RunScriptResponse run(String script) {
-        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB, script, null), ADMIN,
-                null);
+        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.PROJECT, script, null),
+                ADMIN, null);
         assertInstanceOf(RunScriptResponse.class, response);
         return (RunScriptResponse) response;
     }
@@ -116,7 +116,7 @@ public class ScriptOperationHelperTest {
     @Test
     public void test_returns_403_when_scripts_disabled() throws Exception {
         setConfig("scriptsEnabled", false);
-        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB, "return 1;", null),
+        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null),
                 ADMIN, null);
         assertEquals(OperationStatus.FORBIDDEN, response.getStatus());
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), response.getErrorCode());
@@ -124,19 +124,19 @@ public class ScriptOperationHelperTest {
     }
 
     @Test
-    public void test_returns_404_for_unknown_database() {
-        final var response = ScriptOperationHelper.execute(new RunScriptRequest("missingDb", "return 1;", null), ADMIN,
-                null);
+    public void test_returns_404_for_unknown_project() {
+        final var response = ScriptOperationHelper.execute(new RunScriptRequest("missingProject", "return 1;", null),
+                ADMIN, null);
         assertEquals(OperationStatus.NOT_FOUND, response.getStatus());
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
-        assertTrue(response.getMessage().contains("missingDb"));
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
+        assertTrue(response.getMessage().contains("missingProject"));
     }
 
     @Test
     public void test_returns_400_10_when_script_exceeds_max_source_bytes() throws Exception {
         setConfig("scriptMaxSourceBytes", 4L);
         final var response = ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "return 1234567;", null), ADMIN, null);
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1234567;", null), ADMIN, null);
         assertEquals(ErrorCode.SCRIPT_TOO_LARGE.getCode(), response.getErrorCode());
     }
 
@@ -291,7 +291,7 @@ public class ScriptOperationHelperTest {
     }
 
     @Test
-    public void test_script_reads_and_writes_its_database() {
+    public void test_script_reads_and_writes_its_project() {
         final var response = run("""
                 import db from "db";
                 db.save(db.name, "%s", { _id: "scripted", value: "written" });
@@ -306,29 +306,30 @@ public class ScriptOperationHelperTest {
         final var args = new org.ccg.mpp.ejson.elements.JsonObject();
         args.add("foo", new org.ccg.mpp.ejson.elements.JsonString("bar"));
         final var response = ScriptOperationHelper.execute(
-                new RunScriptRequest(TestGlobals.DB, "import args from \"args\"; return args.foo;", args), ADMIN, null);
+                new RunScriptRequest(TestGlobals.PROJECT, "import args from \"args\"; return args.foo;", args), ADMIN,
+                null);
         assertEquals("bar", ((RunScriptResponse) response).getResult().asJsonString().getValue());
     }
 
     @Test
-    public void test_db_name_is_the_scoped_database() {
+    public void test_db_name_is_the_scoped_project() {
         final var response = run("import db from \"db\"; return db.name;");
-        assertEquals(TestGlobals.DB, response.getResult().asJsonString().getValue());
+        assertEquals(TestGlobals.PROJECT, response.getResult().asJsonString().getValue());
     }
 
     @Test
-    public void test_script_cannot_reach_another_database() {
+    public void test_script_cannot_reach_another_project() {
         final var response = run("""
                 import db from "db";
                 try {
-                    db.findById("otherDb", "someColl", "x");
+                    db.findById("otherProject", "someColl", "x");
                     return "reached";
                 } catch (e) {
                     return e.message;
                 }
                 """);
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertTrue(response.getResult().asJsonString().getValue().contains("may only access database"));
+        assertTrue(response.getResult().asJsonString().getValue().contains("may only access project"));
     }
 
     @Test
@@ -348,7 +349,7 @@ public class ScriptOperationHelperTest {
 
     @Test
     public void test_unknown_acting_user_fails_the_script() {
-        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB,
+        final var response = ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.PROJECT,
                 "import db from \"db\"; return db.findById(db.name, \"" + TestGlobals.COLL + "\", \"x\");", null),
                 "ghost", null);
         assertEquals(ErrorCode.SCRIPT_FAILED.getCode(), response.getErrorCode());

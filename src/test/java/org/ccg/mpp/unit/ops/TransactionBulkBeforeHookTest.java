@@ -57,7 +57,7 @@ public class TransactionBulkBeforeHookTest {
         for (final var id : ids) {
             objects.add(BeforeHookTestSupport.document(id));
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return request;
     }
@@ -80,7 +80,7 @@ public class TransactionBulkBeforeHookTest {
     }
 
     private int callOf(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         final var found = (FindByIdResponse) processor.processMessage(request);
         assertNotNull(found.getObject());

@@ -15,7 +15,7 @@ import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.elements.JsonArray;
 import org.ccg.mpp.ejson.elements.JsonNumber;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -46,15 +46,15 @@ public class AdminCacheTest {
 
         cache.loadAdminData();
 
-        final var jsonDb = new JsonObject();
-        jsonDb.add(Globals.PK_FIELD, "test_create");
-        final var arrDb = new JsonArray();
-        arrDb.add("test_create_collection");
-        jsonDb.add("collections", arrDb);
-        final var adminDbEntry = AdminDbEntry.fromJsonObject(jsonDb);
-        final var pkIndexEntry = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
+        final var jsonProject = new JsonObject();
+        jsonProject.add(Globals.PK_FIELD, "test_create");
+        final var arrProject = new JsonArray();
+        arrProject.add("test_create_collection");
+        jsonProject.add("collections", arrProject);
+        final var adminProjectEntry = AdminProjectEntry.fromJsonObject(jsonProject);
+        final var pkIndexEntry = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME,
                 "test_create", 0, 100, 0);
-        cache.putAdminDbEntry(adminDbEntry, pkIndexEntry);
+        cache.putAdminProjectEntry(adminProjectEntry, pkIndexEntry);
 
         final var jsonColl = new JsonObject();
         jsonColl.add(Globals.PK_FIELD, "test_create");
@@ -65,14 +65,14 @@ public class AdminCacheTest {
         final var adminCollEntry = AdminCollEntry.fromJsonObject(jsonColl);
         cache.putAdminCollectionEntry(adminCollEntry, pkIndexEntry);
 
-        final var typeDbs = new ReflectionUtils.TypeToken<Map<String, AdminDbEntry>>() {
+        final var typeProjects = new ReflectionUtils.TypeToken<Map<String, AdminProjectEntry>>() {
         };
-        final var databases = TestUtils.getPrivateField(cache, "databases", typeDbs);
+        final var projects = TestUtils.getPrivateField(cache, "projects", typeProjects);
         final var typeColl = new ReflectionUtils.TypeToken<Map<String, AdminCollEntry>>() {
         };
         final var collections = TestUtils.getPrivateField(cache, "collections", typeColl);
 
-        Assertions.assertFalse(databases.isEmpty());
+        Assertions.assertFalse(projects.isEmpty());
         Assertions.assertFalse(collections.isEmpty());
     }
 
@@ -83,28 +83,28 @@ public class AdminCacheTest {
 
         cache.loadAdminData();
 
-        final var typeDbs = new ReflectionUtils.TypeToken<Map<String, AdminDbEntry>>() {
+        final var typeProjects = new ReflectionUtils.TypeToken<Map<String, AdminProjectEntry>>() {
         };
-        final var databases = TestUtils.getPrivateField(cache, "databases", typeDbs);
+        final var projects = TestUtils.getPrivateField(cache, "projects", typeProjects);
         final var typeColl = new ReflectionUtils.TypeToken<Map<String, AdminCollEntry>>() {
         };
         final var collections = TestUtils.getPrivateField(cache, "collections", typeColl);
-        Assertions.assertTrue(databases.isEmpty());
+        Assertions.assertTrue(projects.isEmpty());
         Assertions.assertTrue(collections.isEmpty());
     }
 
     @Test
     public void test_retrieve_pk_index_entry_existing_dbname() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        PkIndexEntry expectedEntry = new PkIndexEntry("testDb", "testCollection", "testValue", 1L, 100L, 0);
+        PkIndexEntry expectedEntry = new PkIndexEntry("testProject", "testCollection", "testValue", 1L, 100L, 0);
 
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
-        final var databasesPkIndex = TestUtils.getPrivateField(cache, "databasesPkIndex", typeCollPk);
+        final var projectsPkIndex = TestUtils.getPrivateField(cache, "projectsPkIndex", typeCollPk);
 
-        databasesPkIndex.put("testDb", expectedEntry);
+        projectsPkIndex.put("testProject", expectedEntry);
 
-        PkIndexEntry result = cache.getPkIndexAdminDbEntry("testDb");
+        PkIndexEntry result = cache.getPkIndexAdminProjectEntry("testProject");
 
         assertNotNull(result);
         assertEquals(expectedEntry, result);
@@ -114,7 +114,7 @@ public class AdminCacheTest {
     public void test_retrieve_pk_index_entry_empty_dbname() {
         AdminCache cache = new AdminCache();
 
-        PkIndexEntry result = cache.getPkIndexAdminDbEntry("");
+        PkIndexEntry result = cache.getPkIndexAdminProjectEntry("");
 
         assertNull(result);
     }
@@ -122,38 +122,38 @@ public class AdminCacheTest {
     @Test
     public void test_add_valid_pk_index_entry() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        PkIndexEntry entry = new PkIndexEntry("db1", "coll1", "value1", 0L, 100L, 0);
-        cache.putPkIndexAdminDbEntry(entry);
+        PkIndexEntry entry = new PkIndexEntry("project1", "coll1", "value1", 0L, 100L, 0);
+        cache.putPkIndexAdminProjectEntry(entry);
 
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
-        final var databasesPkIndex = TestUtils.getPrivateField(cache, "databasesPkIndex", typeCollPk);
+        final var projectsPkIndex = TestUtils.getPrivateField(cache, "projectsPkIndex", typeCollPk);
 
-        assertEquals(entry, databasesPkIndex.get("value1"));
+        assertEquals(entry, projectsPkIndex.get("value1"));
     }
 
     @Test
-    public void test_retrieve_existing_admin_db_entry() throws NoSuchFieldException, IllegalAccessException {
+    public void test_retrieve_existing_admin_project_entry() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        AdminDbEntry entry = new AdminDbEntry("testDb");
+        AdminProjectEntry entry = new AdminProjectEntry("testProject");
 
-        final var typeDbs = new ReflectionUtils.TypeToken<Map<String, AdminDbEntry>>() {
+        final var typeProjects = new ReflectionUtils.TypeToken<Map<String, AdminProjectEntry>>() {
         };
-        final var databases = TestUtils.getPrivateField(cache, "databases", typeDbs);
+        final var projects = TestUtils.getPrivateField(cache, "projects", typeProjects);
 
-        databases.put("testDb", entry);
+        projects.put("testProject", entry);
 
-        AdminDbEntry result = cache.getAdminDbEntry("testDb");
+        AdminProjectEntry result = cache.getAdminProjectEntry("testProject");
 
         assertNotNull(result);
-        assertEquals("testDb", result.get_id());
+        assertEquals("testProject", result.get_id());
     }
 
     @Test
-    public void test_empty_database_name() {
+    public void test_empty_project_name() {
         AdminCache cache = new AdminCache();
 
-        AdminDbEntry result = cache.getAdminDbEntry("");
+        AdminProjectEntry result = cache.getAdminProjectEntry("");
 
         assertNull(result);
     }
@@ -161,7 +161,7 @@ public class AdminCacheTest {
     @Test
     public void test_retrieve_existing_pk_index_entry() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        PkIndexEntry expectedEntry = new PkIndexEntry("dbName", "collName", "value", 1L, 100L, 0);
+        PkIndexEntry expectedEntry = new PkIndexEntry("projectName", "collName", "value", 1L, 100L, 0);
 
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
@@ -178,7 +178,7 @@ public class AdminCacheTest {
     @Test
     public void test_adds_pk_index_entry_to_map() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        PkIndexEntry entry = new PkIndexEntry("db1", "coll1", "value1", 1L, 100L, 0);
+        PkIndexEntry entry = new PkIndexEntry("project1", "coll1", "value1", 1L, 100L, 0);
         cache.putPkIndexAdminCollEntry(entry);
 
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
@@ -192,17 +192,17 @@ public class AdminCacheTest {
     public void test_retrieves_admin_coll_entry_when_exists_in_cache()
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
-        AdminCollEntry expectedEntry = new AdminCollEntry(dbName, collName);
+        AdminCollEntry expectedEntry = new AdminCollEntry(projectName, collName);
 
         final var typeColl = new ReflectionUtils.TypeToken<Map<String, AdminCollEntry>>() {
         };
         final var collections = TestUtils.getPrivateField(cache, "collections", typeColl);
 
-        collections.put(Cache.getCollectionIdentifier(dbName, collName), expectedEntry);
+        collections.put(Cache.getCollectionIdentifier(projectName, collName), expectedEntry);
 
-        AdminCollEntry result = cache.getAdminCollectionEntry(dbName, collName);
+        AdminCollEntry result = cache.getAdminCollectionEntry(projectName, collName);
 
         assertNotNull(result);
         assertEquals(expectedEntry, result);
@@ -213,7 +213,7 @@ public class AdminCacheTest {
         AdminCache cache = new AdminCache();
 
         AdminCollEntry result1 = cache.getAdminCollectionEntry(null, "testCollection");
-        AdminCollEntry result2 = cache.getAdminCollectionEntry("testDB", null);
+        AdminCollEntry result2 = cache.getAdminCollectionEntry("testProject", null);
         AdminCollEntry result3 = cache.getAdminCollectionEntry(null, null);
 
         assertNull(result1);
@@ -227,80 +227,80 @@ public class AdminCacheTest {
     public void test_get_indexes_for_missing_collection_returns_empty() {
         AdminCache cache = new AdminCache();
 
-        Set<String> result = cache.getIndexesForCollection("goneDb", "goneColl");
+        Set<String> result = cache.getIndexesForCollection("goneProject", "goneColl");
 
         assertNotNull(result);
         assertTrue(result.isEmpty());
-        assertFalse(cache.hasIndex("goneDb", "goneColl", "anyField"));
+        assertFalse(cache.hasIndex("goneProject", "goneColl", "anyField"));
     }
 
     @Test
     public void test_get_indexes_for_existing_collection_returns_indexes()
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
-        AdminCollEntry entry = new AdminCollEntry(dbName, collName);
+        AdminCollEntry entry = new AdminCollEntry(projectName, collName);
         entry.setIndexes(Set.of("status", "score"));
 
         final var typeColl = new ReflectionUtils.TypeToken<Map<String, AdminCollEntry>>() {
         };
-        TestUtils.getPrivateField(cache, "collections", typeColl).put(Cache.getCollectionIdentifier(dbName, collName),
-                entry);
+        TestUtils.getPrivateField(cache, "collections", typeColl)
+                .put(Cache.getCollectionIdentifier(projectName, collName), entry);
 
-        assertEquals(Set.of("status", "score"), cache.getIndexesForCollection(dbName, collName));
-        assertTrue(cache.hasIndex(dbName, collName, "status"));
-        assertFalse(cache.hasIndex(dbName, collName, "missing"));
+        assertEquals(Set.of("status", "score"), cache.getIndexesForCollection(projectName, collName));
+        assertTrue(cache.hasIndex(projectName, collName, "status"));
+        assertFalse(cache.hasIndex(projectName, collName, "missing"));
     }
 
     @Test
     public void test_successfully_adds_entries_to_maps() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        AdminDbEntry adminDbEntry = new AdminDbEntry("testDb");
-        PkIndexEntry pkIndexEntry = new PkIndexEntry("testDb", "testCollection", "testValue", 1L, 100L, 0);
+        AdminProjectEntry adminProjectEntry = new AdminProjectEntry("testProject");
+        PkIndexEntry pkIndexEntry = new PkIndexEntry("testProject", "testCollection", "testValue", 1L, 100L, 0);
 
-        cache.putAdminDbEntry(adminDbEntry, pkIndexEntry);
+        cache.putAdminProjectEntry(adminProjectEntry, pkIndexEntry);
 
-        final var typeDbs = new ReflectionUtils.TypeToken<Map<String, AdminDbEntry>>() {
+        final var typeProjects = new ReflectionUtils.TypeToken<Map<String, AdminProjectEntry>>() {
         };
-        final var databases = TestUtils.getPrivateField(cache, "databases", typeDbs);
+        final var projects = TestUtils.getPrivateField(cache, "projects", typeProjects);
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
-        final var databasesPkIndex = TestUtils.getPrivateField(cache, "databasesPkIndex", typeCollPk);
+        final var projectsPkIndex = TestUtils.getPrivateField(cache, "projectsPkIndex", typeCollPk);
 
-        assertEquals(adminDbEntry, databases.get("testDb"));
-        assertEquals(pkIndexEntry, databasesPkIndex.get("testDb"));
+        assertEquals(adminProjectEntry, projects.get("testProject"));
+        assertEquals(pkIndexEntry, projectsPkIndex.get("testProject"));
     }
 
     @Test
     public void test_remove_entry_when_dbname_exists() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        String dbName = "testDb";
-        AdminDbEntry adminDbEntry = new AdminDbEntry(dbName);
-        PkIndexEntry pkIndexEntry = new PkIndexEntry(dbName, "testCollection", "testValue", 1L, 100L, 0);
+        String projectName = "testProject";
+        AdminProjectEntry adminProjectEntry = new AdminProjectEntry(projectName);
+        PkIndexEntry pkIndexEntry = new PkIndexEntry(projectName, "testCollection", "testValue", 1L, 100L, 0);
 
-        final var typeDbs = new ReflectionUtils.TypeToken<Map<String, AdminDbEntry>>() {
+        final var typeProjects = new ReflectionUtils.TypeToken<Map<String, AdminProjectEntry>>() {
         };
-        final var databases = TestUtils.getPrivateField(cache, "databases", typeDbs);
+        final var projects = TestUtils.getPrivateField(cache, "projects", typeProjects);
         final var typeCollPk = new ReflectionUtils.TypeToken<Map<String, PkIndexEntry>>() {
         };
-        final var databasesPkIndex = TestUtils.getPrivateField(cache, "databasesPkIndex", typeCollPk);
+        final var projectsPkIndex = TestUtils.getPrivateField(cache, "projectsPkIndex", typeCollPk);
 
-        databases.put(dbName, adminDbEntry);
-        databasesPkIndex.put(dbName, pkIndexEntry);
+        projects.put(projectName, adminProjectEntry);
+        projectsPkIndex.put(projectName, pkIndexEntry);
 
-        cache.removeAdminDbEntry(dbName);
+        cache.removeAdminProjectEntry(projectName);
 
-        assertFalse(databases.containsKey(dbName));
-        assertFalse(databasesPkIndex.containsKey(dbName));
+        assertFalse(projects.containsKey(projectName));
+        assertFalse(projectsPkIndex.containsKey(projectName));
     }
 
     @Test
     public void test_successfully_adds_entries_to_collections_maps()
             throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        AdminCollEntry dbEntry = new AdminCollEntry("testDb", "testColl");
-        PkIndexEntry indexEntry = new PkIndexEntry("testDb", "testColl", "testValue", 1L, 100L, 0);
+        AdminCollEntry dbEntry = new AdminCollEntry("testProject", "testColl");
+        PkIndexEntry indexEntry = new PkIndexEntry("testProject", "testColl", "testValue", 1L, 100L, 0);
 
         cache.putAdminCollectionEntry(dbEntry, indexEntry);
 
@@ -319,8 +319,8 @@ public class AdminCacheTest {
     public void test_remove_existing_collection_identifier() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
         String collIdentifier = "testCollection";
-        AdminCollEntry adminCollEntry = new AdminCollEntry(TestGlobals.DB, collIdentifier);
-        PkIndexEntry pkIndexEntry = new PkIndexEntry(TestGlobals.DB, collIdentifier, "testValue", 1L, 100L, 0);
+        AdminCollEntry adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, collIdentifier);
+        PkIndexEntry pkIndexEntry = new PkIndexEntry(TestGlobals.PROJECT, collIdentifier, "testValue", 1L, 100L, 0);
 
         final var typeColl = new ReflectionUtils.TypeToken<Map<String, AdminCollEntry>>() {
         };
@@ -359,7 +359,7 @@ public class AdminCacheTest {
     @Test
     public void test_field_index_exists() throws NoSuchFieldException, IllegalAccessException {
         AdminCache cache = new AdminCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
         String fieldName = "testField";
 
@@ -369,11 +369,11 @@ public class AdminCacheTest {
         };
         final var collections = TestUtils.getPrivateField(cache, "collections", type);
 
-        var coll = new AdminCollEntry(dbName, collName, indexes);
+        var coll = new AdminCollEntry(projectName, collName, indexes);
 
-        collections.put(Cache.getCollectionIdentifier(dbName, collName), coll);
+        collections.put(Cache.getCollectionIdentifier(projectName, collName), coll);
 
-        boolean result = cache.hasIndex(dbName, collName, fieldName);
+        boolean result = cache.hasIndex(projectName, collName, fieldName);
         assertTrue(result);
     }
 
@@ -391,28 +391,28 @@ public class AdminCacheTest {
         };
         final var collections = TestUtils.getPrivateField(cache, "collections", type);
 
-        collections.put("testDb|testColl", adminCollEntry);
+        collections.put("testProject|testColl", adminCollEntry);
         Set<String> expectedIndexes = new HashSet<>();
         expectedIndexes.add("index1");
         expectedIndexes.add("index2");
-        Set<String> actualIndexes = cache.getIndexesForCollection("testDb", "testColl");
+        Set<String> actualIndexes = cache.getIndexesForCollection("testProject", "testColl");
         assertEquals(expectedIndexes, actualIndexes);
     }
 
     @Test
-    public void test_get_collection_names_for_database() throws IOException, InterruptedException {
-        TestUtils.createTestDatabaseAndCollection();
+    public void test_get_collection_names_for_project() throws IOException, InterruptedException {
+        TestUtils.createTestProjectAndCollection();
         AdminCache cache = IocContainer.get(AdminCache.class);
-        List<String> names = cache.getCollectionNamesForDatabase(TestGlobals.DB);
+        List<String> names = cache.getCollectionNamesForProject(TestGlobals.PROJECT);
         assertNotNull(names);
         assertTrue(names.contains(TestGlobals.COLL));
     }
 
     @Test
-    public void test_get_collection_names_excludes_other_databases() throws IOException, InterruptedException {
-        TestUtils.createTestDatabaseAndCollection();
+    public void test_get_collection_names_excludes_other_projects() throws IOException, InterruptedException {
+        TestUtils.createTestProjectAndCollection();
         AdminCache cache = IocContainer.get(AdminCache.class);
-        List<String> names = cache.getCollectionNamesForDatabase("someOtherDb");
+        List<String> names = cache.getCollectionNamesForProject("someOtherProject");
         assertNotNull(names);
         assertTrue(names.isEmpty());
     }
@@ -433,28 +433,28 @@ public class AdminCacheTest {
     }
 
     @Test
-    public void test_load_admin_data_with_existing_databases_and_collections() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+    public void test_load_admin_data_with_existing_projects_and_collections() throws Exception {
+        TestUtils.createTestProjectAndCollection();
 
         AdminCache cache = IocContainer.get(AdminCache.class);
-        TestUtils.setPrivateField(cache, "databases", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(cache, "projects", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(cache, "collections", new ConcurrentHashMap<>());
-        TestUtils.setPrivateField(cache, "databasesPkIndex", new ConcurrentHashMap<>());
+        TestUtils.setPrivateField(cache, "projectsPkIndex", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(cache, "collectionsPkIndex", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(TestUtils.pageCacheOf(cache), "pages", new ConcurrentHashMap<>());
         TestUtils.setPrivateField(TestUtils.pageCacheOf(cache), "pagesPkIndexes", new ConcurrentHashMap<>());
 
         cache.loadAdminData();
 
-        assertNotNull(cache.getAdminDbEntry(TestGlobals.DB));
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_collection_usage_pk_index_round_trip() {
         AdminCache cache = new AdminCache();
-        final var pk = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME, "usage-id", 0, 10,
-                0);
+        final var pk = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME, "usage-id", 0,
+                10, 0);
         cache.putPkIndexCollectionUsage(pk);
         assertEquals(pk, cache.getPkIndexCollectionUsage("usage-id"));
         assertTrue(cache.getCollectionUsagePkIndexes().containsKey("usage-id"));

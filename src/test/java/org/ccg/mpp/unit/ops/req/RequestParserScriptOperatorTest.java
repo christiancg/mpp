@@ -17,7 +17,7 @@ import org.ccg.mpp.ops.req.agg.step.map.AddFieldMapOperator;
 import org.junit.jupiter.api.Test;
 
 public class RequestParserScriptOperatorTest {
-    private static final String HEAD = "{\"type\":\"AGGREGATE\",\"databaseName\":\"testDB\","
+    private static final String HEAD = "{\"type\":\"AGGREGATE\",\"projectName\":\"testProject\","
             + "\"collectionName\":\"testCollection\",\"aggregationSteps\":[";
 
     private static AggregateRequest parse(String steps) {

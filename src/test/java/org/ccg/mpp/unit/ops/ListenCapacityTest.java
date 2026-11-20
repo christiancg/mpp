@@ -36,7 +36,7 @@ public class ListenCapacityTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -56,7 +56,7 @@ public class ListenCapacityTest {
     }
 
     private OperationResponse listen(UUID clientId) {
-        final var request = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         return processor.processMessage(request, clientId);
     }

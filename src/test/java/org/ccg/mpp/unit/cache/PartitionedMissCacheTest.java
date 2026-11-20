@@ -10,18 +10,18 @@ import org.junit.jupiter.api.Test;
 public class PartitionedMissCacheTest {
 
     @Test
-    public void eachDatabaseKeepsAtMostItsOwnSlice() {
+    public void eachProjectKeepsAtMostItsOwnSlice() {
         final var misses = new PartitionedMissCache(4096);
         for (var i = 0; i < 1000; i++) {
             misses.put("a", "k" + i);
         }
-        assertEquals(PartitionedMissCache.MAX_ENTRIES_PER_DATABASE, misses.size());
+        assertEquals(PartitionedMissCache.MAX_ENTRIES_PER_PROJECT, misses.size());
         assertTrue(misses.contains("a", "k999"));
         assertFalse(misses.contains("a", "k0"));
     }
 
     @Test
-    public void totalStaysWithinTheEntryBudgetByDroppingTheLeastRecentDatabase() {
+    public void totalStaysWithinTheEntryBudgetByDroppingTheLeastRecentProject() {
         final var misses = new PartitionedMissCache(300);
         for (var i = 0; i < 200; i++) {
             misses.put("old", "k" + i);
@@ -52,7 +52,7 @@ public class PartitionedMissCacheTest {
     }
 
     @Test
-    public void removalsAreScopedToTheirDatabase() {
+    public void removalsAreScopedToTheirProject() {
         final var misses = new PartitionedMissCache(4096);
         misses.put("a", "p|a|x");
         misses.put("a", "s|a|y");

@@ -130,7 +130,7 @@ final class WalCodec {
     }
 
     static byte[] encode(WalCheckpoint checkpoint) {
-        final var db = checkpoint.dbName().getBytes(StandardCharsets.UTF_8);
+        final var db = checkpoint.projectName().getBytes(StandardCharsets.UTF_8);
         final var coll = checkpoint.collName().getBytes(StandardCharsets.UTF_8);
         final var payload = ByteBuffer.allocate(Integer.BYTES * 3 + db.length + coll.length + Long.BYTES
                 + checkpoint.pageLengths().size() * Long.BYTES * 2);

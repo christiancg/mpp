@@ -20,12 +20,12 @@ public class IndexIdCounts {
         long count() throws IOException;
     }
 
-    private static String keyOf(String dbName, String collName, String indexIdentifier) {
-        return Cache.getCollectionIdentifier(dbName, collName) + KEY_SEPARATOR + indexIdentifier;
+    private static String keyOf(String projectName, String collName, String indexIdentifier) {
+        return Cache.getCollectionIdentifier(projectName, collName) + KEY_SEPARATOR + indexIdentifier;
     }
 
-    public long count(String dbName, String collName, String indexIdentifier, Counter counter) throws IOException {
-        final var key = keyOf(dbName, collName, indexIdentifier);
+    public long count(String projectName, String collName, String indexIdentifier, Counter counter) throws IOException {
+        final var key = keyOf(projectName, collName, indexIdentifier);
         final var known = counts.get(key);
         if (known != null) {
             return known;
@@ -45,42 +45,42 @@ public class IndexIdCounts {
         return counted;
     }
 
-    public long known(String dbName, String collName, String indexIdentifier) {
-        final var known = counts.get(keyOf(dbName, collName, indexIdentifier));
+    public long known(String projectName, String collName, String indexIdentifier) {
+        final var known = counts.get(keyOf(projectName, collName, indexIdentifier));
         return known == null ? UNKNOWN : known;
     }
 
-    public void adjust(String dbName, String collName, String indexIdentifier, long added, long removed) {
+    public void adjust(String projectName, String collName, String indexIdentifier, long added, long removed) {
         if (added < 0 || removed < 0) {
-            forget(dbName, collName, indexIdentifier);
+            forget(projectName, collName, indexIdentifier);
             return;
         }
         if (added != removed) {
-            counts.computeIfPresent(keyOf(dbName, collName, indexIdentifier),
+            counts.computeIfPresent(keyOf(projectName, collName, indexIdentifier),
                     (_, count) -> count + added - removed < 0 ? null : count + added - removed);
         }
     }
 
-    public void forget(String dbName, String collName, String indexIdentifier) {
+    public void forget(String projectName, String collName, String indexIdentifier) {
         lock.lock();
         try {
             forgets.incrementAndGet();
-            counts.remove(keyOf(dbName, collName, indexIdentifier));
+            counts.remove(keyOf(projectName, collName, indexIdentifier));
         } finally {
             lock.unlock();
         }
     }
 
-    public void forgetField(String dbName, String collName, String fieldName) {
-        forgetByPrefix(keyOf(dbName, collName, fieldName + Globals.COLL_IDENTIFIER_SEPARATOR));
+    public void forgetField(String projectName, String collName, String fieldName) {
+        forgetByPrefix(keyOf(projectName, collName, fieldName + Globals.COLL_IDENTIFIER_SEPARATOR));
     }
 
-    public void forgetCollection(String dbName, String collName) {
-        forgetByPrefix(Cache.getCollectionIdentifier(dbName, collName) + KEY_SEPARATOR);
+    public void forgetCollection(String projectName, String collName) {
+        forgetByPrefix(Cache.getCollectionIdentifier(projectName, collName) + KEY_SEPARATOR);
     }
 
-    public void forgetDatabase(String dbName) {
-        forgetByPrefix(dbName + Globals.COLL_IDENTIFIER_SEPARATOR);
+    public void forgetProject(String projectName) {
+        forgetByPrefix(projectName + Globals.COLL_IDENTIFIER_SEPARATOR);
     }
 
     private void forgetByPrefix(String prefix) {

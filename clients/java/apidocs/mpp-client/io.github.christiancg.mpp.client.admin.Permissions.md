@@ -2,7 +2,7 @@ Everything a user may do. Built with `Permissions.builder()`; anything not grant
 
 ## COLLECTION_SEPARATOR
 
-Separates database and collection in a collection grant's key: `shop|orders`.
+Separates project and collection in a collection grant's key: `shop|orders`.
 
 ## builder()
 
@@ -16,14 +16,14 @@ Separates database and collection in a collection grant's key: `shop|orders`.
 
 @return the server-wide permissions
 
-## databases()
+## projects()
 
-@return the access per database
+@return the access per project
 
 ## collections()
 
-@return the access per `database|collection`
+@return the access per `project|collection`
 
 ## scripts()
 
-@return the script access per database
+@return the script access per project

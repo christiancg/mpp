@@ -7,11 +7,11 @@ import java.util.function.Function;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ioc.IocContainer;
-import org.ccg.mpp.ops.resp.GetDatabaseStatsResponse;
+import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.GetSchemaResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
-import org.ccg.mpp.ops.resp.ListDatabasesResponse;
 import org.ccg.mpp.ops.resp.ListProceduresResponse;
+import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.ListSchedulesResponse;
 import org.ccg.mpp.ops.resp.ListScriptsResponse;
 import org.ccg.mpp.ops.resp.ListTransactionsResponse;
@@ -50,15 +50,15 @@ public class ListingResponseEstimateTest {
         for (final var listing : objectLists) {
             assertCoversItsJson(listing.apply(List.of(large())));
         }
-        assertCoversItsJson(new GetDatabaseStatsResponse("ok", large()));
+        assertCoversItsJson(new GetProjectStatsResponse("ok", large()));
         assertCoversItsJson(new GetSchemaResponse("ok", large()));
         assertCoversItsJson(new ListCollectionsResponse("ok", List.of(LARGE, "b")));
-        assertCoversItsJson(new ListDatabasesResponse("ok", List.of(LARGE)));
+        assertCoversItsJson(new ListProjectsResponse("ok", List.of(LARGE)));
     }
 
     @Test
     public void anAbsentListingEstimatesOnlyItsEnvelope() {
-        assertTrue(new ListDatabasesResponse("ok", null).estimatedJsonChars() < 300);
+        assertTrue(new ListProjectsResponse("ok", null).estimatedJsonChars() < 300);
         assertTrue(new ListProceduresResponse("ok", null).estimatedJsonChars() < 300);
     }
 }

@@ -26,7 +26,7 @@ public class AdminCacheSchemaTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -37,8 +37,8 @@ public class AdminCacheSchemaTest {
 
     @BeforeEach
     void reset() throws Exception {
-        adminCache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        adminCache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private JsonObject schema(String type) {
@@ -49,45 +49,45 @@ public class AdminCacheSchemaTest {
 
     @Test
     public void test_absent_schema_returns_null() {
-        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_put_then_get() {
         final var s = schema("object");
-        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, s);
-        assertEquals(s, adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        adminCache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, s);
+        assertEquals(s, adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_lazy_load_from_disk() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.toJson(schema("string")));
-        assertEquals(schema("string"), adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, eJson.toJson(schema("string")));
+        assertEquals(schema("string"), adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_remove() {
-        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, schema("object"));
-        adminCache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        adminCache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, schema("object"));
+        adminCache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        assertNull(adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
-    public void test_remove_for_database() {
-        adminCache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, schema("object"));
-        adminCache.removeCollectionSchemasForDatabase(TestGlobals.DB);
-        assertNull(adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+    public void test_remove_for_project() {
+        adminCache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, schema("object"));
+        adminCache.removeCollectionSchemasForProject(TestGlobals.PROJECT);
+        assertNull(adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_read_failure_is_not_cached_as_absence() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\": \"obj");
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, "{\"type\": \"obj");
 
         assertThrows(MetadataReadException.class,
-                () -> adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+                () -> adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.toJson(schema("object")));
-        assertEquals(schema("object"), adminCache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL),
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, eJson.toJson(schema("object")));
+        assertEquals(schema("object"), adminCache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL),
                 "a failed read must not be remembered as a definitive absence");
     }
 }

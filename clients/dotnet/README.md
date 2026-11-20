@@ -24,7 +24,7 @@ await using var client = await MppClient.ConnectAsync(new ClientSettings
     Credentials = new Credentials("admin", Environment.GetEnvironmentVariable("MPP_PASSWORD") ?? ""),
 });
 
-var shop = client.Database("shop");
+var shop = client.Project("shop");
 await shop.CreateAsync();
 var orders = shop.Collection<Purchase>("orders");
 await orders.CreateAsync();

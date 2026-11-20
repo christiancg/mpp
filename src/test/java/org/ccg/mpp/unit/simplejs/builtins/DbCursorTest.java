@@ -17,13 +17,13 @@ import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
 import org.ccg.mpp.simplejs.values.JsObject;
 import org.ccg.mpp.simplejs.values.JsString;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class DbCursorTest {
     private static final String SORT_STEP = "[{ type: 'SORT', fieldName: '_id', ascending: true }]";
 
-    private static final class PagingDatabase extends FakeDatabaseAccess {
+    private static final class PagingProject extends FakeProjectAccess {
         final List<JsonArray> pipelines = new ArrayList<>();
         private final List<JsonObject> documents = new ArrayList<>();
         private int failFromBatch = Integer.MAX_VALUE;
@@ -32,7 +32,7 @@ public class DbCursorTest {
         private Predicate<JsonArray> ordering = _ -> pipelineIsOrdered;
         private int unorderedCut = -1;
 
-        private PagingDatabase(int total) {
+        private PagingProject(int total) {
             for (var i = 0; i < total; i++) {
                 final var document = new JsonObject();
                 document.add("_id", new JsonString("d" + i));
@@ -85,12 +85,12 @@ public class DbCursorTest {
                 ResourceLimits.UNLIMITED_ARRAY_LENGTH);
     }
 
-    private static ScriptResult run(PagingDatabase database, String source, ResourceLimits limits) {
-        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), database, null, limits));
+    private static ScriptResult run(PagingProject project, String source, ResourceLimits limits) {
+        return new SimpleJs().run(source, new SimpleHostBindings(new JsonObject(), project, null, limits));
     }
 
-    private static ScriptResult run(PagingDatabase database, String source) {
-        return run(database, source, limits(-1, 500, 5000));
+    private static ScriptResult run(PagingProject project, String source) {
+        return run(project, source, limits(-1, 500, 5000));
     }
 
     private static String walk(String options) {
@@ -115,25 +115,25 @@ public class DbCursorTest {
 
     @Test
     public void test_iterates_every_document_across_batches() {
-        final var database = new PagingDatabase(5);
-        final var seen = ids(run(database, walk("{ batchSize: 2 }")));
+        final var project = new PagingProject(5);
+        final var seen = ids(run(project, walk("{ batchSize: 2 }")));
         assertEquals(List.of("d0", "d1", "d2", "d3", "d4"), seen);
-        assertEquals(3, database.pipelines.size());
+        assertEquals(3, project.pipelines.size());
     }
 
     @Test
     public void test_stops_on_a_short_batch() {
-        final var database = new PagingDatabase(3);
-        assertEquals(3, ids(run(database, walk("{ batchSize: 2 }"))).size());
-        assertEquals(2, database.pipelines.size());
+        final var project = new PagingProject(3);
+        assertEquals(3, ids(run(project, walk("{ batchSize: 2 }"))).size());
+        assertEquals(2, project.pipelines.size());
     }
 
     @Test
     public void test_appends_skip_and_limit_steps() {
-        final var database = new PagingDatabase(5);
-        ids(run(database, walk("{ batchSize: 2 }")));
-        for (var batch = 0; batch < database.pipelines.size(); batch++) {
-            final var pipeline = database.pipelines.get(batch);
+        final var project = new PagingProject(5);
+        ids(run(project, walk("{ batchSize: 2 }")));
+        for (var batch = 0; batch < project.pipelines.size(); batch++) {
+            final var pipeline = project.pipelines.get(batch);
             assertEquals(3, pipeline.size());
             assertEquals("SORT", pipeline.get(0).asJsonObject().get("type").asJsonString().getValue());
             final var skip = pipeline.get(1).asJsonObject();
@@ -147,8 +147,8 @@ public class DbCursorTest {
 
     @Test
     public void test_does_not_mutate_the_caller_pipeline() {
-        final var database = new PagingDatabase(3);
-        final var result = run(database, """
+        final var project = new PagingProject(3);
+        final var result = run(project, """
                 import db from "db";
                 const steps = %s;
                 for (const doc of db.cursor('d', 'c', steps, { batchSize: 2 })) {
@@ -161,52 +161,52 @@ public class DbCursorTest {
 
     @Test
     public void test_clamps_batch_size_to_the_configured_maximum() {
-        final var database = new PagingDatabase(5);
-        ids(run(database, walk("{ batchSize: 1000 }"), limits(-1, 2, 2)));
-        assertEquals(2, database.pipelines.getFirst().get(2).asJsonObject().get("limit").asJsonNumber().asInteger());
+        final var project = new PagingProject(5);
+        ids(run(project, walk("{ batchSize: 1000 }"), limits(-1, 2, 2)));
+        assertEquals(2, project.pipelines.getFirst().get(2).asJsonObject().get("limit").asJsonNumber().asInteger());
     }
 
     @Test
     public void test_uses_the_configured_default_batch_size() {
-        final var database = new PagingDatabase(1);
-        ids(run(database, walk("undefined"), limits(-1, 7, 5000)));
-        assertEquals(7, database.pipelines.getFirst().get(2).asJsonObject().get("limit").asJsonNumber().asInteger());
+        final var project = new PagingProject(1);
+        ids(run(project, walk("undefined"), limits(-1, 7, 5000)));
+        assertEquals(7, project.pipelines.getFirst().get(2).asJsonObject().get("limit").asJsonNumber().asInteger());
     }
 
     @Test
     public void test_rejects_non_positive_batch_size() {
         for (final var batchSize : List.of("0", "-1", "NaN", "'nope'")) {
-            final var database = new PagingDatabase(3);
-            final var result = run(database, walk("{ batchSize: " + batchSize + " }"));
+            final var project = new PagingProject(3);
+            final var result = run(project, walk("{ batchSize: " + batchSize + " }"));
             assertTrue(result.isError(), "batchSize " + batchSize + " must be rejected");
             assertEquals("RangeError", result.getErrorName());
-            assertTrue(database.pipelines.isEmpty(), "nothing must be read for " + batchSize);
+            assertTrue(project.pipelines.isEmpty(), "nothing must be read for " + batchSize);
         }
     }
 
     @Test
     public void test_accepts_a_numeric_string_batch_size() {
-        final var database = new PagingDatabase(3);
-        assertEquals(3, ids(run(database, walk("{ batchSize: '2' }"))).size());
+        final var project = new PagingProject(3);
+        assertEquals(3, ids(run(project, walk("{ batchSize: '2' }"))).size());
     }
 
     @Test
     public void test_empty_first_batch_yields_no_iterations() {
-        final var database = new PagingDatabase(0);
-        assertEquals(List.of(), ids(run(database, walk("{ batchSize: 2 }"))));
-        assertEquals(1, database.pipelines.size());
+        final var project = new PagingProject(0);
+        assertEquals(List.of(), ids(run(project, walk("{ batchSize: 2 }"))));
+        assertEquals(1, project.pipelines.size());
     }
 
     @Test
     public void test_supports_spread_and_iterator_helpers() {
-        final var database = new PagingDatabase(5);
-        final var spread = run(database, """
+        final var project = new PagingProject(5);
+        final var spread = run(project, """
                 import db from "db";
                 return [...db.cursor('d', 'c', %s, { batchSize: 2 })].map(d => d._id);
                 """.formatted(SORT_STEP));
         assertEquals(List.of("d0", "d1", "d2", "d3", "d4"), ids(spread));
 
-        final var helper = new PagingDatabase(5);
+        final var helper = new PagingProject(5);
         final var taken = run(helper, """
                 import db from "db";
                 return db.cursor('d', 'c', %s, { batchSize: 2 }).take(2).toArray().map(d => d._id);
@@ -217,27 +217,27 @@ public class DbCursorTest {
 
     @Test
     public void test_charges_each_document_as_it_is_converted() {
-        final var database = new PagingDatabase(200);
-        database.padding = "x".repeat(512);
-        final var result = run(database, walk("{ batchSize: 50 }"), limits(8192, 500, 5000));
+        final var project = new PagingProject(200);
+        project.padding = "x".repeat(512);
+        final var result = run(project, walk("{ batchSize: 50 }"), limits(8192, 500, 5000));
         assertTrue(result.isError());
         assertEquals("ScriptMemoryError", result.getErrorName());
     }
 
     @Test
     public void test_a_drained_batch_is_refunded() {
-        final var database = new PagingDatabase(200);
-        database.padding = "x".repeat(512);
-        assertEquals(200, ids(run(database, walk("{ batchSize: 5 }"), limits(65_536, 500, 5000))).size());
+        final var project = new PagingProject(200);
+        project.padding = "x".repeat(512);
+        assertEquals(200, ids(run(project, walk("{ batchSize: 5 }"), limits(65_536, 500, 5000))).size());
     }
 
     // The reported peak is a high-water mark, not the closing balance: a fully drained walk credits almost
     // everything back, so a peak derived at the end would read as ~0.
     @Test
     public void test_peak_memory_survives_the_refund() {
-        final var database = new PagingDatabase(200);
-        database.padding = "x".repeat(512);
-        final var result = run(database, walk("{ batchSize: 5 }"), limits(65_536, 500, 5000));
+        final var project = new PagingProject(200);
+        project.padding = "x".repeat(512);
+        final var result = run(project, walk("{ batchSize: 5 }"), limits(65_536, 500, 5000));
         assertFalse(result.isError());
         assertTrue(result.getMetrics().peakMemoryBytes() > 512,
                 "expected a peak above one document, got " + result.getMetrics().peakMemoryBytes());
@@ -246,9 +246,9 @@ public class DbCursorTest {
 
     @Test
     public void test_error_from_aggregate_surfaces_as_a_catchable_error() {
-        final var database = new PagingDatabase(5);
-        database.failFromBatch = 2;
-        final var result = run(database, """
+        final var project = new PagingProject(5);
+        project.failFromBatch = 2;
+        final var result = run(project, """
                 import db from "db";
                 const seen = [];
                 try {
@@ -266,8 +266,8 @@ public class DbCursorTest {
 
     @Test
     public void test_abandoned_cursor_leaves_no_state_behind() {
-        final var database = new PagingDatabase(5);
-        final var result = run(database, """
+        final var project = new PagingProject(5);
+        final var result = run(project, """
                 import db from "db";
                 for (const doc of db.cursor('d', 'c', %s, { batchSize: 2 })) {
                     break;
@@ -275,13 +275,13 @@ public class DbCursorTest {
                 return "done";
                 """.formatted(SORT_STEP));
         assertFalse(result.isError(), result.getErrorMessage());
-        assertEquals(List.of("aggregate:d/c/3"), database.calls);
+        assertEquals(List.of("aggregate:d/c/3"), project.calls);
     }
 
     @Test
     public void test_requires_an_array_of_steps() {
-        final var database = new PagingDatabase(1);
-        final var result = run(database, "import db from \"db\"; db.cursor('d', 'c', 'nope');");
+        final var project = new PagingProject(1);
+        final var result = run(project, "import db from \"db\"; db.cursor('d', 'c', 'nope');");
         assertTrue(result.isError());
         assertEquals("TypeError", result.getErrorName());
     }
@@ -292,12 +292,12 @@ public class DbCursorTest {
 
     @Test
     public void test_a_cursor_over_an_unordered_pipeline_pages_in_id_order() {
-        final var database = new PagingDatabase(5);
-        database.pipelineIsOrdered = false;
+        final var project = new PagingProject(5);
+        project.pipelineIsOrdered = false;
 
-        assertEquals(List.of("d0", "d1", "d2", "d3", "d4"), ids(run(database, walk("{ batchSize: 2 }"))));
+        assertEquals(List.of("d0", "d1", "d2", "d3", "d4"), ids(run(project, walk("{ batchSize: 2 }"))));
 
-        for (final var pipeline : database.pipelines) {
+        for (final var pipeline : project.pipelines) {
             final var sort = pipeline.get(pipeline.size() - 3).asJsonObject();
             assertEquals("SORT", sort.get("type").asJsonString().getValue(),
                     "each batch must page over the same order, so a SORT on _id precedes SKIP and LIMIT");
@@ -308,11 +308,11 @@ public class DbCursorTest {
 
     @Test
     public void test_a_cursor_over_an_ordered_pipeline_adds_no_sort() {
-        final var database = new PagingDatabase(3);
+        final var project = new PagingProject(3);
 
-        ids(run(database, walk("{ batchSize: 2 }")));
+        ids(run(project, walk("{ batchSize: 2 }")));
 
-        for (final var pipeline : database.pipelines) {
+        for (final var pipeline : project.pipelines) {
             assertEquals(3, pipeline.size(), "the caller's own SORT plus SKIP and LIMIT, and nothing else");
             assertEquals("SORT", firstStepType(pipeline));
         }
@@ -346,14 +346,14 @@ public class DbCursorTest {
 
     @Test
     public void test_a_cursor_anchors_the_order_before_an_unordered_limit() {
-        final var database = new PagingDatabase(3);
-        database.unorderedCut = 0;
-        database.ordering = pipeline -> "SORT".equals(firstStepType(pipeline));
+        final var project = new PagingProject(3);
+        project.unorderedCut = 0;
+        project.ordering = pipeline -> "SORT".equals(firstStepType(pipeline));
 
-        ids(run(database, walkOver("[{ type: 'LIMIT', limit: 3 }]")));
+        ids(run(project, walkOver("[{ type: 'LIMIT', limit: 3 }]")));
 
-        assertFalse(database.pipelines.isEmpty());
-        for (final var pipeline : database.pipelines) {
+        assertFalse(project.pipelines.isEmpty());
+        for (final var pipeline : project.pipelines) {
             assertEquals(List.of("SORT", "LIMIT", "SKIP", "LIMIT"), stepTypes(pipeline),
                     "the LIMIT must pick its rows from a defined order, or each batch pages a different subset");
             assertSortsById(pipeline, 0);
@@ -362,16 +362,16 @@ public class DbCursorTest {
 
     @Test
     public void test_a_cursor_keeps_the_trailing_sort_when_the_anchored_pipeline_is_still_unordered() {
-        final var database = new PagingDatabase(3);
-        database.unorderedCut = 1;
-        database.ordering = _ -> false;
+        final var project = new PagingProject(3);
+        project.unorderedCut = 1;
+        project.ordering = _ -> false;
 
-        ids(run(database, walkOver(
+        ids(run(project, walkOver(
                 "[{ type: 'FILTER', operator: { type: 'FIELD', fieldOperatorType: 'EQUALS', field: 'a', value: 1 } },"
                         + " { type: 'LIMIT', limit: 3 }, { type: 'DISTINCT', fieldName: 'a' }]")));
 
-        assertFalse(database.pipelines.isEmpty());
-        for (final var pipeline : database.pipelines) {
+        assertFalse(project.pipelines.isEmpty());
+        for (final var pipeline : project.pipelines) {
             assertEquals(List.of("FILTER", "SORT", "LIMIT", "DISTINCT", "SORT", "SKIP", "LIMIT"), stepTypes(pipeline));
             assertSortsById(pipeline, 1);
             assertSortsById(pipeline, 4);
@@ -380,11 +380,11 @@ public class DbCursorTest {
 
     @Test
     public void test_a_cursor_with_no_unordered_cut_leaves_the_pipeline_as_given() {
-        final var database = new PagingDatabase(3);
+        final var project = new PagingProject(3);
 
-        ids(run(database, walkOver("[{ type: 'LIMIT', limit: 3 }]")));
+        ids(run(project, walkOver("[{ type: 'LIMIT', limit: 3 }]")));
 
-        for (final var pipeline : database.pipelines) {
+        for (final var pipeline : project.pipelines) {
             assertEquals(List.of("LIMIT", "SKIP", "LIMIT"), stepTypes(pipeline));
         }
     }

@@ -56,7 +56,7 @@ public class ScriptRunHistory {
     private static final EJson eJson = IocContainer.get(EJson.class);
     private static final Configuration configuration = Configuration.getInstance();
 
-    private static final Set<String> knownDatabases = ConcurrentHashMap.newKeySet();
+    private static final Set<String> knownProjects = ConcurrentHashMap.newKeySet();
     private static final LongAdder recorded = new LongAdder();
     private static final LongAdder dropped = new LongAdder();
     private static final AtomicReference<ScheduledExecutorService> sweeper = new AtomicReference<>();
@@ -106,12 +106,12 @@ public class ScriptRunHistory {
             return;
         }
         try {
-            final var dbName = runRecord.database();
-            if (dbName == null || historyUnavailable(dbName)) {
+            final var projectName = runRecord.project();
+            if (projectName == null || historyUnavailable(projectName)) {
                 dropped.increment();
                 return;
             }
-            final var request = new SaveRequest(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+            final var request = new SaveRequest(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
             request.setObject(documentOf(runRecord));
             request.set_id(runRecord.runId());
             request.setBackgroundFollowOn(true);
@@ -122,7 +122,7 @@ public class ScriptRunHistory {
                 }
                 dropped.increment();
                 logger.warning("Could not record the run of " + runRecord.kind() + " '" + runRecord.name() + "' in "
-                        + dbName + ": " + response.getMessage());
+                        + projectName + ": " + response.getMessage());
                 return;
             }
             recorded.increment();
@@ -163,8 +163,8 @@ public class ScriptRunHistory {
             return;
         }
         try {
-            final var dbName = batch.getFirst().getRecord().database();
-            if (dbName == null || historyUnavailable(dbName)) {
+            final var projectName = batch.getFirst().getRecord().project();
+            if (projectName == null || historyUnavailable(projectName)) {
                 dropped.add(batch.size());
                 return;
             }
@@ -172,7 +172,7 @@ public class ScriptRunHistory {
             for (final var event : batch) {
                 documents.add(documentOf(event.getRecord()));
             }
-            final var request = new BulkSaveRequest(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+            final var request = new BulkSaveRequest(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
             request.setObjects(documents);
             request.setBackgroundFollowOn(true);
             final var response = dispatch(request, null);
@@ -213,14 +213,14 @@ public class ScriptRunHistory {
         }
         final var cutoff = System.currentTimeMillis() - Math.max(1L, configuration.getScriptRunHistoryRetentionMs());
         final var maxRows = configuration.longValue(ConfigKey.SCRIPT_RUN_HISTORY_MAX_ROWS);
-        for (final var dbName : databasesWithHistory()) {
-            if (!ownsHistoryOf(dbName)) {
+        for (final var projectName : projectsWithHistory()) {
+            if (!ownsHistoryOf(projectName)) {
                 continue;
             }
             try {
-                ScriptRunPrune.prune(dbName, cutoff, maxRows);
+                ScriptRunPrune.prune(projectName, cutoff, maxRows);
             } catch (Exception e) {
-                logger.warning("Failed to prune the script run history of '" + dbName + "': " + e.getMessage());
+                logger.warning("Failed to prune the script run history of '" + projectName + "': " + e.getMessage());
             }
         }
     }
@@ -240,8 +240,8 @@ public class ScriptRunHistory {
         }
     }
 
-    private static boolean ownsHistoryOf(String dbName) {
-        return !clusterConfig.isEnabled() || ownershipManager.isOwner(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+    private static boolean ownsHistoryOf(String projectName) {
+        return !clusterConfig.isEnabled() || ownershipManager.isOwner(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME);
     }
 
     public void startSweep() {
@@ -290,7 +290,7 @@ public class ScriptRunHistory {
 
     public static void reset() {
         heldRuns.takeAll();
-        knownDatabases.clear();
+        knownProjects.clear();
         recorded.reset();
         dropped.reset();
         queueFull.set(false);
@@ -304,30 +304,31 @@ public class ScriptRunHistory {
         }
     }
 
-    private static Set<String> databasesWithHistory() {
-        final var names = new LinkedHashSet<>(knownDatabases);
-        names.addAll(cache.getUserDatabaseNames());
-        names.remove(Globals.ADMIN_DB_NAME);
+    private static Set<String> projectsWithHistory() {
+        final var names = new LinkedHashSet<>(knownProjects);
+        names.addAll(cache.getUserProjectNames());
+        names.remove(Globals.ADMIN_PROJECT_NAME);
         return names;
     }
 
-    private static boolean historyUnavailable(String dbName) {
-        if (cache.getAdminDbEntry(dbName) == null) {
-            knownDatabases.remove(dbName);
+    private static boolean historyUnavailable(String projectName) {
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            knownProjects.remove(projectName);
             return true;
         }
-        if (cache.getAdminCollectionEntry(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME) != null) {
-            knownDatabases.add(dbName);
+        if (cache.getAdminCollectionEntry(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME) != null) {
+            knownProjects.add(projectName);
             return false;
         }
-        knownDatabases.remove(dbName);
-        final var response = dispatch(new CreateCollectionRequest(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME), null);
+        knownProjects.remove(projectName);
+        final var response = dispatch(new CreateCollectionRequest(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME),
+                null);
         if (response.getStatus() != OperationStatus.OK) {
-            logger.warning(
-                    "Could not create the script run history collection in '" + dbName + "': " + response.getMessage());
+            logger.warning("Could not create the script run history collection in '" + projectName + "': "
+                    + response.getMessage());
             return true;
         }
-        knownDatabases.add(dbName);
+        knownProjects.add(projectName);
         return false;
     }
 

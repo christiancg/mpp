@@ -31,7 +31,7 @@ public class PkIndexSnapshotTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -41,12 +41,12 @@ public class PkIndexSnapshotTest {
     }
 
     private void publishCachedIndex() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL)
-                    .add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x1", 0, 1, 0));
+            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL)
+                    .add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x1", 0, 1, 0));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -54,15 +54,15 @@ public class PkIndexSnapshotTest {
     public void test_a_lock_holder_still_gets_the_shared_list_to_mutate() throws Exception {
         publishCachedIndex();
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var first = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
-            final var second = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            final var first = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
+            final var second = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
 
             assertSame(first, second,
                     "writers mutate the cached list in place, so a lock holder must keep getting that instance");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -71,7 +71,7 @@ public class PkIndexSnapshotTest {
         publishCachedIndex();
 
         final var shared = sharedListUnderLock();
-        final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertNotSame(shared, snapshot,
                 "a lock-free reader binary-searched the list writers reshape in place, so it saw wrong rows"
@@ -82,15 +82,15 @@ public class PkIndexSnapshotTest {
     @Test
     public void test_a_snapshot_is_unaffected_by_a_later_structural_change() throws Exception {
         publishCachedIndex();
-        final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         final var sizeWhenTaken = snapshot.size();
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL)
-                    .add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x2", 0, 1, 0));
+            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL)
+                    .add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x2", 0, 1, 0));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertEquals(sizeWhenTaken, snapshot.size(), "the reader's view must not change underneath it");
@@ -103,13 +103,13 @@ public class PkIndexSnapshotTest {
         final var releaseWriter = new CountDownLatch(1);
         final var writer = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 writerHolds.countDown();
                 releaseWriter.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         writer.start();
@@ -117,7 +117,7 @@ public class PkIndexSnapshotTest {
 
         try {
             final var startedAt = System.currentTimeMillis();
-            final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            final var snapshot = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
 
             assertTrue(System.currentTimeMillis() - startedAt < 2000,
                     "a dirty read must never wait on the collection write lock; it falls back to the disk tier,"
@@ -130,11 +130,11 @@ public class PkIndexSnapshotTest {
     }
 
     private java.util.List<PkIndexEntry> sharedListUnderLock() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            return userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            return userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -142,13 +142,13 @@ public class PkIndexSnapshotTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var map = TestUtils.getPrivateField(userCache, "pkIndexMap", type);
-        return map.get(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        return map.get(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_lock_free_read_does_not_publish_the_pk_index()
             throws IOException, NoSuchFieldException, IllegalAccessException {
-        final var loaded = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var loaded = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertNotNull(loaded);
         assertNull(cachedPkIndex(),
@@ -159,11 +159,11 @@ public class PkIndexSnapshotTest {
     @Test
     public void test_a_locked_reader_still_publishes_the_pk_index()
             throws IOException, InterruptedException, NoSuchFieldException, IllegalAccessException {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertNotNull(cachedPkIndex(), "a lock holder is the only caller allowed to publish, and must still do so");
@@ -173,30 +173,31 @@ public class PkIndexSnapshotTest {
     public void test_a_lock_free_read_still_answers_from_disk() throws Exception {
         publishCachedIndex();
 
-        assertEquals(1, userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).size(),
+        assertEquals(1, userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).size(),
                 "a published index is still served to a lock-free reader; only republishing is refused");
     }
 
     @Test
     public void test_a_lock_free_count_reads_the_published_size_without_a_copy() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var resident = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+            final var resident = userCache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
             for (var i = 0; i < 2_000; i++) {
-                resident.add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, String.format("r%05d", i), 0, 1, 0));
+                resident.add(
+                        new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, String.format("r%05d", i), 0, 1, 0));
             }
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         final var threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
         for (var warm = 0; warm < 1_000; warm++) {
-            userCache.pkIndexSize(TestGlobals.DB, TestGlobals.COLL);
+            userCache.pkIndexSize(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         final var before = threads.getThreadAllocatedBytes(Thread.currentThread().threadId());
         var counted = 0L;
         for (var call = 0; call < 1_000; call++) {
-            counted += userCache.pkIndexSize(TestGlobals.DB, TestGlobals.COLL)
-                    + userCache.pkCountForCoverage(TestGlobals.DB, TestGlobals.COLL);
+            counted += userCache.pkIndexSize(TestGlobals.PROJECT, TestGlobals.COLL)
+                    + userCache.pkCountForCoverage(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         final var allocated = threads.getThreadAllocatedBytes(Thread.currentThread().threadId()) - before;
 

@@ -40,8 +40,8 @@ final class ScanRefusals {
         refusals.remove(collectionIdentifier);
     }
 
-    void forgetDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    void forgetProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         refusals.keySet().removeIf(key -> key.startsWith(prefix));
     }
 

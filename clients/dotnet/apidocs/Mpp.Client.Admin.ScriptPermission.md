@@ -1,4 +1,4 @@
-The access a user has to scripts in a database.
+The access a user has to scripts in a project.
 
 ## Manage
 May run scripts and manage procedures, triggers and schedules, source included.

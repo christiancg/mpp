@@ -53,7 +53,7 @@ public class DurableReplayIncompleteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origAckTimeoutMs = config.getReplicationAckTimeoutMs();
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 2000L);
         cluster.enableAlone();
@@ -79,14 +79,14 @@ public class DurableReplayIncompleteTest {
 
     private void createAbsentCollection() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, ABSENT_COLL)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, ABSENT_COLL)).getStatus());
     }
 
     private OperationStatus saveFromAnotherThread() throws Exception {
         final var id = "after-recovery";
         final var status = new AtomicReference<OperationStatus>();
         final var writer = Thread.ofVirtual().start(() -> {
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(Tx2pcFixtures.document(id));
             request.set_id(id);
             status.set(processor.processMessage(request).getStatus());

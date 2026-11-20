@@ -37,7 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class PinnedPkFetchTest {
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String COLL = TestGlobals.COLL;
     private static final String JOINED = TestGlobals.JOIN_COLL;
 
@@ -51,7 +51,7 @@ public class PinnedPkFetchTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
     }
@@ -70,9 +70,9 @@ public class PinnedPkFetchTest {
             final var data = new JsonObject();
             data.addProperty("_id", collName + "-" + i);
             value.put(data, field, i);
-            entries.add(DbEntry.fromJsonObject(DB, collName, data));
+            entries.add(DbEntry.fromJsonObject(PROJECT, collName, data));
         }
-        fs.bulkInsertIntoCollection(DB, collName, entries);
+        fs.bulkInsertIntoCollection(PROJECT, collName, entries);
     }
 
     @FunctionalInterface
@@ -81,8 +81,8 @@ public class PinnedPkFetchTest {
     }
 
     private void index(String collName, String field) throws Exception {
-        IndexHelper.createIndex(DB, collName, field);
-        cache.getAdminCollectionEntry(DB, collName).setIndexes(Set.of(field));
+        IndexHelper.createIndex(PROJECT, collName, field);
+        cache.getAdminCollectionEntry(PROJECT, collName).setIndexes(Set.of(field));
     }
 
     private void spyOnTinyCache() throws Exception {
@@ -92,7 +92,7 @@ public class PinnedPkFetchTest {
     }
 
     private List<JsonObject> aggregate(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(DB, COLL);
+        final var request = new AggregateRequest(PROJECT, COLL);
         request.setAggregationSteps(List.of(steps));
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request);
         return assertInstanceOf(AggregateResponse.class, response, response.getMessage()).getResults();
@@ -108,8 +108,8 @@ public class PinnedPkFetchTest {
                 new CountAggregationStep());
 
         assertEquals(2000, counted.getFirst().get("count").asJsonNumber().asInteger());
-        verify(spied, times(1)).readWholePkIndexFile(DB, COLL);
-        verify(spied, times(PipelineContext.POINT_SCANS_BEFORE_PIN)).pkRowsFor(eq(DB), eq(COLL), anyCollection());
+        verify(spied, times(1)).readWholePkIndexFile(PROJECT, COLL);
+        verify(spied, times(PipelineContext.POINT_SCANS_BEFORE_PIN)).pkRowsFor(eq(PROJECT), eq(COLL), anyCollection());
     }
 
     @Test
@@ -121,7 +121,7 @@ public class PinnedPkFetchTest {
 
         final var joined = aggregate(new JoinAggregationStep(JOINED, "ref", "key", "match"));
 
-        verify(spied, times(1)).readWholeFieldIndexFiles(eq(DB), eq(JOINED), eq("key"), eq(String.class));
+        verify(spied, times(1)).readWholeFieldIndexFiles(eq(PROJECT), eq(JOINED), eq("key"), eq(String.class));
         assertEquals(1000, joined.size());
         final var matched = new HashSet<String>();
         for (final var document : joined) {

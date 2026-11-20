@@ -51,7 +51,7 @@ public class TransactionLimitsTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         grantCollection(PermissionLevel.READ_WRITE);
         clientId = clientTracker.registerForwardedClient(WRITER);
         TransactionOperationHelper.start(clientId);
@@ -71,7 +71,7 @@ public class TransactionLimitsTest {
 
     private static void grantCollection(PermissionLevel level) throws Exception {
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(WRITER, "h", false, Set.of(), new HashMap<>(),
-                new HashMap<>(Map.of(TestGlobals.DB + "|" + TestGlobals.COLL, level))));
+                new HashMap<>(Map.of(TestGlobals.PROJECT + "|" + TestGlobals.COLL, level))));
     }
 
     private OperationResponse send(String json) {
@@ -79,22 +79,22 @@ public class TransactionLimitsTest {
     }
 
     private static String save(String id, String payload) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"p\":\"" + payload + "\"}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"p\":\"" + payload + "\"}}";
     }
 
-    private static final String BULK_SAVE_TWO = "{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String BULK_SAVE_TWO = "{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"objects\":[{\"_id\":\"b1\"},{\"_id\":\"b2\"}]}";
-    private static final String DELETE_OK1 = "{\"type\":\"DELETE\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String DELETE_OK1 = "{\"type\":\"DELETE\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"ok1\"}";
 
     private static boolean collectionIsWritable() throws InterruptedException {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var free = new java.util.concurrent.atomic.AtomicBoolean();
         final var probe = Thread.ofPlatform().start(() -> {
-            free.set(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            free.set(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
             if (free.get()) {
-                locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join(5000);
@@ -102,8 +102,8 @@ public class TransactionLimitsTest {
     }
 
     private OperationResponse findById(String id) {
-        return processor.processMessage(RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\",\"databaseName\":\""
-                + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}"));
+        return processor.processMessage(RequestParser.parseRequest("{\"type\":\"FIND_BY_ID\",\"projectName\":\""
+                + TestGlobals.PROJECT + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}"));
     }
 
     @Test
@@ -148,7 +148,7 @@ public class TransactionLimitsTest {
 
     @Test
     public void deleteWithTriggerPayloadCountsDocumentBytes() throws Exception {
-        final var fat = "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var fat = "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"ok1\",\"p\":\"" + "y".repeat(2000) + "\"}}";
         assertEquals(OperationStatus.OK, processor.processMessage(RequestParser.parseRequest(fat)).getStatus());
         TestUtils.setPrivateField(configuration, "transactionMaxBytes", "1Kb");
@@ -157,19 +157,21 @@ public class TransactionLimitsTest {
         TransactionOperationHelper.start(clientId);
 
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
-        assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "on_delete", "return 1;"), WRITER).getStatus());
+        assertEquals(OperationStatus.OK,
+                ProcedureOperationHelper
+                        .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "on_delete", "return 1;"), WRITER)
+                        .getStatus());
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("DELETED"), "on_delete"),
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("DELETED"), "on_delete"),
                 WRITER).getStatus());
         try {
             assertEquals(ErrorCode.TRANSACTION_TOO_LARGE.getCode(), send(DELETE_OK1).getErrorCode());
         } finally {
             TestUtils.setPrivateField(configuration, "triggersEnabled", ConfigKey.TRIGGERS_ENABLED.defaultValue());
-            fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-            cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, "on_delete");
-            cache.removeProceduresForDatabase(TestGlobals.DB);
+            fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+            cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "on_delete");
+            cache.removeProceduresForProject(TestGlobals.PROJECT);
         }
     }
 
@@ -219,16 +221,16 @@ public class TransactionLimitsTest {
     }
 
     @Test
-    public void test_a_database_owner_without_grants_still_commits() throws Exception {
+    public void test_a_project_owner_without_grants_still_commits() throws Exception {
         assertEquals(OperationStatus.OK, send(save("owned", "x")).getStatus());
         AdminOperationHelper
                 .saveUserEntry(new AdminUserEntry(WRITER, "h", false, Set.of(), new HashMap<>(), new HashMap<>()));
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(WRITER));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(WRITER));
         try {
             assertEquals(OperationStatus.OK, TransactionOperationHelper.commit(clientId).getStatus());
             assertEquals(OperationStatus.OK, findById("owned").getStatus());
         } finally {
-            AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of());
+            AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of());
         }
     }
 

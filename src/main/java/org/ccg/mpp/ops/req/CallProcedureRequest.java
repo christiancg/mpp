@@ -11,8 +11,8 @@ public class CallProcedureRequest extends OperationRequest {
         super(OperationType.CALL_PROCEDURE, null, null);
     }
 
-    public CallProcedureRequest(String databaseName, String procedureName, JsonObject args) {
-        super(OperationType.CALL_PROCEDURE, databaseName, null);
+    public CallProcedureRequest(String projectName, String procedureName, JsonObject args) {
+        super(OperationType.CALL_PROCEDURE, projectName, null);
         this.procedureName = procedureName;
         this.args = args;
     }

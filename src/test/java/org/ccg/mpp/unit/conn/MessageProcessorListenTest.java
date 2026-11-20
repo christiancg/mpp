@@ -25,7 +25,7 @@ public class MessageProcessorListenTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -52,7 +52,7 @@ public class MessageProcessorListenTest {
     public void test_listen_returns_listenId_and_hash() throws Exception {
         createListenAdmin("listen_wire_admin");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"listen_wire_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[]}\n";
 
         final var response = runMessages(messages);
@@ -65,8 +65,8 @@ public class MessageProcessorListenTest {
 
     @Test
     public void test_unauthenticated_listen_returns_unauthenticated() throws Exception {
-        final var messages = "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                + TestGlobals.COLL + "\",\"aggregationSteps\":[]}\n";
+        final var messages = "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT
+                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":[]}\n";
 
         final var response = runMessages(messages);
 
@@ -77,7 +77,7 @@ public class MessageProcessorListenTest {
     public void test_listen_invalid_request_returns_error() throws Exception {
         createListenAdmin("listen_invalid_admin");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"listen_invalid_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\"}\n";
 
         final var response = runMessages(messages);
@@ -104,7 +104,7 @@ public class MessageProcessorListenTest {
         createListenAdmin("listen_stop_admin");
         final var out = new ByteArrayOutputStream();
         final var listenMsg = "{\"type\":\"AUTHENTICATE\",\"username\":\"listen_stop_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[]}\n";
         final var socket = TestUtils.clientSocket(new ByteArrayInputStream(listenMsg.getBytes(StandardCharsets.UTF_8)),
                 out);
@@ -131,7 +131,7 @@ public class MessageProcessorListenTest {
             }
         };
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"listen_delivery_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[]}\n";
         final var socket = TestUtils.clientSocket(new ByteArrayInputStream(messages.getBytes(StandardCharsets.UTF_8)),
                 out);

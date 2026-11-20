@@ -110,10 +110,10 @@ public class FormatStampFileTest {
     }
 
     @Test
-    public void test_holds_data_only_once_the_admin_database_exists() throws IOException {
+    public void test_holds_data_only_once_the_admin_project_exists() throws IOException {
         assertFalse(file.holdsData());
 
-        Files.createDirectories(tmp.resolve(Globals.ADMIN_DB_NAME));
+        Files.createDirectories(tmp.resolve(Globals.ADMIN_PROJECT_NAME));
 
         assertTrue(file.holdsData());
     }

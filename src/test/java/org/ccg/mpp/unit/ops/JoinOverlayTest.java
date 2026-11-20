@@ -36,7 +36,7 @@ public class JoinOverlayTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         for (final var key : List.of("k1", "k2", "k3")) {
             save(TestGlobals.COLL, document("left-" + key, "k", key), null);
@@ -63,7 +63,7 @@ public class JoinOverlayTest {
     }
 
     private void save(String collName, JsonObject document, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setObject(document);
         final var response = clientId == null
                 ? processor.processMessage(request)
@@ -75,13 +75,13 @@ public class JoinOverlayTest {
         assertEquals(OperationStatus.OK, processor.processMessage(new StartTransactionRequest(), client).getStatus());
         save(TestGlobals.JOIN_COLL, document("r-new", "k", "k3"), client);
         save(TestGlobals.JOIN_COLL, document("r-b", "k", "k2"), client);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         delete.set_id("r-c");
         assertEquals(OperationStatus.OK, processor.processMessage(delete, client).getStatus());
     }
 
     private AggregateAnalyzeResponse join(String localField, String remoteField) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(
                 List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, localField, remoteField, "joined")));
@@ -103,7 +103,7 @@ public class JoinOverlayTest {
     @Test
     public void test_an_indexed_join_inside_a_transaction_sees_buffered_remote_writes() {
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.JOIN_COLL, "k")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "k")).getStatus());
         bufferedChanges();
 
         final var response = join("k", "k");

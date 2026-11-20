@@ -8,9 +8,9 @@ import org.junit.jupiter.api.Test;
 public class NamesTest {
     @Test
     public void test_names_follow_the_server_rules() {
-        assertEquals("abc", Names.database("abc"));
+        assertEquals("abc", Names.project("abc"));
         assertEquals("a".repeat(64), Names.collection("a".repeat(64)));
-        assertThrows(IllegalArgumentException.class, () -> Names.database("ab"));
+        assertThrows(IllegalArgumentException.class, () -> Names.project("ab"));
         assertThrows(IllegalArgumentException.class, () -> Names.collection("a".repeat(65)));
         assertThrows(IllegalArgumentException.class, () -> Names.collection("has space"));
     }

@@ -47,11 +47,11 @@ public final class AdminUsageHelper {
     }
 
     private static void lockUsageCollection() throws InterruptedException {
-        locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME);
+        locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME);
     }
 
     private static void releaseUsageCollection() {
-        locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME);
+        locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTION_USAGE_NAME);
     }
 
     public static void flushCollectionUsage(List<UsageCounter> counters) throws IOException, InterruptedException {
@@ -82,16 +82,16 @@ public final class AdminUsageHelper {
     }
 
     private static AdminCollectionUsageEntry rowOf(UsageCounter counter) {
-        if (Globals.ADMIN_DB_NAME.equals(counter.dbName())
-                || cache.getAdminCollectionEntry(counter.dbName(), counter.collName()) == null) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(counter.projectName())
+                || cache.getAdminCollectionEntry(counter.projectName(), counter.collName()) == null) {
             return null;
         }
-        final var live = memoryManagement.getCounter(counter.kind(), counter.dbName(), counter.collName(),
+        final var live = memoryManagement.getCounter(counter.kind(), counter.projectName(), counter.collName(),
                 counter.indexKey());
         if (live == null) {
             return null;
         }
-        return new AdminCollectionUsageEntry(live.kind(), live.dbName(), live.collName(), live.indexKey(),
+        return new AdminCollectionUsageEntry(live.kind(), live.projectName(), live.collName(), live.indexKey(),
                 live.getAccessCount(), live.getLastAccessMillis());
     }
 
@@ -105,7 +105,7 @@ public final class AdminUsageHelper {
                         rows.subList(from, Math.min(rows.size(), from + USAGE_ROWS_PER_RECORD)), threshold);
                 deleteRows(expired.stream().map(DbEntry::get_id).toList());
                 for (final var usage : expired) {
-                    memoryManagement.clearCounter(usage.getKind(), usage.getDbName(), usage.getCollName(),
+                    memoryManagement.clearCounter(usage.getKind(), usage.getTargetProject(), usage.getCollName(),
                             usage.getIndexKey());
                 }
             }
@@ -137,13 +137,13 @@ public final class AdminUsageHelper {
         return expired;
     }
 
-    public static void deleteUsageOfCollection(String dbName, String collName)
+    public static void deleteUsageOfCollection(String projectName, String collName)
             throws IOException, InterruptedException {
-        deleteUsageWithPrefix(AdminCollectionUsageEntry.buildId(dbName, collName, ""));
+        deleteUsageWithPrefix(AdminCollectionUsageEntry.buildId(projectName, collName, ""));
     }
 
-    public static void deleteUsageOfDatabase(String dbName) throws IOException, InterruptedException {
-        deleteUsageWithPrefix(dbName + Globals.COLL_IDENTIFIER_SEPARATOR);
+    public static void deleteUsageOfProject(String projectName) throws IOException, InterruptedException {
+        deleteUsageWithPrefix(projectName + Globals.COLL_IDENTIFIER_SEPARATOR);
     }
 
     private static void deleteUsageWithPrefix(String prefix) throws IOException, InterruptedException {

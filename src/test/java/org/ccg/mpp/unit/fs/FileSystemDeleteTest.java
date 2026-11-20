@@ -16,19 +16,19 @@ import org.junit.jupiter.api.Test;
 
 public class FileSystemDeleteTest extends FileSystemTestBase {
     @Test
-    public void test_delete_existing_database() {
+    public void test_delete_existing_project() {
         final var fileSystem = fs;
 
-        boolean result = fileSystem.deleteDatabase(TestGlobals.DB);
+        boolean result = fileSystem.deleteProject(TestGlobals.PROJECT);
 
         assertTrue(result);
     }
 
     @Test
-    public void test_delete_absent_database_counts_as_deleted() {
+    public void test_delete_absent_project_counts_as_deleted() {
         final var fileSystem = fs;
 
-        boolean result = fileSystem.deleteDatabase("nonExistentDb");
+        boolean result = fileSystem.deleteProject("nonExistentProject");
 
         assertTrue(result);
     }
@@ -37,7 +37,7 @@ public class FileSystemDeleteTest extends FileSystemTestBase {
     public void test_delete_collection_files_success() {
         final var fileSystem = fs;
 
-        boolean result = fileSystem.deleteCollectionFiles(TestGlobals.DB, TestGlobals.COLL);
+        boolean result = fileSystem.deleteCollectionFiles(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertTrue(result);
     }
@@ -45,10 +45,10 @@ public class FileSystemDeleteTest extends FileSystemTestBase {
     @Test
     public void test_delete_absent_collection_folder_counts_as_deleted() {
         FileSystem fileSystem = new FileSystem();
-        String dbName = "nonExistentDb";
+        String projectName = "nonExistentProject";
         String collectionName = "nonExistentCollection";
 
-        boolean result = fileSystem.deleteCollectionFiles(dbName, collectionName);
+        boolean result = fileSystem.deleteCollectionFiles(projectName, collectionName);
 
         assertTrue(result);
     }
@@ -57,15 +57,16 @@ public class FileSystemDeleteTest extends FileSystemTestBase {
     public void test_delete_entry_leaves_a_hole_and_keeps_the_rest_in_place() throws IOException {
         final var fileSystem = fs;
 
-        final var file = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + "0.dat");
+        final var file = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL
+                + Globals.FILE_PAGE_SEPARATOR + "0.dat");
 
         JsonObject data = new JsonObject();
         data.addProperty("name", "test");
 
-        DbEntry entry1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        DbEntry entry1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry1.set_id("1");
-        DbEntry entry2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        DbEntry entry2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry2.set_id("2");
 
         final PkIndexEntry entryToDelete = fileSystem.insertIntoCollection(entry1);

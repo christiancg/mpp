@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class UserCacheIdLookupTest {
-    private static final String DB = "db";
+    private static final String PROJECT = "db";
     private static final String COLL = "coll";
     private static final String FIELD = "price";
 
@@ -38,7 +38,7 @@ public class UserCacheIdLookupTest {
     }
 
     private static FieldIndexEntry<Number> entry(Number value, String... ids) {
-        return new FieldIndexEntry<>(DB, COLL, value, new HashSet<>(Set.of(ids)));
+        return new FieldIndexEntry<>(PROJECT, COLL, value, new HashSet<>(Set.of(ids)));
     }
 
     private static List<FieldIndexEntry<Number>> priceIndex() {
@@ -48,8 +48,8 @@ public class UserCacheIdLookupTest {
     private static UserCache cacheOver(List<FieldIndexEntry<Number>> index) throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        when(cache.getFieldIndexAndLoadIfNecessary(DB, COLL, FIELD, Number.class)).thenReturn(index);
-        when(cache.getIdsFromIndex(eq(DB), eq(COLL), eq(FIELD), any(), any())).thenCallRealMethod();
+        when(cache.getFieldIndexAndLoadIfNecessary(PROJECT, COLL, FIELD, Number.class)).thenReturn(index);
+        when(cache.getIdsFromIndex(eq(PROJECT), eq(COLL), eq(FIELD), any(), any())).thenCallRealMethod();
         return cache;
     }
 
@@ -67,15 +67,15 @@ public class UserCacheIdLookupTest {
     public void test_get_ids_from_index_matches_the_entries_for_equals_range_and_in() throws IOException {
         final var cache = cacheOver(priceIndex());
 
-        final var equal = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var equal = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.EQUALS, FIELD, new JsonNumber(20)), (Number) 20);
-        final var greater = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var greater = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.GREATER_THAN, FIELD, new JsonNumber(20)), (Number) 20);
         final var members = new JsonArray();
         members.add(new JsonNumber(10));
         members.add(new JsonNumber(40));
-        final var in = cache.getIdsFromIndex(DB, COLL, FIELD, new FieldOperator(FieldOperatorType.IN, FIELD, members),
-                members);
+        final var in = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
+                new FieldOperator(FieldOperatorType.IN, FIELD, members), members);
 
         assertEquals(Set.of("b", "c"), equal);
         assertEquals(Set.of("d", "e"), greater);
@@ -87,7 +87,7 @@ public class UserCacheIdLookupTest {
         final var index = priceIndex();
         final var cache = cacheOver(index);
 
-        final var result = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var result = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.EQUALS, FIELD, new JsonNumber(20)), (Number) 20);
         index.get(1).getIds().add("late");
         index.get(1).getIds().remove("b");
@@ -100,7 +100,7 @@ public class UserCacheIdLookupTest {
         final var index = priceIndex();
         final var cache = cacheOver(index);
 
-        final var result = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var result = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.EQUALS, FIELD, new JsonNumber(20)), (Number) 20);
         result.clear();
 
@@ -111,7 +111,7 @@ public class UserCacheIdLookupTest {
     public void test_get_ids_from_index_returns_null_when_the_field_has_no_index() throws IOException {
         final var cache = cacheOver(null);
 
-        final var result = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var result = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.EQUALS, FIELD, new JsonNumber(20)), (Number) 20);
 
         assertNull(result);
@@ -121,7 +121,7 @@ public class UserCacheIdLookupTest {
     public void test_get_ids_from_index_of_an_unmatched_value_is_empty() throws IOException {
         final var cache = cacheOver(priceIndex());
 
-        final var result = cache.getIdsFromIndex(DB, COLL, FIELD,
+        final var result = cache.getIdsFromIndex(PROJECT, COLL, FIELD,
                 new FieldOperator(FieldOperatorType.EQUALS, FIELD, new JsonNumber(25)), (Number) 25);
 
         assertTrue(result.isEmpty());
@@ -131,7 +131,7 @@ public class UserCacheIdLookupTest {
     public void test_get_ids_in_range_matches_the_entries_and_ignores_a_later_index_mutation() throws Exception {
         final var index = priceIndex();
         final var userCache = mock(UserCache.class);
-        when(userCache.getFieldIndexAndLoadIfNecessary(DB, COLL, FIELD, Number.class)).thenReturn(index);
+        when(userCache.getFieldIndexAndLoadIfNecessary(PROJECT, COLL, FIELD, Number.class)).thenReturn(index);
         final var cache = IocContainer.get(Cache.class);
         final var original = TestUtils.getPrivateField(cache, "userCache", UserCache.class);
         TestUtils.setPrivateField(cache, "userCache", userCache);
@@ -140,7 +140,7 @@ public class UserCacheIdLookupTest {
                     List.of(new RangeBounds.Bound(20, FieldOperatorType.GREATER_THAN_EQUALS),
                             new RangeBounds.Bound(30, FieldOperatorType.SMALLER_THAN_EQUALS)));
 
-            final var result = cache.getIdsInRange(DB, COLL, bounds);
+            final var result = cache.getIdsInRange(PROJECT, COLL, bounds);
             index.get(1).getIds().add("late");
 
             assertEquals(Set.of("b", "c", "d"), result);
@@ -152,7 +152,7 @@ public class UserCacheIdLookupTest {
     @Test
     public void test_get_ids_in_range_returns_null_when_the_field_has_no_index() throws Exception {
         final var userCache = mock(UserCache.class);
-        when(userCache.getFieldIndexAndLoadIfNecessary(DB, COLL, FIELD, Number.class)).thenReturn(null);
+        when(userCache.getFieldIndexAndLoadIfNecessary(PROJECT, COLL, FIELD, Number.class)).thenReturn(null);
         final var cache = IocContainer.get(Cache.class);
         final var original = TestUtils.getPrivateField(cache, "userCache", UserCache.class);
         TestUtils.setPrivateField(cache, "userCache", userCache);
@@ -160,7 +160,7 @@ public class UserCacheIdLookupTest {
             final var bounds = new RangeBounds(FIELD,
                     List.of(new RangeBounds.Bound(20, FieldOperatorType.GREATER_THAN)));
 
-            assertNull(cache.getIdsInRange(DB, COLL, bounds));
+            assertNull(cache.getIdsInRange(PROJECT, COLL, bounds));
         } finally {
             TestUtils.setPrivateField(cache, "userCache", original);
         }

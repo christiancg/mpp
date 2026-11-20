@@ -43,7 +43,7 @@ public class ConditionalSaveTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -55,7 +55,7 @@ public class ConditionalSaveTest {
     }
 
     private void seed() {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var document = new JsonObject();
@@ -77,18 +77,18 @@ public class ConditionalSaveTest {
     }
 
     private OperationResponse saveWhere(String condition, String patch) {
-        return send("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return send("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"condition\":" + condition + ",\"object\":" + patch + "}");
     }
 
     private JsonObject find(String id) {
-        final var response = send("{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB
+        final var response = send("{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}");
         return assertInstanceOf(FindByIdResponse.class, response).getObject();
     }
 
     private Set<String> ids(String steps) {
-        final var response = send("{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB
+        final var response = send("{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":" + steps + "}");
         final var ids = new TreeSet<String>();
         if (response instanceof AggregateResponse aggregate) {
@@ -177,7 +177,7 @@ public class ConditionalSaveTest {
     public void test_an_indexed_field_changed_by_the_update_answers_the_same_by_index_and_by_scan() {
         seed();
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "group")).getStatus());
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "group")).getStatus());
 
         assertEquals(10L, updatedCount(saveWhere(equalsGroup("a"), "{\"group\":\"c\"}")));
 
@@ -213,7 +213,7 @@ public class ConditionalSaveTest {
     public void test_a_schema_violation_by_one_merged_document_refuses_all_as_a_save() {
         seed();
         assertEquals(OperationStatus.OK,
-                send("{\"type\":\"SAVE_SCHEMA\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                send("{\"type\":\"SAVE_SCHEMA\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                         + TestGlobals.COLL + "\",\"schema\":{\"type\":\"object\",\"properties\":"
                         + "{\"status\":{\"type\":\"string\"}}}}").getStatus());
 
@@ -227,7 +227,7 @@ public class ConditionalSaveTest {
 
     private void requireGroupAndN() {
         assertEquals(OperationStatus.OK,
-                send("{\"type\":\"SAVE_SCHEMA\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                send("{\"type\":\"SAVE_SCHEMA\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                         + TestGlobals.COLL + "\",\"schema\":{\"type\":\"object\",\"required\":[\"group\",\"n\"],"
                         + "\"properties\":{\"status\":{\"type\":\"string\"}}}}").getStatus());
     }
@@ -248,9 +248,9 @@ public class ConditionalSaveTest {
         seed();
         requireGroupAndN();
         final var conditional = RequestParser
-                .parseRequest("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                .parseRequest("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                         + TestGlobals.COLL + "\",\"condition\":" + equalsGroup("a") + ",\"object\":{\"status\":5}}");
-        final var plain = RequestParser.parseRequest("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        final var plain = RequestParser.parseRequest("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"status\":\"done\"}}");
 
         assertNull(SchemaValidationHelper.check(conditional));
@@ -288,7 +288,7 @@ public class ConditionalSaveTest {
 
     @Test
     public void test_a_condition_on_an_unregistered_collection_answers_404_11() {
-        final var response = send("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        final var response = send("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"neverCreated\",\"condition\":" + equalsGroup("a")
                 + ",\"object\":{\"status\":\"x\"}}");
 

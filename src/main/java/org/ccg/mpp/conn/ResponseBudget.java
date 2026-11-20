@@ -12,8 +12,8 @@ import org.ccg.mpp.ops.OperationType;
 public class ResponseBudget {
     private static final Configuration configuration = Configuration.getInstance();
     private static final Set<OperationType> REFUSABLE_READS = EnumSet.of(OperationType.FIND_BY_ID,
-            OperationType.AGGREGATE, OperationType.LIST_DATABASES, OperationType.LIST_COLLECTIONS,
-            OperationType.GET_SCHEMA, OperationType.LIST_USERS, OperationType.GET_DATABASE_STATS,
+            OperationType.AGGREGATE, OperationType.LIST_PROJECTS, OperationType.LIST_COLLECTIONS,
+            OperationType.GET_SCHEMA, OperationType.LIST_USERS, OperationType.GET_PROJECT_STATS,
             OperationType.LIST_TRANSACTIONS, OperationType.LIST_PROCEDURES, OperationType.LIST_TRIGGERS,
             OperationType.LIST_SCHEDULES, OperationType.LIST_SCRIPTS, OperationType.LIST_TRIGGER_RUNS,
             OperationType.READ_SNAPSHOT);

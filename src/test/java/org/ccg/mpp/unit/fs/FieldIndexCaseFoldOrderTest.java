@@ -26,7 +26,7 @@ public class FieldIndexCaseFoldOrderTest extends FileSystemTestBase {
     private static final List<String> VALUES = List.of(EMOJI, FULLWIDTH_A, "aa" + FULLWIDTH_A, "\ud83d" + EMOJI);
 
     private static File indexFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-" + FIELD + "-String.idx");
     }
 
@@ -55,11 +55,12 @@ public class FieldIndexCaseFoldOrderTest extends FileSystemTestBase {
     private List<FieldIndexEntry<String>> indexWrittenInOrder(List<String> order) throws IOException {
         Files.deleteIfExists(indexFile().toPath());
         for (final var value : order) {
-            LegacyIndexLines.of(fs).updateIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD,
-                    new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, value, new HashSet<>(Set.of(idOf(value)))),
+            LegacyIndexLines.of(fs).updateIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                    new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, value,
+                            new HashSet<>(Set.of(idOf(value)))),
                     null);
         }
-        return fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class);
+        return fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class);
     }
 
     private static Set<String> scanEquals(String operand) {
@@ -107,7 +108,7 @@ public class FieldIndexCaseFoldOrderTest extends FileSystemTestBase {
         for (var i = 0; i < 64; i++) {
             final var value = pieces.get(i % pieces.size()) + pieces.get((i / pieces.size()) % pieces.size())
                     + pieces.get((i * 7) % pieces.size());
-            entries.add(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, value, Set.of("id" + i)));
+            entries.add(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, value, Set.of("id" + i)));
         }
         assertDoesNotThrow(() -> entries.sort((a, b) -> a.compareTo(b.getValue())));
         for (var i = 1; i < entries.size(); i++) {

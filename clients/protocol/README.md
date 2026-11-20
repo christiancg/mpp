@@ -28,7 +28,7 @@ Without the flag the test fails whenever a file differs from what the server wou
 {
   "area": "data",
   "cases": [
-    {"name": "data.find_by_id", "request": {"type": "FIND_BY_ID", "databaseName": "shop", "collectionName": "orders", "_id": "o-1"}}
+    {"name": "data.find_by_id", "request": {"type": "FIND_BY_ID", "projectName": "shop", "collectionName": "orders", "_id": "o-1"}}
   ]
 }
 ```

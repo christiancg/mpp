@@ -9,7 +9,7 @@ from typing import Callable, Union
 import base_utils as bu
 from base_utils import check, check_status, section
 
-DB = "storage_db"
+PROJECT = "storage_project"
 PAD = "p" * 300
 GROWN = "g" * 900
 KILLED_DOCS = 6
@@ -50,7 +50,7 @@ class KillCase:
 
 
 def save(conn, coll: str, document: dict) -> dict:
-    return conn.send({"type": "SAVE", "databaseName": DB, "collectionName": coll, "object": document})
+    return conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": coll, "object": document})
 
 
 def all_acknowledged(case: KillCase) -> dict:
@@ -102,11 +102,11 @@ def with_k1_retyped(case: KillCase) -> dict:
 
 
 def delete_k1(conn):
-    conn.send({"type": "DELETE", "databaseName": DB, "collectionName": conn.coll, "_id": "k1"})
+    conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": conn.coll, "_id": "k1"})
 
 
 def bulk_update(conn):
-    conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": conn.coll,
+    conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": conn.coll,
                "objects": [doc(i, "unacknowledged") for i in range(4)]})
 
 
@@ -130,7 +130,8 @@ def delete_until_paused(case: KillCase):
     def write(conn):
         for i in range(case.seed_docs):
             case.observed["attempted"] = case.observed.get("attempted", []) + [f"k{i}"]
-            response = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": conn.coll, "_id": f"k{i}"})
+            response = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": conn.coll,
+                                  "_id": f"k{i}"})
             if response.get("status") != "OK":
                 return
     return write
@@ -209,7 +210,7 @@ GROUP_FORCE_POINTS = {"WAL_GROUP_APPENDED", "WAL_GROUP_FORCED", "GROUP_RUNS_STAG
 
 
 def collection_folder(work_dir: str, coll: str) -> str:
-    return os.path.join(work_dir, "db", DB, coll)
+    return os.path.join(work_dir, "db", PROJECT, coll)
 
 
 def index_ids_by_key(path: str) -> dict:
@@ -248,9 +249,10 @@ def seed(conn, rounds: list):
     section("Seed the collections whose writes a kill will interrupt at each write-intent fault point")
     for case in (case for kill_round in rounds for case in kill_round):
         check_status(f"create {case.coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": case.coll}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": case.coll}),
+                     "OK")
         if case.indexed:
-            check_status(f"index v in {case.coll}", conn.send({"type": "CREATE_INDEX", "databaseName": DB,
+            check_status(f"index v in {case.coll}", conn.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                                                "collectionName": case.coll, "fieldName": "v"}), "OK")
         for i in range(case.seed_docs):
             check_status(f"save k{i} into {case.coll}", save(conn, case.coll, doc(i, "acknowledged")), "OK")
@@ -263,13 +265,13 @@ def audit_coll(coll: str) -> str:
 
 
 def install_audit_trigger(conn, coll: str):
-    check_status(f"create {audit_coll(coll)}", conn.send({"type": "CREATE_COLLECTION", "databaseName": DB,
+    check_status(f"create {audit_coll(coll)}", conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                           "collectionName": audit_coll(coll)}), "OK")
     check_status(f"install the audit procedure of {coll}",
-                 conn.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": f"{coll}_auditor",
+                 conn.send({"type": "SAVE_PROCEDURE", "projectName": PROJECT, "name": f"{coll}_auditor",
                             "script": AUDIT_SOURCE.format(audit=audit_coll(coll))}), "OK")
     check_status(f"install the after trigger on {coll}",
-                 conn.send({"type": "SAVE_TRIGGER", "databaseName": DB, "collectionName": coll, "name": "audit",
+                 conn.send({"type": "SAVE_TRIGGER", "projectName": PROJECT, "collectionName": coll, "name": "audit",
                             "events": ["CREATED", "UPDATED"], "procedureName": f"{coll}_auditor"}), "OK")
 
 
@@ -314,7 +316,7 @@ def kill_mid_write(proc, conn_factory, work_dir: str, kill_round: list,
         for case in kill_round:
             check_status(f"arm {case.point} PAUSE for {case.coll}",
                          conn.send({"type": "ARM_FAULT", "point": case.point, "action": "PAUSE",
-                                    "match": f"{DB}|{case.coll}"}), "OK")
+                                    "match": f"{PROJECT}|{case.coll}"}), "OK")
         for case in kill_round:
             if case.writers > 1:
                 queue_a_group_behind_a_held_lock(conn_factory, case)
@@ -351,24 +353,24 @@ def run(work_dir: str, log_path: str, conn_factory, write_config: Callable[[], N
 def values_by_id(conn, coll: str, ids: list) -> dict:
     values = {}
     for doc_id in ids:
-        response = conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": coll, "_id": doc_id})
+        response = conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": coll, "_id": doc_id})
         if response.get("status") == "OK":
             values[doc_id] = (response.get("object") or {}).get("v")
     return values
 
 
 def scanned_ids(conn, coll: str) -> list:
-    return bu.ids_of(conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return bu.ids_of(conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                                 "aggregationSteps": FULL_SCAN}))
 
 
 def pk_count(conn, coll: str):
-    return bu.count_of(conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return bu.count_of(conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                                   "aggregationSteps": [{"type": "COUNT"}]}))
 
 
 def indexed_count(conn, coll: str, value: str):
-    return bu.count_of(conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    return bu.count_of(conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                                   "aggregationSteps": [bu.filter_step("v", "EQUALS", value), {"type": "COUNT"}]}))
 
 
@@ -399,7 +401,7 @@ def test_a_killed_group_recovers_whole_documents(conn, case: KillCase):
 
 
 def audited_docs(conn, coll: str) -> list:
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": audit_coll(coll),
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": audit_coll(coll),
                           "aggregationSteps": FULL_SCAN})
     return sorted((row.get("doc") for row in response.get("results") or []), key=str)
 
@@ -478,7 +480,7 @@ def test_every_killed_write_recovers_to_what_its_log_committed(conn, work_dir: s
 def churn(conn) -> dict:
     section(f"{CHURN_SAVES} SAVEs churn {CHURN_DOCS} documents through append-and-blank updates")
     check_status("create the churn collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CHURN_COLL}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CHURN_COLL}), "OK")
     rng = random.Random(2026)
     latest = {}
     refused = []
@@ -494,11 +496,11 @@ def churn(conn) -> dict:
 
 
 def pk_path(work_dir: str, coll: str) -> str:
-    return os.path.join(work_dir, "db", DB, coll, f"{coll}-pk.idx")
+    return os.path.join(work_dir, "db", PROJECT, coll, f"{coll}-pk.idx")
 
 
 def page_lengths(work_dir: str, coll: str) -> dict:
-    folder = os.path.join(work_dir, "db", DB, coll)
+    folder = os.path.join(work_dir, "db", PROJECT, coll)
     return {int(name[len(coll) + 1:-4]): os.path.getsize(os.path.join(folder, name))
             for name in os.listdir(folder) if name.endswith(".dat")}
 
@@ -529,7 +531,7 @@ def test_page_rows_equal_live_bytes_after_a_restart(work_dir: str, recorded_page
     live = {}
     for _, _, length, page, _ in bu.read_pk_rows(pk_path(work_dir, CHURN_COLL)):
         live[page] = live.get(page, 0) + length
-    rows = {page: int(row.get("size", -1)) for page, row in recorded_pages(work_dir, DB, CHURN_COLL).items()}
+    rows = {page: int(row.get("size", -1)) for page, row in recorded_pages(work_dir, PROJECT, CHURN_COLL).items()}
     check("every page row equals its page's live bytes", all(rows.get(page) == size for page, size in live.items()),
           f"rows={rows} live={live}")
     holes = sum(page_lengths(work_dir, CHURN_COLL).values()) - sum(live.values())
@@ -542,8 +544,8 @@ def write_concurrently(conn_factory, generation: int) -> dict:
     if generation == 1:
         with conn_factory() as setup_conn:
             check_status("create the concurrent-writers collection", setup_conn.send(
-                {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CONCURRENT_COLL}), "OK")
-            check_status("index v", setup_conn.send({"type": "CREATE_INDEX", "databaseName": DB,
+                {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CONCURRENT_COLL}), "OK")
+            check_status("index v", setup_conn.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                                       "collectionName": CONCURRENT_COLL, "fieldName": "v"}), "OK")
     acknowledged = {}
     guard = threading.Lock()
@@ -553,7 +555,7 @@ def write_concurrently(conn_factory, generation: int) -> dict:
             for n in range(CONCURRENT_SAVES):
                 doc_id = f"w{number}-{n % 10}"
                 if n % 7 == 6:
-                    response = writer_conn.send({"type": "DELETE", "databaseName": DB,
+                    response = writer_conn.send({"type": "DELETE", "projectName": PROJECT,
                                                  "collectionName": CONCURRENT_COLL, "_id": doc_id})
                     value = None
                 else:

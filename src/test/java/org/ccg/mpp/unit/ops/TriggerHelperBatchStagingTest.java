@@ -66,7 +66,7 @@ public class TriggerHelperBatchStagingTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -83,7 +83,7 @@ public class TriggerHelperBatchStagingTest {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerThreads", 1);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("t", new LinkedHashSet<>(Set.of(EventType.CREATED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
         triggerExecutor.stop();
@@ -97,7 +97,7 @@ public class TriggerHelperBatchStagingTest {
             object.addProperty(Globals.PK_FIELD, prefix + i);
             objects.add(object);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return request;
     }
@@ -116,7 +116,7 @@ public class TriggerHelperBatchStagingTest {
             emit.call();
         } catch (Exception ignored) {
         }
-        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, DRAIN_MARKER,
+        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, DRAIN_MARKER,
                 "recalc", false, List.of(), USER, 0));
         try {
             assertTrue(drained.await(5, TimeUnit.SECONDS), "the drain marker was never dispatched");
@@ -161,10 +161,10 @@ public class TriggerHelperBatchStagingTest {
         try {
             events = dispatched(() -> {
                 staged.submitLanded(Map.of(EventType.CREATED, new LinkedHashSet<>(response.getInserted())),
-                        TestGlobals.DB, TestGlobals.COLL, USER, 0);
+                        TestGlobals.PROJECT, TestGlobals.COLL, USER, 0);
                 return null;
             });
-            verify(reads, times(1)).getEntriesByIds(eq(TestGlobals.DB), eq(TestGlobals.COLL), anySet());
+            verify(reads, times(1)).getEntriesByIds(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), anySet());
         } finally {
             TestUtils.setPrivateStaticField(TriggerHelper.class, "cache", cache);
         }
@@ -205,8 +205,8 @@ public class TriggerHelperBatchStagingTest {
         }
         assertTrue(TriggerRunLog.pending().isEmpty());
 
-        final var events = dispatched(() -> TriggerHelper.runStaged(staged.getFirst(), TestGlobals.DB, TestGlobals.COLL,
-                USER, 0, () -> SaveOperationHelper.executeBulkSave(bulk)));
+        final var events = dispatched(() -> TriggerHelper.runStaged(staged.getFirst(), TestGlobals.PROJECT,
+                TestGlobals.COLL, USER, 0, () -> SaveOperationHelper.executeBulkSave(bulk)));
 
         assertEquals(3, events.size(), "a run that could not be recorded still fires, as before");
     }
@@ -219,7 +219,7 @@ public class TriggerHelperBatchStagingTest {
 
         try (var admin = mockStatic(AdminOperationHelper.class, CALLS_REAL_METHODS)) {
             final var events = dispatched(
-                    () -> TriggerHelper.runStaged(staged, TestGlobals.DB, TestGlobals.COLL, USER, 0, () -> {
+                    () -> TriggerHelper.runStaged(staged, TestGlobals.PROJECT, TestGlobals.COLL, USER, 0, () -> {
                         SaveOperationHelper.executeBulkSave(bulkOf("partial-", 1));
                         throw new PartialBulkSaveException(committed, new IOException("disk full"));
                     }));
@@ -238,7 +238,7 @@ public class TriggerHelperBatchStagingTest {
 
         try (var admin = mockStatic(AdminOperationHelper.class, CALLS_REAL_METHODS)) {
             try {
-                TriggerHelper.runStaged(staged, TestGlobals.DB, TestGlobals.COLL, USER, 0, () -> {
+                TriggerHelper.runStaged(staged, TestGlobals.PROJECT, TestGlobals.COLL, USER, 0, () -> {
                     throw new IOException("disk full");
                 });
                 fail("the write failure must propagate");
@@ -257,7 +257,7 @@ public class TriggerHelperBatchStagingTest {
         SaveOperationHelper.executeBulkSave(bulkOf("vanish-", 1));
 
         final var events = dispatched(() -> {
-            staged.submitLanded(Map.of(EventType.CREATED, Set.of("vanish-0", "vanish-1")), TestGlobals.DB,
+            staged.submitLanded(Map.of(EventType.CREATED, Set.of("vanish-0", "vanish-1")), TestGlobals.PROJECT,
                     TestGlobals.COLL, USER, 0);
             return null;
         });

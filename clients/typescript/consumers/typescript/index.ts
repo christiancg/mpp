@@ -31,7 +31,7 @@ const invoices: DocumentCodec<Invoice> = {
 };
 
 export async function topActive(client: MppClient): Promise<Stored<Placed>[]> {
-    const orders = client.database("shop").collection<Placed>("orders");
+    const orders = client.project("shop").collection<Placed>("orders");
     await orders.save({
         status: "active",
         total: 10,
@@ -53,7 +53,7 @@ export async function topActive(client: MppClient): Promise<Stored<Placed>[]> {
 }
 
 export async function invoiceTotal(client: MppClient): Promise<number> {
-    const collection = client.database("billing").collection("invoices", invoices);
+    const collection = client.project("billing").collection("invoices", invoices);
     const invoice: Invoice | undefined = await collection.findById("i-1");
     return invoice?.cents ?? 0;
 }
@@ -62,7 +62,7 @@ export async function watch(client: MppClient, totals: number[]): Promise<Subscr
     await using transaction = await client.beginTransaction();
     await transaction.collection<Placed>("shop", "orders").delete("o-1");
     await transaction.commit();
-    const orders = client.database("shop").collection<Placed>("orders");
+    const orders = client.project("shop").collection<Placed>("orders");
     return orders.listen({
         onUpdate: (update) => {
             totals.push(...update.results.map((row) => row.total));

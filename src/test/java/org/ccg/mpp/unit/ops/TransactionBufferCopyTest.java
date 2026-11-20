@@ -38,7 +38,7 @@ public class TransactionBufferCopyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         clientId = clientTracker.registerForwardedClient("copies");
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
@@ -68,20 +68,20 @@ public class TransactionBufferCopyTest {
     }
 
     private OperationResponse bufferSave(JsonObject object) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(object.get("_id").asJsonString().getValue());
         return TransactionOperationHelper.bufferSave(request, transaction());
     }
 
     private JsonObject buffered(String id) {
-        return transaction().overlayFor(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)).get(id);
+        return transaction().overlayFor(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)).get(id);
     }
 
     @Test
     public void test_the_overlay_holds_the_buffered_payload_itself() {
         assertEquals(OperationStatus.OK, bufferSave(document("shared", "p")).getStatus());
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document("bulk-a", "a"), document("bulk-b", "b")));
         assertEquals(OperationStatus.OK, TransactionOperationHelper.bufferBulkSave(bulk, transaction()).getStatus());
 
@@ -102,7 +102,7 @@ public class TransactionBufferCopyTest {
         assertEquals(OperationStatus.OK, bufferSave(document("victim", "original")).getStatus());
         final var payload = transaction().getPendingOps().getFirst().getPayload();
 
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("victim");
         assertEquals(OperationStatus.OK, TransactionOperationHelper.bufferDelete(delete, transaction()).getStatus());
 
@@ -117,7 +117,7 @@ public class TransactionBufferCopyTest {
         TestUtils.setPrivateField(configuration, "maxEntrySize", "1Kb");
 
         final var single = bufferSave(document("too-big", "x".repeat(2048)));
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document("fits", "y"), document("bulk-too-big", "z".repeat(2048))));
         final var bulkResponse = TransactionOperationHelper.bufferBulkSave(bulk, transaction());
 

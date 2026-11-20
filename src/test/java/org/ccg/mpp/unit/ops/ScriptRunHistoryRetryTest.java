@@ -52,7 +52,7 @@ public class ScriptRunHistoryRetryTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "scriptRunHistoryEnabled", true);
         ScriptRunHistory.write(row("run-creates-the-collection"));
         ScriptRunHistory.reset();
@@ -163,7 +163,7 @@ public class ScriptRunHistoryRetryTest {
     }
 
     private static ScriptRunRecord row(String runId) {
-        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, TestGlobals.DB, null, "proc", null, null,
+        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, TestGlobals.PROJECT, null, "proc", null, null,
                 "admin", "admin", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null,
                 null, false);
     }

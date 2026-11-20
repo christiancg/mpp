@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Test;
 
 public class IndexOperationsCoverageTest {
     private static final String LOCKED_FIELD = "s";
-    private static final String COLLECTION_IDENTIFIER = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR
+    private static final String COLLECTION_IDENTIFIER = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR
             + TestGlobals.COLL;
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
@@ -49,7 +49,7 @@ public class IndexOperationsCoverageTest {
         obj.addProperty("_id", id);
         obj.addProperty("s", s);
         obj.addProperty("n", n);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(obj);
         processor.processMessage(request);
     }
@@ -57,7 +57,7 @@ public class IndexOperationsCoverageTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         seed("d1", "a", 10);
         seed("d2", "b", 20);
         seed("d3", "a", 30);
@@ -71,10 +71,11 @@ public class IndexOperationsCoverageTest {
 
     @Test
     public void test_create_index_then_index_backed_filter() {
-        final var created = processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "s"));
+        final var created = processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
         assertEquals(OperationStatus.OK, created.getStatus());
 
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List
                 .of(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "s", new JsonString("a")))));
         final var response = processor.processMessage(request);
@@ -83,15 +84,15 @@ public class IndexOperationsCoverageTest {
 
     @Test
     public void test_create_numeric_index_reindex_and_drop() {
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n")).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n")).getStatus());
 
         final var reindex = processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("n")));
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("n")));
         assertEquals(OperationType.REINDEX, reindex.getType());
         assertEquals(OperationStatus.OK, reindex.getStatus());
 
-        final var dropped = processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n"));
+        final var dropped = processor.processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n"));
         assertEquals(OperationStatus.OK, dropped.getStatus());
     }
 
@@ -100,17 +101,17 @@ public class IndexOperationsCoverageTest {
     }
 
     private void markDirty() throws IOException {
-        fs.indexMarkers().markDirty(TestGlobals.DB, TestGlobals.COLL);
+        fs.indexMarkers().markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(isMarkedDirty());
     }
 
     @Test
     public void test_a_whole_collection_reindex_clears_the_dirty_marker() throws IOException {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n"));
         markDirty();
 
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of())).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of())).getStatus());
 
         assertFalse(isMarkedDirty(),
                 "REINDEX is the remedy the startup warning names, so the warning must not survive it");
@@ -118,12 +119,12 @@ public class IndexOperationsCoverageTest {
 
     @Test
     public void test_a_partial_reindex_keeps_the_dirty_marker() throws IOException {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n"));
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "s"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
         markDirty();
 
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("n"))).getStatus());
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("n"))).getStatus());
 
         assertTrue(isMarkedDirty(),
                 "the fields this run skipped were never re-derived, so their collection is still suspect");
@@ -133,16 +134,16 @@ public class IndexOperationsCoverageTest {
     public void test_a_reindex_with_no_registered_indexes_clears_the_dirty_marker() throws IOException {
         markDirty();
 
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of())).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of())).getStatus());
 
         assertFalse(isMarkedDirty(), "a collection with no indexes has nothing that can be missing from one");
     }
 
     @Test
     public void test_index_backed_range_filter() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n"));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n"));
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(
                 new FilterAggregationStep(new FieldOperator(FieldOperatorType.GREATER_THAN, "n", new JsonNumber(15)))));
         assertEquals(2,
@@ -151,7 +152,7 @@ public class IndexOperationsCoverageTest {
 
     private static void assertBlocksOnTheFieldLock(Runnable indexOperation) throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, LOCKED_FIELD);
+        locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOCKED_FIELD);
         final var finished = new CountDownLatch(1);
         final var worker = new Thread(() -> {
             indexOperation.run();
@@ -163,7 +164,7 @@ public class IndexOperationsCoverageTest {
                     "index DDL must hold the field lock across the file writes and the eviction, or a dirty read"
                             + " repopulates the cache from a half-built index");
         } finally {
-            locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, LOCKED_FIELD);
+            locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOCKED_FIELD);
         }
         assertTrue(finished.await(5, TimeUnit.SECONDS), "it must proceed once the field lock is free");
         worker.join(5_000L);
@@ -185,19 +186,19 @@ public class IndexOperationsCoverageTest {
     public void test_create_index_holds_the_field_lock_through_the_eviction() throws Exception {
         seed("lock1", "a", 1);
         assertBlocksOnTheFieldLock(
-                () -> quietly(() -> IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, LOCKED_FIELD)));
+                () -> quietly(() -> IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOCKED_FIELD)));
     }
 
     @Test
     public void test_drop_index_holds_the_field_lock_through_the_eviction() throws Exception {
         seed("lock2", "a", 1);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, LOCKED_FIELD);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOCKED_FIELD);
         assertBlocksOnTheFieldLock(
-                () -> quietly(() -> IndexHelper.dropIndex(TestGlobals.DB, TestGlobals.COLL, LOCKED_FIELD)));
+                () -> quietly(() -> IndexHelper.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, LOCKED_FIELD)));
     }
 
     private List<String> idsWhereSIsA() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List
                 .of(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "s", new JsonString("a")))));
         final var response = (AggregateResponse) processor.processMessage(request);
@@ -206,44 +207,44 @@ public class IndexOperationsCoverageTest {
 
     @Test
     public void test_a_failed_reindex_leaves_the_field_answered_by_scan_and_unmaintained() throws Exception {
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "s")).getStatus());
-        final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "s")).getStatus());
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
         final var stringIndex = new File(folder, TestGlobals.COLL + "-s-String.idx");
         final var blocker = new File(folder, stringIndex.getName() + ".repair");
         assertTrue(new File(blocker, "occupied").mkdirs());
         try {
             final var reindex = processor
-                    .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("s")));
+                    .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("s")));
             assertEquals(OperationStatus.ERROR, reindex.getStatus());
         } finally {
             TestUtils.deleteFolder(blocker);
         }
-        assertTrue(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, "s"));
-        assertTrue(cache.hasNoIndex(TestGlobals.DB, TestGlobals.COLL, "s"));
+        assertTrue(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
+        assertTrue(cache.hasNoIndex(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
 
         seed("d4", "a", 40);
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "d4");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "d4");
 
         assertFalse(stringIndex.exists(), "maintenance must not rebuild a partial file from nothing");
         assertEquals(List.of("d1", "d3", "d4"), idsWhereSIsA());
 
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("s"))).getStatus());
-        assertFalse(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, "s"));
-        assertFalse(cache.hasNoIndex(TestGlobals.DB, TestGlobals.COLL, "s"));
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("s"))).getStatus());
+        assertFalse(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
+        assertFalse(cache.hasNoIndex(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
         assertEquals(List.of("d1", "d3", "d4"), idsWhereSIsA());
     }
 
     @Test
     public void test_create_and_drop_index_leave_no_build_marker() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "s"));
-        assertFalse(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, "s"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
+        assertFalse(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
 
-        processor.processMessage(new DropIndexRequest(TestGlobals.DB, TestGlobals.COLL, "s"));
+        processor.processMessage(new DropIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
 
-        assertFalse(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, "s"));
-        assertTrue(cache.hasNoIndex(TestGlobals.DB, TestGlobals.COLL, "s"));
+        assertFalse(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
+        assertTrue(cache.hasNoIndex(TestGlobals.PROJECT, TestGlobals.COLL, "s"));
     }
 }

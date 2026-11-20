@@ -57,7 +57,7 @@ public class AbandonedTxSessionTest {
             final var object = new JsonObject();
             object.addProperty("_id", "buffered");
             object.addProperty("v", 1);
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(object);
             request.set_id("buffered");
             return TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
@@ -67,7 +67,7 @@ public class AbandonedTxSessionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         realConfig = TestUtils.getPrivateField(recovery, "clusterConfig", ClusterConfig.class);
         realMembership = TestUtils.getPrivateField(recovery, "membershipService", MembershipService.class);
         realPool = TestUtils.getPrivateField(recovery, "pool", PeerConnectionPool.class);
@@ -97,7 +97,7 @@ public class AbandonedTxSessionTest {
     public void test_a_buffered_slice_takes_the_collection_write_lock() throws Exception {
         buffersAWriteOnItsOwnThread();
 
-        assertFalse(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -108,8 +108,8 @@ public class AbandonedTxSessionTest {
         recovery.reapAbandonedSessions();
 
         assertNull(clientTracker.txSession(SESSION_ID));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.release(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -120,8 +120,8 @@ public class AbandonedTxSessionTest {
         recovery.reapAbandonedSessions();
 
         assertNull(clientTracker.txSession(SESSION_ID));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.release(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -132,7 +132,7 @@ public class AbandonedTxSessionTest {
         recovery.reapAbandonedSessions();
 
         assertNotNull(clientTracker.txSession(SESSION_ID));
-        assertFalse(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -146,7 +146,7 @@ public class AbandonedTxSessionTest {
         recovery.reapAbandonedSessions();
 
         assertNotNull(clientTracker.txSession(SESSION_ID));
-        assertFalse(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test

@@ -53,7 +53,7 @@ public sealed class MemberPathsTests
     [Fact]
     public void RecordsWithAPrimaryConstructorResolveTheirProperties()
     {
-        var points = new Database(_harness.Context, "shop").Collection<Point>("points");
+        var points = new Project(_harness.Context, "shop").Collection<Point>("points");
         var query = points.AsQueryable().Where(p => p.Label == "a" && p.Id == "p").ToQuery();
         Assert.Equal(And(Field("label").Eq("a"), Field("_id").Eq("p")), ((FilterStep)query.Steps[0]).Filter);
     }
@@ -61,7 +61,7 @@ public sealed class MemberPathsTests
     [Fact]
     public void ATypeWhoseIdIsNotAStringIsRefusedWhenTheCollectionIsCreated()
     {
-        var shop = new Database(_harness.Context, "shop");
+        var shop = new Project(_harness.Context, "shop");
         Assert.Throws<ArgumentException>(() => shop.Collection<NumericId>("numbers"));
     }
 }

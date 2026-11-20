@@ -50,7 +50,7 @@ public class FacadeDecodingTest {
         assertEquals("o-1", recorder.orders.query().toDocuments().get(0).id().orElseThrow());
         final var analysis = recorder.orders.query().analyze();
         assertEquals(2, analysis.results().size());
-        assertEquals("shop", recorder.orders.databaseName());
+        assertEquals("shop", recorder.orders.projectName());
         assertEquals("orders", recorder.orders.name());
     }
 

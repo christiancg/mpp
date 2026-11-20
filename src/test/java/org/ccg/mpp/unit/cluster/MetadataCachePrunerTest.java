@@ -31,7 +31,7 @@ public class MetadataCachePrunerTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -52,8 +52,8 @@ public class MetadataCachePrunerTest {
     private void writeTriggers() throws Exception {
         final var definition = new TriggerDefinition("t", java.util.Set.of(EventType.CREATED), "proc",
                 TriggerDefinition.MODE_DOCUMENT, false, true, "alice", 1L, 1L, 1L, "alice");
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().writeTriggers(TestGlobals.DB, TestGlobals.COLL,
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().writeTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 eJson.toJson(TriggerDefinition.toFileJson(List.of(definition))));
     }
 
@@ -62,7 +62,7 @@ public class MetadataCachePrunerTest {
         writeTriggers();
         ownershipManager.setSelfNodeId("self");
         ownershipManager.onMembershipChanged(new MembershipView(List.of(node("self"))));
-        assertEquals(1, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(1, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
 
         pruner.onMembershipChanged(new MembershipView(List.of(node("self"))));
 
@@ -74,7 +74,7 @@ public class MetadataCachePrunerTest {
         writeTriggers();
         ownershipManager.setSelfNodeId("self");
         ownershipManager.onMembershipChanged(new MembershipView(List.of(node("self"))));
-        assertEquals(1, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(1, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
 
         ownershipManager.onMembershipChanged(new MembershipView(List.of(node("other"))));
         pruner.onMembershipChanged(new MembershipView(List.of(node("other"))));
@@ -89,12 +89,12 @@ public class MetadataCachePrunerTest {
         writeTriggers();
         ownershipManager.setSelfNodeId("self");
         ownershipManager.onMembershipChanged(new MembershipView(List.of(node("self"))));
-        assertEquals(1, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(1, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
 
         ownershipManager.onMembershipChanged(new MembershipView(List.of(node("other"))));
         pruner.onMembershipChanged(new MembershipView(List.of(node("other"))));
 
-        assertEquals(1, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(1, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 
     @Test

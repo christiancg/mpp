@@ -32,7 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class UserCachePkAccountingTest {
-    private static final String DB = "pkAccountingDb";
+    private static final String PROJECT = "pkAccountingProject";
     private static final String COLL = "pkAccountingColl";
     private static final String FIELD = "status";
     private static final long GENEROUS_CAP = 64L << 20;
@@ -72,7 +72,7 @@ public class UserCachePkAccountingTest {
     private static ArmableList pkRows(int count) {
         final var rows = new ArmableList();
         for (var i = 0; i < count; i++) {
-            rows.add(new PkIndexEntry(DB, COLL, "row-" + i, i * 10L, 10, 0));
+            rows.add(new PkIndexEntry(PROJECT, COLL, "row-" + i, i * 10L, 10, 0));
         }
         return rows;
     }
@@ -80,17 +80,17 @@ public class UserCachePkAccountingTest {
     private UserCache cacheReading(List<PkIndexEntry> fromDisk) throws Exception {
         final var cache = new UserCache();
         final var fsMock = mock(FileSystem.class);
-        when(fsMock.readWholePkIndexFile(DB, COLL)).thenReturn(fromDisk);
+        when(fsMock.readWholePkIndexFile(PROJECT, COLL)).thenReturn(fromDisk);
         TestUtils.setPrivateField(cache, "fs", fsMock);
         return cache;
     }
 
     private List<PkIndexEntry> admitUnderLock(UserCache cache) throws InterruptedException, IOException {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            return cache.getPkIndexAndLoadIfNecessary(DB, COLL);
+            return cache.getPkIndexAndLoadIfNecessary(PROJECT, COLL);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
@@ -105,7 +105,7 @@ public class UserCachePkAccountingTest {
         final var cached = admitUnderLock(cache);
         final var recordedPerEntry = CacheSizeEstimator.pkIndexBytesPerEntry(pkRows(5));
 
-        cached.add(new PkIndexEntry(DB, COLL, "row-5-" + "x".repeat(58), 50L, 10, 0));
+        cached.add(new PkIndexEntry(PROJECT, COLL, "row-5-" + "x".repeat(58), 50L, 10, 0));
 
         assertEquals(6 * recordedPerEntry, pkBytes(cache), "the sweep charges size() times the recorded bytes per row");
     }
@@ -113,7 +113,7 @@ public class UserCachePkAccountingTest {
     @Test
     public void test_pk_index_is_not_admitted_without_the_collection_lock() throws Exception {
         final var cache = cacheReading(pkRows(3));
-        cache.getPkIndexAndLoadIfNecessary(DB, COLL);
+        cache.getPkIndexAndLoadIfNecessary(PROJECT, COLL);
         assertEquals(0L, pkBytes(cache));
     }
 
@@ -134,10 +134,10 @@ public class UserCachePkAccountingTest {
         admitUnderLock(cache);
         assertTrue(pkBytes(cache) > 0L);
 
-        cache.evictPkIndex(DB, COLL);
+        cache.evictPkIndex(PROJECT, COLL);
         assertEquals(0L, pkBytes(cache));
 
-        final var collId = Cache.getCollectionIdentifier(DB, COLL);
+        final var collId = Cache.getCollectionIdentifier(PROJECT, COLL);
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         TestUtils.getPrivateField(cache, "pkIndexMap", type).put(collId, pkRows(2));
@@ -146,27 +146,27 @@ public class UserCachePkAccountingTest {
     }
 
     @Test
-    public void test_pk_record_cleared_with_its_collection_and_database() throws Exception {
+    public void test_pk_record_cleared_with_its_collection_and_project() throws Exception {
         final var cache = cacheReading(pkRows(2));
         admitUnderLock(cache);
-        cache.evictCollection(DB, COLL);
+        cache.evictCollection(PROJECT, COLL);
         assertEquals(0L, pkBytes(cache));
 
         admitUnderLock(cache);
         assertTrue(pkBytes(cache) > 0L);
-        cache.evictDatabase(DB);
+        cache.evictProject(PROJECT);
         assertEquals(0L, pkBytes(cache));
     }
 
     private static Map<String, List<FieldIndexEntry<?>>> publishFieldIndex(UserCache cache, int entries) {
         final List<FieldIndexEntry<?>> published = new ArrayList<>();
         for (var i = 0; i < entries; i++) {
-            published.add(new FieldIndexEntry<>(DB, COLL, "a-rather-long-value-" + i,
+            published.add(new FieldIndexEntry<>(PROJECT, COLL, "a-rather-long-value-" + i,
                     new java.util.HashSet<>(List.of("id-with-a-long-name-" + i))));
         }
         final Map<String, List<FieldIndexEntry<?>>> indexes = new ConcurrentHashMap<>();
         indexes.put(Cache.getIndexIdentifier(FIELD, String.class), published);
-        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(DB, COLL),
+        CacheResidents.residentUnmeasuredFieldIndex(cache, Cache.getCollectionIdentifier(PROJECT, COLL),
                 Cache.getIndexIdentifier(FIELD, String.class), published);
         return indexes;
     }
@@ -181,10 +181,10 @@ public class UserCachePkAccountingTest {
         final var release = new CountDownLatch(1);
         final var writer = new Thread(() -> {
             try {
-                locks.lockIndex(DB, COLL, FIELD);
+                locks.lockIndex(PROJECT, COLL, FIELD);
                 held.countDown();
                 release.await();
-                locks.releaseIndex(DB, COLL, FIELD);
+                locks.releaseIndex(PROJECT, COLL, FIELD);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -216,7 +216,7 @@ public class UserCachePkAccountingTest {
         publishFieldIndex(cache, 3);
         assertTrue(fieldIndexBytes(cache) > CacheSizeEstimator.estimateFieldIndexSizeByCount(3));
 
-        cache.evictFieldIndexAllTypes(DB, COLL, FIELD);
+        cache.evictFieldIndexAllTypes(PROJECT, COLL, FIELD);
         publishFieldIndex(cache, 3);
 
         assertEquals(CacheSizeEstimator.estimateFieldIndexSizeByCount(3),
@@ -230,7 +230,7 @@ public class UserCachePkAccountingTest {
         publishFieldIndex(cache, 2);
         fieldIndexBytes(cache);
 
-        cache.evictFieldIndex(DB, COLL, Cache.getIndexIdentifier(FIELD, String.class));
+        cache.evictFieldIndex(PROJECT, COLL, Cache.getIndexIdentifier(FIELD, String.class));
         publishFieldIndex(cache, 2);
 
         assertEquals(CacheSizeEstimator.estimateFieldIndexSizeByCount(2),

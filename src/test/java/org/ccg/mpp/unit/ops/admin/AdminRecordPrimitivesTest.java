@@ -45,7 +45,7 @@ public class AdminRecordPrimitivesTest {
 
     @Test
     public void test_every_key_kind_round_trips_through_its_id() {
-        for (final var key : new AdminRecordKey[]{AdminRecordKey.database("db"), AdminRecordKey.collection("db", "c"),
+        for (final var key : new AdminRecordKey[]{AdminRecordKey.project("db"), AdminRecordKey.collection("db", "c"),
                 AdminRecordKey.user("u"), AdminRecordKey.schema("db", "c"), AdminRecordKey.triggers("db", "c"),
                 AdminRecordKey.procedure("db", "p"), AdminRecordKey.schedule("db", "s")}) {
             assertEquals(key, AdminRecordKey.parse(key.id()));

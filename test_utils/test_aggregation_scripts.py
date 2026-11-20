@@ -10,7 +10,7 @@ PORT = int(os.environ.get("AGG_SCRIPT_TEST_PORT", "8999"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "agg_script_db"
+PROJECT = "agg_script_project"
 COLL = "orders"
 USER_PASSWORD = "password123"
 READER = "agg_reader"
@@ -24,14 +24,14 @@ MAX_SOURCE_BYTES = 512
 
 
 class Conn(bu.Conn):
-    def aggregate(self, steps, db=DB, coll=COLL, **extra) -> dict:
-        payload = {"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+    def aggregate(self, steps, project=PROJECT, coll=COLL, **extra) -> dict:
+        payload = {"type": "AGGREGATE", "projectName": project, "collectionName": coll,
                    "aggregationSteps": steps}
         payload.update(extra)
         return self.send(payload)
 
-    def run_script(self, script, db=DB, **extra) -> dict:
-        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+    def run_script(self, script, project=PROJECT, **extra) -> dict:
+        payload = {"type": "RUN_SCRIPT", "projectName": project, "script": script}
         payload.update(extra)
         return self.send(payload)
 
@@ -83,23 +83,23 @@ DOCUMENT_COUNT = 10
 
 def setup_data(conn: Conn):
     section("setup")
-    check_status("create database", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    check_status("create project", conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
     check_status("create collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL}), "OK")
     entries = [{"_id": f"o{i}", "price": i * 10, "qty": i, "sku": f"sku-{i % 3}"}
                for i in range(1, DOCUMENT_COUNT + 1)]
     check_status("bulk save orders",
-                 conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": entries}),
+                 conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": entries}),
                  "OK")
     check_status("index price",
-                 conn.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL,
                             "fieldName": "price"}), "OK")
     check_status("create reader",
                  conn.send({"type": "CREATE_USER", "username": READER, "password": USER_PASSWORD,
-                            "admin": False, "databasePermissions": {DB: "READ"}}), "OK")
+                            "admin": False, "projectPermissions": {PROJECT: "READ"}}), "OK")
     check_status("create owner user",
                  conn.send({"type": "CREATE_USER", "username": OWNER, "password": USER_PASSWORD,
-                            "admin": False, "databasePermissions": {DB: "READ"}}), "OK")
+                            "admin": False, "projectPermissions": {PROJECT: "READ"}}), "OK")
 
 
 def test_computed_field(conn: Conn):
@@ -207,7 +207,7 @@ def test_reduce(conn: Conn):
     fold_ids = [reduce_step("export default (acc, doc) => acc + '|' + doc._id;", "", "folded")]
     check("the same fold run again answers in the same order",
           results(conn.aggregate(fold_ids))[0].get("folded") == expected_order, "the remembered order drifted")
-    save = {"type": "SAVE", "databaseName": DB, "collectionName": COLL}
+    save = {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL}
     check_status("insert a document that sorts first",
                  conn.send({**save, "object": {"_id": "o0", "price": 0, "qty": 0, "sku": "none"}}), "OK")
     check("the fold sees the insert in its place",
@@ -219,7 +219,7 @@ def test_reduce(conn: Conn):
           results(conn.aggregate(fold_ids))[0].get("folded") == "|o0" + expected_order,
           f"got {results(conn.aggregate(fold_ids))[0].get('folded')!r}")
     check_status("delete the inserted document",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "o0"}), "OK")
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "o0"}), "OK")
     check("the fold drops the deleted document",
           results(conn.aggregate(fold_ids))[0].get("folded") == expected_order,
           f"got {results(conn.aggregate(fold_ids))[0].get('folded')!r}")
@@ -285,21 +285,21 @@ def test_permissions(admin: Conn):
 
     check_status("grant scriptPermissions",
                  admin.send({"type": "CHANGE_PERMISSIONS", "username": READER,
-                             "databasePermissions": {DB: "READ"}, "scriptPermissions": {DB: "RUN"}}), "OK")
+                             "projectPermissions": {PROJECT: "READ"}, "scriptPermissions": {PROJECT: "RUN"}}), "OK")
     with user_conn(READER) as reader:
         check_status("the granted user can now run a pipeline script", reader.aggregate(scripted), "OK")
 
     check_status("revoke scriptPermissions",
                  admin.send({"type": "CHANGE_PERMISSIONS", "username": READER,
-                             "databasePermissions": {DB: "READ"}, "scriptPermissions": {DB: "NONE"}}), "OK")
+                             "projectPermissions": {PROJECT: "READ"}, "scriptPermissions": {PROJECT: "NONE"}}), "OK")
     with user_conn(READER) as reader:
         check_code("revocation takes effect", reader.aggregate(scripted), "FORBIDDEN", "403-1")
         check_status("and the plain aggregate still works", reader.aggregate(plain), "OK")
 
-    check_status("make a database owner",
-                 admin.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": [OWNER]}), "OK")
+    check_status("make a project owner",
+                 admin.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": [OWNER]}), "OK")
     with user_conn(OWNER) as owner:
-        check_status("a database owner needs no grant", owner.aggregate(scripted), "OK")
+        check_status("a project owner needs no grant", owner.aggregate(scripted), "OK")
     check_status("an admin needs no grant", admin.aggregate(scripted), "OK")
 
 
@@ -330,7 +330,7 @@ def test_sandbox(conn: Conn):
 def test_closed_doors(conn: Conn):
     section("the closed doors: db, fetch, procedure imports, importText")
     check_status("a procedure exists to import",
-                 conn.send({"type": "SAVE_PROCEDURE", "databaseName": DB, "name": "lib",
+                 conn.send({"type": "SAVE_PROCEDURE", "projectName": PROJECT, "name": "lib",
                             "script": "export const one = 1;"}), "OK")
 
     doors = [
@@ -386,10 +386,10 @@ def test_listen_refuses_scripts(conn: Conn):
     section("LISTEN refuses a SCRIPT operator")
     scripted = [script_filter("export default (doc) => true;")]
     check_code("LISTEN with a script is refused",
-               conn.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL,
+               conn.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL,
                           "aggregationSteps": scripted}), "ERROR", "400-19")
     check_status("the same pipeline is accepted by AGGREGATE", conn.aggregate(scripted), "OK")
-    plain = conn.send({"type": "LISTEN", "databaseName": DB, "collectionName": COLL, "aggregationSteps": []})
+    plain = conn.send({"type": "LISTEN", "projectName": PROJECT, "collectionName": COLL, "aggregationSteps": []})
     check_status("a script-free LISTEN still registers", plain, "OK")
     if plain.get("listenId"):
         conn.send({"type": "STOP_LISTEN", "listenId": plain["listenId"]})
@@ -438,7 +438,7 @@ def test_switch_off(conn: Conn):
     for label, steps in shapes.items():
         check_code(f"{label} is refused for an admin", conn.aggregate(steps), "FORBIDDEN", "403-2")
     with user_conn(OWNER) as owner:
-        check_code("and for a database owner",
+        check_code("and for a project owner",
                    owner.aggregate([script_filter("export default (doc) => true;")]), "FORBIDDEN", "403-2")
 
     plain = conn.aggregate([{"type": "FILTER", "operator": {"fieldOperatorType": "GREATER_THAN",

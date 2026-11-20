@@ -31,7 +31,7 @@ public class DbEntryEncodeTest {
             }
         }
         final var entry = new DbEntry();
-        entry.setDatabaseName("db");
+        entry.setProjectName("db");
         entry.setCollectionName("coll");
         if (random.nextInt(4) > 0) {
             entry.set_id("id-" + random.nextInt(1000));

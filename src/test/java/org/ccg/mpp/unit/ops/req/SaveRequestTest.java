@@ -11,27 +11,27 @@ import org.junit.jupiter.api.Test;
 public class SaveRequestTest {
     @Test
     public void test_create_save_request_with_valid_names() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
 
-        SaveRequest saveRequest = new SaveRequest(dbName, collName);
+        SaveRequest saveRequest = new SaveRequest(projectName, collName);
 
         assertEquals(OperationType.SAVE, saveRequest.getType());
-        assertEquals(dbName, saveRequest.getDatabaseName());
+        assertEquals(projectName, saveRequest.getProjectName());
         assertEquals(collName, saveRequest.getCollectionName());
         assertNull(saveRequest.get_id());
         assertNull(saveRequest.getObject());
     }
 
     @Test
-    public void test_create_save_request_with_empty_db_name() {
-        String dbName = "";
+    public void test_create_save_request_with_empty_project_name() {
+        String projectName = "";
         String collName = "testCollection";
 
-        SaveRequest saveRequest = new SaveRequest(dbName, collName);
+        SaveRequest saveRequest = new SaveRequest(projectName, collName);
 
         assertEquals(OperationType.SAVE, saveRequest.getType());
-        assertEquals("", saveRequest.getDatabaseName());
+        assertEquals("", saveRequest.getProjectName());
         assertEquals(collName, saveRequest.getCollectionName());
         assertNull(saveRequest.get_id());
         assertNull(saveRequest.getObject());
@@ -39,18 +39,18 @@ public class SaveRequestTest {
 
     @Test
     public void test_getters_and_setters() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
         String id = "12345";
         JsonObject jsonObject = new JsonObject();
         jsonObject.addProperty("key", "value");
 
-        SaveRequest saveRequest = new SaveRequest(dbName, collName);
+        SaveRequest saveRequest = new SaveRequest(projectName, collName);
         saveRequest.set_id(id);
         saveRequest.setObject(jsonObject);
 
         assertEquals(OperationType.SAVE, saveRequest.getType());
-        assertEquals(dbName, saveRequest.getDatabaseName());
+        assertEquals(projectName, saveRequest.getProjectName());
         assertEquals(collName, saveRequest.getCollectionName());
         assertEquals(id, saveRequest.get_id());
         assertEquals(jsonObject, saveRequest.getObject());

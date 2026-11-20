@@ -25,9 +25,9 @@ public final class Listens implements AutoCloseable {
         this.requestTimeout = requestTimeout;
     }
 
-    public <T> Subscription listen(String database, String collection, List<PipelineStep> steps, DocumentCodec<T> codec,
+    public <T> Subscription listen(String project, String collection, List<PipelineStep> steps, DocumentCodec<T> codec,
             ListenHandler<T> handler) {
-        final ObjectNode request = encoder.listen(database, collection, steps);
+        final ObjectNode request = encoder.listen(project, collection, steps);
         lock.lock();
         try {
             for (final var channel : channels) {

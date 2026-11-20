@@ -10,8 +10,8 @@ public final class Names {
     private Names() {
     }
 
-    public static String database(String name) {
-        return check(name, NAME, "database name", "3-64 characters from A-Z a-z 0-9 _ -");
+    public static String project(String name) {
+        return check(name, NAME, "project name", "3-64 characters from A-Z a-z 0-9 _ -");
     }
 
     public static String collection(String name) {

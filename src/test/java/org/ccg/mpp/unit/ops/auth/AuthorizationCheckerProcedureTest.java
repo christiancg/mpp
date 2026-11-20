@@ -36,8 +36,8 @@ public class AuthorizationCheckerProcedureTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
     }
 
     @AfterAll
@@ -54,40 +54,40 @@ public class AuthorizationCheckerProcedureTest {
         return new AdminUserEntry(OWNER, "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>());
     }
 
-    private static AdminUserEntry userWith(ScriptPermissionLevel level, PermissionLevel dbLevel) {
+    private static AdminUserEntry userWith(ScriptPermissionLevel level, PermissionLevel projectLevel) {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         if (level != null) {
-            scriptPerms.put(TestGlobals.DB, level);
+            scriptPerms.put(TestGlobals.PROJECT, level);
         }
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        if (dbLevel != null) {
-            dbPerms.put(TestGlobals.DB, dbLevel);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        if (projectLevel != null) {
+            projectPerms.put(TestGlobals.PROJECT, projectLevel);
         }
-        return new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>(), scriptPerms);
+        return new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>(), scriptPerms);
     }
 
     private static SaveProcedureRequest saveProcedure() {
-        return new SaveProcedureRequest(TestGlobals.DB, "p", "return 1;");
+        return new SaveProcedureRequest(TestGlobals.PROJECT, "p", "return 1;");
     }
 
     private static SaveTriggerRequest saveTrigger() {
-        return new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("CREATED"), "p");
+        return new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of("CREATED"), "p");
     }
 
     private static SaveScheduleRequest saveSchedule() {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, "sch", "p");
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, "sch", "p");
         request.setIntervalMs(1000L);
         return request;
     }
 
     private static TestTriggerRequest testTrigger() {
-        return new TestTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", "CREATED", new JsonObject());
+        return new TestTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", "CREATED", new JsonObject());
     }
 
     private static List<OperationRequest> managementRequests() {
-        return List.of(saveProcedure(), new DeleteProcedureRequest(TestGlobals.DB, "p"), saveTrigger(),
-                new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t"), saveSchedule(),
-                new DeleteScheduleRequest(TestGlobals.DB, "sch"), testTrigger());
+        return List.of(saveProcedure(), new DeleteProcedureRequest(TestGlobals.PROJECT, "p"), saveTrigger(),
+                new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t"), saveSchedule(),
+                new DeleteScheduleRequest(TestGlobals.PROJECT, "sch"), testTrigger());
     }
 
     @Test
@@ -117,7 +117,8 @@ public class AuthorizationCheckerProcedureTest {
     @Test
     public void test_run_level_allows_call_but_not_save() {
         final var runner = userWith(ScriptPermissionLevel.RUN, null);
-        assertTrue(AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.DB, "p", null), runner).isAllowed());
+        assertTrue(AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.PROJECT, "p", null), runner)
+                .isAllowed());
         for (final var request : managementRequests()) {
             assertFalse(AuthorizationChecker.check(request, runner).isAllowed(), request.getType().name());
         }
@@ -126,8 +127,8 @@ public class AuthorizationCheckerProcedureTest {
     @Test
     public void test_manage_level_allows_save_and_call() {
         final var manager = userWith(ScriptPermissionLevel.MANAGE, PermissionLevel.READ_WRITE);
-        assertTrue(
-                AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.DB, "p", null), manager).isAllowed());
+        assertTrue(AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.PROJECT, "p", null), manager)
+                .isAllowed());
         for (final var request : managementRequests()) {
             assertTrue(AuthorizationChecker.check(request, manager).isAllowed(), request.getType().name());
         }
@@ -136,47 +137,47 @@ public class AuthorizationCheckerProcedureTest {
     @Test
     public void test_none_level_allows_nothing() {
         final var denied = userWith(ScriptPermissionLevel.NONE, null);
-        assertFalse(
-                AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.DB, "p", null), denied).isAllowed());
+        assertFalse(AuthorizationChecker.check(new CallProcedureRequest(TestGlobals.PROJECT, "p", null), denied)
+                .isAllowed());
         for (final var request : managementRequests()) {
             assertFalse(AuthorizationChecker.check(request, denied).isAllowed(), request.getType().name());
         }
     }
 
     @Test
-    public void test_manage_on_one_database_does_not_leak_to_another() {
+    public void test_manage_on_one_project_does_not_leak_to_another() {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
-        scriptPerms.put(TestGlobals.DB, ScriptPermissionLevel.MANAGE);
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("otherDb", PermissionLevel.READ_WRITE);
-        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>(),
+        scriptPerms.put(TestGlobals.PROJECT, ScriptPermissionLevel.MANAGE);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("otherProject", PermissionLevel.READ_WRITE);
+        final var user = new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>(),
                 scriptPerms);
-        assertFalse(
-                AuthorizationChecker.check(new SaveProcedureRequest("otherDb", "p", "return 1;"), user).isAllowed());
-        assertFalse(AuthorizationChecker.check(new CallProcedureRequest("otherDb", "p", null), user).isAllowed());
+        assertFalse(AuthorizationChecker.check(new SaveProcedureRequest("otherProject", "p", "return 1;"), user)
+                .isAllowed());
+        assertFalse(AuthorizationChecker.check(new CallProcedureRequest("otherProject", "p", null), user).isAllowed());
     }
 
     // The ordering trap: these ops must be denied AFTER the ownership short-circuit, never by being listed
-    // in ADMIN_ONLY_OPERATIONS - which is tested first and would lock out database owners.
+    // in ADMIN_ONLY_OPERATIONS - which is tested first and would lock out project owners.
     @Test
     public void test_procedure_ddl_is_not_admin_only_so_owners_are_not_locked_out() {
         for (final var request : managementRequests()) {
             assertTrue(AuthorizationChecker.check(request, owner()).isAllowed(),
-                    request.getType() + " must stay reachable for a database owner");
+                    request.getType() + " must stay reachable for a project owner");
         }
     }
 
     @Test
     public void test_list_requires_read_only() {
         final var reader = userWith(null, PermissionLevel.READ);
-        assertTrue(AuthorizationChecker.check(new ListProceduresRequest(TestGlobals.DB), reader).isAllowed());
-        assertTrue(AuthorizationChecker.check(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL), reader)
+        assertTrue(AuthorizationChecker.check(new ListProceduresRequest(TestGlobals.PROJECT), reader).isAllowed());
+        assertTrue(AuthorizationChecker.check(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL), reader)
                 .isAllowed());
-        assertTrue(AuthorizationChecker.check(new ListSchedulesRequest(TestGlobals.DB), reader).isAllowed());
+        assertTrue(AuthorizationChecker.check(new ListSchedulesRequest(TestGlobals.PROJECT), reader).isAllowed());
         final var nobody = userWith(null, null);
-        assertFalse(AuthorizationChecker.check(new ListSchedulesRequest(TestGlobals.DB), nobody).isAllowed());
-        assertFalse(AuthorizationChecker.check(new ListProceduresRequest(TestGlobals.DB), nobody).isAllowed());
-        assertFalse(AuthorizationChecker.check(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL), nobody)
+        assertFalse(AuthorizationChecker.check(new ListSchedulesRequest(TestGlobals.PROJECT), nobody).isAllowed());
+        assertFalse(AuthorizationChecker.check(new ListProceduresRequest(TestGlobals.PROJECT), nobody).isAllowed());
+        assertFalse(AuthorizationChecker.check(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL), nobody)
                 .isAllowed());
     }
 
@@ -189,16 +190,16 @@ public class AuthorizationCheckerProcedureTest {
                 OperationType.DELETE_SCHEDULE, OperationType.LIST_SCHEDULES, OperationType.TEST_TRIGGER)) {
             final var request = switch (type) {
                 case SAVE_PROCEDURE -> saveProcedure();
-                case DELETE_PROCEDURE -> new DeleteProcedureRequest(TestGlobals.DB, "p");
-                case LIST_PROCEDURES -> new ListProceduresRequest(TestGlobals.DB);
-                case CALL_PROCEDURE -> new CallProcedureRequest(TestGlobals.DB, "p", null);
+                case DELETE_PROCEDURE -> new DeleteProcedureRequest(TestGlobals.PROJECT, "p");
+                case LIST_PROCEDURES -> new ListProceduresRequest(TestGlobals.PROJECT);
+                case CALL_PROCEDURE -> new CallProcedureRequest(TestGlobals.PROJECT, "p", null);
                 case SAVE_TRIGGER -> saveTrigger();
-                case DELETE_TRIGGER -> new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t");
+                case DELETE_TRIGGER -> new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t");
                 case SAVE_SCHEDULE -> saveSchedule();
-                case DELETE_SCHEDULE -> new DeleteScheduleRequest(TestGlobals.DB, "sch");
-                case LIST_SCHEDULES -> new ListSchedulesRequest(TestGlobals.DB);
+                case DELETE_SCHEDULE -> new DeleteScheduleRequest(TestGlobals.PROJECT, "sch");
+                case LIST_SCHEDULES -> new ListSchedulesRequest(TestGlobals.PROJECT);
                 case TEST_TRIGGER -> testTrigger();
-                default -> new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL);
+                default -> new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             };
             assertFalse(AuthorizationChecker.check(request, nobody).isAllowed(), type.name());
             assertTrue(AuthorizationChecker.check(request, admin()).isAllowed(), type.name());

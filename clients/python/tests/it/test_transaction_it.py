@@ -11,10 +11,10 @@ SERVER_CONFIG = {"transactionIdleTimeoutMs": "4000"}
 
 
 async def _bank(client: AsyncMppClient, name: str) -> None:
-    database = client.database(name)
-    await database.create()
-    await database.collection("accounts").create()
-    await database.collection("ledger").create()
+    project = client.project(name)
+    await project.create()
+    await project.collection("accounts").create()
+    await project.collection("ledger").create()
 
 
 async def test_a_commit_is_visible_and_reads_inside_see_their_own_writes(client: AsyncMppClient) -> None:
@@ -25,10 +25,10 @@ async def test_a_commit_is_visible_and_reads_inside_see_their_own_writes(client:
         inside = await accounts.find_by_id("a")
         assert inside is not None
         assert inside["balance"] == 10
-        outside = await client.database("tx_commit").collection("accounts").find_by_id("a", dirty_read=True)
+        outside = await client.project("tx_commit").collection("accounts").find_by_id("a", dirty_read=True)
         assert outside is None
         assert len(await accounts.query().to_list()) == 1
-    assert await client.database("tx_commit").collection("accounts").find_by_id("a") is not None
+    assert await client.project("tx_commit").collection("accounts").find_by_id("a") is not None
 
 
 async def _save_then_fail(client: AsyncMppClient) -> None:
@@ -44,7 +44,7 @@ async def test_a_rollback_and_a_failing_body_leave_nothing(client: AsyncMppClien
     await transaction.rollback()
     with pytest.raises(RuntimeError, match="body"):
         await _save_then_fail(client)
-    assert await client.database("tx_rollback").collection("accounts").query().to_list() == []
+    assert await client.project("tx_rollback").collection("accounts").query().to_list() == []
 
 
 async def test_an_idle_transaction_is_rolled_back_by_the_server(client: AsyncMppClient) -> None:
@@ -55,7 +55,7 @@ async def test_an_idle_transaction_is_rolled_back_by_the_server(client: AsyncMpp
     with pytest.raises(ConflictError) as refused:
         await transaction.commit()
     assert refused.value.raw_code == "409-16"
-    assert await client.database("tx_idle").collection("accounts").find_by_id("idle") is None
+    assert await client.project("tx_idle").collection("accounts").find_by_id("idle") is None
 
 
 async def test_transactions_on_different_collections_run_concurrently(client: AsyncMppClient) -> None:
@@ -66,9 +66,9 @@ async def test_transactions_on_different_collections_run_concurrently(client: As
     await first.collection("tx_parallel", "accounts").save({"_id": "x"})
     await second.collection("tx_parallel", "ledger").save({"_id": "y"})
     await asyncio.gather(first.commit(), second.commit())
-    database = client.database("tx_parallel")
-    assert await database.collection("accounts").find_by_id("x") is not None
-    assert await database.collection("ledger").find_by_id("y") is not None
+    project = client.project("tx_parallel")
+    assert await project.collection("accounts").find_by_id("x") is not None
+    assert await project.collection("ledger").find_by_id("y") is not None
 
 
 def _save_then_refuse(client: MppClient) -> None:
@@ -78,7 +78,7 @@ def _save_then_refuse(client: MppClient) -> None:
 
 
 def test_the_sync_client_commits_and_rolls_back(sync_client: MppClient) -> None:
-    bank = sync_client.database("tx_sync")
+    bank = sync_client.project("tx_sync")
     bank.create()
     bank.collection("accounts").create()
     with sync_client.transaction() as tx:

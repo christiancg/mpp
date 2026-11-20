@@ -15,8 +15,8 @@ export class Collection<T, R> {
         this.#ops = ops;
     }
 
-    get databaseName(): string {
-        return this.#ops.database;
+    get projectName(): string {
+        return this.#ops.project;
     }
 
     get name(): string {
@@ -26,14 +26,14 @@ export class Collection<T, R> {
     async create(): Promise<void> {
         await this.#ops.context.channel.send(
             "CREATE_COLLECTION",
-            this.#ops.context.encoder.createCollection(this.#ops.database, this.#ops.collection),
+            this.#ops.context.encoder.createCollection(this.#ops.project, this.#ops.collection),
         );
     }
 
     async drop(): Promise<void> {
         await this.#ops.context.channel.send(
             "DROP_COLLECTION",
-            this.#ops.context.encoder.dropCollection(this.#ops.database, this.#ops.collection),
+            this.#ops.context.encoder.dropCollection(this.#ops.project, this.#ops.collection),
         );
     }
 
@@ -70,15 +70,15 @@ export class Collection<T, R> {
     }
 
     indexes(): Indexes {
-        return new Indexes(this.#ops.context, this.#ops.database, this.#ops.collection);
+        return new Indexes(this.#ops.context, this.#ops.project, this.#ops.collection);
     }
 
     schema(): Schema {
-        return new Schema(this.#ops.context, this.#ops.database, this.#ops.collection);
+        return new Schema(this.#ops.context, this.#ops.project, this.#ops.collection);
     }
 
     triggers(): Triggers {
-        return new Triggers(this.#ops.context, this.#ops.database, this.#ops.collection);
+        return new Triggers(this.#ops.context, this.#ops.project, this.#ops.collection);
     }
 
     listen(handler: ListenHandler<R>): Promise<Subscription>;
@@ -93,7 +93,7 @@ export class Collection<T, R> {
             );
         }
         return listens.listen(
-            this.#ops.database,
+            this.#ops.project,
             this.#ops.collection,
             query.steps,
             (document) => this.#ops.codec.decode(document),

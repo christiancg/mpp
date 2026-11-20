@@ -1,13 +1,13 @@
 What an operation's request names.
 
 ## Collection
-A database and a collection.
+A project and a collection.
 
-## Database
-A database.
+## Project
+A project.
 
 ## None
 Nothing.
 
 ## OptionalCollection
-A database and, optionally, a collection.
+A project and, optionally, a collection.

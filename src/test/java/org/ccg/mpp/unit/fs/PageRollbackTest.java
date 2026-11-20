@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 public class PageRollbackTest extends FileSystemTestBase {
 
     private File collectionFolder() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL);
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL);
     }
 
     private File pageFile() {
@@ -55,20 +55,20 @@ public class PageRollbackTest extends FileSystemTestBase {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("value", new JsonString("v"));
-        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         dbEntry.set_id(id);
         dbEntry.setPage(page);
         return dbEntry;
     }
 
     private Set<String> idsOnThePages() throws IOException {
-        try (var entries = fs.streamEntries(TestGlobals.DB, TestGlobals.COLL)) {
+        try (var entries = fs.streamEntries(TestGlobals.PROJECT, TestGlobals.COLL)) {
             return entries.map(DbEntry::get_id).collect(Collectors.toSet());
         }
     }
 
     private Set<String> idsInThePkIndex() throws IOException {
-        return fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream().map(PkIndexEntry::getValue)
+        return fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream().map(PkIndexEntry::getValue)
                 .collect(Collectors.toSet());
     }
 
@@ -79,7 +79,7 @@ public class PageRollbackTest extends FileSystemTestBase {
         replacePkIndexWithAnUnwritableDirectory();
 
         final var batch = new ArrayList<>(List.of(entry("a"), entry("b"), entry("c")));
-        assertThrows(IOException.class, () -> fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, batch),
+        assertThrows(IOException.class, () -> fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, batch),
                 "a bulk insert whose index write fails must surface the failure");
 
         assertArrayEquals(before, Files.readAllBytes(pageFile().toPath()),
@@ -138,7 +138,7 @@ public class PageRollbackTest extends FileSystemTestBase {
         assertTrue(pageFile(1).mkdirs(), "the test needs the second page of the batch to be unwritable");
 
         final var batch = new ArrayList<>(List.of(entry("a", 0), entry("b", 0), entry("c", 1)));
-        assertThrows(IOException.class, () -> fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, batch),
+        assertThrows(IOException.class, () -> fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, batch),
                 "a bulk insert whose page append fails must surface the failure");
 
         assertArrayEquals(beforePage, Files.readAllBytes(pageFile().toPath()),
@@ -154,7 +154,8 @@ public class PageRollbackTest extends FileSystemTestBase {
         assertTrue(pageFile(1).mkdirs(), "the test needs the second page of the batch to be unwritable");
 
         final var batch = new ArrayList<>(List.of(entry("a", 0), entry("c", 1)));
-        assertThrows(IOException.class, () -> fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, batch));
+        assertThrows(IOException.class,
+                () -> fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, batch));
         assertTrue(pageFile(1).delete(), "the unwritable placeholder must be gone before the collection is scanned");
 
         assertEquals(idsInThePkIndex(), idsOnThePages(),
@@ -182,7 +183,7 @@ public class PageRollbackTest extends FileSystemTestBase {
     public void test_a_successful_bulk_insert_leaves_every_record_on_the_page() throws Exception {
         final var batch = new ArrayList<>(List.of(entry("a"), entry("b"), entry("c")));
 
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, batch);
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, batch);
 
         assertEquals(3, indexed.size(), "the rollback path must not disturb the ordinary bulk insert");
         assertTrue(pageFile().length() > 0, "the records must actually be on the page");

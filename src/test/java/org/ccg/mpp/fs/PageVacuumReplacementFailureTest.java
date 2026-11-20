@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PageVacuumReplacementFailureTest {
-    private static final String DB = "replDb";
+    private static final String PROJECT = "replProject";
     private static final String COLL = "replColl";
 
     @TempDir
@@ -35,7 +35,7 @@ public class PageVacuumReplacementFailureTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        fx = new StorageFixture(tmp, DB, COLL);
+        fx = new StorageFixture(tmp, PROJECT, COLL);
         fx.seed(0, "a", "b", "c");
         final var failing = spy(fx.store);
         doThrow(new IOException("No space left on device")).when(failing).appendReplacements(anyString(), anyString(),
@@ -48,8 +48,8 @@ public class PageVacuumReplacementFailureTest {
 
     @AfterEach
     public void tearDown() throws Exception {
-        DeferredApplies.clear(DB, COLL);
-        PkIndexStore.forgetUnder(fx.paths.collectionFolder(DB, COLL));
+        DeferredApplies.clear(PROJECT, COLL);
+        PkIndexStore.forgetUnder(fx.paths.collectionFolder(PROJECT, COLL));
         TestUtils.standardTearDown();
     }
 
@@ -69,58 +69,58 @@ public class PageVacuumReplacementFailureTest {
 
     @Test
     public void aBulkDeleteAfterAFailedAppendReplacementsBlanksNothingElse() throws Exception {
-        assertThrows(IOException.class, () -> vacuum.vacuum(DB, COLL, 0, liveRows()));
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
 
         final var appender = new PageAppender(fx.paths, fx.store, vacuum);
         try {
-            final var pointScanned = fx.store.rowsFor(DB, COLL, Set.of("b")).get("b");
-            appender.bulkInsertAndDelete(DB, COLL, List.of(), DbEntry::getPage, DbEntry::encodeLine,
+            final var pointScanned = fx.store.rowsFor(PROJECT, COLL, Set.of("b")).get("b");
+            appender.bulkInsertAndDelete(PROJECT, COLL, List.of(), DbEntry::getPage, DbEntry::encodeLine,
                     List.of(pointScanned));
         } catch (IOException refused) {
-            assertTrue(refused.getMessage().contains(DB + "|" + COLL), refused.getMessage());
+            assertTrue(refused.getMessage().contains(PROJECT + "|" + COLL), refused.getMessage());
         }
 
         final var text = Files.readString(fx.page(0).toPath(), StandardCharsets.UTF_8);
         assertTrue(text.contains(StorageFixture.record("c", "old-c")),
                 "a live record survives a delete of another: " + text);
         assertEquals(1, fx.openIntents());
-        assertThrows(IOException.class, () -> fx.store.readWholePkIndexFile(DB, COLL));
+        assertThrows(IOException.class, () -> fx.store.readWholePkIndexFile(PROJECT, COLL));
     }
 
     @Test
     public void theNextUseRederivesTheRowsOnceTheReplacementCanBeRecorded() throws Exception {
-        assertThrows(IOException.class, () -> vacuum.vacuum(DB, COLL, 0, liveRows()));
-        assertTrue(DeferredApplies.pending(DB + "|" + COLL), "the collection is flagged for its next use");
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
+        assertTrue(DeferredApplies.pending(PROJECT + "|" + COLL), "the collection is flagged for its next use");
 
-        assertTrue(new WriteIntentRecovery(fx.paths, fx.store, fx.journal).recoverBehindAVacuum(DB, COLL));
+        assertTrue(new WriteIntentRecovery(fx.paths, fx.store, fx.journal).recoverBehindAVacuum(PROJECT, COLL));
 
         assertEquals(0, fx.openIntents());
-        final var rows = fx.store.rowsFor(DB, COLL, Set.of("b", "c"));
+        final var rows = fx.store.rowsFor(PROJECT, COLL, Set.of("b", "c"));
         assertEquals(StorageFixture.record("b", "old-b"), fx.readAt(rows.get("b")));
         assertEquals(StorageFixture.record("c", "old-c"), fx.readAt(rows.get("c")));
     }
 
     @Test
     public void aRecoveryThatStillCannotRecordKeepsThePkIndexBehind() throws Exception {
-        assertThrows(IOException.class, () -> vacuum.vacuum(DB, COLL, 0, liveRows()));
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
         final var stillFailing = spy(fx.store);
         doThrow(new IOException("No space left on device")).when(stillFailing).appendReplacements(anyString(),
                 anyString(), any());
 
         assertThrows(IOException.class,
-                () -> new WriteIntentRecovery(fx.paths, stillFailing, fx.journal).recoverBehindAVacuum(DB, COLL));
+                () -> new WriteIntentRecovery(fx.paths, stillFailing, fx.journal).recoverBehindAVacuum(PROJECT, COLL));
 
-        assertThrows(IOException.class, () -> fx.store.readWholePkIndexFile(DB, COLL));
-        assertTrue(DeferredApplies.pending(DB + "|" + COLL));
+        assertThrows(IOException.class, () -> fx.store.readWholePkIndexFile(PROJECT, COLL));
+        assertTrue(DeferredApplies.pending(PROJECT + "|" + COLL));
         assertEquals(1, fx.openIntents());
     }
 
     @Test
     public void aDroppedFolderForgetsThatItsPkIndexWasBehind() throws Exception {
-        assertThrows(IOException.class, () -> vacuum.vacuum(DB, COLL, 0, liveRows()));
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
 
-        PkIndexStore.forgetUnder(fx.paths.collectionFolder(DB, COLL));
+        PkIndexStore.forgetUnder(fx.paths.collectionFolder(PROJECT, COLL));
 
-        assertEquals(3, fx.store.readWholePkIndexFile(DB, COLL).size());
+        assertEquals(3, fx.store.readWholePkIndexFile(PROJECT, COLL).size());
     }
 }

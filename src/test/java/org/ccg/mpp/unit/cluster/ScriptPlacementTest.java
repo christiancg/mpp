@@ -18,7 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ScriptPlacementTest {
-    private static final String DB = "placement_db";
+    private static final String PROJECT = "placement_project";
     private final MembershipService membershipService = IocContainer.get(MembershipService.class);
     private final Configuration config = Configuration.getInstance();
     private ScriptedRandom scriptedRandom;
@@ -76,33 +76,33 @@ public class ScriptPlacementTest {
     public void test_null_when_clustering_disabled() throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", false);
         membership(node("a-self", 1, 9, NodeState.ALIVE), node("b", 2, 0, NodeState.ALIVE));
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
     public void test_null_when_routing_disabled() throws Exception {
         TestUtils.setPrivateField(config, "scriptRoutingEnabled", false);
         membership(node("a-self", 1, 9, NodeState.ALIVE), node("b", 2, 0, NodeState.ALIVE));
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
     public void test_null_when_membership_has_no_self() throws Exception {
         TestUtils.setPrivateField(membershipService, "self", null);
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
     public void test_null_when_self_is_the_only_live_member() throws Exception {
         membership(node("a-self", 1, 0, NodeState.ALIVE));
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
     public void test_skips_suspect_and_dead_members() throws Exception {
         membership(node("a-self", 1, 9, NodeState.ALIVE), node("b", 2, 0, NodeState.SUSPECT),
                 node("c", 3, 0, NodeState.DEAD));
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
@@ -110,7 +110,7 @@ public class ScriptPlacementTest {
         membership(node("a-self", 1, 9, NodeState.ALIVE), node("b", 2, 7, NodeState.ALIVE),
                 node("c", 3, 2, NodeState.ALIVE));
         samples(1, 1);
-        final var chosen = placement.choose(DB);
+        final var chosen = placement.choose(PROJECT);
         assertNotNull(chosen);
         assertEquals("c", chosen.getNodeId());
     }
@@ -120,16 +120,16 @@ public class ScriptPlacementTest {
         membership(node("a-self", 1, 9, NodeState.ALIVE), node("c", 2, 4, NodeState.ALIVE),
                 node("b", 3, 4, NodeState.ALIVE));
         samples(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
         samples(2, 1);
-        assertEquals("b", placement.choose(DB).getNodeId());
+        assertEquals("b", placement.choose(PROJECT).getNodeId());
     }
 
     @Test
     public void test_null_when_the_chosen_node_is_self() throws Exception {
         membership(node("a-self", 1, 0, NodeState.ALIVE), node("b", 2, 5, NodeState.ALIVE));
         samples(0, 0);
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
@@ -137,7 +137,7 @@ public class ScriptPlacementTest {
         membership(node("a-self", 1, 0, NodeState.ALIVE), node("b", 2, 8, NodeState.ALIVE),
                 node("c", 3, 1, NodeState.ALIVE));
         samples(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
     }
 
     @Test
@@ -145,7 +145,7 @@ public class ScriptPlacementTest {
         final var syncing = caughtUpPeer("b", 0);
         syncing.setAdminSyncing(true);
         membership(node("a-self", 1, 9, NodeState.ALIVE), syncing);
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
@@ -154,7 +154,7 @@ public class ScriptPlacementTest {
         self.setAdminSyncing(true);
         membership(self, caughtUpPeer("b", 5));
         samples(0, 0);
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
     }
 
     @Test
@@ -165,7 +165,7 @@ public class ScriptPlacementTest {
         behind.setAdminSyncing(true);
         membership(node("a-self", 1, 9, NodeState.ALIVE), syncing, behind, caughtUpPeer("d", 0));
         samples(0, 0);
-        assertEquals("d", placement.choose(DB).getNodeId());
+        assertEquals("d", placement.choose(PROJECT).getNodeId());
     }
 
     @Test

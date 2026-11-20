@@ -6,7 +6,7 @@ import java.util.function.Predicate;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.admin.AdminRecordKey;
@@ -24,54 +24,57 @@ public final class DefinerRevocation {
     }
 
     public static void forDefiner(String username, RestampedRecords restamped) {
-        final List<String> dbNames = cache.getAllAdminDbEntries().stream().map(AdminDbEntry::get_id).toList();
-        for (final var dbName : dbNames) {
-            if (!revoke(dbName, username::equals, restamped)) {
+        final List<String> projectNames = cache.getAllAdminProjectEntries().stream().map(AdminProjectEntry::get_id)
+                .toList();
+        for (final var projectName : projectNames) {
+            if (!revoke(projectName, username::equals, restamped)) {
                 return;
             }
         }
     }
 
-    public static void forDatabase(String dbName, RestampedRecords restamped) {
-        revoke(dbName, _ -> true, restamped);
+    public static void forProject(String projectName, RestampedRecords restamped) {
+        revoke(projectName, _ -> true, restamped);
     }
 
-    private static boolean revoke(String dbName, Predicate<String> definerInScope, RestampedRecords restamped) {
-        return revokeTriggers(dbName, definerInScope, restamped) && revokeSchedules(dbName, definerInScope, restamped);
+    private static boolean revoke(String projectName, Predicate<String> definerInScope, RestampedRecords restamped) {
+        return revokeTriggers(projectName, definerInScope, restamped)
+                && revokeSchedules(projectName, definerInScope, restamped);
     }
 
-    private static boolean revokeTriggers(String dbName, Predicate<String> definerInScope, RestampedRecords restamped) {
-        for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
+    private static boolean revokeTriggers(String projectName, Predicate<String> definerInScope,
+            RestampedRecords restamped) {
+        for (final var collName : cache.getCollectionNamesForProject(projectName)) {
             var disabledAny = false;
-            for (final var trigger : List.copyOf(cache.getTriggersFor(dbName, collName))) {
+            for (final var trigger : List.copyOf(cache.getTriggersFor(projectName, collName))) {
                 if (trigger.isBefore() || outOfScope(trigger.isEnabled(), trigger.getDefiner(), definerInScope)) {
                     continue;
                 }
-                final var refusal = DefinerAuthority.refusal(trigger.getDefiner(), dbName, collName);
+                final var refusal = DefinerAuthority.refusal(trigger.getDefiner(), projectName, collName);
                 if (refusal == null) {
                     continue;
                 }
-                final var outcome = disable(describe(dbName, collName, trigger), refusal,
-                        () -> TriggerOperationHelper.disable(dbName, collName, trigger, refusal));
+                final var outcome = disable(describe(projectName, collName, trigger), refusal,
+                        () -> TriggerOperationHelper.disable(projectName, collName, trigger, refusal));
                 if (outcome == Outcome.INTERRUPTED) {
                     return false;
                 }
                 disabledAny |= outcome == Outcome.DISABLED;
             }
             if (disabledAny) {
-                restamped.add(AdminRecordKey.triggers(dbName, collName));
+                restamped.add(AdminRecordKey.triggers(projectName, collName));
             }
         }
         return true;
     }
 
-    private static boolean revokeSchedules(String dbName, Predicate<String> definerInScope,
+    private static boolean revokeSchedules(String projectName, Predicate<String> definerInScope,
             RestampedRecords restamped) {
         final List<ScheduleDefinition> schedules;
         try {
-            schedules = ScheduleOperationHelper.schedulesIn(dbName);
+            schedules = ScheduleOperationHelper.schedulesIn(projectName);
         } catch (IOException e) {
-            logger.error("Could not read the schedules of database '" + dbName + "' to re-check their definers; a"
+            logger.error("Could not read the schedules of project '" + projectName + "' to re-check their definers; a"
                     + " schedule whose definer lost its rights is disabled when it next fires", e);
             return true;
         }
@@ -79,17 +82,17 @@ public final class DefinerRevocation {
             if (outOfScope(schedule.isEnabled(), schedule.getDefiner(), definerInScope)) {
                 continue;
             }
-            final var refusal = DefinerAuthority.refusal(schedule.getDefiner(), dbName, null);
+            final var refusal = DefinerAuthority.refusal(schedule.getDefiner(), projectName, null);
             if (refusal == null) {
                 continue;
             }
-            final var outcome = disable("Schedule '" + schedule.getName() + "' in " + dbName, refusal,
-                    () -> ScheduleOperationHelper.disable(dbName, schedule, refusal));
+            final var outcome = disable("Schedule '" + schedule.getName() + "' in " + projectName, refusal,
+                    () -> ScheduleOperationHelper.disable(projectName, schedule, refusal));
             if (outcome == Outcome.INTERRUPTED) {
                 return false;
             }
             if (outcome == Outcome.DISABLED) {
-                restamped.add(AdminRecordKey.schedule(dbName, schedule.getName()));
+                restamped.add(AdminRecordKey.schedule(projectName, schedule.getName()));
             }
         }
         return true;
@@ -99,8 +102,8 @@ public final class DefinerRevocation {
         return !enabled || definer == null || !definerInScope.test(definer);
     }
 
-    private static String describe(String dbName, String collName, TriggerDefinition trigger) {
-        return "Trigger '" + trigger.getName() + "' on " + dbName + "|" + collName;
+    private static String describe(String projectName, String collName, TriggerDefinition trigger) {
+        return "Trigger '" + trigger.getName() + "' on " + projectName + "|" + collName;
     }
 
     private enum Outcome {

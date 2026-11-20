@@ -51,17 +51,17 @@ public class ClusterRouter {
             return forwardAdmin(type, rawJson, actingUser);
         }
         if (SCRIPT_OPS.contains(type)) {
-            return forwardScript(type, request.getDatabaseName(), rawJson, actingUser);
+            return forwardScript(type, request.getProjectName(), rawJson, actingUser);
         }
         if (!ROUTABLE.contains(type)) {
             return null;
         }
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (Globals.ADMIN_DB_NAME.equals(dbName) || ownershipManager.isOwner(dbName, collName)) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName) || ownershipManager.isOwner(projectName, collName)) {
             return null;
         }
-        final var ownerAddress = ownershipManager.ownerAddress(dbName, collName);
+        final var ownerAddress = ownershipManager.ownerAddress(projectName, collName);
         if (ownerAddress == null) {
             return null;
         }
@@ -87,13 +87,13 @@ public class ClusterRouter {
 
     private String routeTransactionWrite(OperationRequest request, String rawJson, OperationType type,
             String actingUser, UUID clientId) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var collectionId = Cache.getCollectionIdentifier(dbName, collName);
-        if (Globals.ADMIN_DB_NAME.equals(dbName) || ownershipManager.isOwner(dbName, collName)) {
+        final var collectionId = Cache.getCollectionIdentifier(projectName, collName);
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName) || ownershipManager.isOwner(projectName, collName)) {
             return bufferLocally(clientId, collectionId);
         }
-        final var ownerAddress = ownershipManager.ownerAddress(dbName, collName);
+        final var ownerAddress = ownershipManager.ownerAddress(projectName, collName);
         if (ownerAddress == null) {
             return bufferLocally(clientId, collectionId);
         }
@@ -119,12 +119,12 @@ public class ClusterRouter {
             final var holder = holders.iterator().next();
             return LOCAL_HOLDER.equals(holder) ? null : forwardTx(rawJson, holder, type, actingUser, clientId, true);
         }
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (Globals.ADMIN_DB_NAME.equals(dbName) || ownershipManager.isOwner(dbName, collName)) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName) || ownershipManager.isOwner(projectName, collName)) {
             return null;
         }
-        final var ownerAddress = ownershipManager.ownerAddress(dbName, collName);
+        final var ownerAddress = ownershipManager.ownerAddress(projectName, collName);
         if (ownerAddress != null && clientTracker.transactionParticipants(clientId).contains(ownerAddress)) {
             return forwardTx(rawJson, ownerAddress, type, actingUser, clientId, true);
         }
@@ -135,7 +135,7 @@ public class ClusterRouter {
         if (request instanceof AggregateRequest aggregateRequest) {
             return AggregationOperationHelper.aggregateLockSet(aggregateRequest);
         }
-        return List.of(Cache.getCollectionIdentifier(request.getDatabaseName(), request.getCollectionName()));
+        return List.of(Cache.getCollectionIdentifier(request.getProjectName(), request.getCollectionName()));
     }
 
     private String routeCommit(String rawJson, String actingUser, UUID clientId) {
@@ -238,8 +238,8 @@ public class ClusterRouter {
 
     // Falling back to local execution is only correct when the target provably never got the request: any
     // other failure may leave it still running, and a script writes, so a second run is silent corruption.
-    private String forwardScript(OperationType type, String databaseName, String rawJson, String actingUser) {
-        final var target = scriptPlacement.choose(databaseName);
+    private String forwardScript(OperationType type, String projectName, String rawJson, String actingUser) {
+        final var target = scriptPlacement.choose(projectName);
         if (target == null) {
             return null;
         }

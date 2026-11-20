@@ -82,21 +82,22 @@ public class StorageFormatGuardTest {
     }
 
     @Test
-    public void test_an_unstamped_folder_holding_data_is_read_as_the_unstamped_format_and_stamped() throws IOException {
-        Files.createDirectories(root.resolve(Globals.ADMIN_DB_NAME));
+    public void test_an_unstamped_folder_holding_data_is_refused_as_the_unstamped_format() throws IOException {
+        Files.createDirectories(root.resolve(Globals.ADMIN_PROJECT_NAME));
+        final var before = tree();
 
-        assertEquals(Globals.STORAGE_FORMAT_VERSION, Globals.UNSTAMPED_STORAGE_FORMAT_VERSION);
-        assertDoesNotThrow(() -> StorageFormatGuard.refuseIncompatibleFolder(fs));
-        StorageFormatGuard.stampIfUnstamped(fs);
+        final var message = refusal();
 
-        assertEquals(new FormatStamp(Globals.UNSTAMPED_STORAGE_FORMAT_VERSION, ServerVersion.current()),
-                fs.formatStamp().read());
+        assertTrue(message.contains("storage format " + Globals.UNSTAMPED_STORAGE_FORMAT_VERSION), message);
+        assertTrue(message.contains("reads only format " + Globals.STORAGE_FORMAT_VERSION), message);
+        assertEquals(before, tree());
+        assertFalse(Files.exists(stampPath()));
     }
 
     @Test
     public void test_a_matching_stamp_passes_and_is_never_rewritten() throws IOException {
         stampWith(Globals.STORAGE_FORMAT_VERSION, "0.0.1-original");
-        Files.createDirectories(root.resolve(Globals.ADMIN_DB_NAME));
+        Files.createDirectories(root.resolve(Globals.ADMIN_PROJECT_NAME));
         final var before = Files.readAllBytes(stampPath());
 
         assertDoesNotThrow(() -> StorageFormatGuard.refuseIncompatibleFolder(fs));
@@ -176,6 +177,6 @@ public class StorageFormatGuardTest {
 
         assertEquals(before, tree());
         assertArrayEquals(stampBytes, Files.readAllBytes(stampPath()));
-        assertFalse(Files.exists(root.resolve(Globals.ADMIN_DB_NAME)));
+        assertFalse(Files.exists(root.resolve(Globals.ADMIN_PROJECT_NAME)));
     }
 }

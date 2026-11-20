@@ -32,8 +32,8 @@ def transactional(commit_code: str | None = None) -> object:
             session.send(error(request, "ERROR", commit_code))
         elif kind == "SERVER_INFO":
             session.send(ok(request, server={"state": "READY", "version": "1.0"}))
-        elif kind in {"LIST_DATABASES", "GET_DATABASE_STATS"}:
-            session.send(ok(request, databases=["shop"], stats={"memory": {}}))
+        elif kind in {"LIST_PROJECTS", "GET_PROJECT_STATS"}:
+            session.send(ok(request, projects=["shop"], stats={"memory": {}}))
         else:
             session.send(ok(request))
 
@@ -57,10 +57,10 @@ async def test_connect_fails_cleanly_when_no_server_answers() -> None:
 
 
 async def test_client_level_reads(client: AsyncMppClient, fake: FakeServer) -> None:
-    assert await client.list_databases() == ("shop",)
+    assert await client.list_projects() == ("shop",)
     info = await client.server_info()
     assert (info.state, info.version) == ("READY", "1.0")
-    assert await client.database_stats() == {"memory": {}}
+    assert await client.project_stats() == {"memory": {}}
     assert client.settings.credentials == Credentials("alice", "pw")
     await client.change_password("pw", "new")
     assert fake.requests_of_type("SET_PASSWORD")[0] == {
@@ -160,7 +160,7 @@ async def test_a_lost_connection_during_start_discards_it(fake: FakeServer) -> N
 async def test_closing_while_requests_run_fails_them(fake: FakeServer) -> None:
     fake.responder = lambda request, session: None
     client = await AsyncMppClient._connect(fake.settings(shutdown_timeout=0.1), no_backoff, open_streams)
-    pending = asyncio.create_task(client.database("shop").collection("orders").find_by_id("o-1"))
+    pending = asyncio.create_task(client.project("shop").collection("orders").find_by_id("o-1"))
     await fake.await_request("FIND_BY_ID")
     await client.close()
     pending.cancel()

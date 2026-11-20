@@ -12,12 +12,12 @@ namespace Mpp.Client.Internal;
 
 internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
 {
-    public static JsonObject RunScript(string database, string script, Document? args) =>
-        Args(With(Request("RUN_SCRIPT", database), "script", script), args);
+    public static JsonObject RunScript(string project, string script, Document? args) =>
+        Args(With(Request("RUN_SCRIPT", project), "script", script), args);
 
-    public static JsonObject SaveProcedure(string database, ProcedureDefinition procedure)
+    public static JsonObject SaveProcedure(string project, ProcedureDefinition procedure)
     {
-        var frame = Request("SAVE_PROCEDURE", database);
+        var frame = Request("SAVE_PROCEDURE", project);
         frame["name"] = procedure.Name;
         frame["script"] = procedure.Script;
         Optional(frame, "description", procedure.Description);
@@ -26,22 +26,22 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
         return frame;
     }
 
-    public static JsonObject DeleteProcedure(string database, string name) =>
-        With(Request("DELETE_PROCEDURE", database), "name", name);
+    public static JsonObject DeleteProcedure(string project, string name) =>
+        With(Request("DELETE_PROCEDURE", project), "name", name);
 
-    public static JsonObject ListProcedures(string database, bool? includeSource) =>
-        Optional(Request("LIST_PROCEDURES", database), "includeSource", includeSource);
+    public static JsonObject ListProcedures(string project, bool? includeSource) =>
+        Optional(Request("LIST_PROCEDURES", project), "includeSource", includeSource);
 
-    public static JsonObject CallProcedure(string database, string name, Document? args) =>
-        Args(With(Request("CALL_PROCEDURE", database), "procedureName", name), args);
+    public static JsonObject CallProcedure(string project, string name, Document? args) =>
+        Args(With(Request("CALL_PROCEDURE", project), "procedureName", name), args);
 
-    public static JsonObject SaveTrigger(string database, string collection, TriggerDefinition trigger)
+    public static JsonObject SaveTrigger(string project, string collection, TriggerDefinition trigger)
     {
         if (trigger.Events.Count == 0)
         {
             throw new ArgumentException("a trigger needs at least one event", nameof(trigger));
         }
-        var frame = Request("SAVE_TRIGGER", database, collection);
+        var frame = Request("SAVE_TRIGGER", project, collection);
         frame["name"] = trigger.Name;
         frame["events"] = Strings(trigger.Events.Select(triggerEvent => WireNames.Upper(triggerEvent.ToString())));
         frame["procedureName"] = trigger.ProcedureName;
@@ -53,27 +53,27 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
         return frame;
     }
 
-    public static JsonObject DeleteTrigger(string database, string collection, string name) =>
-        With(Request("DELETE_TRIGGER", database, collection), "name", name);
+    public static JsonObject DeleteTrigger(string project, string collection, string name) =>
+        With(Request("DELETE_TRIGGER", project, collection), "name", name);
 
-    public static JsonObject ListTriggers(string database, string? collection) => Request("LIST_TRIGGERS", database, collection);
+    public static JsonObject ListTriggers(string project, string? collection) => Request("LIST_TRIGGERS", project, collection);
 
-    public static JsonObject TestTrigger(string database, string collection, string name, TriggerEvent triggerEvent, Document document)
+    public static JsonObject TestTrigger(string project, string collection, string name, TriggerEvent triggerEvent, Document document)
     {
-        var frame = Request("TEST_TRIGGER", database, collection);
+        var frame = Request("TEST_TRIGGER", project, collection);
         frame["name"] = name;
         frame["event"] = WireNames.Upper(triggerEvent.ToString());
         frame["document"] = Document(document);
         return frame;
     }
 
-    public static JsonObject SaveSchedule(string database, ScheduleDefinition schedule)
+    public static JsonObject SaveSchedule(string project, ScheduleDefinition schedule)
     {
         if (schedule.Cron is null == schedule.Interval is null)
         {
             throw new ArgumentException("a schedule takes exactly one of Cron and Interval", nameof(schedule));
         }
-        var frame = Request("SAVE_SCHEDULE", database);
+        var frame = Request("SAVE_SCHEDULE", project);
         frame["name"] = schedule.Name;
         frame["procedureName"] = schedule.ProcedureName;
         Optional(frame, "cron", schedule.Cron);
@@ -86,11 +86,11 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
         return frame;
     }
 
-    public static JsonObject DeleteSchedule(string database, string name) =>
-        With(Request("DELETE_SCHEDULE", database), "name", name);
+    public static JsonObject DeleteSchedule(string project, string name) =>
+        With(Request("DELETE_SCHEDULE", project), "name", name);
 
-    public static JsonObject ListSchedules(string database, bool? includeArgs) =>
-        Optional(Request("LIST_SCHEDULES", database), "includeArgs", includeArgs);
+    public static JsonObject ListSchedules(string project, bool? includeArgs) =>
+        Optional(Request("LIST_SCHEDULES", project), "includeArgs", includeArgs);
 
     public static JsonObject CancelScript(string runId) => With(Request("CANCEL_SCRIPT"), "runId", runId);
 
@@ -131,7 +131,7 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
     {
         frame["admin"] = granted.Admin;
         frame["globalPermissions"] = Strings(granted.Global.Select(permission => WireNames.Upper(permission.ToString())));
-        frame["databasePermissions"] = Grants(granted.Databases);
+        frame["projectPermissions"] = Grants(granted.Projects);
         frame["collectionPermissions"] = Grants(granted.Collections);
         frame["scriptPermissions"] = Grants(granted.Scripts);
         return frame;

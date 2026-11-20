@@ -15,7 +15,7 @@ public class PkIndexListRowOfTest {
     private static List<PkIndexEntry> sortedRows() {
         final var rows = new ArrayList<PkIndexEntry>(ROWS);
         for (var i = 0; i < ROWS; i++) {
-            rows.add(new PkIndexEntry("rowOfDb", "rowOfColl", String.format("id-%05d", 2 * i), i, 1, 0));
+            rows.add(new PkIndexEntry("rowOfProject", "rowOfColl", String.format("id-%05d", 2 * i), i, 1, 0));
         }
         return rows;
     }

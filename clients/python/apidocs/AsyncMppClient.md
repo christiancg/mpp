@@ -23,24 +23,24 @@ Raises:
 
 The settings the client was created with.
 
-## database
+## project
 
-Returns the database with this name. Nothing is sent until a method is called on it.
+Returns the project with this name. Nothing is sent until a method is called on it.
 
 Args:
     name: 3-64 characters from A-Z a-z 0-9 _ -
 
-## list_databases
+## list_projects
 
-Lists the databases the caller can see.
+Lists the projects the caller can see.
 
 ## server_info
 
 Returns the server's build and readiness state. Allowed before authentication.
 
-## database_stats
+## project_stats
 
-Returns the server-wide statistics document (`GET_DATABASE_STATS` without a database).
+Returns the server-wide statistics document (`GET_PROJECT_STATS` without a project).
 
 ## change_password
 

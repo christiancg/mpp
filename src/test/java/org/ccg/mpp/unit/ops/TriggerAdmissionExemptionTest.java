@@ -54,10 +54,10 @@ public class TriggerAdmissionExemptionTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OUTPUT_COLL));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OUTPUT_COLL));
         TriggerTestSupport.createDefiner(OWNER);
     }
 
@@ -87,16 +87,16 @@ public class TriggerAdmissionExemptionTest {
         TestUtils.setPrivateField(configuration, "scriptMaxResultBytes", 16_777_216L);
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
         registry.clear();
     }
 
@@ -106,14 +106,14 @@ public class TriggerAdmissionExemptionTest {
     }
 
     private void storeWritingProcedure() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "job",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "job",
                 "import db from 'db'; import args from 'args'; db.save(db.name, '" + OUTPUT_COLL
                         + "', { _id: args.id, ok: true }); return 'ok';"),
                 OWNER);
     }
 
     private void installTrigger() {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "job",
                         TriggerDefinition.MODE_DOCUMENT, false, true, OWNER, 1L, 1L, 1L, OWNER)));
     }
@@ -123,26 +123,26 @@ public class TriggerAdmissionExemptionTest {
         args.add("id", new JsonString("schedule-under-saturation"));
         final var definition = new ScheduleDefinition("s", "job", null, 60_000L, args, 0L, true, OWNER, null, 1L, 1L,
                 1L, OWNER);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, "s", eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, "s");
-        registry.reload(TestGlobals.DB);
-        return registry.get(TestGlobals.DB, "s");
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, "s", eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        registry.reload(TestGlobals.PROJECT);
+        return registry.get(TestGlobals.PROJECT, "s");
     }
 
     private static TriggerEvent event() {
         final var data = new JsonObject();
         data.add("_id", new JsonString("trigger-under-saturation"));
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id("trigger-under-saturation");
         dbEntry.setData(data);
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "job", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "job", false,
                 List.of(dbEntry), OWNER, 0);
     }
 
     private JsonObject outputRow(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, OUTPUT_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, OUTPUT_COLL);
         request.set_id(id);
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;

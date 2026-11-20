@@ -55,17 +55,17 @@ describe("MppClient", () => {
 
     test("reads the server-level information", async () => {
         const started = await start({
-            LIST_DATABASES: (request) => ok(request, { databases: ["shop", "crm"] }),
+            LIST_PROJECTS: (request) => ok(request, { projects: ["shop", "crm"] }),
             SERVER_INFO: (request) => ok(request, { server: { state: "READY", version: "1.2", node: "n1" } }),
-            GET_DATABASE_STATS: (request) => ok(request, { stats: { databases: 2 } }),
+            GET_PROJECT_STATS: (request) => ok(request, { stats: { projects: 2 } }),
         });
-        expect(await started.listDatabases()).toEqual(["shop", "crm"]);
+        expect(await started.listProjects()).toEqual(["shop", "crm"]);
         expect(await started.serverInfo()).toEqual({
             state: "READY",
             version: "1.2",
             raw: { state: "READY", version: "1.2", node: "n1" },
         });
-        expect(await started.databaseStats()).toEqual({ databases: 2 });
+        expect(await started.projectStats()).toEqual({ projects: 2 });
         await started.changePassword("pw", "pw2");
         expect(server?.requestsOfType("SET_PASSWORD")).toEqual([
             { type: "SET_PASSWORD", username: "alice", currentPassword: "pw", newPassword: "pw2" },
@@ -76,7 +76,7 @@ describe("MppClient", () => {
     test("missing replies fall back to empty values", async () => {
         const started = await start();
         expect(await started.serverInfo()).toEqual({ state: undefined, version: undefined, raw: {} });
-        expect(await started.databaseStats()).toEqual({});
+        expect(await started.projectStats()).toEqual({});
     });
 
     test("changePassword needs credentials", async () => {
@@ -125,7 +125,7 @@ describe("MppClient", () => {
     test("a failed START_TRANSACTION returns the connection", async () => {
         const started = await start({ START_TRANSACTION: (request) => error(request, "ERROR", "409-3") });
         await expect(started.beginTransaction()).rejects.toThrow(/409-3/);
-        await expect(started.listDatabases()).resolves.toEqual([]);
+        await expect(started.listProjects()).resolves.toEqual([]);
     });
 
     test("an unknown commit outcome discards the connection without a rollback", async () => {
@@ -159,7 +159,7 @@ describe("MppClient", () => {
             encode: (order: { id: string }) => ({ _id: order.id }),
             decode: (document) => ({ id: document._id as string }),
         });
-        expect([orders.databaseName, orders.name]).toEqual(["shop", "orders"]);
+        expect([orders.projectName, orders.name]).toEqual(["shop", "orders"]);
         await orders.save({ id: "o-1" });
         expect(await orders.saveAll([{ id: "a" }])).toEqual({ inserted: ["a"], updated: [] });
         expect(await orders.findById("o-1")).toEqual({ id: "o-1" });
@@ -199,6 +199,6 @@ describe("MppClient", () => {
     test("requests after close fail fast", async () => {
         const started = await start();
         await started.close();
-        await expect(started.listDatabases()).rejects.toThrow(/the client is closed/);
+        await expect(started.listProjects()).rejects.toThrow(/the client is closed/);
     });
 });

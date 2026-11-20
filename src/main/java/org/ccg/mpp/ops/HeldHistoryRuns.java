@@ -20,7 +20,7 @@ final class HeldHistoryRuns {
     private static final int MAX_HELD_ROWS = 256;
 
     private final ReentrantLock lock = new ReentrantLock();
-    private final Map<String, List<ScriptRunHistoryEvent>> heldByDatabase = new HashMap<>();
+    private final Map<String, List<ScriptRunHistoryEvent>> heldByProject = new HashMap<>();
     private final Set<ScriptRunHistoryEvent> carriers = Collections.newSetFromMap(new IdentityHashMap<>());
     private final AtomicInteger rows = new AtomicInteger();
 
@@ -30,33 +30,33 @@ final class HeldHistoryRuns {
 
     boolean hold(ScriptRunHistoryEvent event, ScheduledExecutorService scheduler,
             Consumer<ScriptRunHistoryEvent> resubmit) {
-        final var dbName = event.getRecord().database();
-        if (scheduler == null || dbName == null || event.getRetries() > 0) {
+        final var projectName = event.getRecord().project();
+        if (scheduler == null || projectName == null || event.getRetries() > 0) {
             return false;
         }
-        final var held = enqueue(dbName, event);
+        final var held = enqueue(projectName, event);
         if (held == Held.FIRST) {
             try {
-                scheduler.schedule(() -> release(dbName, resubmit), Globals.SCRIPT_HISTORY_COALESCE_MS,
+                scheduler.schedule(() -> release(projectName, resubmit), Globals.SCRIPT_HISTORY_COALESCE_MS,
                         TimeUnit.MILLISECONDS);
             } catch (RejectedExecutionException stopping) {
-                release(dbName, resubmit);
+                release(projectName, resubmit);
             }
         }
         return held != Held.NO;
     }
 
-    private Held enqueue(String dbName, ScriptRunHistoryEvent event) {
+    private Held enqueue(String projectName, ScriptRunHistoryEvent event) {
         lock.lock();
         try {
             if (carriers.remove(event)) {
                 return Held.NO;
             }
-            final var waiting = heldByDatabase.get(dbName);
+            final var waiting = heldByProject.get(projectName);
             if (waiting != null && waiting.size() >= MAX_HELD_ROWS) {
                 return Held.NO;
             }
-            heldByDatabase.computeIfAbsent(dbName, _ -> new ArrayList<>()).add(event);
+            heldByProject.computeIfAbsent(projectName, _ -> new ArrayList<>()).add(event);
             rows.incrementAndGet();
             return waiting == null ? Held.FIRST : Held.YES;
         } finally {
@@ -64,22 +64,22 @@ final class HeldHistoryRuns {
         }
     }
 
-    private void release(String dbName, Consumer<ScriptRunHistoryEvent> resubmit) {
-        final var carrier = takeCarrier(dbName);
+    private void release(String projectName, Consumer<ScriptRunHistoryEvent> resubmit) {
+        final var carrier = takeCarrier(projectName);
         if (carrier != null) {
             resubmit.accept(carrier);
         }
     }
 
-    private ScriptRunHistoryEvent takeCarrier(String dbName) {
+    private ScriptRunHistoryEvent takeCarrier(String projectName) {
         lock.lock();
         try {
-            final var waiting = heldByDatabase.get(dbName);
+            final var waiting = heldByProject.get(projectName);
             if (waiting == null) {
                 return null;
             }
             if (waiting.isEmpty()) {
-                heldByDatabase.remove(dbName);
+                heldByProject.remove(projectName);
                 return null;
             }
             final var carrier = waiting.removeFirst();
@@ -92,13 +92,13 @@ final class HeldHistoryRuns {
     }
 
     List<ScriptRunHistoryEvent> takeWith(List<ScriptRunHistoryEvent> batch) {
-        final var dbName = batch.getFirst().getRecord().database();
+        final var projectName = batch.getFirst().getRecord().project();
         lock.lock();
         try {
             for (final var event : batch) {
                 carriers.remove(event);
             }
-            final var waiting = dbName == null ? null : heldByDatabase.remove(dbName);
+            final var waiting = projectName == null ? null : heldByProject.remove(projectName);
             if (waiting == null || waiting.isEmpty()) {
                 return batch;
             }
@@ -116,12 +116,12 @@ final class HeldHistoryRuns {
         lock.lock();
         try {
             final var taken = new ArrayList<List<ScriptRunHistoryEvent>>();
-            for (final var waiting : heldByDatabase.values()) {
+            for (final var waiting : heldByProject.values()) {
                 if (!waiting.isEmpty()) {
                     taken.add(waiting);
                 }
             }
-            heldByDatabase.clear();
+            heldByProject.clear();
             carriers.clear();
             rows.set(0);
             return taken;

@@ -33,7 +33,7 @@ final class DocumentPageStore {
     }
 
     DbEntry getById(PkIndexEntry pkIndexEntry) throws IOException {
-        final var file = paths.collectionPage(pkIndexEntry.getDatabaseName(), pkIndexEntry.getCollectionName(),
+        final var file = paths.collectionPage(pkIndexEntry.getProjectName(), pkIndexEntry.getCollectionName(),
                 pkIndexEntry.getPage());
         final var lock = FileLocks.lockRead(file);
         try (var reader = new RandomAccessFile(file, Globals.R_PERMISSIONS)) {
@@ -51,7 +51,7 @@ final class DocumentPageStore {
         final var byPage = entries.stream().collect(Collectors.groupingBy(PkIndexEntry::getPage));
         for (var pageGroup : byPage.entrySet()) {
             final var first = pageGroup.getValue().getFirst();
-            final var file = paths.collectionPage(first.getDatabaseName(), first.getCollectionName(),
+            final var file = paths.collectionPage(first.getProjectName(), first.getCollectionName(),
                     pageGroup.getKey());
             final var pageEntries = pageGroup.getValue().stream()
                     .sorted(Comparator.comparingLong(PkIndexEntry::getPosition)).toList();
@@ -67,8 +67,9 @@ final class DocumentPageStore {
         return result;
     }
 
-    Map<String, DbEntry> readWholeCollectionPage(String dbName, String collectionName, long page) throws IOException {
-        final var collectionFile = paths.collectionPage(dbName, collectionName, page);
+    Map<String, DbEntry> readWholeCollectionPage(String projectName, String collectionName, long page)
+            throws IOException {
+        final var collectionFile = paths.collectionPage(projectName, collectionName, page);
         if (!collectionFile.exists()) {
             return new HashMap<>();
         }
@@ -79,7 +80,7 @@ final class DocumentPageStore {
                 return;
             }
             try {
-                final var entry = DbEntry.fromBytes(dbName, collectionName, bytes, start, end);
+                final var entry = DbEntry.fromBytes(projectName, collectionName, bytes, start, end);
                 entry.setPage(page);
                 result.put(entry.get_id(), entry);
             } catch (Exception e) {
@@ -89,8 +90,8 @@ final class DocumentPageStore {
         return result;
     }
 
-    Stream<Map<String, DbEntry>> streamPages(String dbName, String collName) throws IOException {
-        final var collectionFolder = paths.collectionFolder(dbName, collName).toPath();
+    Stream<Map<String, DbEntry>> streamPages(String projectName, String collName) throws IOException {
+        final var collectionFolder = paths.collectionFolder(projectName, collName).toPath();
         if (!Files.exists(collectionFolder)) {
             return Stream.empty();
         }
@@ -102,7 +103,7 @@ final class DocumentPageStore {
         }
         return pages.stream().map(page -> {
             try {
-                return readWholeCollectionPage(dbName, collName, page);
+                return readWholeCollectionPage(projectName, collName, page);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -114,16 +115,16 @@ final class DocumentPageStore {
         return Long.parseLong(fileParts[fileParts.length - 1]);
     }
 
-    Stream<DbEntry> streamEntries(String dbName, String collName) throws IOException {
-        return streamPages(dbName, collName).flatMap(map -> map.values().stream());
+    Stream<DbEntry> streamEntries(String projectName, String collName) throws IOException {
+        return streamPages(projectName, collName).flatMap(map -> map.values().stream());
     }
 
-    Map<Long, Long> pageFileLengths(String dbName, String collName) throws IOException {
-        return pageFileLengths(paths, dbName, collName);
+    Map<Long, Long> pageFileLengths(String projectName, String collName) throws IOException {
+        return pageFileLengths(paths, projectName, collName);
     }
 
-    static Map<Long, Long> pageFileLengths(FilePaths paths, String dbName, String collName) throws IOException {
-        final var collectionFolder = paths.collectionFolder(dbName, collName).toPath();
+    static Map<Long, Long> pageFileLengths(FilePaths paths, String projectName, String collName) throws IOException {
+        final var collectionFolder = paths.collectionFolder(projectName, collName).toPath();
         final var lengths = new TreeMap<Long, Long>();
         if (!Files.exists(collectionFolder)) {
             return lengths;
@@ -135,8 +136,8 @@ final class DocumentPageStore {
         return lengths;
     }
 
-    long pageFileCount(String dbName, String collName) throws IOException {
-        final var collectionFolder = paths.collectionFolder(dbName, collName).toPath();
+    long pageFileCount(String projectName, String collName) throws IOException {
+        final var collectionFolder = paths.collectionFolder(projectName, collName).toPath();
         if (!Files.exists(collectionFolder)) {
             return 0;
         }
@@ -181,7 +182,7 @@ final class DocumentPageStore {
                     + "'; run REINDEX on this collection");
         }
         final var entry = new DbEntry();
-        entry.setDatabaseName(pkIndexEntry.getDatabaseName());
+        entry.setProjectName(pkIndexEntry.getProjectName());
         entry.setCollectionName(pkIndexEntry.getCollectionName());
         entry.set_id(pkIndexEntry.getValue());
         entry.setData(jsonObject);

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from mpp import AsyncDatabase, MapOps, MidOps, Order, field
+from mpp import AsyncProject, MapOps, MidOps, Order, field
 from mpp.query.types import CountStep, LimitStep, SkipStep
 from tests.support.recording_channel import RecordingChannel, ok, recording_context
 
 
 def _orders(channel: RecordingChannel):
-    return AsyncDatabase(recording_context(channel), "shop").collection("orders")
+    return AsyncProject(recording_context(channel), "shop").collection("orders")
 
 
 def test_a_query_is_immutable_and_reusable() -> None:

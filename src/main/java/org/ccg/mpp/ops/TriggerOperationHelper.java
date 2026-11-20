@@ -37,11 +37,11 @@ public final class TriggerOperationHelper {
 
     public static OperationResponse executeSave(SaveTriggerRequest request, String actingUser)
             throws IOException, InterruptedException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.SAVE_TRIGGER, "Collection '" + collName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         if (Globals.SCRIPT_RUNS_COLLECTION_NAME.equals(collName)) {
             return new OperationResponse(
@@ -75,43 +75,43 @@ public final class TriggerOperationHelper {
         if (timingError != null) {
             return timingError;
         }
-        if (lacksEnabledProcedure(dbName, request.getProcedureName())) {
-            return procedureNotFound(dbName, request.getProcedureName());
+        if (lacksEnabledProcedure(projectName, request.getProcedureName())) {
+            return procedureNotFound(projectName, request.getProcedureName());
         }
-        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        locks.lock(projectName, Globals.PROCEDURES_FOLDER);
         try {
-            if (lacksEnabledProcedure(dbName, request.getProcedureName())) {
-                return procedureNotFound(dbName, request.getProcedureName());
+            if (lacksEnabledProcedure(projectName, request.getProcedureName())) {
+                return procedureNotFound(projectName, request.getProcedureName());
             }
             return persistDefinition(request, actingUser, mode, timing, events);
         } finally {
-            locks.release(dbName, Globals.PROCEDURES_FOLDER);
+            locks.release(projectName, Globals.PROCEDURES_FOLDER);
         }
     }
 
-    private static boolean lacksEnabledProcedure(String dbName, String procedureName) {
-        final var procedure = cache.getProcedure(dbName, procedureName);
+    private static boolean lacksEnabledProcedure(String projectName, String procedureName) {
+        final var procedure = cache.getProcedure(projectName, procedureName);
         return procedure == null || !procedure.isEnabled();
     }
 
-    private static OperationResponse procedureNotFound(String dbName, String procedureName) {
+    private static OperationResponse procedureNotFound(String projectName, String procedureName) {
         return new OperationResponse(OperationType.SAVE_TRIGGER,
-                "Procedure '" + procedureName + "' not found in database '" + dbName + "'",
+                "Procedure '" + procedureName + "' not found in project '" + projectName + "'",
                 ErrorCode.PROCEDURE_NOT_FOUND);
     }
 
     private static OperationResponse persistDefinition(SaveTriggerRequest request, String actingUser, String mode,
             String timing, LinkedHashSet<EventType> events) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var existingList = new ArrayList<>(cache.getTriggersFor(dbName, collName));
+        final var existingList = new ArrayList<>(cache.getTriggersFor(projectName, collName));
         final var existing = findByName(existingList, request.getName());
         if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
             return new OperationResponse(OperationType.SAVE_TRIGGER, ErrorCode.PROCEDURE_VERSION_CONFLICT);
         }
         final var foreign = existing == null
                 ? null
-                : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.SAVE_TRIGGER, dbName,
+                : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.SAVE_TRIGGER, projectName,
                         existing.getDefiner(), actingUser);
         if (foreign != null) {
             return foreign;
@@ -125,7 +125,7 @@ public final class TriggerOperationHelper {
         final var definition = newDefinition(request, existing, actingUser, mode, timing, events);
         existingList.removeIf(trigger -> trigger.getName().equals(definition.getName()));
         existingList.add(definition);
-        persist(dbName, collName, existingList);
+        persist(projectName, collName, existingList);
         return new SaveTriggerResponse("Trigger saved successfully", definition.getVersion(), definition.getDefiner());
     }
 
@@ -162,11 +162,11 @@ public final class TriggerOperationHelper {
     }
 
     public static OperationResponse executeTest(TestTriggerRequest request, String actingUser) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.TEST_TRIGGER, "Collection '" + collName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         if (!configuration.isScriptsEnabled()) {
             return new OperationResponse(OperationType.TEST_TRIGGER, ErrorCode.SCRIPTS_DISABLED);
@@ -183,7 +183,7 @@ public final class TriggerOperationHelper {
                     ErrorCode.INVALID_TRIGGER.getDefaultMessage() + ": a document is required",
                     ErrorCode.INVALID_TRIGGER);
         }
-        final var trigger = findByName(cache.getTriggersFor(dbName, collName), request.getName());
+        final var trigger = findByName(cache.getTriggersFor(projectName, collName), request.getName());
         if (trigger == null) {
             return new OperationResponse(OperationType.TEST_TRIGGER,
                     "Trigger '" + request.getName() + "' not found on collection '" + collName + "'",
@@ -199,10 +199,10 @@ public final class TriggerOperationHelper {
             return new OperationResponse(OperationType.TEST_TRIGGER, ErrorCode.INVALID_TRIGGER.getDefaultMessage()
                     + ": trigger '" + trigger.getName() + "' does not watch " + event, ErrorCode.INVALID_TRIGGER);
         }
-        final var procedure = cache.getProcedure(dbName, trigger.getProcedureName());
+        final var procedure = cache.getProcedure(projectName, trigger.getProcedureName());
         if (procedure == null || !procedure.isEnabled()) {
             return new OperationResponse(OperationType.TEST_TRIGGER,
-                    "Procedure '" + trigger.getProcedureName() + "' not found in database '" + dbName + "'",
+                    "Procedure '" + trigger.getProcedureName() + "' not found in project '" + projectName + "'",
                     ErrorCode.PROCEDURE_NOT_FOUND);
         }
         return runTest(request, trigger, event, actingUser);
@@ -214,7 +214,7 @@ public final class TriggerOperationHelper {
         final var id = document.has(Globals.PK_FIELD) && document.get(Globals.PK_FIELD).isJsonString()
                 ? document.get(Globals.PK_FIELD).asJsonString().getValue()
                 : null;
-        try (var hooks = BeforeHookContext.openForTest(request.getDatabaseName(), request.getCollectionName(), event,
+        try (var hooks = BeforeHookContext.openForTest(request.getProjectName(), request.getCollectionName(), event,
                 actingUser, trigger)) {
             final var outcome = hooks.apply(document, id, OperationType.TEST_TRIGGER);
             if (!outcome.isRejected()) {
@@ -233,23 +233,23 @@ public final class TriggerOperationHelper {
     }
 
     public static OperationResponse executeDelete(DeleteTriggerRequest request, String actingUser) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
             return new OperationResponse(OperationType.DELETE_TRIGGER, "Collection '" + collName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
-        final var remaining = new ArrayList<>(cache.getTriggersFor(dbName, collName));
+        final var remaining = new ArrayList<>(cache.getTriggersFor(projectName, collName));
         final var existing = findByName(remaining, request.getName());
         final var foreign = existing == null
                 ? null
-                : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.DELETE_TRIGGER, dbName,
+                : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.DELETE_TRIGGER, projectName,
                         existing.getDefiner(), actingUser);
         if (foreign != null) {
             return foreign;
         }
         remaining.removeIf(trigger -> trigger.getName().equals(request.getName()));
-        persist(dbName, collName, remaining);
+        persist(projectName, collName, remaining);
         return OperationResponse.ok(OperationType.DELETE_TRIGGER, "Trigger deleted successfully");
     }
 
@@ -259,17 +259,17 @@ public final class TriggerOperationHelper {
     }
 
     private static OperationResponse listTriggers(ListTriggersRequest request) {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.LIST_TRIGGERS, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.LIST_TRIGGERS, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var collNames = request.getCollectionName() == null || request.getCollectionName().isBlank()
-                ? cache.getCollectionNamesForDatabase(dbName)
+                ? cache.getCollectionNamesForProject(projectName)
                 : List.of(request.getCollectionName());
         final var result = new ArrayList<JsonObject>();
         for (final var collName : collNames) {
-            for (final var trigger : cache.getTriggersFor(dbName, collName)) {
+            for (final var trigger : cache.getTriggersFor(projectName, collName)) {
                 final var json = trigger.toJsonObject();
                 json.addProperty("collectionName", collName);
                 result.add(json);
@@ -278,35 +278,35 @@ public final class TriggerOperationHelper {
         return new ListTriggersResponse("Ok", result);
     }
 
-    public static boolean disable(String dbName, String collName, TriggerDefinition dispatched, String reason)
+    public static boolean disable(String projectName, String collName, TriggerDefinition dispatched, String reason)
             throws IOException, InterruptedException {
-        if (!locks.tryLockWrite(dbName, collName, OperationLocks.lockBudgetMillis(false))) {
+        if (!locks.tryLockWrite(projectName, collName, OperationLocks.lockBudgetMillis(false))) {
             return false;
         }
         try {
-            final var current = new ArrayList<>(cache.getTriggersFor(dbName, collName));
+            final var current = new ArrayList<>(cache.getTriggersFor(projectName, collName));
             final var existing = findByName(current, dispatched.getName());
             if (existing == null || !existing.isEnabled() || existing.getVersion() != dispatched.getVersion()) {
                 return false;
             }
             current.set(current.indexOf(existing), existing.disabledCopy(reason, System.currentTimeMillis()));
-            persist(dbName, collName, current);
+            persist(projectName, collName, current);
             return true;
         } finally {
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
         }
     }
 
-    public static List<TriggerDefinition> triggersIn(String dbName) {
+    public static List<TriggerDefinition> triggersIn(String projectName) {
         final var result = new ArrayList<TriggerDefinition>();
-        for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
-            result.addAll(cache.getTriggersFor(dbName, collName));
+        for (final var collName : cache.getCollectionNamesForProject(projectName)) {
+            result.addAll(cache.getTriggersFor(projectName, collName));
         }
         return result;
     }
 
-    public static String triggerReferencing(String dbName, String procedureName) {
-        for (final var trigger : triggersIn(dbName)) {
+    public static String triggerReferencing(String projectName, String procedureName) {
+        for (final var trigger : triggersIn(projectName)) {
             if (procedureName.equals(trigger.getProcedureName())) {
                 return trigger.getName();
             }
@@ -314,17 +314,17 @@ public final class TriggerOperationHelper {
         return null;
     }
 
-    private static void persist(String dbName, String collName, List<TriggerDefinition> definitions)
+    private static void persist(String projectName, String collName, List<TriggerDefinition> definitions)
             throws IOException {
         if (definitions.isEmpty()) {
-            if (fs.metadataFiles().deleteTriggers(dbName, collName)) {
-                AdminStamp.tombstone(AdminRecordKey.triggers(dbName, collName));
+            if (fs.metadataFiles().deleteTriggers(projectName, collName)) {
+                AdminStamp.tombstone(AdminRecordKey.triggers(projectName, collName));
             }
-            cache.removeTriggers(dbName, collName);
+            cache.removeTriggers(projectName, collName);
             return;
         }
-        StoredDefinitions.writeTriggers(dbName, collName, TriggerDefinition.toFileJson(definitions));
-        cache.putTriggers(dbName, collName, definitions);
+        StoredDefinitions.writeTriggers(projectName, collName, TriggerDefinition.toFileJson(definitions));
+        cache.putTriggers(projectName, collName, definitions);
     }
 
     private static TriggerDefinition findByName(List<TriggerDefinition> definitions, String name) {

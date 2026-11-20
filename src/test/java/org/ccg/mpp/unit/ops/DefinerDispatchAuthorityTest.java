@@ -71,10 +71,10 @@ public class DefinerDispatchAuthorityTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OUTPUT_COLL));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OUTPUT_COLL));
         TriggerTestSupport.createDefiner(OWNER);
     }
 
@@ -94,13 +94,13 @@ public class DefinerDispatchAuthorityTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TriggerTestSupport.clearTriggersAndProcedures();
         TriggerTestSupport.consumeAllPendingRuns();
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
         registry.clear();
         grant(PermissionLevel.READ_WRITE, ScriptPermissionLevel.RUN);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "job",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "job",
                 "import db from 'db'; import args from 'args'; db.save(db.name, '" + OUTPUT_COLL
                         + "', { _id: args.id || args.document._id, ok: true }); return 'ok';"),
                 OWNER);
@@ -113,26 +113,26 @@ public class DefinerDispatchAuthorityTest {
                 ConfigKey.TRIGGER_RUN_RETENTION_MS.defaultValue());
         admission.reconfigure(configuration.getMaxConcurrentScripts(), configuration.getScriptQueueWaitMs(),
                 Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER.defaultValue()),
-                Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_DATABASE.defaultValue()));
+                Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT.defaultValue()));
     }
 
-    private static void grant(PermissionLevel databaseLevel, ScriptPermissionLevel scriptLevel) throws Exception {
-        final var databasePermissions = new HashMap<String, PermissionLevel>();
-        if (databaseLevel != null) {
-            databasePermissions.put(TestGlobals.DB, databaseLevel);
+    private static void grant(PermissionLevel projectLevel, ScriptPermissionLevel scriptLevel) throws Exception {
+        final var projectPermissions = new HashMap<String, PermissionLevel>();
+        if (projectLevel != null) {
+            projectPermissions.put(TestGlobals.PROJECT, projectLevel);
         }
         final var collectionPermissions = new HashMap<String, PermissionLevel>();
-        collectionPermissions.put(TestGlobals.DB + "|" + OUTPUT_COLL, PermissionLevel.READ_WRITE);
+        collectionPermissions.put(TestGlobals.PROJECT + "|" + OUTPUT_COLL, PermissionLevel.READ_WRITE);
         final var scriptPermissions = new HashMap<String, ScriptPermissionLevel>();
-        scriptPermissions.put(TestGlobals.DB, scriptLevel);
+        scriptPermissions.put(TestGlobals.PROJECT, scriptLevel);
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(DEFINER, "hash", false, new HashSet<>(),
-                databasePermissions, collectionPermissions, scriptPermissions));
+                projectPermissions, collectionPermissions, scriptPermissions));
     }
 
     private void installTrigger() {
         final var trigger = new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "job",
                 TriggerDefinition.MODE_DOCUMENT, false, true, DEFINER, 1L, 1L, 1L, DEFINER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(trigger));
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(trigger));
     }
 
     private ScheduleRegistry.Entry registerSchedule(String id) throws Exception {
@@ -140,32 +140,32 @@ public class DefinerDispatchAuthorityTest {
         args.add("id", new JsonString(id));
         final var definition = new ScheduleDefinition("s", "job", null, 60_000L, args, 0L, true, DEFINER, null, 1L, 1L,
                 1L, DEFINER);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, "s", eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, "s");
-        registry.reload(TestGlobals.DB);
-        return registry.get(TestGlobals.DB, "s");
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, "s", eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        registry.reload(TestGlobals.PROJECT);
+        return registry.get(TestGlobals.PROJECT, "s");
     }
 
     private static TriggerEvent event(String id, String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "job", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "job", false,
                 List.of(TriggerTestSupport.entry(id)), OWNER, 0, runId);
     }
 
     private static String recordThrottledRun() {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "job", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(),
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "job", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(),
                 List.of(TriggerTestSupport.entry(THROTTLED_ID))));
     }
 
     private JsonObject outputRow(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, OUTPUT_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, OUTPUT_COLL);
         request.set_id(id);
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
     }
 
     private TriggerDefinition storedTrigger() {
-        return cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        return cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
     }
 
     @Test
@@ -188,7 +188,7 @@ public class DefinerDispatchAuthorityTest {
         assertFalse(stored.isEnabled());
         assertEquals(2L, stored.getVersion());
         assertTrue(stored.getDisabledReason().contains("READ on collection '" + TestGlobals.COLL + "'"));
-        assertTrue(fs.metadataFiles().readTriggers(TestGlobals.DB, TestGlobals.COLL).contains("disabledReason"),
+        assertTrue(fs.metadataFiles().readTriggers(TestGlobals.PROJECT, TestGlobals.COLL).contains("disabledReason"),
                 "the disable is persisted, not only cached");
     }
 
@@ -204,7 +204,8 @@ public class DefinerDispatchAuthorityTest {
         assertNull(outputRow("still-disabled"), "re-granting alone does not revive a disabled trigger");
 
         final var saved = TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), "job"), OWNER);
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), "job"),
+                OWNER);
         assertEquals(OperationStatus.OK, saved.getStatus());
         assertTrue(storedTrigger().isEnabled());
         assertNull(storedTrigger().getDisabledReason());
@@ -222,10 +223,10 @@ public class DefinerDispatchAuthorityTest {
 
         assertNull(outputRow("schedule-revoked"));
         assertEquals(skipped + 1, scheduleExecutor.getSkipped());
-        final var stored = cache.getSchedule(TestGlobals.DB, "s");
+        final var stored = cache.getSchedule(TestGlobals.PROJECT, "s");
         assertFalse(stored.isEnabled());
-        assertTrue(stored.getDisabledReason().contains("script RUN on database"));
-        assertFalse(registry.get(TestGlobals.DB, "s").getDefinition().isEnabled(), "the registry stops firing it");
+        assertTrue(stored.getDisabledReason().contains("script RUN on project"));
+        assertFalse(registry.get(TestGlobals.PROJECT, "s").getDefinition().isEnabled(), "the registry stops firing it");
     }
 
     @Test
@@ -233,7 +234,8 @@ public class DefinerDispatchAuthorityTest {
         final var entry = registerSchedule("schedule-throttled");
         admission.reconfigure(0, 0L, 1, 0);
         final var skipped = scheduleExecutor.getSkipped();
-        try (var _ = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquireSlices(DEFINER, TestGlobals.DB))) {
+        try (var _ = assertInstanceOf(ScriptAdmission.Permit.class,
+                admission.acquireSlices(DEFINER, TestGlobals.PROJECT))) {
             ScheduleDispatcher.dispatch(entry);
         }
         assertNull(outputRow("schedule-throttled"), "the definer's slice was full, so this occurrence is skipped");
@@ -241,7 +243,7 @@ public class DefinerDispatchAuthorityTest {
 
         ScheduleDispatcher.dispatch(entry);
         assertNotNull(outputRow("schedule-throttled"));
-        assertAdmitted(admission.acquireSlices(DEFINER, TestGlobals.DB), "the run released its slice");
+        assertAdmitted(admission.acquireSlices(DEFINER, TestGlobals.PROJECT), "the run released its slice");
     }
 
     @Test
@@ -249,7 +251,8 @@ public class DefinerDispatchAuthorityTest {
         installTrigger();
         admission.reconfigure(0, 0L, 1, 0);
         final var runId = recordThrottledRun();
-        try (var _ = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquireSlices(DEFINER, TestGlobals.DB))) {
+        try (var _ = assertInstanceOf(ScriptAdmission.Permit.class,
+                admission.acquireSlices(DEFINER, TestGlobals.PROJECT))) {
             TriggerDispatcher.dispatch(event(THROTTLED_ID, runId));
         }
         assertNull(outputRow(THROTTLED_ID));
@@ -261,8 +264,8 @@ public class DefinerDispatchAuthorityTest {
     }
 
     private String recordRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "job", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(),
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "job", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(),
                 List.of(TriggerTestSupport.entry(id))));
     }
 
@@ -311,7 +314,7 @@ public class DefinerDispatchAuthorityTest {
         asNonDecidingNode();
         TriggerDispatcher.dispatch(event("arrives-disabled", runId));
 
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(storedTrigger().disabledCopy("definer revoked", System.currentTimeMillis())));
         TriggerDispatcher.dispatch(event("arrives-disabled", runId));
 

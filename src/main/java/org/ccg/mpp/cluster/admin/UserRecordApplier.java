@@ -57,7 +57,7 @@ final class UserRecordApplier {
 
     private static boolean underUsersLock(AdminRecord record, UserChange change) throws Exception {
         final var waitMillis = clusterConfig.replicationAckTimeoutMs();
-        if (!locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME, waitMillis)) {
+        if (!locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME, waitMillis)) {
             logger.warning("Skipping " + record.key().id() + ": the users lock stayed held for " + waitMillis
                     + "ms. The next round retries it.");
             return false;
@@ -66,7 +66,7 @@ final class UserRecordApplier {
             change.apply();
             return true;
         } finally {
-            locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
+            locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME);
         }
     }
 }

@@ -54,7 +54,7 @@ public class SchemaPatternCapsOperationTest {
     @BeforeEach
     void reset() throws Exception {
         BeforeHookTestSupport.reset();
-        processor.processMessage(new DeleteSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        processor.processMessage(new DeleteSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @AfterEach
@@ -76,14 +76,14 @@ public class SchemaPatternCapsOperationTest {
     }
 
     private SaveSchemaRequest saveSchema(String schema) {
-        return new SaveSchemaRequest(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson(schema, JsonObject.class));
+        return new SaveSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL, eJson.fromJson(schema, JsonObject.class));
     }
 
     private static SaveRequest save(String id, String value) {
         final var document = new JsonObject();
         document.add("_id", new JsonString(id));
         document.add("p0", new JsonString(value));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         request.set_id(id);
         return request;
@@ -99,8 +99,8 @@ public class SchemaPatternCapsOperationTest {
         assertEquals(ErrorCode.SCHEMA_TOO_MANY_PATTERNS.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().startsWith(ErrorCode.SCHEMA_TOO_MANY_PATTERNS.getDefaultMessage()));
         assertFalse(compiledPatterns().containsKey("^caps-a$"));
-        assertNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -110,7 +110,7 @@ public class SchemaPatternCapsOperationTest {
         final var response = processor.processMessage(saveSchema(schemaWithPatterns("^at-a$", "^at-b$", "^at-c$")));
 
         assertInstanceOf(SaveSchemaResponse.class, response);
-        assertNotNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -120,17 +120,17 @@ public class SchemaPatternCapsOperationTest {
         final var response = processor.processMessage(saveSchema(schemaWithPatterns(tooLong)));
 
         assertEquals(ErrorCode.SCHEMA_PATTERN_TOO_LONG.getCode(), response.getErrorCode());
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_stored_schema_over_the_caps_is_loaded_and_still_validates_writes() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                 schemaWithPatterns("^stored-[a-z]+$", "^other$"));
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.setPrivateField(configuration, MAX_PATTERNS, 1);
 
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(OperationStatus.OK, processor.processMessage(save("stored-ok", "stored-abc")).getStatus());
         assertEquals(ErrorCode.SCHEMA_VALIDATION_FAILED.getCode(),
                 processor.processMessage(save("stored-bad", "stored-123")).getErrorCode());

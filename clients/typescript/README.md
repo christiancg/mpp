@@ -22,7 +22,7 @@ const client = await MppClient.connect({
     credentials: { username: "admin", password: process.env.MPP_PASSWORD ?? "" },
 });
 
-const shop = client.database("shop");
+const shop = client.project("shop");
 await shop.create();
 const orders = shop.collection("orders");
 await orders.create();

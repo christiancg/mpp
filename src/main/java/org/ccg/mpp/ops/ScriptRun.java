@@ -7,7 +7,7 @@ import java.util.concurrent.locks.LockSupport;
 public final class ScriptRun {
     private final String runId = UUID.randomUUID().toString();
     private final ScriptRunKind kind;
-    private final String database;
+    private final String project;
     private final String name;
     private final String username;
     private final UUID clientId;
@@ -15,9 +15,9 @@ public final class ScriptRun {
     private final Thread thread = Thread.currentThread();
     private final AtomicBoolean cancelled = new AtomicBoolean();
 
-    ScriptRun(ScriptRunKind kind, String database, String name, String username, UUID clientId) {
+    ScriptRun(ScriptRunKind kind, String project, String name, String username, UUID clientId) {
         this.kind = kind;
-        this.database = database;
+        this.project = project;
         this.name = name;
         this.username = username;
         this.clientId = clientId;
@@ -31,8 +31,8 @@ public final class ScriptRun {
         return kind;
     }
 
-    public String database() {
-        return database;
+    public String project() {
+        return project;
     }
 
     public String name() {

@@ -47,7 +47,7 @@ public class DataOnlyStringCoercionTest {
     }
 
     @Test
-    public void test_the_database_custom_types_render_as_their_wire_text() {
+    public void test_the_project_custom_types_render_as_their_wire_text() {
         assertEquals("#geo(1.0,2.0)|#vector(1.0,2.0)|#datetime(2026-01-02T03:04:05)|#time(03:04:05)", str("""
                 [
                     Geo.from({ lat: 1, lng: 2 }),

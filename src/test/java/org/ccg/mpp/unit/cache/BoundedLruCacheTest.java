@@ -67,13 +67,13 @@ public class BoundedLruCacheTest {
     @Test
     public void test_remove_if_drops_matching_keys_and_bytes() {
         final var cache = byBytes(0L);
-        cache.put("db1|x", "12345");
-        cache.put("db1|y", "12345");
-        cache.put("db2|z", "12345");
-        cache.removeIf(key -> key.startsWith("db1|"));
+        cache.put("project1|x", "12345");
+        cache.put("project1|y", "12345");
+        cache.put("project2|z", "12345");
+        cache.removeIf(key -> key.startsWith("project1|"));
         assertEquals(1, cache.size());
         assertEquals(5L, cache.bytes());
-        assertNotNull(cache.get("db2|z"));
+        assertNotNull(cache.get("project2|z"));
     }
 
     @Test

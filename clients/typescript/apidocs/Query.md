@@ -48,7 +48,7 @@ Groups the rows by a field's value. Each output row holds the value and the grou
 
 Adds, to each row, the rows of another collection whose `remoteField` equals the row's `localField`.
 
-@param collection the other collection, in the same database
+@param collection the other collection, in the same project
 @param localField the field of this collection's rows
 @param remoteField the field of the other collection's rows
 @param asField where the matches are stored

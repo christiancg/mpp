@@ -61,7 +61,7 @@ public class TriggersOnReplicationTimeoutTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origEnabled = config.isClusterEnabled();
         origTriggers = config.isTriggersEnabled();
         origExpected = config.getClusterExpectedSize();
@@ -71,7 +71,7 @@ public class TriggersOnReplicationTimeoutTest {
         captured.clear();
         triggerExecutor.stop();
         triggerExecutor.start(captured::add);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit",
                         new LinkedHashSet<>(Set.of(EventType.CREATED, EventType.UPDATED, EventType.DELETED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
@@ -110,7 +110,7 @@ public class TriggersOnReplicationTimeoutTest {
     }
 
     private org.ccg.mpp.ops.resp.OperationResponse save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         return processor.processMessage(request);
@@ -145,7 +145,7 @@ public class TriggersOnReplicationTimeoutTest {
 
     @Test
     public void test_bulk_save_triggers_fire_when_replication_times_out() {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(document("b1"), document("b2")));
 
         final var response = processor.processMessage(request);
@@ -159,7 +159,7 @@ public class TriggersOnReplicationTimeoutTest {
         save("d1");
         settle();
         captured.clear();
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("d1");
 
         final var response = processor.processMessage(request);

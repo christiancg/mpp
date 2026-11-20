@@ -6,12 +6,12 @@ namespace Mpp.Client.IntegrationTests.Support;
 
 public static class Seed
 {
-    public static async Task QueryDataAsync(MppClient client, string databaseName)
+    public static async Task QueryDataAsync(MppClient client, string projectName)
     {
-        var database = client.Database(databaseName);
-        await database.CreateAsync();
-        var orders = database.Collection("orders");
-        var customers = database.Collection("customers");
+        var project = client.Project(projectName);
+        await project.CreateAsync();
+        var orders = project.Collection("orders");
+        var customers = project.Collection("customers");
         await orders.CreateAsync();
         await customers.CreateAsync();
         await orders.SaveAllAsync(Enumerable.Range(0, 20).Select(i => Document.Of(

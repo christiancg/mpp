@@ -50,7 +50,7 @@ public class ComprehensiveAggregationCoverageTest {
             tagArr.add(new JsonString(t));
         }
         obj.add("tags", tagArr);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(obj);
         processor.processMessage(request);
     }
@@ -63,7 +63,7 @@ public class ComprehensiveAggregationCoverageTest {
     }
 
     private List<JsonObject> run(BaseAggregationStep step) throws Exception {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(step));
         return AggregationOperationHelper.processAggregation(request);
     }
@@ -79,7 +79,7 @@ public class ComprehensiveAggregationCoverageTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         seed("d1", 10, "a", "x", "y");
         seed("d2", 20, "b", "y", "z");
@@ -146,7 +146,7 @@ public class ComprehensiveAggregationCoverageTest {
         final var remote = new JsonObject();
         remote.addProperty("_id", "r1");
         remote.addProperty("key", "a");
-        final var joinSave = new SaveRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        final var joinSave = new SaveRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         joinSave.setObject(remote);
         processor.processMessage(joinSave);
 

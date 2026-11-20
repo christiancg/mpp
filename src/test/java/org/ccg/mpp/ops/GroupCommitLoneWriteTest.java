@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
 public class GroupCommitLoneWriteTest {
     private static final long WAIT_MS = GroupCommitFixture.WAIT_MS;
     private static final long BLOCKED_MS = 300L;
-    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private static final String FIRST_PAGE = TestGlobals.COLL + "-0.dat";
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
@@ -44,7 +44,7 @@ public class GroupCommitLoneWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         recorder = RecordingForcer.install(true);
         fixture = new GroupCommitFixture(recorder);
         TestUtils.setPrivateField(faultInjector, "enabled", true);
@@ -72,7 +72,7 @@ public class GroupCommitLoneWriteTest {
     }
 
     private static AggregateRequest scanAll() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         return request;
     }

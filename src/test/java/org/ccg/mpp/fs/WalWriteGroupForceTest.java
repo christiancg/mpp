@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalWriteGroupForceTest {
-    private static final String DB = "forceDb";
+    private static final String PROJECT = "forceProject";
     private static final String COLL = "forceColl";
     private static final String WAL = COLL + ".wal";
 
@@ -25,7 +25,7 @@ public class WalWriteGroupForceTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
@@ -34,27 +34,28 @@ public class WalWriteGroupForceTest {
     }
 
     private int records() throws IOException {
-        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(DB, COLL).toPath())).records().size();
+        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath())).records()
+                .size();
     }
 
     @Test
     public void test_force_group_forces_once_and_defers_blanks() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            assertTrue(wal.forceGroup(DB, COLL), "no open group has nothing to force");
+            assertTrue(wal.forceGroup(PROJECT, COLL), "no open group has nothing to force");
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
-            assertTrue(wal.forceGroup(DB, COLL), "an empty group has nothing to force");
+            wal.openGroup(PROJECT, COLL);
+            assertTrue(wal.forceGroup(PROJECT, COLL), "an empty group has nothing to force");
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             final var beforeForce = wals(recorder);
 
-            assertTrue(wal.forceGroup(DB, COLL));
+            assertTrue(wal.forceGroup(PROJECT, COLL));
 
             assertEquals(beforeForce + 1L, wals(recorder));
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.readAt(old), "the blanks wait for the settle");
-            assertTrue(wal.forceGroup(DB, COLL), "a forced group is not forced again");
+            assertTrue(wal.forceGroup(PROJECT, COLL), "a forced group is not forced again");
             assertEquals(beforeForce + 1L, wals(recorder));
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
             assertTrue(rf.fx.readAt(old).isBlank());
         }
     }
@@ -64,25 +65,25 @@ public class WalWriteGroupForceTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var page = rf.fx.page(0);
-            final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
+            final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
             final var pageBefore = page.length();
             final var pkBefore = pk.length();
             final var recordsBefore = records();
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             final var pageGrown = page.length();
             final var pkGrown = pk.length();
             recorder.failingFor(WAL);
 
-            assertFalse(wal.forceGroup(DB, COLL));
+            assertFalse(wal.forceGroup(PROJECT, COLL));
 
-            final var group = wal.openGroupOf(DB, COLL);
+            final var group = wal.openGroupOf(PROJECT, COLL);
             assertNotNull(group);
             assertTrue(group.failed());
             assertEquals(pageGrown, page.length(), "the take-back waits for the exclusive lock");
             assertEquals(pkGrown, pk.length());
             recorder.failingFor(null);
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
             assertEquals(pageBefore, page.length());
             assertEquals(pkBefore, pk.length());
             assertEquals(recordsBefore, records());
@@ -93,13 +94,13 @@ public class WalWriteGroupForceTest {
     public void test_settle_after_a_forced_group_does_not_force_again() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("a", "new-a", 0, PagePlacement.APPEND);
             rf.replacer.delete(rf.fx.indexed("c"));
-            assertTrue(wal.forceGroup(DB, COLL));
+            assertTrue(wal.forceGroup(PROJECT, COLL));
             final var forced = wals(recorder);
 
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
 
             assertEquals(forced, wals(recorder));
             assertEquals(StorageFixture.record("a", "new-a"), rf.fx.readAt(rf.fx.indexed("a")));
@@ -112,13 +113,13 @@ public class WalWriteGroupForceTest {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var big = "z".repeat(5 * ChunkedChannelWrites.CHUNK_BYTES + 3);
             final var recordsBefore = records();
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", big, 0, PagePlacement.APPEND);
             rf.replace("c", "new-c", 0, PagePlacement.APPEND);
             final var beforeForce = wals(recorder);
 
-            assertTrue(wal.forceGroup(DB, COLL));
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.forceGroup(PROJECT, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
 
             assertEquals(beforeForce + 1L, wals(recorder), "the group forced its log once");
             assertEquals(recordsBefore + 2, records(), "both records decode, the large one across its chunks");
@@ -132,16 +133,16 @@ public class WalWriteGroupForceTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             recorder.failingFor(WAL);
-            assertFalse(wal.forceGroup(DB, COLL));
+            assertFalse(wal.forceGroup(PROJECT, COLL));
             recorder.failingFor(null);
             final var forced = wals(recorder);
 
-            assertFalse(wal.forceGroup(DB, COLL), "a group whose fsync failed stays failed");
+            assertFalse(wal.forceGroup(PROJECT, COLL), "a group whose fsync failed stays failed");
             assertEquals(forced, wals(recorder), "the failed group was not forced again");
-            assertFalse(wal.closeGroup(DB, COLL), "the settle takes the group back instead of forcing it");
+            assertFalse(wal.closeGroup(PROJECT, COLL), "the settle takes the group back instead of forcing it");
 
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.readAt(old));
             assertEquals(old, rf.fx.indexed("b"));

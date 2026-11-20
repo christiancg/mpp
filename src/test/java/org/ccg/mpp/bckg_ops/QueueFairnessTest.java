@@ -55,14 +55,14 @@ public class QueueFairnessTest {
     }
 
     @Test
-    public void test_a_full_trigger_queue_evicts_only_the_flooding_database() throws Exception {
+    public void test_a_full_trigger_queue_evicts_only_the_flooding_project() throws Exception {
         TestUtils.setPrivateField(configuration, "triggerQueueSize", 3);
         final var executor = idleTriggerExecutor();
-        executor.submit(trigger("victimDb", "victim"));
-        executor.submit(trigger("floodDb", "f1"));
-        executor.submit(trigger("floodDb", "f2"));
-        executor.submit(trigger("floodDb", "f3"));
-        executor.submit(trigger("floodDb", "f4"));
+        executor.submit(trigger("victimProject", "victim"));
+        executor.submit(trigger("floodProject", "f1"));
+        executor.submit(trigger("floodProject", "f2"));
+        executor.submit(trigger("floodProject", "f3"));
+        executor.submit(trigger("floodProject", "f4"));
 
         final List<TriggerEvent> queue = queued(executor);
         assertEquals(List.of("victim", "f3", "f4"), queue.stream().map(TriggerEvent::getTriggerName).toList());
@@ -70,7 +70,7 @@ public class QueueFairnessTest {
     }
 
     @Test
-    public void test_a_full_trigger_queue_drops_the_newcomer_when_its_database_has_nothing_queued() throws Exception {
+    public void test_a_full_trigger_queue_drops_the_newcomer_when_its_project_has_nothing_queued() throws Exception {
         TestUtils.setPrivateField(configuration, "triggerQueueSize", 2);
         final var executor = idleTriggerExecutor();
         executor.submit(trigger("a", "a1"));
@@ -83,13 +83,13 @@ public class QueueFairnessTest {
     }
 
     @Test
-    public void test_a_full_schedule_queue_evicts_only_the_flooding_database() throws Exception {
+    public void test_a_full_schedule_queue_evicts_only_the_flooding_project() throws Exception {
         TestUtils.setPrivateField(configuration, "scheduleQueueSize", 2);
         final var executor = idleScheduleExecutor();
-        executor.submit(schedule("victimDb", "victim"));
-        executor.submit(schedule("floodDb", "f1"));
-        executor.submit(schedule("floodDb", "f2"));
-        executor.submit(schedule("otherDb", "o1"));
+        executor.submit(schedule("victimProject", "victim"));
+        executor.submit(schedule("floodProject", "f1"));
+        executor.submit(schedule("floodProject", "f2"));
+        executor.submit(schedule("otherProject", "o1"));
 
         final List<ScheduleRegistry.Entry> queue = queued(executor);
         assertEquals(List.of("victim", "f2"), queue.stream().map(ScheduleRegistry.Entry::getName).toList());

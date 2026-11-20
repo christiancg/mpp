@@ -12,16 +12,16 @@ public class SaveSchemaRequestTest {
     public void test_constructor_and_getters() {
         final var schema = new JsonObject();
         schema.add("type", new org.ccg.mpp.ejson.elements.JsonString("object"));
-        final var request = new SaveSchemaRequest("testDb", "testColl", schema);
+        final var request = new SaveSchemaRequest("testProject", "testColl", schema);
         assertEquals(OperationType.SAVE_SCHEMA, request.getType());
-        assertEquals("testDb", request.getDatabaseName());
+        assertEquals("testProject", request.getProjectName());
         assertEquals("testColl", request.getCollectionName());
         assertEquals(schema, request.getSchema());
     }
 
     @Test
     public void test_setter() {
-        final var request = new SaveSchemaRequest("testDb", "testColl", new JsonObject());
+        final var request = new SaveSchemaRequest("testProject", "testColl", new JsonObject());
         final var newSchema = new JsonObject();
         newSchema.add("type", new org.ccg.mpp.ejson.elements.JsonString("string"));
         request.setSchema(newSchema);

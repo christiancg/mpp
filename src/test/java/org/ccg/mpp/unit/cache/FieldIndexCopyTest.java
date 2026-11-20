@@ -26,18 +26,18 @@ public class FieldIndexCopyTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
         for (var i = 0; i < 6; i++) {
             final var obj = new JsonObject();
             obj.add(Globals.PK_FIELD, new JsonString("d" + i));
             obj.addProperty(FIELD, i % 2);
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
             entry.set_id("d" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
     }
 
     @AfterEach
@@ -52,13 +52,14 @@ public class FieldIndexCopyTest {
 
     @Test
     public void test_a_consumer_snapshot_survives_a_concurrent_index_rewrite() throws IOException {
-        final var snapshot = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var snapshot = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 ReadObserver.NONE);
         assertNotNull(snapshot);
         final var before = idsOf(snapshot, 0d);
         assertEquals(Set.of("d0", "d2", "d4"), before);
 
-        final var cached = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        final var cached = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                Number.class);
         assertNotNull(cached);
         for (final var entry : cached) {
             entry.getIds().remove("d0");
@@ -71,9 +72,9 @@ public class FieldIndexCopyTest {
 
     @Test
     public void test_two_consumer_snapshots_do_not_share_id_sets() throws IOException {
-        final var first = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var first = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 ReadObserver.NONE);
-        final var second = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var second = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 ReadObserver.NONE);
         assertNotNull(first);
         assertNotNull(second);
@@ -86,12 +87,13 @@ public class FieldIndexCopyTest {
 
     @Test
     public void test_the_cached_index_is_reloaded_after_an_in_place_mutation() throws IOException {
-        final var cached = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        final var cached = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                Number.class);
         assertNotNull(cached);
         cached.forEach(entry -> entry.getIds().remove("d0"));
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
-        final var reloaded = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var reloaded = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 ReadObserver.NONE);
 
         assertNotNull(reloaded);

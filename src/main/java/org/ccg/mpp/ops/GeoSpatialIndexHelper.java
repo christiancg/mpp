@@ -28,39 +28,39 @@ public final class GeoSpatialIndexHelper {
     private static final Cache cache = IocContainer.get(Cache.class);
     private static final ResourceLocking rl = IocContainer.get(ResourceLocking.class);
 
-    public static Set<String> candidateIds(CustomOperator operator, String dbName, String collName,
+    public static Set<String> candidateIds(CustomOperator operator, String projectName, String collName,
             ReadObserver observer) throws IOException {
         final var bbox = boundingBoxFor(operator);
         if (bbox == null) {
             return null;
         }
-        if (cache.hasNoIndex(dbName, collName, operator.getField())) {
+        if (cache.hasNoIndex(projectName, collName, operator.getField())) {
             return null;
         }
         final var fieldName = operator.getField();
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         final Set<String> candidates;
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
-            final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, JsonGeo.class);
+            final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, JsonGeo.class);
             if (entries == null || entries.isEmpty()) {
                 return null;
             }
             candidates = collectByBoundingBox(entries, bbox);
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
         // Not-yet-indexed committed writes are added as candidates; the caller re-tests exactly.
-        candidates.addAll(PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName));
+        candidates.addAll(PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName));
         return candidates;
     }
 
@@ -120,7 +120,8 @@ public final class GeoSpatialIndexHelper {
         return lo;
     }
 
-    private static void recordAnalyzeIndexUse(String dbName, String collName, String fieldName, ReadObserver observer) {
-        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+    private static void recordAnalyzeIndexUse(String projectName, String collName, String fieldName,
+            ReadObserver observer) {
+        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
     }
 }

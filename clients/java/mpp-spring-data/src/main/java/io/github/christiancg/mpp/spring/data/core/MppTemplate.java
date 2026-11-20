@@ -213,7 +213,7 @@ public class MppTemplate implements MppOperations {
     @Override
     public <T> Collection<T> collection(Class<T> type) {
         final var entity = entity(type);
-        return translate(() -> client.database(entity.database()).collection(entity.collection(), codec(type)));
+        return translate(() -> client.project(entity.project()).collection(entity.collection(), codec(type)));
     }
 
     @Override
@@ -266,9 +266,9 @@ public class MppTemplate implements MppOperations {
         final var entity = entity(type);
         final var holder = (MppTransactionHolder) TransactionSynchronizationManager.getResource(client);
         if (holder != null) {
-            return EntityStore.of(holder.transaction().collection(entity.database(), entity.collection(), codec(type)));
+            return EntityStore.of(holder.transaction().collection(entity.project(), entity.collection(), codec(type)));
         }
-        return EntityStore.of(client.database(entity.database()).collection(entity.collection(), codec(type)));
+        return EntityStore.of(client.project(entity.project()).collection(entity.collection(), codec(type)));
     }
 
     @SuppressWarnings("unchecked")

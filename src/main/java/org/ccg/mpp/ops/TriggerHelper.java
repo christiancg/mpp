@@ -40,11 +40,11 @@ public final class TriggerHelper {
     private TriggerHelper() {
     }
 
-    static List<DbEntry> readEntriesWithRetry(String dbName, String collName, Set<String> ids) throws IOException {
+    static List<DbEntry> readEntriesWithRetry(String projectName, String collName, Set<String> ids) throws IOException {
         IOException lastFailure = null;
         for (var attempt = 0; attempt < DOCUMENT_READ_RETRY_ATTEMPTS; attempt++) {
             try {
-                return cache.getEntriesByIds(dbName, collName, ids);
+                return cache.getEntriesByIds(projectName, collName, ids);
             } catch (IOException e) {
                 lastFailure = e;
                 sleepBeforeRetry();
@@ -61,21 +61,22 @@ public final class TriggerHelper {
         }
     }
 
-    private static List<org.ccg.mpp.data.TriggerDefinition> triggersOrNone(String dbName, String collName) {
+    private static List<org.ccg.mpp.data.TriggerDefinition> triggersOrNone(String projectName, String collName) {
         try {
-            return cache.getTriggersFor(dbName, collName);
+            return cache.getTriggersFor(projectName, collName);
         } catch (org.ccg.mpp.ex.MetadataReadException e) {
-            logger.warning("Could not read the triggers for " + dbName + "|" + collName
+            logger.warning("Could not read the triggers for " + projectName + "|" + collName
                     + "; firing none for this write: " + e.getMessage());
             return List.of();
         }
     }
 
-    private static List<TriggerDefinition> matchingTriggers(String dbName, String collName, EventType type, int depth) {
+    private static List<TriggerDefinition> matchingTriggers(String projectName, String collName, EventType type,
+            int depth) {
         if (!configuration.isTriggersEnabled() || Globals.SCRIPT_RUNS_COLLECTION_NAME.equals(collName)) {
             return List.of();
         }
-        final var triggers = triggersOrNone(dbName, collName);
+        final var triggers = triggersOrNone(projectName, collName);
         if (triggers.isEmpty()) {
             return List.of();
         }
@@ -93,9 +94,9 @@ public final class TriggerHelper {
         return trigger.isBatchMode() ? List.of(entries) : entries.stream().map(List::of).toList();
     }
 
-    public static void afterWrite(String dbName, String collName, EventType type, List<DbEntry> entries,
+    public static void afterWrite(String projectName, String collName, EventType type, List<DbEntry> entries,
             String actingUser, int depth) {
-        stageRuns(dbName, collName, type, entries, actingUser, depth,
+        stageRuns(projectName, collName, type, entries, actingUser, depth,
                 (_, _, descriptor) -> TriggerRunLog.record(descriptor)).submitAll();
     }
 
@@ -103,19 +104,19 @@ public final class TriggerHelper {
         String record(TriggerDefinition trigger, List<DbEntry> group, TriggerRunLog.TriggerRunDescriptor descriptor);
     }
 
-    private static StagedTriggerRuns stageRuns(String dbName, String collName, EventType type, List<DbEntry> entries,
-            String actingUser, int depth, RunRecorder recorder) {
+    private static StagedTriggerRuns stageRuns(String projectName, String collName, EventType type,
+            List<DbEntry> entries, String actingUser, int depth, RunRecorder recorder) {
         if (entries.isEmpty()) {
             return StagedTriggerRuns.none();
         }
         final var runs = new ArrayList<StagedTriggerRuns.StagedRun>();
-        for (final var trigger : matchingTriggers(dbName, collName, type, depth)) {
+        for (final var trigger : matchingTriggers(projectName, collName, type, depth)) {
             for (final var group : runGroups(trigger, entries)) {
-                final var descriptor = new TriggerRunLog.TriggerRunDescriptor(dbName, collName, trigger.getName(),
+                final var descriptor = new TriggerRunLog.TriggerRunDescriptor(projectName, collName, trigger.getName(),
                         trigger.getProcedureName(), type, trigger.isBatchMode(), actingUser, depth,
                         System.currentTimeMillis(), group);
                 final var runId = recorder.record(trigger, group, descriptor);
-                runs.add(new StagedTriggerRuns.StagedRun(dbName, collName, trigger.getName(),
+                runs.add(new StagedTriggerRuns.StagedRun(projectName, collName, trigger.getName(),
                         trigger.getProcedureName(), type, trigger.isBatchMode(), actingUser, depth,
                         group.stream().map(DbEntry::get_id).toList(), group, runId, descriptor.firedAt()));
             }
@@ -129,22 +130,22 @@ public final class TriggerHelper {
 
     static StagedTriggerRuns stageSave(SaveRequest request, String actingUser, WriteEffects effects)
             throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (firesOnNoSave(dbName, collName, request.getTriggerDepth())) {
+        if (firesOnNoSave(projectName, collName, request.getTriggerDepth())) {
             return StagedTriggerRuns.none();
         }
         final var id = BeforeHookHelper.resolveIdForWrite(request);
         return id == null
                 ? StagedTriggerRuns.none()
-                : stageBeforeSave(dbName, collName, List.of(id), actingUser, request.getTriggerDepth(),
+                : stageBeforeSave(projectName, collName, List.of(id), actingUser, request.getTriggerDepth(),
                         effects.stagingSink());
     }
 
     public static StagedTriggerRuns stageBulkSave(BulkSaveRequest request, String actingUser) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        if (firesOnNoSave(dbName, collName, request.getTriggerDepth())) {
+        if (firesOnNoSave(projectName, collName, request.getTriggerDepth())) {
             return StagedTriggerRuns.none();
         }
         final var ids = new LinkedHashSet<String>();
@@ -155,9 +156,9 @@ public final class TriggerHelper {
             }
         }
         final var effects = WriteEffects.batched();
-        final var staged = stageBeforeSave(dbName, collName, List.copyOf(ids), actingUser, request.getTriggerDepth(),
-                effects.stagingSink());
-        effects.flushStaging(Cache.getCollectionIdentifier(dbName, collName));
+        final var staged = stageBeforeSave(projectName, collName, List.copyOf(ids), actingUser,
+                request.getTriggerDepth(), effects.stagingSink());
+        effects.flushStaging(Cache.getCollectionIdentifier(projectName, collName));
         return staged;
     }
 
@@ -171,10 +172,11 @@ public final class TriggerHelper {
         if (captured == null) {
             return StagedTriggerRuns.none();
         }
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var versions = priorVersionsOf(dbName, collName, List.of(captured.get_id()));
-        return stageRuns(dbName, collName, EventType.DELETED, List.of(captured), actingUser, request.getTriggerDepth(),
+        final var versions = priorVersionsOf(projectName, collName, List.of(captured.get_id()));
+        return stageRuns(projectName, collName, EventType.DELETED, List.of(captured), actingUser,
+                request.getTriggerDepth(),
                 (_, _, descriptor) -> TriggerRunLog.recordStaged(descriptor, versions, effects.stagingSink()));
     }
 
@@ -183,48 +185,48 @@ public final class TriggerHelper {
         if (captured.isEmpty()) {
             return StagedTriggerRuns.none();
         }
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var versions = priorVersionsOf(dbName, collName, captured.stream().map(DbEntry::get_id).toList());
+        final var versions = priorVersionsOf(projectName, collName, captured.stream().map(DbEntry::get_id).toList());
         final var effects = WriteEffects.batched();
-        final var staged = stageRuns(dbName, collName, EventType.DELETED, captured, actingUser,
+        final var staged = stageRuns(projectName, collName, EventType.DELETED, captured, actingUser,
                 request.getTriggerDepth(),
                 (_, _, descriptor) -> TriggerRunLog.recordStaged(descriptor, versions, effects.stagingSink()));
-        effects.flushStaging(Cache.getCollectionIdentifier(dbName, collName));
+        effects.flushStaging(Cache.getCollectionIdentifier(projectName, collName));
         return staged;
     }
 
-    private static boolean firesOnNoSave(String dbName, String collName, int depth) {
-        return hasNotTriggerFor(dbName, collName, EventType.CREATED, depth)
-                && hasNotTriggerFor(dbName, collName, EventType.UPDATED, depth);
+    private static boolean firesOnNoSave(String projectName, String collName, int depth) {
+        return hasNotTriggerFor(projectName, collName, EventType.CREATED, depth)
+                && hasNotTriggerFor(projectName, collName, EventType.UPDATED, depth);
     }
 
-    private static StagedTriggerRuns stageBeforeSave(String dbName, String collName, List<String> ids,
+    private static StagedTriggerRuns stageBeforeSave(String projectName, String collName, List<String> ids,
             String actingUser, int depth, TriggerRunLog.EntrySink sink) throws IOException {
-        final var versions = priorVersionsOf(dbName, collName, ids);
+        final var versions = priorVersionsOf(projectName, collName, ids);
         final var created = new ArrayList<DbEntry>();
         final var updated = new ArrayList<DbEntry>();
         for (final var id : ids) {
-            final var placeholder = idOnlyEntry(dbName, collName, id);
+            final var placeholder = idOnlyEntry(projectName, collName, id);
             (versions.get(id) == AdminTriggerRunEntry.ABSENT_VERSION ? created : updated).add(placeholder);
         }
         final RunRecorder staged = (_, _, descriptor) -> TriggerRunLog.recordStaged(descriptor, versions, sink);
         return StagedTriggerRuns.combine(
-                stageRuns(dbName, collName, EventType.CREATED, created, actingUser, depth, staged),
-                stageRuns(dbName, collName, EventType.UPDATED, updated, actingUser, depth, staged));
+                stageRuns(projectName, collName, EventType.CREATED, created, actingUser, depth, staged),
+                stageRuns(projectName, collName, EventType.UPDATED, updated, actingUser, depth, staged));
     }
 
-    private static DbEntry idOnlyEntry(String dbName, String collName, String id) {
+    private static DbEntry idOnlyEntry(String projectName, String collName, String id) {
         final var entry = new DbEntry();
-        entry.setDatabaseName(dbName);
+        entry.setProjectName(projectName);
         entry.setCollectionName(collName);
         entry.set_id(id);
         return entry;
     }
 
-    private static Map<String, Long> priorVersionsOf(String dbName, String collName, List<String> ids)
+    private static Map<String, Long> priorVersionsOf(String projectName, String collName, List<String> ids)
             throws IOException {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         final var versions = new LinkedHashMap<String, Long>();
         for (final var id : ids) {
             final var position = Collections.binarySearch(primaryKeyIndex, id);
@@ -234,20 +236,19 @@ public final class TriggerHelper {
         return versions;
     }
 
-    public static StagedTriggerRuns stageCommittedIds(String dbName, String collName, EventType type, List<String> ids,
-            String actingUser, int depth, String txId, WriteEffects batch) {
-        return stageCommitted(dbName, collName, type, committedEntries(dbName, collName, type, ids, depth), actingUser,
-                depth, txId, batch);
+    public static StagedTriggerRuns stageCommittedIds(String projectName, String collName, EventType type,
+            List<String> ids, String actingUser, int depth, String txId, WriteEffects batch) {
+        return stageCommitted(projectName, collName, type, committedEntries(projectName, collName, type, ids, depth),
+                actingUser, depth, txId, batch);
     }
 
-    public static StagedTriggerRuns stageCommitted(String dbName, String collName, EventType type,
+    public static StagedTriggerRuns stageCommitted(String projectName, String collName, EventType type,
             List<DbEntry> entries, String actingUser, int depth, String txId, WriteEffects batch) {
-        return stageRuns(dbName, collName, type, entries, actingUser, depth,
-                (trigger, group, descriptor) -> TriggerRunLog
-                        .recordDeterministic(descriptor, txId,
-                                TriggerRunLog.deterministicRunId(txId, dbName, collName, trigger.getName(), type,
-                                        trigger.isBatchMode() ? null : group.getFirst().get_id()),
-                                batch.stagingSink()));
+        return stageRuns(projectName, collName, type, entries, actingUser, depth,
+                (trigger, group, descriptor) -> TriggerRunLog.recordDeterministic(
+                        descriptor, txId, TriggerRunLog.deterministicRunId(txId, projectName, collName,
+                                trigger.getName(), type, trigger.isBatchMode() ? null : group.getFirst().get_id()),
+                        batch.stagingSink()));
     }
 
     public static <T> T discardingOnFailure(StagedTriggerRuns staged, Callable<T> step) throws Exception {
@@ -264,24 +265,24 @@ public final class TriggerHelper {
         }
     }
 
-    public static OperationResponse runStaged(StagedTriggerRuns staged, String dbName, String collName,
+    public static OperationResponse runStaged(StagedTriggerRuns staged, String projectName, String collName,
             String actingUser, int depth, Callable<OperationResponse> write) throws Exception {
-        return runStaged(staged, dbName, collName, actingUser, depth, WriteEffects.IMMEDIATE, write);
+        return runStaged(staged, projectName, collName, actingUser, depth, WriteEffects.IMMEDIATE, write);
     }
 
-    static OperationResponse runStaged(StagedTriggerRuns staged, String dbName, String collName, String actingUser,
+    static OperationResponse runStaged(StagedTriggerRuns staged, String projectName, String collName, String actingUser,
             int depth, WriteEffects effects, Callable<OperationResponse> write) throws Exception {
         final OperationResponse response;
         try {
             response = write.call();
         } catch (PartialBulkSaveException e) {
-            effects.submitLanded(staged, landedIdsOf(e.committed(), staged), dbName, collName, actingUser, depth);
+            effects.submitLanded(staged, landedIdsOf(e.committed(), staged), projectName, collName, actingUser, depth);
             throw e;
         } catch (Exception e) {
             effects.discard(staged);
             throw e;
         }
-        effects.submitLanded(staged, landedIdsOf(response, staged), dbName, collName, actingUser, depth);
+        effects.submitLanded(staged, landedIdsOf(response, staged), projectName, collName, actingUser, depth);
         return response;
     }
 
@@ -300,48 +301,51 @@ public final class TriggerHelper {
         return ids == null ? Set.of() : new LinkedHashSet<>(ids);
     }
 
-    public static void afterWriteIds(String dbName, String collName, EventType type, List<String> ids,
+    public static void afterWriteIds(String projectName, String collName, EventType type, List<String> ids,
             String actingUser, int depth) {
-        afterWrite(dbName, collName, type, committedEntries(dbName, collName, type, ids, depth), actingUser, depth);
+        afterWrite(projectName, collName, type, committedEntries(projectName, collName, type, ids, depth), actingUser,
+                depth);
     }
 
-    private static List<DbEntry> committedEntries(String dbName, String collName, EventType type, List<String> ids,
+    private static List<DbEntry> committedEntries(String projectName, String collName, EventType type, List<String> ids,
             int depth) {
-        if (ids == null || ids.isEmpty() || hasNotTriggerFor(dbName, collName, type, depth)) {
+        if (ids == null || ids.isEmpty() || hasNotTriggerFor(projectName, collName, type, depth)) {
             return List.of();
         }
         try {
-            return readEntriesWithRetry(dbName, collName, new HashSet<>(ids));
+            return readEntriesWithRetry(projectName, collName, new HashSet<>(ids));
         } catch (IOException e) {
-            logger.error("Could not read the committed documents to fire a trigger on " + dbName + "|" + collName, e);
+            logger.error("Could not read the committed documents to fire a trigger on " + projectName + "|" + collName,
+                    e);
             return List.of();
         }
     }
 
-    public static DbEntry captureForDelete(String dbName, String collName, String id, int depth) {
-        if (hasNotTriggerFor(dbName, collName, EventType.DELETED, depth)) {
+    public static DbEntry captureForDelete(String projectName, String collName, String id, int depth) {
+        if (hasNotTriggerFor(projectName, collName, EventType.DELETED, depth)) {
             return null;
         }
         try {
-            final var entries = readEntriesWithRetry(dbName, collName, Set.of(id));
+            final var entries = readEntriesWithRetry(projectName, collName, Set.of(id));
             return entries.isEmpty() ? null : entries.getFirst();
         } catch (IOException e) {
-            logger.error("Could not read the document being deleted to fire a trigger on " + dbName + "|" + collName,
+            logger.error(
+                    "Could not read the document being deleted to fire a trigger on " + projectName + "|" + collName,
                     e);
             return null;
         }
     }
 
-    public static boolean firesOnDelete(String dbName, String collName, int depth) {
-        return !hasNotTriggerFor(dbName, collName, EventType.DELETED, depth);
+    public static boolean firesOnDelete(String projectName, String collName, int depth) {
+        return !hasNotTriggerFor(projectName, collName, EventType.DELETED, depth);
     }
 
-    public static boolean firesOnSave(String dbName, String collName, int depth) {
-        return !hasNotTriggerFor(dbName, collName, EventType.CREATED, depth)
-                || !hasNotTriggerFor(dbName, collName, EventType.UPDATED, depth);
+    public static boolean firesOnSave(String projectName, String collName, int depth) {
+        return !hasNotTriggerFor(projectName, collName, EventType.CREATED, depth)
+                || !hasNotTriggerFor(projectName, collName, EventType.UPDATED, depth);
     }
 
-    private static boolean hasNotTriggerFor(String dbName, String collName, EventType type, int depth) {
-        return matchingTriggers(dbName, collName, type, depth).isEmpty();
+    private static boolean hasNotTriggerFor(String projectName, String collName, EventType type, int depth) {
+        return matchingTriggers(projectName, collName, type, depth).isEmpty();
     }
 }

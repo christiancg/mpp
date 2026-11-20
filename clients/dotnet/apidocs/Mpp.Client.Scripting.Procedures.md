@@ -1,4 +1,4 @@
-The stored procedures of one database. Obtained from `Database.Procedures()`.
+The stored procedures of one project. Obtained from `Project.Procedures()`.
 
 Procedures are SimpleJS modules that triggers, schedules and `CallAsync` run. Saving one needs the script permission `Manage`.
 

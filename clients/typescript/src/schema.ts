@@ -5,12 +5,12 @@ import { document, strings } from "./internal/response-decoder.js";
 
 export class Schema {
     readonly #context: ClientContext;
-    readonly #database: string;
+    readonly #project: string;
     readonly #collection: string;
 
-    constructor(context: ClientContext, database: string, collection: string) {
+    constructor(context: ClientContext, project: string, collection: string) {
         this.#context = context;
-        this.#database = database;
+        this.#project = project;
         this.#collection = collection;
     }
 
@@ -18,7 +18,7 @@ export class Schema {
         const encoder = this.#context.encoder;
         const reply = await this.#context.channel.send(
             "SAVE_SCHEMA",
-            encoder.saveSchema(this.#database, this.#collection, encoder.document(schema)),
+            encoder.saveSchema(this.#project, this.#collection, encoder.document(schema)),
         );
         return strings(reply.warnings);
     }
@@ -27,7 +27,7 @@ export class Schema {
         try {
             const reply = await this.#context.channel.send(
                 "GET_SCHEMA",
-                this.#context.encoder.getSchema(this.#database, this.#collection),
+                this.#context.encoder.getSchema(this.#project, this.#collection),
             );
             return document(reply, "schema");
         } catch (error) {
@@ -41,7 +41,7 @@ export class Schema {
     async delete(): Promise<void> {
         await this.#context.channel.send(
             "DELETE_SCHEMA",
-            this.#context.encoder.deleteSchema(this.#database, this.#collection),
+            this.#context.encoder.deleteSchema(this.#project, this.#collection),
         );
     }
 }

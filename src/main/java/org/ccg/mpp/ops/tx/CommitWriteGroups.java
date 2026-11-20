@@ -23,7 +23,7 @@ final class CommitWriteGroups {
     private static final FileSystem fs = IocContainer.get(FileSystem.class);
     private static final Cache cache = IocContainer.get(Cache.class);
 
-    private record Target(String dbName, String collName) {
+    private record Target(String projectName, String collName) {
     }
 
     private final Set<String> eligible;
@@ -40,7 +40,7 @@ final class CommitWriteGroups {
         final var counts = new HashMap<String, Integer>();
         for (final var op : ops) {
             if (writesData(op)) {
-                counts.merge(Cache.getCollectionIdentifier(op.getTargetDb(), op.getTargetColl()), 1, Integer::sum);
+                counts.merge(Cache.getCollectionIdentifier(op.getTargetProject(), op.getTargetColl()), 1, Integer::sum);
             }
         }
         final var eligible = new HashSet<String>();
@@ -61,14 +61,14 @@ final class CommitWriteGroups {
         };
     }
 
-    void ensureOpen(String dbName, String collName) {
-        final var collId = Cache.getCollectionIdentifier(dbName, collName);
+    void ensureOpen(String projectName, String collName) {
+        final var collId = Cache.getCollectionIdentifier(projectName, collName);
         if (!eligible.contains(collId)) {
             return;
         }
         try {
-            fs.openWriteGroup(dbName, collName);
-            opened.putIfAbsent(collId, new Target(dbName, collName));
+            fs.openWriteGroup(projectName, collName);
+            opened.putIfAbsent(collId, new Target(projectName, collName));
         } catch (IOException e) {
             logger.warning("Could not open a write group on " + collId + " for a commit; its writes are forced one"
                     + " by one: " + e.getMessage());
@@ -89,23 +89,23 @@ final class CommitWriteGroups {
 
     private static boolean settleOne(Target target) {
         try {
-            return fs.settleWriteGroup(target.dbName(), target.collName());
+            return fs.settleWriteGroup(target.projectName(), target.collName());
         } catch (IOException e) {
             logger.error("Could not settle the write group of a commit on "
-                    + Cache.getCollectionIdentifier(target.dbName(), target.collName()), e);
+                    + Cache.getCollectionIdentifier(target.projectName(), target.collName()), e);
             return false;
         }
     }
 
     private static void forgetTakenBack(Target target) {
-        cache.evictCollection(target.dbName(), target.collName());
+        cache.evictCollection(target.projectName(), target.collName());
         try {
-            PageOccupancyReconciler.reconcile(target.dbName(), target.collName());
+            PageOccupancyReconciler.reconcile(target.projectName(), target.collName());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             logger.warning("Could not reconcile the page rows of "
-                    + Cache.getCollectionIdentifier(target.dbName(), target.collName())
+                    + Cache.getCollectionIdentifier(target.projectName(), target.collName())
                     + " after a commit's write group failed; the next startup rebuilds them: " + e.getMessage());
         }
     }

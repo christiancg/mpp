@@ -3,7 +3,7 @@ import {
     and,
     CastType,
     CustomType,
-    Database,
+    Project,
     distance,
     field,
     GeoDistanceComparator,
@@ -19,7 +19,7 @@ import * as MidOps from "../../../src/query/mid-ops.js";
 import { RecordingChannel, recordingContext } from "../../support/recording-channel.js";
 
 function orders(channel = new RecordingChannel()) {
-    return new Database(recordingContext(channel), "shop").collection("orders");
+    return new Project(recordingContext(channel), "shop").collection("orders");
 }
 
 describe("Query", () => {

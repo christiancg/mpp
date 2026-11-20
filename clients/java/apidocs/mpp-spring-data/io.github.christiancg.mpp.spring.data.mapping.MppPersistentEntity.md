@@ -5,16 +5,16 @@ The metadata of one entity class.
 ## MppPersistentEntity(TypeInformation, String)
 
 @param information the entity type
-@param defaultDatabase the database used when the class names none
+@param defaultProject the project used when the class names none
 
 ## collection()
 
 @return the collection name
 @throws org.springframework.data.mapping.MappingException when the name breaks MPP's naming rules
 
-## database()
+## project()
 
-@return the database name
+@return the project name
 @throws org.springframework.data.mapping.MappingException when there is none or it breaks the naming rules
 
 ## requiredIdProperty()

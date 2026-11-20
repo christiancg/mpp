@@ -7,9 +7,9 @@ final class PkRowWrites {
     private PkRowWrites() {
     }
 
-    static void deleteRows(FilePaths paths, PkIndexStore store, String dbName, String collName, List<String> ids)
+    static void deleteRows(FilePaths paths, PkIndexStore store, String projectName, String collName, List<String> ids)
             throws IOException {
-        final var plan = new WalPlan(paths, store, dbName, collName);
+        final var plan = new WalPlan(paths, store, projectName, collName);
         ids.forEach(plan::deleteRow);
         plan.commit();
     }

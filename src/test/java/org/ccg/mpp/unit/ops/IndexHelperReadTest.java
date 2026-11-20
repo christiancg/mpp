@@ -29,7 +29,7 @@ public class IndexHelperReadTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -41,17 +41,17 @@ public class IndexHelperReadTest {
         JsonObject obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        DbEntry e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         e.set_id(id);
         return e;
     }
 
     private void setupCollection(Cache cache, DbEntry... entries) throws IOException {
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
-        final var pk = new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "x", 0, 100, 0);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var pk = new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "x", 0, 100, 0);
         cache.putAdminCollectionEntry(adminCollEntry, pk);
         for (var entry : entries) {
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
     }
 
@@ -60,7 +60,8 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         DbEntry entry = entryWith("n1", "tag", new JsonString("alpha"));
         setupCollection(cache, entry);
-        assertNull(IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "tag", ReadObserver.NONE));
+        assertNull(
+                IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "tag", ReadObserver.NONE));
     }
 
     @Test
@@ -69,10 +70,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("n1", "tag", new JsonString("alpha")),
                 entryWith("n2", "tag", new JsonString("beta")), entryWith("n3", "tag", new JsonString("alpha")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "tag");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("tag"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "tag");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("tag"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "tag",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "tag",
                 ReadObserver.NONE);
         assertNotNull(entries);
         assertEquals(2, entries.size());
@@ -102,10 +103,10 @@ public class IndexHelperReadTest {
         setupCollection(cache, entryWith("s1", "data", new JsonString("hello")),
                 entryWith("s2", "data", new JsonString("world")), entryWith("o1", "data", objectValue(1)),
                 entryWith("o2", "data", objectValue(2)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("data"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("data"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 ReadObserver.NONE);
         assertNotNull(entries);
         final var allIds = entries.stream().flatMap(e -> e.getIds().stream())
@@ -122,10 +123,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("s1", "data", new JsonNumber(42)),
                 entryWith("a1", "data", arrayValue("x", "y")), entryWith("a2", "data", arrayValue("z")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("data"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("data"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 ReadObserver.NONE);
         assertNotNull(entries);
         final var allIds = entries.stream().flatMap(e -> e.getIds().stream())
@@ -138,10 +139,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("n1", "score", new JsonNumber(10)),
                 entryWith("n2", "score", new JsonNumber(20)), entryWith("n3", "score", new JsonNumber(10)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "score");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("score"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "score");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("score"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "score",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "score",
                 ReadObserver.NONE);
         assertNotNull(entries);
         final var allIds = entries.stream().flatMap(e -> e.getIds().stream())
@@ -155,10 +156,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("o1", "data", objectValue(1)), entryWith("o2", "data", objectValue(1)),
                 entryWith("o3", "data", objectValue(2)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("data"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("data"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 ReadObserver.NONE);
         assertNotNull(entries);
         assertEquals(2, entries.size());
@@ -173,10 +174,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("o1", "data", objectValue(5)), entryWith("o2", "data", objectValue(5)),
                 entryWith("o3", "data", objectValue(5)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("data"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("data"));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 ReadObserver.NONE);
         assertNotNull(entries);
         assertEquals(1, entries.size());
@@ -187,7 +188,7 @@ public class IndexHelperReadTest {
     public void test_get_matching_ids_for_join_returns_null_when_no_index() throws IOException {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("r1", "refKey", new JsonNumber(1)));
-        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.DB, TestGlobals.COLL, "refKey",
+        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.PROJECT, TestGlobals.COLL, "refKey",
                 Set.of(new JsonNumber(1)), ReadObserver.NONE);
         assertNull(result);
     }
@@ -197,10 +198,10 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("r1", "refKey", new JsonNumber(42)),
                 entryWith("r2", "refKey", new JsonNumber(7)), entryWith("r3", "refKey", new JsonNumber(42)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("refKey"));
 
-        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.DB, TestGlobals.COLL, "refKey",
+        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.PROJECT, TestGlobals.COLL, "refKey",
                 Set.of(new JsonNumber(42)), ReadObserver.NONE);
 
         assertNotNull(result);
@@ -212,18 +213,19 @@ public class IndexHelperReadTest {
         String fieldName = "lockedField";
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("l1", fieldName, new JsonString("v")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, fieldName);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(fieldName));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, fieldName);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(fieldName));
 
         final var rl = IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
-        rl.lockIndex(TestGlobals.DB, TestGlobals.COLL, fieldName);
+        rl.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, fieldName);
         try {
             final var caught = new java.util.concurrent.atomic.AtomicReference<Throwable>();
             final var readyLatch = new java.util.concurrent.CountDownLatch(1);
             final var reader = new Thread(() -> {
                 readyLatch.countDown();
                 try {
-                    IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, fieldName, ReadObserver.NONE);
+                    IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, fieldName,
+                            ReadObserver.NONE);
                 } catch (Throwable t) {
                     caught.set(t);
                 }
@@ -237,7 +239,7 @@ public class IndexHelperReadTest {
             assertInstanceOf(IOException.class, caught.get());
             assertInstanceOf(InterruptedException.class, caught.get().getCause());
         } finally {
-            rl.releaseIndex(TestGlobals.DB, TestGlobals.COLL, fieldName);
+            rl.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, fieldName);
         }
     }
 
@@ -245,16 +247,16 @@ public class IndexHelperReadTest {
     public void test_getIndexEntriesForField_records_analyze_context() throws IOException, InterruptedException {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("a1", "tag", new JsonString("alpha")));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "tag");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("tag"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "tag");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("tag"));
 
         final var analyzeContext = new org.ccg.mpp.analyze.AnalyzeContext();
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "tag",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "tag",
                 PipelineContext.of(0L, Long.MAX_VALUE, analyzeContext));
         assertNotNull(entries);
         assertTrue(analyzeContext.getIndexesUsed().contains("tag"));
-        assertTrue(analyzeContext.getLocksAcquired()
-                .contains(org.ccg.mpp.analyze.AnalyzeContext.fieldLockId(TestGlobals.DB, TestGlobals.COLL, "tag")));
+        assertTrue(analyzeContext.getLocksAcquired().contains(
+                org.ccg.mpp.analyze.AnalyzeContext.fieldLockId(TestGlobals.PROJECT, TestGlobals.COLL, "tag")));
     }
 
     // addHashIndexEntries skips a hash-matched id whose current document no longer has the field, or
@@ -265,18 +267,18 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("keep1", "data", objectValue(1)), entryWith("gone1", "data", objectValue(2)),
                 entryWith("scalarNow1", "data", objectValue(3)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "data");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("data"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "data");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("data"));
 
         final var withoutField = new JsonObject();
         withoutField.add(Globals.PK_FIELD, new JsonString("gone1"));
-        final var goneEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, withoutField);
+        final var goneEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, withoutField);
         goneEntry.set_id("gone1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, goneEntry);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, goneEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
                 entryWith("scalarNow1", "data", new JsonString("no-longer-an-object")));
 
-        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, "data",
+        final var entries = IndexHelper.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, "data",
                 ReadObserver.NONE);
 
         assertNull(entries,
@@ -290,16 +292,16 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("r1", "refKey", new JsonNumber(42)),
                 entryWith("r2", "refKey", new JsonNumber(7)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("refKey"));
 
         final var localValues = new java.util.HashSet<JsonBaseElement>();
         localValues.add(JsonNull.INSTANCE);
         localValues.add(new JsonObject());
         localValues.add(new JsonNumber(42));
 
-        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.DB, TestGlobals.COLL, "refKey", localValues,
-                ReadObserver.NONE);
+        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.PROJECT, TestGlobals.COLL, "refKey",
+                localValues, ReadObserver.NONE);
 
         assertNull(result,
                 "an object or null join key has no scalar index entry, so answering from the index would drop every"
@@ -312,14 +314,14 @@ public class IndexHelperReadTest {
         Cache cache = IocContainer.get(Cache.class);
         setupCollection(cache, entryWith("r1", "refKey", new JsonNumber(42)),
                 entryWith("r2", "refKey", new JsonNumber(7)));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("refKey"));
 
         final var localValues = new java.util.HashSet<JsonBaseElement>();
         localValues.add(new JsonNumber(42));
 
-        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.DB, TestGlobals.COLL, "refKey", localValues,
-                ReadObserver.NONE);
+        final var result = IndexHelper.getMatchingIdsForJoin(TestGlobals.PROJECT, TestGlobals.COLL, "refKey",
+                localValues, ReadObserver.NONE);
 
         assertEquals(Set.of("r1"), result);
     }

@@ -132,8 +132,8 @@ public class ResourceLocking {
         }
     }
 
-    public SettleWindow openSettleWindow(String dbName, String collName) {
-        final var lockName = Cache.getCollectionIdentifier(dbName, collName);
+    public SettleWindow openSettleWindow(String projectName, String collName) {
+        final var lockName = Cache.getCollectionIdentifier(projectName, collName);
         final var lock = locks.get(lockName);
         if (lock == null || !lock.isWriteLockedByCurrentThread() || lock.getWriteHoldCount() != 1
                 || lock.getReadHoldCount() != 0) {
@@ -212,8 +212,8 @@ public class ResourceLocking {
         tryAcquireBy(lockName, Mode.WRITE, NO_DEADLINE);
     }
 
-    public boolean holdsCollectionLock(String dbName, String collName) {
-        final var lock = locks.get(Cache.getCollectionIdentifier(dbName, collName));
+    public boolean holdsCollectionLock(String projectName, String collName) {
+        final var lock = locks.get(Cache.getCollectionIdentifier(projectName, collName));
         return lock != null && (lock.getReadHoldCount() > 0 || lock.isWriteLockedByCurrentThread());
     }
 
@@ -268,24 +268,24 @@ public class ResourceLocking {
         return lock == null ? 0 : lock.longReaders();
     }
 
-    public void lock(String dbName, String collName) throws InterruptedException {
-        lockWrite(Cache.getCollectionIdentifier(dbName, collName));
+    public void lock(String projectName, String collName) throws InterruptedException {
+        lockWrite(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public void release(String dbName, String collName) {
-        releaseWrite(dbName, collName);
+    public void release(String projectName, String collName) {
+        releaseWrite(projectName, collName);
     }
 
-    public boolean releaseWrite(String dbName, String collName) {
-        return releaseWrite(Cache.getCollectionIdentifier(dbName, collName));
+    public boolean releaseWrite(String projectName, String collName) {
+        return releaseWrite(Cache.getCollectionIdentifier(projectName, collName));
     }
 
     public boolean isWriteLockedByCurrentThread(String lockName) {
         return lockFor(lockName).isWriteLockedByCurrentThread();
     }
 
-    public boolean tryLockWrite(String dbName, String collName) {
-        return tryAcquireNow(Cache.getCollectionIdentifier(dbName, collName), Mode.WRITE);
+    public boolean tryLockWrite(String projectName, String collName) {
+        return tryAcquireNow(Cache.getCollectionIdentifier(projectName, collName), Mode.WRITE);
     }
 
     public interface LockedAction<T> {
@@ -304,17 +304,17 @@ public class ResourceLocking {
         }
     }
 
-    public <T> T withRetiringCollectionLocks(String dbName, Collection<String> collNames, long timeoutMillis,
+    public <T> T withRetiringCollectionLocks(String projectName, Collection<String> collNames, long timeoutMillis,
             LockedAction<T> action) throws Exception {
-        final var collectionIds = collNames.stream().map(collName -> Cache.getCollectionIdentifier(dbName, collName))
-                .toList();
+        final var collectionIds = collNames.stream()
+                .map(collName -> Cache.getCollectionIdentifier(projectName, collName)).toList();
         final var acquired = acquireWriteLocks(collectionIds, Math.max(1L, timeoutMillis));
         try {
             return action.run();
         } finally {
             releaseWriteLocks(acquired);
             for (final var collName : collNames) {
-                removeLock(dbName, collName);
+                removeLock(projectName, collName);
             }
         }
     }
@@ -362,20 +362,20 @@ public class ResourceLocking {
 
     // Transactions hold their write locks until commit/rollback; the timeout is what stops two of
     // them deadlocking, by making the caller abort instead of waiting forever.
-    public boolean tryLockWrite(String dbName, String collName, long timeoutMillis) throws InterruptedException {
-        return tryAcquireWithin(Cache.getCollectionIdentifier(dbName, collName), Mode.WRITE, timeoutMillis);
+    public boolean tryLockWrite(String projectName, String collName, long timeoutMillis) throws InterruptedException {
+        return tryAcquireWithin(Cache.getCollectionIdentifier(projectName, collName), Mode.WRITE, timeoutMillis);
     }
 
-    public void lockRead(String dbName, String collName) throws InterruptedException {
-        lockReadByName(Cache.getCollectionIdentifier(dbName, collName));
+    public void lockRead(String projectName, String collName) throws InterruptedException {
+        lockReadByName(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public boolean tryLockRead(String dbName, String collName, long timeoutMillis) throws InterruptedException {
-        return tryAcquireWithin(Cache.getCollectionIdentifier(dbName, collName), Mode.READ, timeoutMillis);
+    public boolean tryLockRead(String projectName, String collName, long timeoutMillis) throws InterruptedException {
+        return tryAcquireWithin(Cache.getCollectionIdentifier(projectName, collName), Mode.READ, timeoutMillis);
     }
 
-    public void releaseRead(String dbName, String collName) {
-        releaseReadByName(Cache.getCollectionIdentifier(dbName, collName));
+    public void releaseRead(String projectName, String collName) {
+        releaseReadByName(Cache.getCollectionIdentifier(projectName, collName));
     }
 
     // Sorted order, so two overlapping multi-collection reads cannot deadlock. A dirty read takes no
@@ -409,50 +409,51 @@ public class ResourceLocking {
         }
     }
 
-    private String getIndexIdentifier(String dbName, String collName, String fieldName) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR + fieldName;
+    private String getIndexIdentifier(String projectName, String collName, String fieldName) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR
+                + fieldName;
     }
 
-    public void lockIndex(String dbName, String collName, String fieldName) throws InterruptedException {
-        lockWrite(getIndexIdentifier(dbName, collName, fieldName));
+    public void lockIndex(String projectName, String collName, String fieldName) throws InterruptedException {
+        lockWrite(getIndexIdentifier(projectName, collName, fieldName));
     }
 
-    public boolean tryLockIndex(String dbName, String collName, String fieldName) {
-        return tryAcquireNow(getIndexIdentifier(dbName, collName, fieldName), Mode.WRITE);
+    public boolean tryLockIndex(String projectName, String collName, String fieldName) {
+        return tryAcquireNow(getIndexIdentifier(projectName, collName, fieldName), Mode.WRITE);
     }
 
-    public boolean tryLockIndex(String dbName, String collName, String fieldName, long timeoutMillis)
+    public boolean tryLockIndex(String projectName, String collName, String fieldName, long timeoutMillis)
             throws InterruptedException {
-        return tryAcquireWithin(getIndexIdentifier(dbName, collName, fieldName), Mode.WRITE, timeoutMillis);
+        return tryAcquireWithin(getIndexIdentifier(projectName, collName, fieldName), Mode.WRITE, timeoutMillis);
     }
 
-    public boolean tryLockIndexRead(String dbName, String collName, String fieldName) {
-        return tryAcquireNow(getIndexIdentifier(dbName, collName, fieldName), Mode.READ);
+    public boolean tryLockIndexRead(String projectName, String collName, String fieldName) {
+        return tryAcquireNow(getIndexIdentifier(projectName, collName, fieldName), Mode.READ);
     }
 
-    public void releaseIndex(String dbName, String collName, String fieldName) {
-        releaseWrite(getIndexIdentifier(dbName, collName, fieldName));
+    public void releaseIndex(String projectName, String collName, String fieldName) {
+        releaseWrite(getIndexIdentifier(projectName, collName, fieldName));
     }
 
-    public void lockIndexRead(String dbName, String collName, String fieldName) throws InterruptedException {
-        lockReadByName(getIndexIdentifier(dbName, collName, fieldName));
+    public void lockIndexRead(String projectName, String collName, String fieldName) throws InterruptedException {
+        lockReadByName(getIndexIdentifier(projectName, collName, fieldName));
     }
 
-    public boolean holdsIndexLock(String dbName, String collName, String fieldName) {
-        final var lock = locks.get(getIndexIdentifier(dbName, collName, fieldName));
+    public boolean holdsIndexLock(String projectName, String collName, String fieldName) {
+        final var lock = locks.get(getIndexIdentifier(projectName, collName, fieldName));
         return lock != null && (lock.getReadHoldCount() > 0 || lock.isWriteLockedByCurrentThread());
     }
 
-    public void releaseIndexRead(String dbName, String collName, String fieldName) {
-        releaseReadByName(getIndexIdentifier(dbName, collName, fieldName));
+    public void releaseIndexRead(String projectName, String collName, String fieldName) {
+        releaseReadByName(getIndexIdentifier(projectName, collName, fieldName));
     }
 
-    public void removeCollectionLock(String dbName, String collName) {
-        evictIfUnused(Cache.getCollectionIdentifier(dbName, collName));
+    public void removeCollectionLock(String projectName, String collName) {
+        evictIfUnused(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public void removeLock(String dbName, String collName) {
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+    public void removeLock(String projectName, String collName) {
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         evictIfUnused(collIdentifier);
         final var indexPrefix = collIdentifier + Globals.COLL_IDENTIFIER_SEPARATOR;
         for (final var key : List.copyOf(locks.keySet())) {
@@ -462,24 +463,24 @@ public class ResourceLocking {
         }
     }
 
-    public boolean tryLockDatabaseShared(String dbName, long timeoutMillis) throws InterruptedException {
-        return tryAcquireWithin(dbName, Mode.READ, timeoutMillis);
+    public boolean tryLockProjectShared(String projectName, long timeoutMillis) throws InterruptedException {
+        return tryAcquireWithin(projectName, Mode.READ, timeoutMillis);
     }
 
-    public void releaseDatabaseShared(String dbName) {
-        releaseReadByName(dbName);
+    public void releaseProjectShared(String projectName) {
+        releaseReadByName(projectName);
     }
 
-    public boolean tryLockDatabaseExclusive(String dbName, long timeoutMillis) throws InterruptedException {
-        return tryAcquireWithin(dbName, Mode.WRITE, timeoutMillis);
+    public boolean tryLockProjectExclusive(String projectName, long timeoutMillis) throws InterruptedException {
+        return tryAcquireWithin(projectName, Mode.WRITE, timeoutMillis);
     }
 
-    public void releaseDatabaseExclusive(String dbName) {
-        releaseWrite(dbName);
+    public void releaseProjectExclusive(String projectName) {
+        releaseWrite(projectName);
     }
 
-    public void removeDatabaseLock(String dbName) {
-        evictIfUnused(dbName);
+    public void removeProjectLock(String projectName) {
+        evictIfUnused(projectName);
     }
 
     private static void evictIfUnused(String key) {

@@ -175,7 +175,7 @@ def reads_fail(run: Run, fence_held: bool) -> list:
     found = []
     with connect() as conn:
         for coll in run.schema.collections:
-            answer = conn.send({"type": "AGGREGATE", "databaseName": run.schema.db, "collectionName": coll,
+            answer = conn.send({"type": "AGGREGATE", "projectName": run.schema.project, "collectionName": coll,
                                 "aggregationSteps": [{"type": "COUNT"}]})
             if fence_held and answer.get("errorCode") == COLLECTION_FENCED:
                 run.note(f"{coll}: COUNT answered {COLLECTION_FENCED}, held by a commit the full disk cannot apply")
@@ -190,11 +190,11 @@ def logs_full(run: Run):
             f"for {LOGS_FULL_S:.0f} s")
     run.prepare(docs=50)
     coll = run.schema.collections[0]
-    db = run.schema.db
+    project = run.schema.project
     run.offset = len(run.container.output())
     run.container.fill_to(LOGS, LOGS_BALLAST, 0)
     listener = connect()
-    registered = listener.send({"type": "LISTEN", "databaseName": db, "collectionName": coll,
+    registered = listener.send({"type": "LISTEN", "projectName": project, "collectionName": coll,
                                 "aggregationSteps": [bu.filter_step("_id", "EQUALS", "d5-listened")]})
     found = [] if registered.get("status") == "OK" else [
         Divergence("D5", run.seed, f"LISTEN answered {registered.get('errorCode')}")]
@@ -205,11 +205,11 @@ def logs_full(run: Run):
         while time.time() < deadline:
             k += 1
             for label, request in (
-                    ("SAVE", {"type": "SAVE", "databaseName": db, "collectionName": coll,
+                    ("SAVE", {"type": "SAVE", "projectName": project, "collectionName": coll,
                               "object": d5_document(rng, f"d5-{k}")}),
-                    ("FIND_BY_ID", {"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll,
+                    ("FIND_BY_ID", {"type": "FIND_BY_ID", "projectName": project, "collectionName": coll,
                                     "_id": f"d5-{k}"}),
-                    ("GET_DATABASE_STATS", {"type": "GET_DATABASE_STATS"})):
+                    ("GET_PROJECT_STATS", {"type": "GET_PROJECT_STATS"})):
                 answer = conn.send(request, timeout=15.0)
                 if answer.get("status") != "OK":
                     found.append(Divergence("D5", run.seed, f"{label} #{k} answered {answer.get('errorCode')} "
@@ -218,7 +218,7 @@ def logs_full(run: Run):
             time.sleep(0.5)
             for sock in idle:
                 sock.close()
-        conn.send({"type": "SAVE", "databaseName": db, "collectionName": coll,
+        conn.send({"type": "SAVE", "projectName": project, "collectionName": coll,
                    "object": d5_document(rng, "d5-listened")})
     if not pushed(listener, 5.0):
         found.append(Divergence("D5", run.seed, "no LISTEN push arrived within 5 s of a matching write"))
@@ -256,13 +256,13 @@ def listen_while_full(run: Run):
 
 
 def listen_count(run: Run, coll: str) -> dict:
-    return {"type": "LISTEN", "databaseName": run.schema.db, "collectionName": coll,
+    return {"type": "LISTEN", "projectName": run.schema.project, "collectionName": coll,
             "aggregationSteps": LISTEN_STEPS}
 
 
 def counted(run: Run, coll: str):
     with connect() as conn:
-        answer = conn.send({"type": "AGGREGATE", "databaseName": run.schema.db, "collectionName": coll,
+        answer = conn.send({"type": "AGGREGATE", "projectName": run.schema.project, "collectionName": coll,
                             "aggregationSteps": LISTEN_STEPS})
         bu.wait_until(lambda: oracles.background_idle(conn), timeout_s=oracles.IDLE_DEADLINE_S, interval_s=0.25)
     return answer.get("results")

@@ -64,12 +64,12 @@ public class Cache implements UserCacheDelegate, AdminCacheDelegate {
         return adminCache;
     }
 
-    public static String getCollectionIdentifier(String dbName, String collName) {
-        return CollectionIdentifiers.of(dbName, collName);
+    public static String getCollectionIdentifier(String projectName, String collName) {
+        return CollectionIdentifiers.of(projectName, collName);
     }
 
-    public static CollectionNames canonicalNames(String dbName, String collName) {
-        return CollectionIdentifiers.namesOf(dbName, collName);
+    public static CollectionNames canonicalNames(String projectName, String collName) {
+        return CollectionIdentifiers.namesOf(projectName, collName);
     }
 
     public static String getIndexIdentifier(String fieldName, Class<?> fieldType) {
@@ -125,133 +125,136 @@ public class Cache implements UserCacheDelegate, AdminCacheDelegate {
         return fieldName + Globals.COLL_IDENTIFIER_SEPARATOR + Globals.HASH_INDEX_KEY_PREFIX + typeLabel;
     }
 
-    public LongFunction<PageOccupancy> pageOccupancy(String dbName, String collName) {
+    public LongFunction<PageOccupancy> pageOccupancy(String projectName, String collName) {
         return page -> {
-            final var entry = adminCache.getAdminPageEntry(dbName, collName, page);
+            final var entry = adminCache.getAdminPageEntry(projectName, collName, page);
             return entry == null ? null : new PageOccupancy(entry.getPageSize(), entry.getEntryCount());
         };
     }
 
     private static void reposition(VacuumedPage vacuumed, AdminCache admins, UserCache users) {
-        if (Globals.ADMIN_DB_NAME.equals(vacuumed.dbName()) || Globals.ADMIN_PAGES_DB_NAME.equals(vacuumed.dbName())) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(vacuumed.projectName())
+                || Globals.ADMIN_PAGES_PROJECT_NAME.equals(vacuumed.projectName())) {
             admins.repositionAfterVacuum(vacuumed);
         } else {
             users.repositionAfterVacuum(vacuumed);
         }
     }
 
-    public <T> List<FieldIndexEntry<T>> getFieldIndexAndLoadIfNecessary(String dbName, String collName,
+    public <T> List<FieldIndexEntry<T>> getFieldIndexAndLoadIfNecessary(String projectName, String collName,
             String fieldName, Class<T> indexType) throws IOException {
-        return userCache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, indexType);
+        return userCache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, indexType);
     }
 
-    public List<FieldIndexEntry<String>> getHashIndexAndLoadIfNecessary(String dbName, String collName,
+    public List<FieldIndexEntry<String>> getHashIndexAndLoadIfNecessary(String projectName, String collName,
             String fieldName, IndexKind kind) throws IOException {
-        return userCache.getHashIndexAndLoadIfNecessary(dbName, collName, fieldName, kind);
+        return userCache.getHashIndexAndLoadIfNecessary(projectName, collName, fieldName, kind);
     }
 
-    public <T> Set<String> getIdsFromIndex(String dbName, String collName, String fieldName, FieldOperator operator,
-            T value) throws IOException {
-        return userCache.getIdsFromIndex(dbName, collName, fieldName, operator, value);
+    public <T> Set<String> getIdsFromIndex(String projectName, String collName, String fieldName,
+            FieldOperator operator, T value) throws IOException {
+        return userCache.getIdsFromIndex(projectName, collName, fieldName, operator, value);
     }
 
-    public Set<String> getIdsInRange(String dbName, String collName, RangeBounds bounds) throws IOException {
-        return IndexLookupResolver.idsInRange(userCache, dbName, collName, bounds);
+    public Set<String> getIdsInRange(String projectName, String collName, RangeBounds bounds) throws IOException {
+        return IndexLookupResolver.idsInRange(userCache, projectName, collName, bounds);
     }
 
-    public OptionalLong countInRange(String dbName, String collName, RangeBounds bounds) throws IOException {
-        return IndexLookupResolver.countInRange(userCache, dbName, collName, bounds);
+    public OptionalLong countInRange(String projectName, String collName, RangeBounds bounds) throws IOException {
+        return IndexLookupResolver.countInRange(userCache, projectName, collName, bounds);
     }
 
-    public <T> OptionalLong countEquals(String dbName, String collName, String fieldName, T value) throws IOException {
-        return IndexLookupResolver.countEquals(userCache, dbName, collName, fieldName, value);
-    }
-
-    public boolean answersFromIndexFile(String dbName, String collName, String fieldName, Class<?> type) {
-        return IndexFileReads.fromFile(userCache, dbName, collName, fieldName, type);
-    }
-
-    public boolean reloadsLargeFieldIndex(String dbName, String collName, String fieldName) {
-        return IndexFileReads.reloadsLargeIndex(userCache, dbName, collName, fieldName);
-    }
-
-    public OptionalLong countEqualsAny(String dbName, String collName, String fieldName, List<?> values)
+    public <T> OptionalLong countEquals(String projectName, String collName, String fieldName, T value)
             throws IOException {
-        return IndexLookupResolver.countEqualsAny(userCache, dbName, collName, fieldName, values);
+        return IndexLookupResolver.countEquals(userCache, projectName, collName, fieldName, value);
     }
 
-    public List<DbEntry> getEntriesByIds(String dbName, String collName, Set<String> ids) throws IOException {
-        return userCache.getEntriesByIds(dbName, collName, ids);
+    public boolean answersFromIndexFile(String projectName, String collName, String fieldName, Class<?> type) {
+        return IndexFileReads.fromFile(userCache, projectName, collName, fieldName, type);
     }
 
-    public List<DbEntry> getEntriesByIds(String dbName, String collName, Set<String> ids, PkRows pinned)
+    public boolean reloadsLargeFieldIndex(String projectName, String collName, String fieldName) {
+        return IndexFileReads.reloadsLargeIndex(userCache, projectName, collName, fieldName);
+    }
+
+    public OptionalLong countEqualsAny(String projectName, String collName, String fieldName, List<?> values)
             throws IOException {
-        return userCache.getEntriesByIds(dbName, collName, ids, pinned);
+        return IndexLookupResolver.countEqualsAny(userCache, projectName, collName, fieldName, values);
     }
 
-    public Set<String> getIdsEqualToAny(String dbName, String collName, String fieldName, List<Object> lookupValues)
+    public List<DbEntry> getEntriesByIds(String projectName, String collName, Set<String> ids) throws IOException {
+        return userCache.getEntriesByIds(projectName, collName, ids);
+    }
+
+    public List<DbEntry> getEntriesByIds(String projectName, String collName, Set<String> ids, PkRows pinned)
             throws IOException {
-        return IndexLookupResolver.idsEqualToAny(userCache, dbName, collName, fieldName, lookupValues);
+        return userCache.getEntriesByIds(projectName, collName, ids, pinned);
     }
 
-    public void evictDatabase(String dbName) {
-        CollectionIdentifiers.forgetDatabase(dbName);
-        absentIndexTypes.forgetDatabase(dbName);
-        idCounts.forgetDatabase(dbName);
-        userCache.evictDatabase(dbName);
-        adminCache.removeCollectionSchemasForDatabase(dbName);
-        adminCache.removeProceduresForDatabase(dbName);
-        adminCache.removeSchedulesForDatabase(dbName);
-        adminCache.removeTriggersForDatabase(dbName);
+    public Set<String> getIdsEqualToAny(String projectName, String collName, String fieldName,
+            List<Object> lookupValues) throws IOException {
+        return IndexLookupResolver.idsEqualToAny(userCache, projectName, collName, fieldName, lookupValues);
     }
 
-    public void evictCollection(String dbName, String collName) {
-        absentIndexTypes.forgetCollection(getCollectionIdentifier(dbName, collName));
-        idCounts.forgetCollection(dbName, collName);
-        CollectionIdentifiers.forget(dbName, collName);
-        userCache.evictCollection(dbName, collName);
-        adminCache.removeCollectionSchema(dbName, collName);
-        adminCache.removeTriggers(dbName, collName);
+    public void evictProject(String projectName) {
+        CollectionIdentifiers.forgetProject(projectName);
+        absentIndexTypes.forgetProject(projectName);
+        idCounts.forgetProject(projectName);
+        userCache.evictProject(projectName);
+        adminCache.removeCollectionSchemasForProject(projectName);
+        adminCache.removeProceduresForProject(projectName);
+        adminCache.removeSchedulesForProject(projectName);
+        adminCache.removeTriggersForProject(projectName);
+    }
+
+    public void evictCollection(String projectName, String collName) {
+        absentIndexTypes.forgetCollection(getCollectionIdentifier(projectName, collName));
+        idCounts.forgetCollection(projectName, collName);
+        CollectionIdentifiers.forget(projectName, collName);
+        userCache.evictCollection(projectName, collName);
+        adminCache.removeCollectionSchema(projectName, collName);
+        adminCache.removeTriggers(projectName, collName);
     }
 
     @Override
-    public void evictFieldIndex(String dbName, String collName, String indexIdentifier) {
-        absentIndexTypes.forget(getCollectionIdentifier(dbName, collName), indexIdentifier);
-        idCounts.forget(dbName, collName, indexIdentifier);
-        userCache.evictFieldIndex(dbName, collName, indexIdentifier);
+    public void evictFieldIndex(String projectName, String collName, String indexIdentifier) {
+        absentIndexTypes.forget(getCollectionIdentifier(projectName, collName), indexIdentifier);
+        idCounts.forget(projectName, collName, indexIdentifier);
+        userCache.evictFieldIndex(projectName, collName, indexIdentifier);
     }
 
     @Override
-    public void evictFieldIndexAllTypes(String dbName, String collName, String fieldName) {
+    public void evictFieldIndexAllTypes(String projectName, String collName, String fieldName) {
         INDEX_IDENTIFIERS.remove(fieldName);
-        absentIndexTypes.forgetField(getCollectionIdentifier(dbName, collName), fieldName);
-        idCounts.forgetField(dbName, collName, fieldName);
-        userCache.evictFieldIndexAllTypes(dbName, collName, fieldName);
+        absentIndexTypes.forgetField(getCollectionIdentifier(projectName, collName), fieldName);
+        idCounts.forgetField(projectName, collName, fieldName);
+        userCache.evictFieldIndexAllTypes(projectName, collName, fieldName);
     }
 
-    public boolean isFieldIndexTypeAbsent(String dbName, String collName, String indexIdentifier) {
-        return absentIndexTypes.isAbsent(getCollectionIdentifier(dbName, collName), indexIdentifier);
+    public boolean isFieldIndexTypeAbsent(String projectName, String collName, String indexIdentifier) {
+        return absentIndexTypes.isAbsent(getCollectionIdentifier(projectName, collName), indexIdentifier);
     }
 
-    public void rememberFieldIndexTypeAbsent(String dbName, String collName, String indexIdentifier) {
-        absentIndexTypes.remember(getCollectionIdentifier(dbName, collName), indexIdentifier);
+    public void rememberFieldIndexTypeAbsent(String projectName, String collName, String indexIdentifier) {
+        absentIndexTypes.remember(getCollectionIdentifier(projectName, collName), indexIdentifier);
     }
 
-    public void forgetFieldIndexTypeAbsent(String dbName, String collName, String indexIdentifier) {
-        absentIndexTypes.forget(getCollectionIdentifier(dbName, collName), indexIdentifier);
+    public void forgetFieldIndexTypeAbsent(String projectName, String collName, String indexIdentifier) {
+        absentIndexTypes.forget(getCollectionIdentifier(projectName, collName), indexIdentifier);
     }
 
-    public WriterPkRows pkRowsForWriter(String dbName, String collName, Collection<String> ids) throws IOException {
-        return userCache.pkTier().forWriter(dbName, collName, ids);
+    public WriterPkRows pkRowsForWriter(String projectName, String collName, Collection<String> ids)
+            throws IOException {
+        return userCache.pkTier().forWriter(projectName, collName, ids);
     }
 
-    public boolean displacesColderIndexes(String dbName, String collName, String indexIdentifier) {
-        final var bytes = userCache.sizes().refusedFieldIndexBytes(getCollectionIdentifier(dbName, collName),
+    public boolean displacesColderIndexes(String projectName, String collName, String indexIdentifier) {
+        final var bytes = userCache.sizes().refusedFieldIndexBytes(getCollectionIdentifier(projectName, collName),
                 indexIdentifier);
-        if (bytes == null || userCache.isCachingDisabled(dbName)) {
+        if (bytes == null || userCache.isCachingDisabled(projectName)) {
             return false;
         }
-        final var request = AdmissionRequest.forFieldIndex(dbName, collName, indexIdentifier, bytes);
+        final var request = AdmissionRequest.forFieldIndex(projectName, collName, indexIdentifier, bytes);
         if (userCache.admission().makeRoomInTier(request, userCache.maxMemoryBytes())) {
             return true;
         }
@@ -259,147 +262,149 @@ public class Cache implements UserCacheDelegate, AdminCacheDelegate {
         return false;
     }
 
-    public boolean pkServedByPointScans(String dbName, String collName) {
-        return userCache.pkTier().pointScansOnly(dbName, collName);
+    public boolean pkServedByPointScans(String projectName, String collName) {
+        return userCache.pkTier().pointScansOnly(projectName, collName);
     }
 
-    public boolean isFieldIndexTypeRefused(String dbName, String collName, String indexIdentifier) {
-        if (UserCache.isReservedDatabase(dbName)) {
+    public boolean isFieldIndexTypeRefused(String projectName, String collName, String indexIdentifier) {
+        if (UserCache.isReservedProject(projectName)) {
             return false;
         }
-        if (userCache.isCachingDisabled(dbName)) {
+        if (userCache.isCachingDisabled(projectName)) {
             return true;
         }
-        final var bytes = userCache.sizes().refusedFieldIndexBytes(getCollectionIdentifier(dbName, collName),
+        final var bytes = userCache.sizes().refusedFieldIndexBytes(getCollectionIdentifier(projectName, collName),
                 indexIdentifier);
         return bytes != null && !userCache.admissionFeasible(AccessKind.FIELD_INDEX, bytes);
     }
 
-    public Set<String> fieldsKeepingPriorValues(String dbName, String collName) {
-        if (UserCache.isReservedDatabase(dbName)) {
+    public Set<String> fieldsKeepingPriorValues(String projectName, String collName) {
+        if (UserCache.isReservedProject(projectName)) {
             return Set.of();
         }
-        if (userCache.isCachingDisabled(dbName)) {
-            return adminCache.getIndexesForCollection(dbName, collName);
+        if (userCache.isCachingDisabled(projectName)) {
+            return adminCache.getIndexesForCollection(projectName, collName);
         }
-        return userCache.sizes().fieldsWithRefusedTypes(getCollectionIdentifier(dbName, collName));
+        return userCache.sizes().fieldsWithRefusedTypes(getCollectionIdentifier(projectName, collName));
     }
 
-    public Map<String, DbEntry> getWholeCollection(String dbName, String collName) {
-        final var wholeCollection = completeCachedCollection(dbName, collName);
+    public Map<String, DbEntry> getWholeCollection(String projectName, String collName) {
+        final var wholeCollection = completeCachedCollection(projectName, collName);
         if (wholeCollection != null) {
             return wholeCollection;
         }
         try {
-            final var loaded = readWholeCollection(dbName, collName);
-            return locks.holdsCollectionLock(dbName, collName)
-                    ? userCache.admitWholeCollection(dbName, collName, loaded)
+            final var loaded = readWholeCollection(projectName, collName);
+            return locks.holdsCollectionLock(projectName, collName)
+                    ? userCache.admitWholeCollection(projectName, collName, loaded)
                     : loaded;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public int pkIndexSize(String dbName, String collName) {
+    public int pkIndexSize(String projectName, String collName) {
         try {
-            return userCache.pkIndexSize(dbName, collName);
+            return userCache.pkIndexSize(projectName, collName);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private Map<String, DbEntry> completeCachedCollection(String dbName, String collName) {
-        final var cached = userCache.getCachedCollection(dbName, collName);
-        return cached != null && !cached.isEmpty() && cached.size() == pkCountForCoverage(dbName, collName)
+    private Map<String, DbEntry> completeCachedCollection(String projectName, String collName) {
+        final var cached = userCache.getCachedCollection(projectName, collName);
+        return cached != null && !cached.isEmpty() && cached.size() == pkCountForCoverage(projectName, collName)
                 ? cached
                 : null;
     }
 
-    private Map<String, DbEntry> usableCachedCollection(String dbName, String collName) {
-        return userCache.isCachingDisabled(dbName) ? null : completeCachedCollection(dbName, collName);
+    private Map<String, DbEntry> usableCachedCollection(String projectName, String collName) {
+        return userCache.isCachingDisabled(projectName) ? null : completeCachedCollection(projectName, collName);
     }
 
-    public boolean holdsWholeCollection(String dbName, String collName) {
-        return usableCachedCollection(dbName, collName) != null;
+    public boolean holdsWholeCollection(String projectName, String collName) {
+        return usableCachedCollection(projectName, collName) != null;
     }
 
-    public Stream<DbEntry> streamCollection(String dbName, String collName) throws IOException {
-        final var cached = usableCachedCollection(dbName, collName);
-        return cached != null ? cached.values().stream() : streamCollectionFromDisk(dbName, collName);
+    public Stream<DbEntry> streamCollection(String projectName, String collName) throws IOException {
+        final var cached = usableCachedCollection(projectName, collName);
+        return cached != null ? cached.values().stream() : streamCollectionFromDisk(projectName, collName);
     }
 
-    public Stream<DbEntry> streamCollectionSkipping(String dbName, String collName, long skip) throws IOException {
+    public Stream<DbEntry> streamCollectionSkipping(String projectName, String collName, long skip) throws IOException {
         if (skip <= 0) {
-            return streamCollection(dbName, collName);
+            return streamCollection(projectName, collName);
         }
-        final var cached = usableCachedCollection(dbName, collName);
+        final var cached = usableCachedCollection(projectName, collName);
         if (cached != null) {
             return cached.values().stream().skip(skip);
         }
-        final var sortedPages = completeSortedPages(dbName, collName);
-        if (sortedPages == null || !locks.holdsCollectionLock(dbName, collName)) {
-            return streamCollectionFromDisk(dbName, collName).skip(skip);
+        final var sortedPages = completeSortedPages(projectName, collName);
+        if (sortedPages == null || !locks.holdsCollectionLock(projectName, collName)) {
+            return streamCollectionFromDisk(projectName, collName).skip(skip);
         }
-        final var trusted = fs.trustedLiveRows(dbName, collName);
+        final var trusted = fs.trustedLiveRows(projectName, collName);
         final var plan = trusted.isPresent() && !PageSkip.countsMatch(sortedPages, trusted.getAsLong())
                 ? null
                 : PageSkip.plan(sortedPages, skip);
         if (plan == null) {
-            return streamCollectionFromDisk(dbName, collName).skip(skip);
+            return streamCollectionFromDisk(projectName, collName).skip(skip);
         }
-        final var scan = new ScanAdmission(plan.pages(), false, pageReader(dbName, collName), memoryManagement, null);
+        final var scan = new ScanAdmission(plan.pages(), false, pageReader(projectName, collName), memoryManagement,
+                null);
         return StreamSupport.stream(scan, false).skip(plan.remainder());
     }
 
-    public Stream<DbEntry> streamCollectionInScanOrder(String dbName, String collName) throws IOException {
-        final var cached = usableCachedCollection(dbName, collName);
+    public Stream<DbEntry> streamCollectionInScanOrder(String projectName, String collName) throws IOException {
+        final var cached = usableCachedCollection(projectName, collName);
         return cached != null
-                ? Arrays.stream(scanOrder.inScanOrder(getCollectionIdentifier(dbName, collName), cached))
-                : streamCollectionFromDisk(dbName, collName, true);
+                ? Arrays.stream(scanOrder.inScanOrder(getCollectionIdentifier(projectName, collName), cached))
+                : streamCollectionFromDisk(projectName, collName, true);
     }
 
-    private Stream<DbEntry> streamCollectionFromDisk(String dbName, String collName) throws IOException {
-        return streamCollectionFromDisk(dbName, collName, false);
+    private Stream<DbEntry> streamCollectionFromDisk(String projectName, String collName) throws IOException {
+        return streamCollectionFromDisk(projectName, collName, false);
     }
 
-    private Stream<DbEntry> streamCollectionFromDisk(String dbName, String collName, boolean inScanOrder)
+    private Stream<DbEntry> streamCollectionFromDisk(String projectName, String collName, boolean inScanOrder)
             throws IOException {
-        final var sortedPages = completeSortedPages(dbName, collName);
+        final var sortedPages = completeSortedPages(projectName, collName);
         if (sortedPages == null) {
             return inScanOrder
-                    ? fs.streamPages(dbName, collName).flatMap(page -> sortedById(page.values()))
-                    : fs.streamEntries(dbName, collName);
+                    ? fs.streamPages(projectName, collName).flatMap(page -> sortedById(page.values()))
+                    : fs.streamEntries(projectName, collName);
         }
-        final var scan = new ScanAdmission(sortedPages, inScanOrder, pageReader(dbName, collName), memoryManagement,
-                scanCompletion(dbName, collName, ScanAdmission.liveBytesOf(sortedPages)));
+        final var scan = new ScanAdmission(sortedPages, inScanOrder, pageReader(projectName, collName),
+                memoryManagement, scanCompletion(projectName, collName, ScanAdmission.liveBytesOf(sortedPages)));
         return StreamSupport.stream(scan, false);
     }
 
-    private List<AdminPageEntry> completeSortedPages(String dbName, String collName) throws IOException {
-        final var collPages = adminCache.getAdminPageEntries(dbName, collName);
-        if (collPages == null || collPages.isEmpty() || collPages.size() < fs.pageFileCount(dbName, collName)) {
+    private List<AdminPageEntry> completeSortedPages(String projectName, String collName) throws IOException {
+        final var collPages = adminCache.getAdminPageEntries(projectName, collName);
+        if (collPages == null || collPages.isEmpty() || collPages.size() < fs.pageFileCount(projectName, collName)) {
             return null;
         }
         return collPages.stream().sorted(Comparator.comparingLong(AdminPageEntry::getPage)).toList();
     }
 
-    private ScanAdmission.PageReader pageReader(String dbName, String collName) {
-        return page -> fs.readWholeCollectionPage(dbName, collName, page).values();
+    private ScanAdmission.PageReader pageReader(String projectName, String collName) {
+        return page -> fs.readWholeCollectionPage(projectName, collName, page).values();
     }
 
-    private ScanAdmission.Completion scanCompletion(String dbName, String collName, long liveBytes) {
-        if (userCache.isCachingDisabled(dbName) || !locks.holdsCollectionLock(dbName, collName)) {
+    private ScanAdmission.Completion scanCompletion(String projectName, String collName, long liveBytes) {
+        if (userCache.isCachingDisabled(projectName) || !locks.holdsCollectionLock(projectName, collName)) {
             return null;
         }
-        final var identifier = getCollectionIdentifier(dbName, collName);
+        final var identifier = getCollectionIdentifier(projectName, collName);
         if (scanRefusals.refusedAt(identifier, freeBudgetBytes(), liveBytes)) {
             return null;
         }
         return new ScanAdmission.Completion() {
             @Override
             public void admit(ConcurrentHashMap<String, DbEntry> collected, long measuredBytes) {
-                if (locks.holdsCollectionLock(dbName, collName) && collected.size() == pkIndexSize(dbName, collName)) {
-                    userCache.admitScannedCollection(dbName, collName, collected, measuredBytes);
+                if (locks.holdsCollectionLock(projectName, collName)
+                        && collected.size() == pkIndexSize(projectName, collName)) {
+                    userCache.admitScannedCollection(projectName, collName, collected, measuredBytes);
                 }
             }
 
@@ -419,35 +424,35 @@ public class Cache implements UserCacheDelegate, AdminCacheDelegate {
         return maxBytes == Globals.CACHE_UNLIMITED ? Long.MAX_VALUE : maxBytes - userCache.footprintBytes();
     }
 
-    public void forgetScanRefusal(String dbName, String collName) {
-        scanRefusals.forget(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
+    public void forgetScanRefusal(String projectName, String collName) {
+        scanRefusals.forget(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
     }
 
-    public void forgetScanRefusals(String dbName) {
-        scanRefusals.forgetDatabase(dbName);
+    public void forgetScanRefusals(String projectName) {
+        scanRefusals.forgetProject(projectName);
     }
 
     private static Stream<DbEntry> sortedById(Collection<DbEntry> pageDocuments) {
         return pageDocuments.stream().sorted(BY_ID);
     }
 
-    private Map<String, DbEntry> readWholeCollection(String dbName, String collName) throws IOException {
+    private Map<String, DbEntry> readWholeCollection(String projectName, String collName) throws IOException {
         final var result = new HashMap<String, DbEntry>();
-        try (var pagesStream = fs.streamPages(dbName, collName)) {
+        try (var pagesStream = fs.streamPages(projectName, collName)) {
             pagesStream.forEach(result::putAll);
         }
         return result;
     }
 
-    public boolean mayAdmitFieldIndexLookup(String dbName, String collName, String fieldName, int ids) {
-        return locks.holdsCollectionLock(dbName, collName)
-                && userCache.wouldAdmit(new AdmissionRequest(AccessKind.FIELD_INDEX, dbName, collName, fieldName,
+    public boolean mayAdmitFieldIndexLookup(String projectName, String collName, String fieldName, int ids) {
+        return locks.holdsCollectionLock(projectName, collName)
+                && userCache.wouldAdmit(new AdmissionRequest(AccessKind.FIELD_INDEX, projectName, collName, fieldName,
                         CacheSizeEstimator.estimateFieldIndexLookupSize(ids)));
     }
 
-    public boolean hasNoIndex(String dbName, String collName, String fieldName) {
-        return !adminCache.hasIndex(dbName, collName, fieldName)
-                || fs.indexMarkers().isMarked(dbName, collName, fieldName);
+    public boolean hasNoIndex(String projectName, String collName, String fieldName) {
+        return !adminCache.hasIndex(projectName, collName, fieldName)
+                || fs.indexMarkers().isMarked(projectName, collName, fieldName);
     }
 
 }

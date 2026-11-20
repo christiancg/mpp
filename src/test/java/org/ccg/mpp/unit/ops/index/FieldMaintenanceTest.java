@@ -52,9 +52,9 @@ public class FieldMaintenanceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        TestUtils.createTestProjectAndCollection();
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
         stubTaskManager = new BackgroundTaskManager();
         TestUtils.setPrivateStaticField(IndexRepairPass.class, "taskManager", stubTaskManager);
         TestUtils.setPrivateField(Configuration.getInstance(), "transactionLockTimeoutMs", BUDGET_MS);
@@ -68,7 +68,7 @@ public class FieldMaintenanceTest {
         TestUtils.setPrivateStaticField(IndexRepairPass.class, "taskManager", realTaskManager);
         TestUtils.setPrivateField(Configuration.getInstance(), "transactionLockTimeoutMs",
                 ConfigKey.TRANSACTION_LOCK_TIMEOUT_MS.defaultValue());
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -80,10 +80,10 @@ public class FieldMaintenanceTest {
             final var data = new JsonObject();
             data.add(Globals.PK_FIELD, new JsonString(id));
             data.addProperty(FIELD, value++);
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
             entry.set_id(id);
-            cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL, entry);
-            events.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry));
+            cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, entry);
+            events.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry));
         }
         return events;
     }
@@ -92,10 +92,10 @@ public class FieldMaintenanceTest {
         final var held = new CountDownLatch(1);
         lockHolder.execute(() -> {
             try {
-                if (locks.tryLockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD, 5_000L)) {
+                if (locks.tryLockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, 5_000L)) {
                     held.countDown();
                     release.await();
-                    locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                    locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -108,8 +108,8 @@ public class FieldMaintenanceTest {
         release.countDown();
         final var deadline = System.currentTimeMillis() + 5_000L;
         while (System.currentTimeMillis() < deadline) {
-            if (locks.tryLockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD, 100L)) {
-                locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+            if (locks.tryLockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, 100L)) {
+                locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 return;
             }
         }
@@ -117,15 +117,15 @@ public class FieldMaintenanceTest {
     }
 
     private Set<String> indexedIds() throws Exception {
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            final var index = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD,
+            final var index = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                     Number.class);
             return index == null
                     ? Set.of()
                     : index.stream().flatMap(entry -> entry.getIds().stream()).collect(Collectors.toSet());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -157,8 +157,8 @@ public class FieldMaintenanceTest {
     public void theRepairPassResubmitsOnIndexLockBusy() throws Exception {
         eventsFor("r1", "r2");
         final var ids = List.of("r1", "r2");
-        final var pass = new IndexRepairEvent(TestGlobals.DB, TestGlobals.COLL, ids, 0L,
-                pendingIndexWrites.markRecovered(TestGlobals.DB, TestGlobals.COLL, ids));
+        final var pass = new IndexRepairEvent(TestGlobals.PROJECT, TestGlobals.COLL, ids, 0L,
+                pendingIndexWrites.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, ids));
         holdIndexWriteLock();
 
         IndexRepairPass.run(pass);
@@ -167,12 +167,12 @@ public class FieldMaintenanceTest {
         assertEquals(1, rest.size(), "a busy index lock resubmits the rest of the pass");
         assertEquals(FIELD, rest.getFirst().getResumeField());
         assertEquals(0, rest.getFirst().getResumeAt());
-        assertEquals(Set.copyOf(ids), Set.copyOf(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL)),
+        assertEquals(Set.copyOf(ids), Set.copyOf(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL)),
                 "the marks stay until the resubmitted pass finishes");
 
         releaseIndexWriteLock();
         IndexRepairPass.run(rest.getFirst());
-        assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
         assertEquals(Set.copyOf(ids), indexedIds());
     }
 }

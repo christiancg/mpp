@@ -7,8 +7,8 @@ public class ReadSnapshotRequest extends OperationRequest {
     private String afterId;
     private int limit;
 
-    public ReadSnapshotRequest(String databaseName, String collectionName) {
-        super(OperationType.READ_SNAPSHOT, databaseName, collectionName);
+    public ReadSnapshotRequest(String projectName, String collectionName) {
+        super(OperationType.READ_SNAPSHOT, projectName, collectionName);
     }
 
     public String getSnapshotId() {

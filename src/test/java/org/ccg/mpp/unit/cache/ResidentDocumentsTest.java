@@ -26,7 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ResidentDocumentsTest {
-    private static final String DB = "residentDb";
+    private static final String PROJECT = "residentProject";
     private static final String COLL = "residentColl";
     private static final int IDS = 64;
 
@@ -47,7 +47,7 @@ public class ResidentDocumentsTest {
         final var data = new JsonObject();
         data.addProperty("_id", id);
         data.addProperty("payload", "x".repeat(40));
-        return DbEntry.fromJsonObject(DB, COLL, data);
+        return DbEntry.fromJsonObject(PROJECT, COLL, data);
     }
 
     private static UserCache cacheReadingDocuments() throws Exception {
@@ -74,7 +74,7 @@ public class ResidentDocumentsTest {
         final var evictor = Thread.ofPlatform().start(() -> {
             awaitQuietly(start);
             while (!stop.get()) {
-                cache.evictCollectionDocuments(DB, COLL);
+                cache.evictCollectionDocuments(PROJECT, COLL);
             }
         });
         start.countDown();
@@ -86,11 +86,11 @@ public class ResidentDocumentsTest {
         evictor.join(TimeUnit.SECONDS.toMillis(10));
 
         final var resident = CacheResidents.residentDocuments(cache,
-                org.ccg.mpp.cache.Cache.getCollectionIdentifier(DB, COLL));
+                org.ccg.mpp.cache.Cache.getCollectionIdentifier(PROJECT, COLL));
         final var expected = resident == null ? 0L : CacheSizeEstimator.estimateCollectionEntries(resident.values());
         assertEquals(expected, CacheResidents.footprint(cache, AccessKind.COLLECTION),
                 "the total equals the documents still resident");
-        cache.evictCollectionDocuments(DB, COLL);
+        cache.evictCollectionDocuments(PROJECT, COLL);
         assertEquals(0L, CacheResidents.footprint(cache, AccessKind.COLLECTION),
                 "a late put into an evicted map drained instead of leaking");
         assertTrue(cache.footprintBytes() >= 0L);
@@ -102,11 +102,11 @@ public class ResidentDocumentsTest {
         while (!stop.get()) {
             final var id = "doc-" + (i++ % IDS);
             try {
-                locks.lockRead(DB, COLL);
+                locks.lockRead(PROJECT, COLL);
                 try {
-                    cache.getById(DB, COLL, new PkIndexEntry(DB, COLL, id, 0, 10, 0));
+                    cache.getById(PROJECT, COLL, new PkIndexEntry(PROJECT, COLL, id, 0, 10, 0));
                 } finally {
-                    locks.releaseRead(DB, COLL);
+                    locks.releaseRead(PROJECT, COLL);
                 }
             } catch (Exception e) {
                 throw new AssertionError(e);

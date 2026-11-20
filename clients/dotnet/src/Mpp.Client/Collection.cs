@@ -21,18 +21,18 @@ public sealed class Collection<T>
         Ops = ops;
     }
 
-    public string DatabaseName => Ops.Database;
+    public string ProjectName => Ops.Project;
 
     public string Name => Ops.Collection;
 
     internal CollectionOps<T> Ops { get; }
 
     public async Task CreateAsync(CancellationToken ct = default) =>
-        await Ops.SendAsync(Operation.CreateCollection, RequestEncoder.Request("CREATE_COLLECTION", Ops.Database, Ops.Collection), ct)
+        await Ops.SendAsync(Operation.CreateCollection, RequestEncoder.Request("CREATE_COLLECTION", Ops.Project, Ops.Collection), ct)
             .ConfigureAwait(false);
 
     public async Task DropAsync(CancellationToken ct = default) =>
-        await Ops.SendAsync(Operation.DropCollection, RequestEncoder.Request("DROP_COLLECTION", Ops.Database, Ops.Collection), ct)
+        await Ops.SendAsync(Operation.DropCollection, RequestEncoder.Request("DROP_COLLECTION", Ops.Project, Ops.Collection), ct)
             .ConfigureAwait(false);
 
     public Task<SaveResult> SaveAsync(T value, CancellationToken ct = default) => Ops.SaveAsync(value, ct);
@@ -66,11 +66,11 @@ public sealed class Collection<T>
 
     public IQueryable<T> AsQueryable() => MppQueryable<T>.Over(Ops);
 
-    public Indexes Indexes() => new(Ops.Context, Ops.Database, Ops.Collection);
+    public Indexes Indexes() => new(Ops.Context, Ops.Project, Ops.Collection);
 
-    public Schema Schema() => new(Ops.Context, Ops.Database, Ops.Collection);
+    public Schema Schema() => new(Ops.Context, Ops.Project, Ops.Collection);
 
-    public Triggers Triggers() => new(Ops.Context, Ops.Database, Ops.Collection);
+    public Triggers Triggers() => new(Ops.Context, Ops.Project, Ops.Collection);
 
     public Task<Subscription> ListenAsync(ListenHandler<T> handler, CancellationToken ct = default) =>
         ListenAsync(Query(), handler, ct);
@@ -80,7 +80,7 @@ public sealed class Collection<T>
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(handler);
         var listens = Ops.Context.Listens ?? throw new InvalidOperationException("listens are not available here");
-        return listens.ListenAsync(Ops.Database, Ops.Collection, query.Steps, Ops.DecodeRow, handler, ct);
+        return listens.ListenAsync(Ops.Project, Ops.Collection, query.Steps, Ops.DecodeRow, handler, ct);
     }
 
     public Task<Subscription> ListenAsync(IQueryable<T> query, ListenHandler<T> handler, CancellationToken ct = default) =>

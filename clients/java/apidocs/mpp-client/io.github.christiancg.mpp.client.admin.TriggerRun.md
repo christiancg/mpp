@@ -2,7 +2,7 @@ A pending or dead trigger run.
 
 @param runId the id `TriggerRuns.resolve` takes
 @param status `PENDING`, `DEAD` or `STAGED`
-@param database the database
+@param project the project
 @param collection the collection
 @param trigger the trigger's name
 @param procedure the procedure it runs

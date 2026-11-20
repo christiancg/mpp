@@ -20,39 +20,39 @@ public class AdminUserEntry extends DbEntry {
     private static final String PASSWORD_HASH_FIELD = "passwordHash";
     private static final String ADMIN_FIELD = "admin";
     private static final String GLOBAL_PERMISSIONS_FIELD = "globalPermissions";
-    private static final String DATABASE_PERMISSIONS_FIELD = "databasePermissions";
+    private static final String PROJECT_PERMISSIONS_FIELD = "projectPermissions";
     private static final String COLLECTION_PERMISSIONS_FIELD = "collectionPermissions";
     private static final String SCRIPT_PERMISSIONS_FIELD = "scriptPermissions";
 
     private String passwordHash;
     private boolean admin;
     private Set<GlobalPermissionType> globalPermissions;
-    private Map<String, PermissionLevel> databasePermissions;
+    private Map<String, PermissionLevel> projectPermissions;
     private Map<String, PermissionLevel> collectionPermissions;
     private Map<String, ScriptPermissionLevel> scriptPermissions;
 
     private AdminUserEntry() {
-        super.setDatabaseName(Globals.ADMIN_DB_NAME);
+        super.setProjectName(Globals.ADMIN_PROJECT_NAME);
         super.setCollectionName(Globals.ADMIN_USERS_COLLECTION_NAME);
     }
 
     public AdminUserEntry(String username, String passwordHash, boolean admin,
-            Set<GlobalPermissionType> globalPermissions, Map<String, PermissionLevel> databasePermissions,
+            Set<GlobalPermissionType> globalPermissions, Map<String, PermissionLevel> projectPermissions,
             Map<String, PermissionLevel> collectionPermissions) {
-        this(username, passwordHash, admin, globalPermissions, databasePermissions, collectionPermissions,
+        this(username, passwordHash, admin, globalPermissions, projectPermissions, collectionPermissions,
                 new HashMap<>());
     }
 
     public AdminUserEntry(String username, String passwordHash, boolean admin,
-            Set<GlobalPermissionType> globalPermissions, Map<String, PermissionLevel> databasePermissions,
+            Set<GlobalPermissionType> globalPermissions, Map<String, PermissionLevel> projectPermissions,
             Map<String, PermissionLevel> collectionPermissions, Map<String, ScriptPermissionLevel> scriptPermissions) {
-        super.setDatabaseName(Globals.ADMIN_DB_NAME);
+        super.setProjectName(Globals.ADMIN_PROJECT_NAME);
         super.setCollectionName(Globals.ADMIN_USERS_COLLECTION_NAME);
         this.set_id(username);
         this.passwordHash = passwordHash;
         this.admin = admin;
         this.globalPermissions = globalPermissions;
-        this.databasePermissions = databasePermissions;
+        this.projectPermissions = projectPermissions;
         this.collectionPermissions = collectionPermissions;
         this.scriptPermissions = scriptPermissions == null ? new HashMap<>() : scriptPermissions;
         rebuildData();
@@ -70,11 +70,11 @@ public class AdminUserEntry extends DbEntry {
         result.globalPermissions = globalPermsArray.asList().stream()
                 .map(el -> GlobalPermissionType.valueOf(el.asJsonString().getValue())).collect(Collectors.toSet());
 
-        final var dbPermsObj = object.get(DATABASE_PERMISSIONS_FIELD).asJsonObject();
-        result.databasePermissions = new HashMap<>();
-        for (final var entry : dbPermsObj.entrySet()) {
+        final var projectPermsObj = object.get(PROJECT_PERMISSIONS_FIELD).asJsonObject();
+        result.projectPermissions = new HashMap<>();
+        for (final var entry : projectPermsObj.entrySet()) {
             final var level = PermissionLevel.valueOf(entry.getValue().asJsonString().getValue());
-            result.databasePermissions.put(entry.getKey(), level);
+            result.projectPermissions.put(entry.getKey(), level);
         }
 
         final var collPermsObj = object.get(COLLECTION_PERMISSIONS_FIELD).asJsonObject();
@@ -92,7 +92,7 @@ public class AdminUserEntry extends DbEntry {
             }
         }
 
-        result.setDatabaseName(Globals.ADMIN_DB_NAME);
+        result.setProjectName(Globals.ADMIN_PROJECT_NAME);
         result.setCollectionName(Globals.ADMIN_USERS_COLLECTION_NAME);
         return result;
     }
@@ -107,9 +107,9 @@ public class AdminUserEntry extends DbEntry {
         globalPermissions.forEach(perm -> globalPermsArray.add(new JsonString(perm.name())));
         json.add(GLOBAL_PERMISSIONS_FIELD, globalPermsArray);
 
-        final var dbPermsObj = new JsonObject();
-        databasePermissions.forEach((db, level) -> dbPermsObj.add(db, new JsonString(level.name())));
-        json.add(DATABASE_PERMISSIONS_FIELD, dbPermsObj);
+        final var projectPermsObj = new JsonObject();
+        projectPermissions.forEach((db, level) -> projectPermsObj.add(db, new JsonString(level.name())));
+        json.add(PROJECT_PERMISSIONS_FIELD, projectPermsObj);
 
         final var collPermsObj = new JsonObject();
         collectionPermissions.forEach((coll, level) -> collPermsObj.add(coll, new JsonString(level.name())));
@@ -123,7 +123,7 @@ public class AdminUserEntry extends DbEntry {
         this.setData(json);
     }
 
-    public JsonObject toResponseJson(List<String> ownedDatabases) {
+    public JsonObject toResponseJson(List<String> ownedProjects) {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(get_id()));
         obj.add("admin", JsonBoolean.of(admin));
@@ -132,9 +132,9 @@ public class AdminUserEntry extends DbEntry {
         globalPermissions.forEach(p -> globalPermsArr.add(new JsonString(p.name())));
         obj.add("globalPermissions", globalPermsArr);
 
-        final var dbPermsObj = new JsonObject();
-        databasePermissions.forEach((k, v) -> dbPermsObj.add(k, new JsonString(v.name())));
-        obj.add("databasePermissions", dbPermsObj);
+        final var projectPermsObj = new JsonObject();
+        projectPermissions.forEach((k, v) -> projectPermsObj.add(k, new JsonString(v.name())));
+        obj.add("projectPermissions", projectPermsObj);
 
         final var collPermsObj = new JsonObject();
         collectionPermissions.forEach((k, v) -> collPermsObj.add(k, new JsonString(v.name())));
@@ -144,9 +144,9 @@ public class AdminUserEntry extends DbEntry {
         scriptPermissions.forEach((k, v) -> scriptPermsObj.add(k, new JsonString(v.name())));
         obj.add("scriptPermissions", scriptPermsObj);
 
-        final var ownedDbsArr = new JsonArray();
-        ownedDatabases.forEach(ownedDbsArr::add);
-        obj.add("ownedDatabases", ownedDbsArr);
+        final var ownedProjectsArr = new JsonArray();
+        ownedProjects.forEach(ownedProjectsArr::add);
+        obj.add("ownedProjects", ownedProjectsArr);
 
         return obj;
     }
@@ -173,8 +173,8 @@ public class AdminUserEntry extends DbEntry {
         rebuildData();
     }
 
-    public Map<String, PermissionLevel> getDatabasePermissions() {
-        return databasePermissions;
+    public Map<String, PermissionLevel> getProjectPermissions() {
+        return projectPermissions;
     }
 
     public Map<String, PermissionLevel> getCollectionPermissions() {
@@ -185,16 +185,16 @@ public class AdminUserEntry extends DbEntry {
         return scriptPermissions;
     }
 
-    public boolean canRunScripts(String databaseName) {
-        return levelFor(databaseName).covers(ScriptPermissionLevel.RUN);
+    public boolean canRunScripts(String projectName) {
+        return levelFor(projectName).covers(ScriptPermissionLevel.RUN);
     }
 
-    public boolean canManageScripts(String databaseName) {
-        return levelFor(databaseName).covers(ScriptPermissionLevel.MANAGE);
+    public boolean canManageScripts(String projectName) {
+        return levelFor(projectName).covers(ScriptPermissionLevel.MANAGE);
     }
 
-    private ScriptPermissionLevel levelFor(String databaseName) {
-        final var level = scriptPermissions.get(databaseName);
+    private ScriptPermissionLevel levelFor(String projectName) {
+        final var level = scriptPermissions.get(projectName);
         return level == null ? ScriptPermissionLevel.NONE : level;
     }
 
@@ -208,21 +208,21 @@ public class AdminUserEntry extends DbEntry {
             return false;
         return admin == that.admin && Objects.equals(passwordHash, that.passwordHash)
                 && Objects.equals(globalPermissions, that.globalPermissions)
-                && Objects.equals(databasePermissions, that.databasePermissions)
+                && Objects.equals(projectPermissions, that.projectPermissions)
                 && Objects.equals(collectionPermissions, that.collectionPermissions)
                 && Objects.equals(scriptPermissions, that.scriptPermissions);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), passwordHash, admin, globalPermissions, databasePermissions,
+        return Objects.hash(super.hashCode(), passwordHash, admin, globalPermissions, projectPermissions,
                 collectionPermissions, scriptPermissions);
     }
 
     @Override
     public String toString() {
         return "AdminUserEntry(super=" + super.toString() + ", passwordHash=***, admin=" + admin
-                + ", globalPermissions=" + globalPermissions + ", databasePermissions=" + databasePermissions
+                + ", globalPermissions=" + globalPermissions + ", projectPermissions=" + projectPermissions
                 + ", collectionPermissions=" + collectionPermissions + ", scriptPermissions=" + scriptPermissions + ")";
     }
 }

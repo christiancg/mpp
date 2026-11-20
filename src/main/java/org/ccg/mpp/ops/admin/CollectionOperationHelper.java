@@ -42,113 +42,113 @@ public final class CollectionOperationHelper {
     }
 
     public static OperationResponse processCreateCollectionOperation(CreateCollectionRequest createCollectionRequest) {
-        final var dbName = createCollectionRequest.getDatabaseName();
-        return OperationLocks.withDatabaseShared(dbName, OperationType.CREATE_COLLECTION,
-                ErrorCode.ERROR_CREATING_COLLECTION, () -> createUnderDatabaseBarrier(createCollectionRequest));
+        final var projectName = createCollectionRequest.getProjectName();
+        return OperationLocks.withProjectShared(projectName, OperationType.CREATE_COLLECTION,
+                ErrorCode.ERROR_CREATING_COLLECTION, () -> createUnderProjectBarrier(createCollectionRequest));
     }
 
-    private static OperationResponse createUnderDatabaseBarrier(CreateCollectionRequest createCollectionRequest) {
-        final var dbName = createCollectionRequest.getDatabaseName();
+    private static OperationResponse createUnderProjectBarrier(CreateCollectionRequest createCollectionRequest) {
+        final var projectName = createCollectionRequest.getProjectName();
         final var collName = createCollectionRequest.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.CREATE_COLLECTION,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.CREATE_COLLECTION,
                 ErrorCode.ERROR_CREATING_COLLECTION, () -> {
-                    if (cache.getAdminDbEntry(dbName) == null) {
-                        return new OperationResponse(OperationType.CREATE_COLLECTION, ErrorCode.DATABASE_NOT_FOUND);
+                    if (cache.getAdminProjectEntry(projectName) == null) {
+                        return new OperationResponse(OperationType.CREATE_COLLECTION, ErrorCode.PROJECT_NOT_FOUND);
                     }
-                    fs.createDatabaseFolder(dbName);
+                    fs.createProjectFolder(projectName);
                     return registerUnderNameLock(createCollectionRequest);
                 });
     }
 
     private static OperationResponse registerUnderNameLock(CreateCollectionRequest createCollectionRequest)
             throws Exception {
-        final var dbName = createCollectionRequest.getDatabaseName();
-        if (!locks.tryLockWrite(dbName, Globals.COLLECTION_NAMES_LOCK, OperationLocks.lockBudgetMillis(false))) {
+        final var projectName = createCollectionRequest.getProjectName();
+        if (!locks.tryLockWrite(projectName, Globals.COLLECTION_NAMES_LOCK, OperationLocks.lockBudgetMillis(false))) {
             return new OperationResponse(OperationType.CREATE_COLLECTION, ErrorCode.TRANSACTION_LOCK_TIMEOUT);
         }
         try {
-            final var colliding = OnDiskNameRegistry.collidingCollection(dbName,
+            final var colliding = OnDiskNameRegistry.collidingCollection(projectName,
                     createCollectionRequest.getCollectionName());
             if (colliding != null) {
                 return new OperationResponse(OperationType.CREATE_COLLECTION, ErrorCode.NAME_COLLIDES_ON_DISK,
                         colliding);
             }
-            final var maxCollections = configuration.intValue(ConfigKey.MAX_COLLECTIONS_PER_DATABASE);
-            if (isNotRegistered(dbName, createCollectionRequest.getCollectionName())
-                    && cache.getCollectionNamesForDatabase(dbName).size() >= maxCollections) {
+            final var maxCollections = configuration.intValue(ConfigKey.MAX_COLLECTIONS_PER_PROJECT);
+            if (isNotRegistered(projectName, createCollectionRequest.getCollectionName())
+                    && cache.getCollectionNamesForProject(projectName).size() >= maxCollections) {
                 return new OperationResponse(OperationType.CREATE_COLLECTION,
-                        ErrorCode.TOO_MANY_COLLECTIONS_FOR_DATABASE.getDefaultMessage() + " (" + maxCollections + ")",
-                        ErrorCode.TOO_MANY_COLLECTIONS_FOR_DATABASE);
+                        ErrorCode.TOO_MANY_COLLECTIONS_FOR_PROJECT.getDefaultMessage() + " (" + maxCollections + ")",
+                        ErrorCode.TOO_MANY_COLLECTIONS_FOR_PROJECT);
             }
             return register(createCollectionRequest);
         } finally {
-            locks.release(dbName, Globals.COLLECTION_NAMES_LOCK);
+            locks.release(projectName, Globals.COLLECTION_NAMES_LOCK);
         }
     }
 
     private static OperationResponse register(CreateCollectionRequest createCollectionRequest) throws Exception {
-        final var dbName = createCollectionRequest.getDatabaseName();
+        final var projectName = createCollectionRequest.getProjectName();
         final var collName = createCollectionRequest.getCollectionName();
-        final var result = LeftoverFolders.moveAsideUnregisteredCollection(dbName, collName)
-                && fs.createCollectionFile(dbName, collName);
+        final var result = LeftoverFolders.moveAsideUnregisteredCollection(projectName, collName)
+                && fs.createCollectionFile(projectName, collName);
         if (!result) {
             return new OperationResponse(OperationType.CREATE_COLLECTION, ErrorCode.ERROR_CREATING_COLLECTION);
         }
-        if (AdminOperationHelper.getCollectionEntry(dbName, collName) != null) {
+        if (AdminOperationHelper.getCollectionEntry(projectName, collName) != null) {
             return OperationResponse.ok(OperationType.CREATE_COLLECTION, "Collection created successfully");
         }
-        AdminOperationHelper.createPageCollections(dbName, collName);
-        final var entry = new AdminCollEntry(dbName, collName);
+        AdminOperationHelper.createPageCollections(projectName, collName);
+        final var entry = new AdminCollEntry(projectName, collName);
         entry.setIncarnation(hybridClock.next());
         AdminOperationHelper.saveCollectionEntry(entry);
         return OperationResponse.ok(OperationType.CREATE_COLLECTION, "Collection created successfully");
     }
 
-    private static boolean isNotRegistered(String dbName, String collName) {
-        return cache.getAdminCollectionEntry(dbName, collName) == null;
+    private static boolean isNotRegistered(String projectName, String collName) {
+        return cache.getAdminCollectionEntry(projectName, collName) == null;
     }
 
     public static OperationResponse processDropCollectionOperation(DropCollectionRequest dropCollectionRequest,
             RestampedRecords restamped) {
-        final var dbName = dropCollectionRequest.getDatabaseName();
+        final var projectName = dropCollectionRequest.getProjectName();
         final var collName = dropCollectionRequest.getCollectionName();
-        final var dropped = dropCollection(dbName, collName, false, new GrantRewrite.Restamp(restamped));
+        final var dropped = dropCollection(projectName, collName, false, new GrantRewrite.Restamp(restamped));
         if (dropped.getStatus() == OperationStatus.OK) {
             return OperationResponse.respondOrError(OperationType.DROP_COLLECTION, ErrorCode.ERROR_DROPPING_COLLECTION,
                     () -> {
-                        AdminStamp.tombstone(AdminRecordKey.collection(dbName, collName));
+                        AdminStamp.tombstone(AdminRecordKey.collection(projectName, collName));
                         return dropped;
                     });
         }
         return dropped;
     }
 
-    public static OperationResponse dropCollection(String dbName, String collName, boolean bounded,
+    public static OperationResponse dropCollection(String projectName, String collName, boolean bounded,
             GrantRewrite grantRewrite) {
         final var lockBudget = OperationLocks.lockBudgetMillis(bounded);
         boolean dropSucceeded = false;
         boolean namesLocked = false;
         try {
-            if (!locks.tryLockWrite(dbName, collName, lockBudget)) {
+            if (!locks.tryLockWrite(projectName, collName, lockBudget)) {
                 return new OperationResponse(OperationType.DROP_COLLECTION, ErrorCode.TRANSACTION_LOCK_TIMEOUT);
             }
-            namesLocked = locks.tryLockWrite(dbName, Globals.COLLECTION_NAMES_LOCK, lockBudget);
+            namesLocked = locks.tryLockWrite(projectName, Globals.COLLECTION_NAMES_LOCK, lockBudget);
             if (!namesLocked) {
                 return new OperationResponse(OperationType.DROP_COLLECTION, ErrorCode.TRANSACTION_LOCK_TIMEOUT);
             }
-            if (isNotRegistered(dbName, collName)) {
+            if (isNotRegistered(projectName, collName)) {
                 return new OperationResponse(OperationType.DROP_COLLECTION, ErrorCode.ERROR_DROPPING_COLLECTION);
             }
-            final var result = FieldIndexDropFence.holdingFieldIndexLocks(dbName, List.of(collName), lockBudget,
-                    () -> fs.deleteCollectionFiles(dbName, collName));
+            final var result = FieldIndexDropFence.holdingFieldIndexLocks(projectName, List.of(collName), lockBudget,
+                    () -> fs.deleteCollectionFiles(projectName, collName));
             if (result) {
-                DroppedCollections.forgetCollection(dbName, collName);
-                AdminOperationHelper.deleteCollectionEntry(dbName, collName);
-                AdminOperationHelper.deletePageCollections(dbName, collName);
-                listenManager.endAllForCollection(dbName, collName, ListenManager.COLLECTION_DROPPED);
-                triggerExecutor.discardQueuedFor(dbName, collName);
-                TriggerRunLog.discardAllFor(dbName, collName);
-                GrantPruner.forDroppedCollection(dbName, collName, grantRewrite);
+                DroppedCollections.forgetCollection(projectName, collName);
+                AdminOperationHelper.deleteCollectionEntry(projectName, collName);
+                AdminOperationHelper.deletePageCollections(projectName, collName);
+                listenManager.endAllForCollection(projectName, collName, ListenManager.COLLECTION_DROPPED);
+                triggerExecutor.discardQueuedFor(projectName, collName);
+                TriggerRunLog.discardAllFor(projectName, collName);
+                GrantPruner.forDroppedCollection(projectName, collName, grantRewrite);
                 dropSucceeded = true;
                 return OperationResponse.ok(OperationType.DROP_COLLECTION, "Collection dropped successfully");
             }
@@ -161,33 +161,33 @@ public final class CollectionOperationHelper {
             return new OperationResponse(OperationType.DROP_COLLECTION, ErrorCode.ERROR_DROPPING_COLLECTION);
         } finally {
             if (namesLocked) {
-                locks.release(dbName, Globals.COLLECTION_NAMES_LOCK);
+                locks.release(projectName, Globals.COLLECTION_NAMES_LOCK);
             }
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
             if (dropSucceeded) {
-                locks.removeLock(dbName, collName);
+                locks.removeLock(projectName, collName);
             }
         }
     }
 
     public static OperationResponse processListCollectionsOperation(ListCollectionsRequest request) {
-        final var dbName = request.getDatabaseName();
-        if (dbName == null || dbName.isBlank()) {
-            return new OperationResponse(OperationType.LIST_COLLECTIONS, "Database name is required",
+        final var projectName = request.getProjectName();
+        if (projectName == null || projectName.isBlank()) {
+            return new OperationResponse(OperationType.LIST_COLLECTIONS, "Project name is required",
                     ErrorCode.VALIDATION_ERROR);
         }
-        if (Globals.ADMIN_DB_NAME.equals(dbName)) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
             return new ListCollectionsResponse("Ok", List.of());
         }
-        final var lockSet = List
-                .of(Cache.getCollectionIdentifier(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME));
+        final var lockSet = List.of(
+                Cache.getCollectionIdentifier(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME));
         return OperationLocks.withReadLocks(request.isDirtyRead(), lockSet, OperationType.LIST_COLLECTIONS,
                 ErrorCode.ERROR_LISTING_COLLECTIONS, () -> {
-                    if (cache.getAdminDbEntry(dbName) == null) {
+                    if (cache.getAdminProjectEntry(projectName) == null) {
                         return new OperationResponse(OperationType.LIST_COLLECTIONS,
-                                "Database " + dbName + " not found", ErrorCode.DATABASE_NOT_FOUND);
+                                "Project " + projectName + " not found", ErrorCode.PROJECT_NOT_FOUND);
                     }
-                    return new ListCollectionsResponse("Ok", cache.getCollectionNamesForDatabase(dbName));
+                    return new ListCollectionsResponse("Ok", cache.getCollectionNamesForProject(projectName));
                 });
     }
 }

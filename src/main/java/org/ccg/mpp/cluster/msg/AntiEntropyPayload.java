@@ -6,7 +6,7 @@ import org.ccg.mpp.ejson.elements.JsonObject;
 
 @NullsOmitted
 public class AntiEntropyPayload {
-    private String dbName;
+    private String projectName;
     private String collName;
     private List<DigestEntry> digest;
     private List<String> ids;
@@ -24,17 +24,17 @@ public class AntiEntropyPayload {
     public AntiEntropyPayload() {
     }
 
-    public AntiEntropyPayload(String dbName, String collName) {
-        this.dbName = dbName;
+    public AntiEntropyPayload(String projectName, String collName) {
+        this.projectName = projectName;
         this.collName = collName;
     }
 
-    public String getDbName() {
-        return dbName;
+    public String getProjectName() {
+        return projectName;
     }
 
-    public void setDbName(String dbName) {
-        this.dbName = dbName;
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 
     public String getCollName() {

@@ -47,7 +47,7 @@ public class TriggerExecutor {
         final var queued = event.withIdsOnly();
         final var bytes = queued.queuedBytes();
         while (cannotEnqueue(queued, bytes)) {
-            final var evicted = oldestQueuedFor(queued.getDbName());
+            final var evicted = oldestQueuedFor(queued.getProjectName());
             if (evicted == null) {
                 if (cannotEnqueue(queued, bytes)) {
                     drop(queued, "the newest");
@@ -80,10 +80,10 @@ public class TriggerExecutor {
         return true;
     }
 
-    public int discardQueuedFor(String dbName, String collName) {
+    public int discardQueuedFor(String projectName, String collName) {
         var discarded = 0;
         for (final var queued : List.copyOf(queue)) {
-            final var matches = dbName.equals(queued.getDbName())
+            final var matches = projectName.equals(queued.getProjectName())
                     && (collName == null || collName.equals(queued.getCollName()));
             if (matches && dequeue(queued)) {
                 discarded++;
@@ -96,9 +96,9 @@ public class TriggerExecutor {
         return queuedBytes.get() + scheduledBytes.get();
     }
 
-    private TriggerEvent oldestQueuedFor(String dbName) {
+    private TriggerEvent oldestQueuedFor(String projectName) {
         for (final var queued : queue) {
-            if (dbName.equals(queued.getDbName())) {
+            if (projectName.equals(queued.getProjectName())) {
                 return queued;
             }
         }
@@ -110,7 +110,7 @@ public class TriggerExecutor {
         TriggerRunLog.markAttempt(event.getRunId(), TriggerRunStatus.DEAD, event.getAttempt(),
                 "dropped: trigger queue full", 0L);
         logger.warning("Trigger queue full; dropped " + which + " trigger '" + event.getTriggerName() + "' for "
-                + event.getDbName() + "|" + event.getCollName() + " (event " + event.getType() + ")");
+                + event.getProjectName() + "|" + event.getCollName() + " (event " + event.getType() + ")");
     }
 
     public void submitAfter(TriggerEvent event, long delayMillis) {

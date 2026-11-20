@@ -48,7 +48,7 @@ public class AggregationPipelineTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -59,7 +59,7 @@ public class AggregationPipelineTest {
 
     @Test
     public void test_process_multiple_steps_sequence() throws IOException {
-        var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         var steps = new ArrayList<BaseAggregationStep>();
 
         var filterOp = new FieldOperator(FieldOperatorType.EQUALS, "field1", new JsonString("value1"));
@@ -82,7 +82,7 @@ public class AggregationPipelineTest {
     // it exercises the dispatcher for all step types, not a request the validator would accept.
     @Test
     public void test_engine_processes_all_step_types_in_sequence() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         List<BaseAggregationStep> steps = List.of(
                 new FilterAggregationStep(
                         new FieldOperator(FieldOperatorType.EQUALS, "field1", new JsonString("value1"))),
@@ -100,7 +100,7 @@ public class AggregationPipelineTest {
 
     @Test
     public void test_process_aggregation_with_no_steps() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(Collections.emptyList());
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -112,7 +112,7 @@ public class AggregationPipelineTest {
     @Test
     public void test_handle_invalid_field_names_in_operations() throws IOException {
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         GroupByAggregationStep groupByStep = new GroupByAggregationStep("invalidField");
         SortAggregationStep sortStep = new SortAggregationStep("invalidField", true);
         JoinAggregationStep joinStep = new JoinAggregationStep("joinCollection", "invalidLocalField",
@@ -126,7 +126,7 @@ public class AggregationPipelineTest {
 
     @Test
     public void test_process_map_with_empty_operator_list() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         MapAggregationStep mapStep = new MapAggregationStep(Collections.emptyList());
         request.setAggregationSteps(List.of(mapStep));
 
@@ -143,10 +143,10 @@ public class AggregationPipelineTest {
             obj.addProperty(fieldName, s);
         else if (fieldValue instanceof Number n)
             obj.addProperty(fieldName, n);
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     @Test
@@ -156,7 +156,7 @@ public class AggregationPipelineTest {
         insertEntry(cache, "sk2", "n", 2);
         insertEntry(cache, "sk3", "n", 3);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("n", true), new SkipAggregationStep(2)));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -172,7 +172,7 @@ public class AggregationPipelineTest {
         insertEntry(cache, "lim2", "n", 2);
         insertEntry(cache, "lim3", "n", 3);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("n", true), new LimitAggregationStep(2)));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -204,7 +204,7 @@ public class AggregationPipelineTest {
         org.ccg.mpp.ops.req.agg.step.map.AddFieldMapOperator mapOp = new org.ccg.mpp.ops.req.agg.step.map.AddFieldMapOperator(
                 "total", null, sumOp);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new MapAggregationStep(List.of(mapOp))));
         return request;
     }
@@ -212,7 +212,7 @@ public class AggregationPipelineTest {
     @Test
     public void test_handle_missing_fields() throws IOException {
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         List<BaseAggregationStep> steps = new ArrayList<>();
         steps.add(new GroupByAggregationStep("nonExistentField"));
         request.setAggregationSteps(steps);
@@ -230,7 +230,7 @@ public class AggregationPipelineTest {
         final var second = new JsonObject();
         second.add(Globals.PK_FIELD, new JsonString("s2"));
         final var source = Stream.of(first, second).onClose(() -> closed.set(true));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
 
         final var results = AggregationOperationHelper.processAggregation(request, source);
@@ -248,7 +248,7 @@ public class AggregationPipelineTest {
         document.add(Globals.PK_FIELD, new JsonString("s1"));
         document.add("n", new JsonNumber(1));
         final var source = Stream.of(document).onClose(() -> closed.set(true));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new LimitAggregationStep(10)));
 
         AggregationOperationHelper.processAggregation(request, source);
@@ -270,7 +270,7 @@ public class AggregationPipelineTest {
 
     private List<JsonObject> runOnCustomDocument(List<BaseAggregationStep> steps) throws IOException {
         IocContainer.get(EJson.class);
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         return AggregationOperationHelper.processAggregation(request, Stream.of(documentWithCustomFields()));
     }

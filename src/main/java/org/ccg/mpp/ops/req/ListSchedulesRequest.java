@@ -9,8 +9,8 @@ public class ListSchedulesRequest extends OperationRequest {
         super(OperationType.LIST_SCHEDULES, null, null);
     }
 
-    public ListSchedulesRequest(String databaseName) {
-        super(OperationType.LIST_SCHEDULES, databaseName, null);
+    public ListSchedulesRequest(String projectName) {
+        super(OperationType.LIST_SCHEDULES, projectName, null);
     }
 
     public boolean isIncludeArgs() {

@@ -40,7 +40,7 @@ public class TriggerRunRecoveryTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -79,14 +79,14 @@ public class TriggerRunRecoveryTest {
 
     private static void writeRecord(String runId, String nodeId, EventType type, List<String> ids,
             List<JsonObject> documents, long firedAt) throws Exception {
-        AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(runId, 0L, nodeId, TestGlobals.DB,
+        AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(runId, 0L, nodeId, TestGlobals.PROJECT,
                 TestGlobals.COLL, "audit", "recalc", type, false, "alice", 0, firedAt, ids, documents));
     }
 
     private void saveDocument() {
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document("live"));
-        cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL, entry);
-        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document("live"));
+        cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("live"));
         request.set_id("live");
         IocContainer.get(org.ccg.mpp.ops.OperationProcessor.class).processMessage(request);

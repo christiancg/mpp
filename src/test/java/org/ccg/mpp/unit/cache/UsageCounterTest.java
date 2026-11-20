@@ -12,7 +12,7 @@ public class UsageCounterTest {
     public void test_constructor_records_initial_state() {
         final var c = new UsageCounter(AccessKind.COLLECTION, "db", "coll", "field", 5L, 100L);
         assertEquals(AccessKind.COLLECTION, c.kind());
-        assertEquals("db", c.dbName());
+        assertEquals("db", c.projectName());
         assertEquals("coll", c.collName());
         assertEquals("field", c.indexKey());
         assertEquals(5L, c.getAccessCount());

@@ -9,7 +9,7 @@ import mpp
 
 PAIRS: list[tuple[type, type]] = [
     (mpp.AsyncMppClient, mpp.MppClient),
-    (mpp.AsyncDatabase, mpp.Database),
+    (mpp.AsyncProject, mpp.Project),
     (mpp.AsyncCollection, mpp.Collection),
     (mpp.AsyncQuery, mpp.Query),
     (mpp.AsyncTransaction, mpp.Transaction),

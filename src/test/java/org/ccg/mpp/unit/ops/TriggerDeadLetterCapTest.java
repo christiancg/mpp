@@ -32,13 +32,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class TriggerDeadLetterCapTest {
-    private static final String OTHER_DB = "otherdb";
+    private static final String OTHER_PROJECT = "otherdb";
     private final Configuration configuration = Configuration.getInstance();
 
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TriggerTestSupport.consumeAllPendingRuns();
         configuration.override(ConfigKey.TRIGGER_DEAD_LETTER_MAX_RUNS, "3");
@@ -52,11 +52,11 @@ public class TriggerDeadLetterCapTest {
         TestUtils.standardTearDown();
     }
 
-    private static void seedDead(String dbName, String... runIds) throws Exception {
+    private static void seedDead(String projectName, String... runIds) throws Exception {
         final var now = System.currentTimeMillis();
         final var runs = new ArrayList<AdminTriggerRunEntry>();
         for (var index = 0; index < runIds.length; index++) {
-            runs.add(TriggerRunIndexTest.run(runIds[index], TriggerRunLog.currentNodeId(), dbName,
+            runs.add(TriggerRunIndexTest.run(runIds[index], TriggerRunLog.currentNodeId(), projectName,
                     now - 60_000L + index * 1_000L, TriggerRunStatus.DEAD));
         }
         AdminOperationHelper.saveTriggerRuns(runs);
@@ -65,18 +65,18 @@ public class TriggerDeadLetterCapTest {
     private static String deadLetterNow() {
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString("doc"));
-        final var runId = TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL,
-                "audit", "recalc", EventType.CREATED, false, "alice", 0, System.currentTimeMillis(),
-                List.of(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data))));
+        final var runId = TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT,
+                TestGlobals.COLL, "audit", "recalc", EventType.CREATED, false, "alice", 0, System.currentTimeMillis(),
+                List.of(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data))));
         assertNotNull(runId);
         TriggerRunLog.markAttempt(runId, TriggerRunStatus.DEAD, 3, "boom", 0L);
         return runId;
     }
 
-    private static Set<String> deadRunsIn(String dbName) throws Exception {
+    private static Set<String> deadRunsIn(String projectName) throws Exception {
         final var runs = new TreeSet<String>();
         for (final var entry : TriggerRunLog.pending()) {
-            if (entry.getStatus() == TriggerRunStatus.DEAD && dbName.equals(entry.getDbName())) {
+            if (entry.getStatus() == TriggerRunStatus.DEAD && projectName.equals(entry.getTargetProject())) {
                 runs.add(entry.getRunId());
             }
         }
@@ -85,7 +85,7 @@ public class TriggerDeadLetterCapTest {
 
     @Test
     public void deadLetterCapDropsOldestBeyondCap() throws Exception {
-        seedDead(TestGlobals.DB, "old-0", "old-1", "old-2", "old-3");
+        seedDead(TestGlobals.PROJECT, "old-0", "old-1", "old-2", "old-3");
 
         final String newest;
         try (var admin = mockStatic(AdminOperationHelper.class, CALLS_REAL_METHODS)) {
@@ -95,56 +95,56 @@ public class TriggerDeadLetterCapTest {
             admin.verify(() -> AdminOperationHelper.deleteTriggerRuns(anyList()), times(1));
         }
 
-        assertEquals(new TreeSet<>(Set.of("old-2", "old-3", newest)), deadRunsIn(TestGlobals.DB));
+        assertEquals(new TreeSet<>(Set.of("old-2", "old-3", newest)), deadRunsIn(TestGlobals.PROJECT));
     }
 
     @Test
-    public void deadLetterCapIsPerDatabase() throws Exception {
-        seedDead(OTHER_DB, "other-0", "other-1", "other-2", "other-3", "other-4");
-        seedDead(TestGlobals.DB, "old-0", "old-1", "old-2");
+    public void deadLetterCapIsPerProject() throws Exception {
+        seedDead(OTHER_PROJECT, "other-0", "other-1", "other-2", "other-3", "other-4");
+        seedDead(TestGlobals.PROJECT, "old-0", "old-1", "old-2");
 
         final var newest = deadLetterNow();
 
-        assertEquals(new TreeSet<>(Set.of("old-1", "old-2", newest)), deadRunsIn(TestGlobals.DB));
-        assertEquals(5, deadRunsIn(OTHER_DB).size(), "a dead letter in one database never trims another");
+        assertEquals(new TreeSet<>(Set.of("old-1", "old-2", newest)), deadRunsIn(TestGlobals.PROJECT));
+        assertEquals(5, deadRunsIn(OTHER_PROJECT).size(), "a dead letter in one project never trims another");
     }
 
     @Test
-    public void sweepCapsEveryDatabase() throws Exception {
-        seedDead(OTHER_DB, "other-0", "other-1", "other-2", "other-3", "other-4");
-        seedDead(TestGlobals.DB, "old-0", "old-1", "old-2", "old-3");
+    public void sweepCapsEveryProject() throws Exception {
+        seedDead(OTHER_PROJECT, "other-0", "other-1", "other-2", "other-3", "other-4");
+        seedDead(TestGlobals.PROJECT, "old-0", "old-1", "old-2", "old-3");
 
         TriggerRunRecovery.sweep();
 
-        assertEquals(new TreeSet<>(Set.of("other-2", "other-3", "other-4")), deadRunsIn(OTHER_DB));
-        assertEquals(new TreeSet<>(Set.of("old-1", "old-2", "old-3")), deadRunsIn(TestGlobals.DB));
+        assertEquals(new TreeSet<>(Set.of("other-2", "other-3", "other-4")), deadRunsIn(OTHER_PROJECT));
+        assertEquals(new TreeSet<>(Set.of("old-1", "old-2", "old-3")), deadRunsIn(TestGlobals.PROJECT));
         assertEquals(0, TriggerDeadLetterCap.enforce(null), "a capped log has nothing left to drop");
     }
 
     @Test
     public void zeroCapKeepsEveryDeadRun() throws Exception {
         configuration.override(ConfigKey.TRIGGER_DEAD_LETTER_MAX_RUNS, "0");
-        seedDead(TestGlobals.DB, "old-0", "old-1", "old-2", "old-3");
+        seedDead(TestGlobals.PROJECT, "old-0", "old-1", "old-2", "old-3");
 
         deadLetterNow();
         TriggerRunRecovery.sweep();
 
-        assertEquals(5, deadRunsIn(TestGlobals.DB).size());
+        assertEquals(5, deadRunsIn(TestGlobals.PROJECT).size());
     }
 
     @Test
     public void pendingRunsNeverCountTowardTheCap() throws Exception {
-        seedDead(TestGlobals.DB, "old-0", "old-1");
+        seedDead(TestGlobals.PROJECT, "old-0", "old-1");
         final var runs = new ArrayList<AdminTriggerRunEntry>();
         for (var index = 0; index < 5; index++) {
-            runs.add(TriggerRunIndexTest.run("live-" + index, TriggerRunLog.currentNodeId(), TestGlobals.DB,
+            runs.add(TriggerRunIndexTest.run("live-" + index, TriggerRunLog.currentNodeId(), TestGlobals.PROJECT,
                     System.currentTimeMillis(), TriggerRunStatus.PENDING));
         }
         AdminOperationHelper.saveTriggerRuns(runs);
 
         deadLetterNow();
 
-        assertEquals(3, deadRunsIn(TestGlobals.DB).size());
+        assertEquals(3, deadRunsIn(TestGlobals.PROJECT).size());
         assertEquals(8, TriggerRunLog.pending().size());
     }
 }

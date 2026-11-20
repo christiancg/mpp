@@ -105,7 +105,7 @@ public class FilterArrayObjectOperandTest extends FilterResolutionSupport {
         insert("other", ARRAY_FIELD, arrayOf(new JsonNumber(1)));
         indexField(ARRAY_FIELD);
 
-        final var hashes = cache.getHashIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, ARRAY_FIELD,
+        final var hashes = cache.getHashIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, ARRAY_FIELD,
                 IndexKind.ARRAY);
         assertEquals(3, hashes.size());
         for (final var entry : hashes) {

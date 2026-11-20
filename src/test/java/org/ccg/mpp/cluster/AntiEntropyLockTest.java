@@ -62,10 +62,10 @@ public class AntiEntropyLockTest extends AntiEntropyTestBase {
         release = new CountDownLatch(1);
         holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 taken.countDown();
                 release.await();
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -75,10 +75,10 @@ public class AntiEntropyLockTest extends AntiEntropyTestBase {
     }
 
     private boolean collectionIsUnlocked() {
-        if (!locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL)) {
+        if (!locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL)) {
             return false;
         }
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         return true;
     }
 
@@ -86,7 +86,7 @@ public class AntiEntropyLockTest extends AntiEntropyTestBase {
     public void test_build_digest_gives_up_instead_of_parking_on_a_held_lock() throws Exception {
         holdTheWriteLockElsewhere();
 
-        assertThrows(CollectionBusyException.class, () -> service.buildDigest(TestGlobals.DB, TestGlobals.COLL));
+        assertThrows(CollectionBusyException.class, () -> service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -94,21 +94,21 @@ public class AntiEntropyLockTest extends AntiEntropyTestBase {
         holdTheWriteLockElsewhere();
 
         assertThrows(CollectionBusyException.class,
-                () -> service.buildPull(TestGlobals.DB, TestGlobals.COLL, List.of("a")));
+                () -> service.buildPull(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a")));
     }
 
     @Test
     public void test_reconcile_gives_up_instead_of_parking_on_a_held_lock() throws Exception {
         holdTheWriteLockElsewhere();
 
-        assertThrows(CollectionBusyException.class, () -> service.reconcile(TestGlobals.DB, TestGlobals.COLL));
+        assertThrows(CollectionBusyException.class, () -> service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_free_collection_is_still_read_normally() throws Exception {
         budgetLockWaits();
 
-        assertTrue(service.buildDigest(TestGlobals.DB, TestGlobals.COLL).getDigest().isEmpty());
+        assertTrue(service.buildDigest(TestGlobals.PROJECT, TestGlobals.COLL).getDigest().isEmpty());
     }
 
     @Test
@@ -119,9 +119,9 @@ public class AntiEntropyLockTest extends AntiEntropyTestBase {
         TestUtils.setPrivateField(faultInjector, "halt",
                 (IntConsumer) _ -> unlockedWhenFired.add(collectionIsUnlocked()));
         faultInjector.arm(FaultPoint.ANTI_ENTROPY_SNAPSHOTTED, FaultAction.HALT,
-                Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        service.reconcile(TestGlobals.DB, TestGlobals.COLL);
+        service.reconcile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(List.of(true), unlockedWhenFired,
                 "a write landing in the window must not wait on the sweep's snapshot lock");

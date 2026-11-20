@@ -120,7 +120,7 @@ def test_one_address_cannot_hold_every_unauthenticated_slot():
     with tls_socket(verify=False) as fresh:
         conn = Conn(sock=fresh)
         conn.authenticate()
-        check_status("Once they are gone a new client authenticates", conn.send({"type": "LIST_DATABASES"}), "OK")
+        check_status("Once they are gone a new client authenticates", conn.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def test_keystore_generated(work_dir: str, log_path: str):
@@ -171,31 +171,31 @@ def test_tls_roundtrip():
 
         c = Conn(sock=s)
         check_status("AUTHENTICATE as admin over TLS", c.authenticate(), "OK")
-        check_status("CREATE_DATABASE over TLS",
-                     c.send({"type": "CREATE_DATABASE", "databaseName": "tls_db"}),
+        check_status("CREATE_PROJECT over TLS",
+                     c.send({"type": "CREATE_PROJECT", "projectName": "tls_project"}),
                      "OK")
         check_status("CREATE_COLLECTION over TLS",
                      c.send({"type": "CREATE_COLLECTION",
-                             "databaseName": "tls_db", "collectionName": "items"}),
+                             "projectName": "tls_project", "collectionName": "items"}),
                      "OK")
         check_status("SAVE over TLS",
-                     c.send({"type": "SAVE", "databaseName": "tls_db", "collectionName": "items",
+                     c.send({"type": "SAVE", "projectName": "tls_project", "collectionName": "items",
                              "object": {"_id": "doc1", "value": 42}}),
                      "OK")
         check_status("FIND_BY_ID over TLS",
-                     c.send({"type": "FIND_BY_ID", "databaseName": "tls_db",
+                     c.send({"type": "FIND_BY_ID", "projectName": "tls_project",
                              "collectionName": "items", "_id": "doc1"}),
                      "OK")
         check_status("AGGREGATE (COUNT) over TLS",
-                     c.send({"type": "AGGREGATE", "databaseName": "tls_db", "collectionName": "items",
+                     c.send({"type": "AGGREGATE", "projectName": "tls_project", "collectionName": "items",
                              "aggregationSteps": [{"type": "COUNT"}]}),
                      "OK")
         check_status("DELETE over TLS",
-                     c.send({"type": "DELETE", "databaseName": "tls_db",
+                     c.send({"type": "DELETE", "projectName": "tls_project",
                              "collectionName": "items", "_id": "doc1"}),
                      "OK")
-        check_status("DROP_DATABASE over TLS (cleanup)",
-                     c.send({"type": "DROP_DATABASE", "databaseName": "tls_db"}),
+        check_status("DROP_PROJECT over TLS (cleanup)",
+                     c.send({"type": "DROP_PROJECT", "projectName": "tls_project"}),
                      "OK")
     finally:
         s.close()
@@ -223,7 +223,7 @@ def test_plaintext_rejected():
         with tls_socket(verify=False) as s:
             conn = Conn(sock=s)
             conn.authenticate()
-            r = conn.send({"type": "LIST_DATABASES"})
+            r = conn.send({"type": "LIST_PROJECTS"})
             survived = r.get("status") == "OK"
     except OSError:
         survived = False
@@ -244,7 +244,7 @@ def check_refused_start(label: str, work_dir: str, log_path: str, expected: str,
           next((line for line in log.splitlines() if "FATAL" in line), log[-600:]))
     check(f"{label}: no port was opened", not bu.port_open())
     if storage_untouched:
-        check(f"{label}: the admin database was never created",
+        check(f"{label}: the admin project was never created",
               not os.path.isdir(os.path.join(work_dir, "db", "admin")))
 
 
@@ -322,8 +322,8 @@ def test_bind_address_and_tenant_folders():
         proc = bu.start_server(work_dir, log_path)
         with Conn() as c:
             check_status("a loopback client authenticates", c.authenticate(), "OK")
-            check_status("CREATE_DATABASE", c.send({"type": "CREATE_DATABASE", "databaseName": "tls_owner_db"}), "OK")
-            check_status("CREATE_COLLECTION", c.send({"type": "CREATE_COLLECTION", "databaseName": "tls_owner_db",
+            check_status("CREATE_PROJECT", c.send({"type": "CREATE_PROJECT", "projectName": "tls_owner_project"}), "OK")
+            check_status("CREATE_COLLECTION", c.send({"type": "CREATE_COLLECTION", "projectName": "tls_owner_project",
                                                       "collectionName": "tls_owner_coll"}), "OK")
         external = address_a_loopback_listener_refuses()
         if external is None:
@@ -334,7 +334,7 @@ def test_bind_address_and_tenant_folders():
         bu.stop_server(proc)
     if os.name != "posix":
         return
-    for folder in (os.path.join("db", "tls_owner_db"), os.path.join("db", "tls_owner_db", "tls_owner_coll"),
+    for folder in (os.path.join("db", "tls_owner_project"), os.path.join("db", "tls_owner_project", "tls_owner_coll"),
                    os.path.join("db", "admin", "pages")):
         path = os.path.join(work_dir, folder)
         check(f"{folder}/ was created 0700", mode_of(path) == 0o700, oct(mode_of(path)))

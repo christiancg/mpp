@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 public class RequestParserAggregationTest {
     @Test
     public void test_parse_aggregation_request_with_filter_steps_and_field_operators() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"fieldOperatorType\": \"EQUALS\", \"field\": \"age\", \"value\": {\"$numberInt\": 30} } }] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"fieldOperatorType\": \"EQUALS\", \"field\": \"age\", \"value\": {\"$numberInt\": 30} } }] }";
         OperationRequest request = RequestParser.parseRequest(message);
         assertInstanceOf(AggregateRequest.class, request);
         AggregateRequest aggRequest = (AggregateRequest) request;
@@ -52,7 +52,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_aggregation_request_with_custom_distance_operator() {
         new org.ccg.mpp.ejson.EJson(); // ensure the geo custom type is registered
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"customOperatorName\": \"distance\", \"field\": \"location\", \"value\": \"#geo(40.71,-74.0)\", \"comparator\": \"SMALLER_THAN\", \"distance\": 1000 } }] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"customOperatorName\": \"distance\", \"field\": \"location\", \"value\": \"#geo(40.71,-74.0)\", \"comparator\": \"SMALLER_THAN\", \"distance\": 1000 } }] }";
         OperationRequest request = RequestParser.parseRequest(message);
         AggregateRequest aggRequest = (AggregateRequest) request;
         FilterAggregationStep filterStep = (FilterAggregationStep) aggRequest.getAggregationSteps().getFirst();
@@ -67,7 +67,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_custom_operator_inside_conjunction() {
         new org.ccg.mpp.ejson.EJson();
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"conjunctionType\": \"AND\", \"operators\": [{ \"customOperatorName\": \"within\", \"field\": \"location\", \"polygon\": [\"#geo(0,0)\", \"#geo(0,1)\", \"#geo(1,1)\"] }] } }] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"conjunctionType\": \"AND\", \"operators\": [{ \"customOperatorName\": \"within\", \"field\": \"location\", \"polygon\": [\"#geo(0,0)\", \"#geo(0,1)\", \"#geo(1,1)\"] }] } }] }";
         OperationRequest request = RequestParser.parseRequest(message);
         AggregateRequest aggRequest = (AggregateRequest) request;
         FilterAggregationStep filterStep = (FilterAggregationStep) aggRequest.getAggregationSteps().getFirst();
@@ -78,7 +78,7 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_parse_aggregate_with_analyze_true() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"analyze\": true, \"aggregationSteps\": [] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"analyze\": true, \"aggregationSteps\": [] }";
         OperationRequest request = RequestParser.parseRequest(message);
         assertInstanceOf(AggregateRequest.class, request);
         assertTrue(((AggregateRequest) request).isAnalyze());
@@ -86,7 +86,7 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_parse_aggregate_analyze_defaults_false() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [] }";
         OperationRequest request = RequestParser.parseRequest(message);
         assertInstanceOf(AggregateRequest.class, request);
         assertFalse(((AggregateRequest) request).isAnalyze());
@@ -94,7 +94,7 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_parse_map_operations_with_add_and_remove_field_operators() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"MAP\", \"operators\": [{ \"fieldName\": \"newField\", \"operator\": { \"type\": \"SUM\", \"operands\": [\"a_field\", 30] }}] }] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"MAP\", \"operators\": [{ \"fieldName\": \"newField\", \"operator\": { \"type\": \"SUM\", \"operands\": [\"a_field\", 30] }}] }] }";
         OperationRequest request = RequestParser.parseRequest(message);
         assertInstanceOf(AggregateRequest.class, request);
         AggregateRequest aggRequest = (AggregateRequest) request;
@@ -114,7 +114,7 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_parse_conjunction_operators_with_nested_operators() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"conjunctionType\": \"AND\", \"operators\": [{\"fieldOperatorType\": \"EQUALS\", \"field\": \"status\", \"value\": {\"$string\": \"active\"}}, {\"fieldOperatorType\": \"GREATER_THAN\", \"field\": \"age\", \"value\": {\"$numberInt\": 18}}] } }] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"FILTER\", \"operator\": { \"conjunctionType\": \"AND\", \"operators\": [{\"fieldOperatorType\": \"EQUALS\", \"field\": \"status\", \"value\": {\"$string\": \"active\"}}, {\"fieldOperatorType\": \"GREATER_THAN\", \"field\": \"age\", \"value\": {\"$numberInt\": 18}}] } }] }";
         OperationRequest request = RequestParser.parseRequest(message);
         assertInstanceOf(AggregateRequest.class, request);
         AggregateRequest aggRequest = (AggregateRequest) request;
@@ -144,7 +144,7 @@ public class RequestParserAggregationTest {
         String jsonMessage = """
                     {
                         "type": "AGGREGATE",
-                        "databaseName": "testDB",
+                        "projectName": "testProject",
                         "collectionName": "testCollection",
                         "aggregationSteps": [
                             {
@@ -181,12 +181,12 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_empty_invalid_aggregation_steps() {
-        String message = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [] }";
+        String message = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [] }";
         AggregateRequest request = (AggregateRequest) RequestParser.parseRequest(message);
         assertNotNull(request);
         assertTrue(request.getAggregationSteps().isEmpty());
 
-        String invalidMessage = "{ \"type\": \"AGGREGATE\", \"databaseName\": \"testDB\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"INVALID\" }] }";
+        String invalidMessage = "{ \"type\": \"AGGREGATE\", \"projectName\": \"testProject\", \"collectionName\": \"testCollection\", \"aggregationSteps\": [{ \"type\": \"INVALID\" }] }";
         Exception exception = assertThrows(InvalidCommandException.class,
                 () -> RequestParser.parseRequest(invalidMessage));
         assertNotNull(exception);
@@ -195,7 +195,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_map_step_with_conjunction_condition() {
         String msg = """
-                {"type":"AGGREGATE","databaseName":"db","collectionName":"coll","aggregationSteps":[
+                {"type":"AGGREGATE","projectName":"db","collectionName":"coll","aggregationSteps":[
                   {"type":"MAP","operators":[{
                     "fieldName":"result",
                     "condition":{"conjunctionType":"AND","operators":[
@@ -212,7 +212,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_aggregation_with_all_step_types() {
         String msg = """
-                {"type":"AGGREGATE","databaseName":"db","collectionName":"coll","aggregationSteps":[
+                {"type":"AGGREGATE","projectName":"db","collectionName":"coll","aggregationSteps":[
                   {"type":"GROUP_BY","fieldName":"category"},
                   {"type":"COUNT"},
                   {"type":"DISTINCT","fieldName":"name"},
@@ -229,7 +229,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_map_with_abs_operator() {
         String msg = """
-                {"type":"AGGREGATE","databaseName":"db","collectionName":"coll","aggregationSteps":[
+                {"type":"AGGREGATE","projectName":"db","collectionName":"coll","aggregationSteps":[
                   {"type":"MAP","operators":[{"fieldName":"absVal","condition":null,"operator":{"type":"ABS","operand":"n"}}]}
                 ]}""";
         AggregateRequest result = (AggregateRequest) RequestParser.parseRequest(msg);
@@ -240,7 +240,7 @@ public class RequestParserAggregationTest {
     @Test
     public void test_parse_map_with_cast_operator() {
         String msg = """
-                {"type":"AGGREGATE","databaseName":"db","collectionName":"coll","aggregationSteps":[
+                {"type":"AGGREGATE","projectName":"db","collectionName":"coll","aggregationSteps":[
                   {"type":"MAP","operators":[{"fieldName":"casted","condition":null,"operator":{"type":"CAST","fieldName":"score","toType":"STRING"}}]}
                 ]}""";
         AggregateRequest result = (AggregateRequest) RequestParser.parseRequest(msg);
@@ -262,7 +262,7 @@ public class RequestParserAggregationTest {
                  {"type":"SORT","fieldName":"e","ascending":true},
                  {"type":"REDUCE","script":"acc","initialValue":0,"resultField":"sum"}]""";
         final var request = (AggregateRequest) RequestParser.parseRequest(
-                "{\"type\":\"AGGREGATE\",\"databaseName\":\"testDB\",\"collectionName\":\"c\",\"analyze\":true,\"aggregationSteps\":"
+                "{\"type\":\"AGGREGATE\",\"projectName\":\"testProject\",\"collectionName\":\"c\",\"analyze\":true,\"aggregationSteps\":"
                         + steps + "}");
 
         final var parsed = request.getAggregationSteps();
@@ -279,14 +279,14 @@ public class RequestParserAggregationTest {
 
     @Test
     public void test_an_unknown_step_type_is_an_invalid_command() {
-        final var message = "{\"type\":\"AGGREGATE\",\"databaseName\":\"testDB\",\"collectionName\":\"c\",\"aggregationSteps\":[{\"type\":\"NOT_A_STEP\"}]}";
+        final var message = "{\"type\":\"AGGREGATE\",\"projectName\":\"testProject\",\"collectionName\":\"c\",\"aggregationSteps\":[{\"type\":\"NOT_A_STEP\"}]}";
 
         assertThrows(InvalidCommandException.class, () -> RequestParser.parseRequest(message));
     }
 
     @Test
     public void test_a_step_without_a_type_is_an_invalid_command() {
-        final var message = "{\"type\":\"AGGREGATE\",\"databaseName\":\"testDB\",\"collectionName\":\"c\",\"aggregationSteps\":[{\"limit\":1}]}";
+        final var message = "{\"type\":\"AGGREGATE\",\"projectName\":\"testProject\",\"collectionName\":\"c\",\"aggregationSteps\":[{\"limit\":1}]}";
 
         assertThrows(InvalidCommandException.class, () -> RequestParser.parseRequest(message));
     }

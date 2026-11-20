@@ -11,11 +11,11 @@ import org.springframework.data.mapping.MappingException;
 import org.springframework.data.mapping.model.BasicPersistentEntity;
 
 public class MppPersistentEntity<T> extends BasicPersistentEntity<T, MppPersistentProperty> {
-    private final @Nullable String defaultDatabase;
+    private final @Nullable String defaultProject;
 
-    public MppPersistentEntity(TypeInformation<T> information, @Nullable String defaultDatabase) {
+    public MppPersistentEntity(TypeInformation<T> information, @Nullable String defaultProject) {
         super(information);
-        this.defaultDatabase = defaultDatabase;
+        this.defaultProject = defaultProject;
     }
 
     public String collection() {
@@ -26,16 +26,14 @@ public class MppPersistentEntity<T> extends BasicPersistentEntity<T, MppPersiste
         return checked(() -> Names.collection(name));
     }
 
-    public String database() {
+    public String project() {
         final var annotation = findAnnotation(MppEntity.class);
-        final var name = annotation == null || annotation.database().isEmpty()
-                ? defaultDatabase
-                : annotation.database();
+        final var name = annotation == null || annotation.project().isEmpty() ? defaultProject : annotation.project();
         if (name == null || name.isEmpty()) {
-            throw new MappingException(getType().getName() + " names no database: set @MppEntity(database = ...)"
-                    + " or the default database (mpp.database)");
+            throw new MappingException(getType().getName() + " names no project: set @MppEntity(project = ...)"
+                    + " or the default project (mpp.project)");
         }
-        return checked(() -> Names.database(name));
+        return checked(() -> Names.project(name));
     }
 
     public MppPersistentProperty requiredIdProperty() {

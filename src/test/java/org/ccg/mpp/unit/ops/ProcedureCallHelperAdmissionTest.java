@@ -39,13 +39,13 @@ public class ProcedureCallHelperAdmissionTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var request = new CreateUserRequest();
         request.setUsername(ADMIN);
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -66,11 +66,11 @@ public class ProcedureCallHelperAdmissionTest {
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
         TestUtils.setPrivateField(configuration, "scriptMaxMemoryBytes", 67_108_864L);
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     @AfterEach
@@ -80,11 +80,11 @@ public class ProcedureCallHelperAdmissionTest {
 
     private void store() throws Exception {
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "answer", "return 42;"), ADMIN).getStatus());
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "answer", "return 42;"), ADMIN).getStatus());
     }
 
     private static OperationResponse call(String name) {
-        return ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.DB, name, null), ADMIN, null);
+        return ProcedureCallHelper.execute(new CallProcedureRequest(TestGlobals.PROJECT, name, null), ADMIN, null);
     }
 
     @Test

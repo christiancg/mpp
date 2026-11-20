@@ -45,11 +45,11 @@ public class CustomTypesIT extends ServerIT {
 
     @BeforeAll
     public void seed() {
-        final var database = client.database("custom_it");
-        database.create();
-        places = database.collection("places");
+        final var project = client.project("custom_it");
+        project.create();
+        places = project.collection("places");
         places.create();
-        database.collection("typed").create();
+        project.collection("typed").create();
         places.saveAll(List.of(
                 Document.of("_id", "ny", "openedAt", LocalDateTime.of(2024, 3, 1, 9, 0), "opensAt", LocalTime.of(9, 0),
                         "location", NEW_YORK, "embedding", Vector.of(1, 0, 0)),
@@ -68,7 +68,7 @@ public class CustomTypesIT extends ServerIT {
         assertEquals(LIMA, lima.getGeo("location").orElseThrow());
         assertEquals(Vector.of(0, 1, 0), lima.getVector("embedding").orElseThrow());
         assertEquals(2, lima.getList("stops").orElseThrow().size());
-        final var typed = client.database("custom_it").collection("typed", Place.class);
+        final var typed = client.project("custom_it").collection("typed", Place.class);
         final var place = new Place("p1", LocalDateTime.of(2024, 5, 5, 5, 5, 5), LocalTime.of(6, 7), NEW_YORK,
                 Vector.of(0.25, 0.5));
         typed.save(place);

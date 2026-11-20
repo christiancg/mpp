@@ -1,9 +1,9 @@
 A server-wide permission.
 
-## CREATE_DATABASE
+## CREATE_PROJECT
 
-May create databases.
+May create projects.
 
-## DROP_DATABASE
+## DROP_PROJECT
 
-May drop databases.
+May drop projects.

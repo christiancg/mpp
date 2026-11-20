@@ -7,68 +7,68 @@ from base_utils import Conn, check, check_code, check_status, section
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("METALIMIT_TEST_PORT", "9445"))
 MAX_COLLECTIONS = 3
-MAX_DATABASES = 6
+MAX_PROJECTS = 6
 MAX_INDEXES = 2
-FUNC_DB = "metalimit_func"
-CAP_DB = "metalimit_caps"
-OUTGROW_DB = "metalimit_outgrow"
+FUNC_PROJECT = "metalimit_func"
+CAP_PROJECT = "metalimit_caps"
+OUTGROW_PROJECT = "metalimit_outgrow"
 OUTGROW_COLL = "big"
 OUTGROW_DOCS = 30_000
 OUTGROW_BATCH = 2_000
-RUNTIME_OUTGROW_LOG = f"The primary-key index of {OUTGROW_DB}|{OUTGROW_COLL} needs about"
-STARTUP_OUTGROW_LOG = f"The primary-key index of {OUTGROW_DB}|{OUTGROW_COLL} needs at least"
+RUNTIME_OUTGROW_LOG = f"The primary-key index of {OUTGROW_PROJECT}|{OUTGROW_COLL} needs about"
+STARTUP_OUTGROW_LOG = f"The primary-key index of {OUTGROW_PROJECT}|{OUTGROW_COLL} needs at least"
 
 bu.configure(host=HOST, port=PORT)
 
 
 def write_config(work_dir: str):
-    bu.write_config(work_dir, PORT, maxCollectionsPerDatabase=MAX_COLLECTIONS, maxDatabases=MAX_DATABASES,
+    bu.write_config(work_dir, PORT, maxCollectionsPerProject=MAX_COLLECTIONS, maxProjects=MAX_PROJECTS,
                     maxIndexesPerCollection=MAX_INDEXES)
 
 
-def create_database(conn: Conn, name: str) -> dict:
-    return conn.send({"type": "CREATE_DATABASE", "databaseName": name})
+def create_project(conn: Conn, name: str) -> dict:
+    return conn.send({"type": "CREATE_PROJECT", "projectName": name})
 
 
-def create_collection(conn: Conn, db: str, coll: str) -> dict:
-    return conn.send({"type": "CREATE_COLLECTION", "databaseName": db, "collectionName": coll})
+def create_collection(conn: Conn, project: str, coll: str) -> dict:
+    return conn.send({"type": "CREATE_COLLECTION", "projectName": project, "collectionName": coll})
 
 
-def create_index(conn: Conn, db: str, coll: str, field: str) -> dict:
-    return conn.send({"type": "CREATE_INDEX", "databaseName": db, "collectionName": coll, "fieldName": field})
+def create_index(conn: Conn, project: str, coll: str, field: str) -> dict:
+    return conn.send({"type": "CREATE_INDEX", "projectName": project, "collectionName": coll, "fieldName": field})
 
 
-def save(conn: Conn, db: str, coll: str, obj: dict) -> dict:
-    return conn.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": obj})
+def save(conn: Conn, project: str, coll: str, obj: dict) -> dict:
+    return conn.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": obj})
 
 
-def aggregate(conn: Conn, db: str, coll: str, steps: list) -> dict:
-    return conn.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll, "aggregationSteps": steps})
+def aggregate(conn: Conn, project: str, coll: str, steps: list) -> dict:
+    return conn.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll, "aggregationSteps": steps})
 
 
 def test_contains_is_linear(conn: Conn):
     section("CONTAINS stays linear on adversarial input")
-    check_status("search collection", create_collection(conn, FUNC_DB, "search"), "OK")
-    check_status("doc saved", save(conn, FUNC_DB, "search", {"_id": "d1", "s": "a" * 200_000}), "OK")
+    check_status("search collection", create_collection(conn, FUNC_PROJECT, "search"), "OK")
+    check_status("doc saved", save(conn, FUNC_PROJECT, "search", {"_id": "d1", "s": "a" * 200_000}), "OK")
     adversarial = "a" * 100_000 + "b"
-    miss = aggregate(conn, FUNC_DB, "search",
+    miss = aggregate(conn, FUNC_PROJECT, "search",
                      [{"type": "FILTER",
                        "operator": {"fieldOperatorType": "CONTAINS", "field": "s", "value": adversarial}}])
     check("adversarial CONTAINS returns no rows", len(miss.get("results", [])) == 0, f"resp={miss}")
-    hit = aggregate(conn, FUNC_DB, "search",
+    hit = aggregate(conn, FUNC_PROJECT, "search",
                     [{"type": "FILTER", "operator": {"fieldOperatorType": "CONTAINS", "field": "s", "value": "aaaa"}}])
     check("ordinary CONTAINS matches", len(hit.get("results", [])) == 1, f"resp={hit}")
 
 
 def test_in_with_duplicate_and_case_variant_operands(conn: Conn):
     section("Indexed IN collapses duplicate and case-variant operands")
-    check_status("members collection", create_collection(conn, FUNC_DB, "members"), "OK")
+    check_status("members collection", create_collection(conn, FUNC_PROJECT, "members"), "OK")
     for i in range(5):
-        check_status(f"member {i}", save(conn, FUNC_DB, "members", {"_id": f"m{i}", "status": "active"}), "OK")
-    check_status("idle member", save(conn, FUNC_DB, "members", {"_id": "m9", "status": "idle"}), "OK")
-    check_status("status indexed", create_index(conn, FUNC_DB, "members", "status"), "OK")
+        check_status(f"member {i}", save(conn, FUNC_PROJECT, "members", {"_id": f"m{i}", "status": "active"}), "OK")
+    check_status("idle member", save(conn, FUNC_PROJECT, "members", {"_id": "m9", "status": "idle"}), "OK")
+    check_status("status indexed", create_index(conn, FUNC_PROJECT, "members", "status"), "OK")
     operands = ["active"] * 5000 + ["ACTIVE", "Active"]
-    result = aggregate(conn, FUNC_DB, "members",
+    result = aggregate(conn, FUNC_PROJECT, "members",
                        [{"type": "FILTER",
                          "operator": {"fieldOperatorType": "IN", "field": "status", "value": operands}},
                         {"type": "COUNT"}])
@@ -77,29 +77,29 @@ def test_in_with_duplicate_and_case_variant_operands(conn: Conn):
 
 def test_index_count_is_capped(conn: Conn):
     section("Index count cap")
-    check_status("idx collection", create_collection(conn, FUNC_DB, "idx"), "OK")
+    check_status("idx collection", create_collection(conn, FUNC_PROJECT, "idx"), "OK")
     for i in range(MAX_INDEXES):
-        check_status(f"index {i} created", create_index(conn, FUNC_DB, "idx", f"f{i}"), "OK")
-    check_code("one more index refused", create_index(conn, FUNC_DB, "idx", "overflow"), "ERROR", "400-42")
-    check_status("re-creating an existing index still OK", create_index(conn, FUNC_DB, "idx", "f0"), "OK")
+        check_status(f"index {i} created", create_index(conn, FUNC_PROJECT, "idx", f"f{i}"), "OK")
+    check_code("one more index refused", create_index(conn, FUNC_PROJECT, "idx", "overflow"), "ERROR", "400-42")
+    check_status("re-creating an existing index still OK", create_index(conn, FUNC_PROJECT, "idx", "f0"), "OK")
 
 
 def test_collection_count_is_capped(conn: Conn):
     section("Collection count cap")
-    check_status("cap db created", create_database(conn, CAP_DB), "OK")
+    check_status("cap project created", create_project(conn, CAP_PROJECT), "OK")
     for i in range(MAX_COLLECTIONS):
-        check_status(f"collection {i} created", create_collection(conn, CAP_DB, f"coll{i}"), "OK")
-    check_code("one more collection refused", create_collection(conn, CAP_DB, "overflow"), "ERROR", "400-40")
-    check_status("re-creating an existing collection still OK", create_collection(conn, CAP_DB, "coll0"), "OK")
+        check_status(f"collection {i} created", create_collection(conn, CAP_PROJECT, f"coll{i}"), "OK")
+    check_code("one more collection refused", create_collection(conn, CAP_PROJECT, "overflow"), "ERROR", "400-40")
+    check_status("re-creating an existing collection still OK", create_collection(conn, CAP_PROJECT, "coll0"), "OK")
 
 
-def test_database_count_is_capped(conn: Conn):
-    section("Database count cap")
+def test_project_count_is_capped(conn: Conn):
+    section("Project count cap")
     index = 0
-    while create_database(conn, f"extra_db_{index}").get("status") == "OK":
+    while create_project(conn, f"extra_project_{index}").get("status") == "OK":
         index += 1
-        check("database creation stays bounded", index < MAX_DATABASES + 2, f"created {index} extra databases")
-    check_code("one more database refused", create_database(conn, f"extra_db_{index}"), "ERROR", "400-41")
+        check("project creation stays bounded", index < MAX_PROJECTS + 2, f"created {index} extra projects")
+    check_code("one more project refused", create_project(conn, f"extra_project_{index}"), "ERROR", "400-41")
 
 
 def wait_for_log(log_path: str, needle: str, timeout_s: float = 10.0) -> bool:
@@ -115,19 +115,19 @@ def test_a_collection_outgrowing_maxmemory_is_logged():
     try:
         proc = bu.start_server(work_dir, log_path, port=PORT)
         conn = Conn.authenticated()
-        check_status("outgrow db created", create_database(conn, OUTGROW_DB), "OK")
-        check_status("outgrow collection created", create_collection(conn, OUTGROW_DB, OUTGROW_COLL), "OK")
+        check_status("outgrow project created", create_project(conn, OUTGROW_PROJECT), "OK")
+        check_status("outgrow collection created", create_collection(conn, OUTGROW_PROJECT, OUTGROW_COLL), "OK")
         for start in range(0, OUTGROW_DOCS, OUTGROW_BATCH):
             objects = [{"_id": f"d{i:06d}", "n": i} for i in range(start, start + OUTGROW_BATCH)]
-            if not check_status(f"bulk {start}", conn.send({"type": "BULK_SAVE", "databaseName": OUTGROW_DB,
+            if not check_status(f"bulk {start}", conn.send({"type": "BULK_SAVE", "projectName": OUTGROW_PROJECT,
                                                              "collectionName": OUTGROW_COLL, "objects": objects},
                                                             timeout=120), "OK"):
                 return
-        found = conn.send({"type": "FIND_BY_ID", "databaseName": OUTGROW_DB, "collectionName": OUTGROW_COLL,
+        found = conn.send({"type": "FIND_BY_ID", "projectName": OUTGROW_PROJECT, "collectionName": OUTGROW_COLL,
                            "_id": "d012345"})
         check("a keyed read still answers from pk.idx", found.get("status") == "OK"
               and (found.get("object") or {}).get("n") == 12345, f"resp={found}")
-        absent = conn.send({"type": "FIND_BY_ID", "databaseName": OUTGROW_DB, "collectionName": OUTGROW_COLL,
+        absent = conn.send({"type": "FIND_BY_ID", "projectName": OUTGROW_PROJECT, "collectionName": OUTGROW_COLL,
                             "_id": "missing"})
         check_code("an absent id is still not found", absent, "NOT_FOUND", "404-2")
         check("the runtime warning names the collection", wait_for_log(log_path, RUNTIME_OUTGROW_LOG),
@@ -156,12 +156,12 @@ def main():
     try:
         proc = bu.start_server(work_dir, log_path, port=PORT)
         conn = Conn.authenticated()
-        check_status("func db created", create_database(conn, FUNC_DB), "OK")
+        check_status("func project created", create_project(conn, FUNC_PROJECT), "OK")
         test_contains_is_linear(conn)
         test_in_with_duplicate_and_case_variant_operands(conn)
         test_index_count_is_capped(conn)
         test_collection_count_is_capped(conn)
-        test_database_count_is_capped(conn)
+        test_project_count_is_capped(conn)
         conn.close()
     finally:
         bu.stop_server(proc, port=PORT)

@@ -1,6 +1,6 @@
-One collection of a database, typed by the codec that maps its documents.
+One collection of a project, typed by the codec that maps its documents.
 
-Obtained from `Database.Collection`. Every call borrows a pooled connection for the length of one request. Use `Collection<Document>` for schema-less access, where `Query()` is the way to query; LINQ is meant for mapped types.
+Obtained from `Project.Collection`. Every call borrows a pooled connection for the length of one request. Use `Collection<Document>` for schema-less access, where `Query()` is the way to query; LINQ is meant for mapped types.
 
 @typeparam T the type documents are decoded to
 
@@ -154,8 +154,8 @@ is. The patch is mapped and merged as in the `Filter` overload.
 @exception System.NotSupportedException when the predicate cannot run on the server
 @exception Mpp.Client.Errors.MappingException when the patch does not map to a JSON object
 
-## DatabaseName
-The database the collection belongs to.
+## ProjectName
+The project the collection belongs to.
 
 ## Name
 The collection's name.

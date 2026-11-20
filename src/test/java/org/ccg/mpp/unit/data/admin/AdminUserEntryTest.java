@@ -13,10 +13,10 @@ import org.junit.jupiter.api.Test;
 
 public class AdminUserEntryTest {
     @Test
-    public void test_constructor_sets_admin_db_and_users_collection() {
+    public void test_constructor_sets_admin_project_and_users_collection() {
         final var entry = new AdminUserEntry("test_user", "hash", false, new HashSet<>(), new HashMap<>(),
                 new HashMap<>());
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_USERS_COLLECTION_NAME, entry.getCollectionName());
         assertEquals("test_user", entry.get_id());
     }
@@ -24,40 +24,40 @@ public class AdminUserEntryTest {
     @Test
     public void test_serialises_to_json_with_all_fields() {
         final var globalPerms = new HashSet<GlobalPermissionType>();
-        globalPerms.add(GlobalPermissionType.CREATE_DATABASE);
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("mydb", PermissionLevel.READ_WRITE);
+        globalPerms.add(GlobalPermissionType.CREATE_PROJECT);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("mydb", PermissionLevel.READ_WRITE);
         final var collPerms = new HashMap<String, PermissionLevel>();
         collPerms.put("mydb|coll", PermissionLevel.READ);
 
-        final var entry = new AdminUserEntry("test_user", "hash", true, globalPerms, dbPerms, collPerms);
+        final var entry = new AdminUserEntry("test_user", "hash", true, globalPerms, projectPerms, collPerms);
         final var data = entry.getData();
 
         assertNotNull(data.get("_id"));
         assertNotNull(data.get("passwordHash"));
         assertTrue(data.get("admin").asJsonBoolean().getValue());
         assertNotNull(data.get("globalPermissions"));
-        assertNotNull(data.get("databasePermissions"));
+        assertNotNull(data.get("projectPermissions"));
         assertNotNull(data.get("collectionPermissions"));
     }
 
     @Test
     public void test_from_json_object_round_trip() {
         final var globalPerms = new HashSet<GlobalPermissionType>();
-        globalPerms.add(GlobalPermissionType.DROP_DATABASE);
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put("mydb", PermissionLevel.READ);
+        globalPerms.add(GlobalPermissionType.DROP_PROJECT);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put("mydb", PermissionLevel.READ);
         final var collPerms = new HashMap<String, PermissionLevel>();
         collPerms.put("mydb|coll", PermissionLevel.READ_WRITE);
 
-        final var original = new AdminUserEntry("test_user", "hash123", true, globalPerms, dbPerms, collPerms);
+        final var original = new AdminUserEntry("test_user", "hash123", true, globalPerms, projectPerms, collPerms);
         final var restored = AdminUserEntry.fromJsonObject(original.getData());
 
         assertEquals(original.get_id(), restored.get_id());
         assertEquals(original.getPasswordHash(), restored.getPasswordHash());
         assertEquals(original.isAdmin(), restored.isAdmin());
         assertEquals(original.getGlobalPermissions(), restored.getGlobalPermissions());
-        assertEquals(original.getDatabasePermissions(), restored.getDatabasePermissions());
+        assertEquals(original.getProjectPermissions(), restored.getProjectPermissions());
         assertEquals(original.getCollectionPermissions(), restored.getCollectionPermissions());
     }
 
@@ -70,7 +70,7 @@ public class AdminUserEntryTest {
         assertTrue(entry.getData().get("admin").asJsonBoolean().getValue());
 
         final var newPerms = new HashSet<GlobalPermissionType>();
-        newPerms.add(GlobalPermissionType.CREATE_DATABASE);
+        newPerms.add(GlobalPermissionType.CREATE_PROJECT);
         entry.setGlobalPermissions(newPerms);
         assertEquals(newPerms, entry.getGlobalPermissions());
     }
@@ -129,6 +129,25 @@ public class AdminUserEntryTest {
         final var parsed = AdminUserEntry.fromJsonObject(legacy);
         assertTrue(parsed.getScriptPermissions().isEmpty());
         assertFalse(parsed.canRunScripts("mydb"));
+    }
+
+    @Test
+    public void test_a_row_naming_only_database_permissions_is_malformed_not_permissionless() {
+        final var entry = new AdminUserEntry("test_user", "hash", false, new HashSet<>(), new HashMap<>(),
+                new HashMap<>());
+        final var oldShape = entry.getData();
+        oldShape.add("databasePermissions", oldShape.get("projectPermissions"));
+        oldShape.remove("projectPermissions");
+        assertThrows(RuntimeException.class, () -> AdminUserEntry.fromJsonObject(oldShape));
+    }
+
+    @Test
+    public void test_a_row_round_trips_its_project_permissions() {
+        final var permissions = new HashMap<String, PermissionLevel>();
+        permissions.put("shop", PermissionLevel.READ_WRITE);
+        final var entry = new AdminUserEntry("test_user", "hash", false, new HashSet<>(), permissions, new HashMap<>());
+        assertTrue(entry.getData().get("projectPermissions").asJsonObject().has("shop"));
+        assertEquals(permissions, AdminUserEntry.fromJsonObject(entry.getData()).getProjectPermissions());
     }
 
     @Test

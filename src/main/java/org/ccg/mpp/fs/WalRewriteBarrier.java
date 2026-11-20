@@ -8,27 +8,29 @@ final class WalRewriteBarrier {
     private static final Logger logger = Logger.logFor(WalRewriteBarrier.class);
     private final WriteAheadLog wal;
 
-    record Begun(String dbName, String collName, long page, long seq) {
+    record Begun(String projectName, String collName, long page, long seq) {
     }
 
     WalRewriteBarrier(WriteAheadLog wal) {
         this.wal = wal;
     }
 
-    void settle(String dbName, String collName) throws IOException {
-        wal.settleBeforeRewrite(dbName, collName);
+    void settle(String projectName, String collName) throws IOException {
+        wal.settleBeforeRewrite(projectName, collName);
     }
 
-    Begun begin(String dbName, String collName, long page, long lengthBefore) throws IOException {
-        return begin(dbName, collName, page, lengthBefore, new ForceGroup());
+    Begun begin(String projectName, String collName, long page, long lengthBefore) throws IOException {
+        return begin(projectName, collName, page, lengthBefore, new ForceGroup());
     }
 
-    Begun begin(String dbName, String collName, long page, long lengthBefore, ForceGroup alongside) throws IOException {
-        return new Begun(dbName, collName, page, wal.beginRewrite(dbName, collName, page, lengthBefore, alongside));
+    Begun begin(String projectName, String collName, long page, long lengthBefore, ForceGroup alongside)
+            throws IOException {
+        return new Begun(projectName, collName, page,
+                wal.beginRewrite(projectName, collName, page, lengthBefore, alongside));
     }
 
     void renamed(Begun begun) {
-        wal.rewriteLanded(begun.dbName(), begun.collName(), begun.page());
+        wal.rewriteLanded(begun.projectName(), begun.collName(), begun.page());
     }
 
     boolean landed(Begun begun, Path folder) {
@@ -38,13 +40,13 @@ final class WalRewriteBarrier {
             return true;
         } catch (IOException e) {
             logger.warning("Could not sync " + folder + " after rewriting page " + begun.page() + " of "
-                    + WriteAheadLog.subject(begun.dbName(), begun.collName()) + ", so the rewrite is not logged as"
+                    + WriteAheadLog.subject(begun.projectName(), begun.collName()) + ", so the rewrite is not logged as"
                     + " landed; checkpointing instead: " + e.getMessage());
         }
         try {
-            wal.checkpoint(begun.dbName(), begun.collName());
+            wal.checkpoint(begun.projectName(), begun.collName());
         } catch (IOException e) {
-            logger.error("Could not checkpoint " + WriteAheadLog.subject(begun.dbName(), begun.collName())
+            logger.error("Could not checkpoint " + WriteAheadLog.subject(begun.projectName(), begun.collName())
                     + " after rewriting page " + begun.page() + "; until its next checkpoint an unlogged append"
                     + " past the page's new end is left to the startup heals", e);
         }
@@ -52,6 +54,6 @@ final class WalRewriteBarrier {
     }
 
     void end(Begun begun, long lengthAfter, boolean forced) throws IOException {
-        wal.endRewrite(begun.dbName(), begun.collName(), begun.seq(), begun.page(), lengthAfter, forced);
+        wal.endRewrite(begun.projectName(), begun.collName(), begun.seq(), begun.page(), lengthAfter, forced);
     }
 }

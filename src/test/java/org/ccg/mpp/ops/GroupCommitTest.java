@@ -42,7 +42,7 @@ public class GroupCommitTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         recorder = RecordingForcer.install(PlatformSupport.directorySync());
         fixture = new GroupCommitFixture(recorder);
         assertEquals(OperationStatus.OK, save("seed", "v0").getStatus());
@@ -52,8 +52,8 @@ public class GroupCommitTest {
     public void tearDown() throws Exception {
         recorder.close();
         TestUtils.setPrivateField(Configuration.getInstance(), "triggersEnabled", false);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -96,7 +96,7 @@ public class GroupCommitTest {
         for (var number = 0; number < 8; number++) {
             assertEquals("v" + number, valueOf("n" + number));
         }
-        assertEquals(0, GroupCommit.queuedFor(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(0, GroupCommit.queuedFor(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -157,7 +157,7 @@ public class GroupCommitTest {
         final var followOn = saveRequest("x", "v");
         followOn.setBackgroundFollowOn(true);
         assertFalse(GroupCommit.forSave(followOn).groupable().getAsBoolean());
-        final var nestedDelete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var nestedDelete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         nestedDelete.set_id("seed");
         nestedDelete.setTriggerDepth(1);
         assertFalse(GroupCommit.forDelete(nestedDelete).groupable().getAsBoolean());
@@ -165,10 +165,9 @@ public class GroupCommitTest {
 
         TestUtils.setPrivateField(Configuration.getInstance(), "triggersEnabled", true);
         final var procedure = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "recalc", "return 1;"), "alice");
-        final var trigger = TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("CREATED", "DELETED"), "recalc"),
-                "alice");
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "recalc", "return 1;"), "alice");
+        final var trigger = TriggerOperationHelper.executeSave(new SaveTriggerRequest(TestGlobals.PROJECT,
+                TestGlobals.COLL, "t", List.of("CREATED", "DELETED"), "recalc"), "alice");
         assertEquals(OperationStatus.OK, procedure.getStatus(), procedure.getMessage());
         assertEquals(OperationStatus.OK, trigger.getStatus(), trigger.getMessage());
 
@@ -176,7 +175,7 @@ public class GroupCommitTest {
         assertTrue(triggered.groupable().getAsBoolean());
         assertTrue(triggered.sideEffects().getAsBoolean());
         assertEquals("x", triggered.id());
-        final var deleteRequest = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var deleteRequest = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         deleteRequest.set_id("seed");
         final var triggeredDelete = GroupCommit.forDelete(deleteRequest);
         assertTrue(triggeredDelete.groupable().getAsBoolean());
@@ -189,14 +188,14 @@ public class GroupCommitTest {
         recorder.close();
         recorder = RecordingForcer.install(false);
         fixture.useRecorder(recorder);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         final Thread writer;
         try {
             writer = Thread.ofVirtual().start(() -> save("plain", "v"));
             Thread.sleep(50);
-            assertEquals(0, GroupCommit.queuedFor(TestGlobals.DB, TestGlobals.COLL));
+            assertEquals(0, GroupCommit.queuedFor(TestGlobals.PROJECT, TestGlobals.COLL));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         writer.join(WAIT_MS);
 
@@ -229,8 +228,8 @@ public class GroupCommitTest {
     public void test_the_lock_is_released_by_the_thread_that_took_it() throws Exception {
         runQueued(times(4, number -> save("r" + number, "v")));
 
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL), "no writer stranded the collection lock");
-        locks.release(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL), "no writer stranded the collection lock");
+        locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -251,10 +250,10 @@ public class GroupCommitTest {
     public void test_a_save_names_its_object_id_when_the_request_has_none() {
         final var request = saveRequest("from-object", "v");
         assertEquals("from-object", GroupCommit.forSave(request).id());
-        final var generated = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var generated = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         generated.setObject(new JsonObject());
         assertNull(GroupCommit.forSave(generated).id());
-        final var numeric = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var numeric = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.addProperty("_id", 7);
         numeric.setObject(object);
@@ -271,20 +270,20 @@ public class GroupCommitTest {
     @Test
     @RequiresDirectorySync
     public void test_a_dropped_collection_leaves_no_queue() throws Exception {
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         assertTrue(queues().containsKey(collId), "the seed save queued itself");
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
         assertFalse(queues().containsKey(collId));
 
-        GroupCommit.queuedFor(TestGlobals.DB, "other_coll");
-        GroupCommit.queuedFor("other_db", TestGlobals.COLL);
-        DroppedCollections.forgetDatabase(TestGlobals.DB);
-        assertFalse(queues().containsKey(Cache.getCollectionIdentifier(TestGlobals.DB, "other_coll")));
-        assertTrue(queues().containsKey(Cache.getCollectionIdentifier("other_db", TestGlobals.COLL)));
-        GroupCommit.forgetDatabase("other_db");
-        assertFalse(queues().containsKey(Cache.getCollectionIdentifier("other_db", TestGlobals.COLL)));
+        GroupCommit.queuedFor(TestGlobals.PROJECT, "other_coll");
+        GroupCommit.queuedFor("other_project", TestGlobals.COLL);
+        DroppedCollections.forgetProject(TestGlobals.PROJECT);
+        assertFalse(queues().containsKey(Cache.getCollectionIdentifier(TestGlobals.PROJECT, "other_coll")));
+        assertTrue(queues().containsKey(Cache.getCollectionIdentifier("other_project", TestGlobals.COLL)));
+        GroupCommit.forgetProject("other_project");
+        assertFalse(queues().containsKey(Cache.getCollectionIdentifier("other_project", TestGlobals.COLL)));
     }
 
     @Test
@@ -292,19 +291,19 @@ public class GroupCommitTest {
     public void test_a_writer_queued_when_its_queue_is_forgotten_is_served() throws Exception {
         final OperationResponse[] response = new OperationResponse[1];
         final Thread writer;
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             writer = Thread.ofVirtual().start(() -> response[0] = save("late", "v"));
             GroupCommitFixture.awaitQueued(1);
-            GroupCommit.forget(TestGlobals.DB, TestGlobals.COLL);
+            GroupCommit.forget(TestGlobals.PROJECT, TestGlobals.COLL);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         writer.join(WAIT_MS);
 
         assertFalse(writer.isAlive(), "the writer served itself from the queue it held");
         assertEquals(OperationStatus.OK, response[0].getStatus());
         assertEquals("v", valueOf("late"));
-        assertEquals(0, GroupCommit.queuedFor(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(0, GroupCommit.queuedFor(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 }

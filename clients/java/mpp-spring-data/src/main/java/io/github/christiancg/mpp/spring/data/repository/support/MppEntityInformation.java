@@ -15,7 +15,7 @@ public class MppEntityInformation<T> extends PersistentEntityInformation<T, Stri
         return entity.collection();
     }
 
-    public String database() {
-        return entity.database();
+    public String project() {
+        return entity.project();
     }
 }

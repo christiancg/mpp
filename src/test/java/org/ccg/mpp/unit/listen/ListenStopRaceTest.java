@@ -32,7 +32,7 @@ public class ListenStopRaceTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
     }
@@ -74,7 +74,7 @@ public class ListenStopRaceTest {
         final var written = new ByteArrayOutputStream();
         clientTracker.registerOutbound(clientId, TestUtils.inlineOutbound(written));
         final var manager = new StoppedDuringRerun();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         final var listenId = manager.register(clientId, request, "a-hash-the-rerun-will-not-match");

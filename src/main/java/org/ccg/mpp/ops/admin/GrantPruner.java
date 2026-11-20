@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.AdminOperationHelper;
@@ -16,27 +16,27 @@ public final class GrantPruner {
     private GrantPruner() {
     }
 
-    public static void forDroppedDatabase(String dbName, GrantRewrite rewrite) {
-        final var collectionPrefix = dbName + "|";
-        pruneGrants(dbName, rewrite,
-                user -> withoutGrants(user, dbName::equals, key -> key.startsWith(collectionPrefix), dbName::equals));
+    public static void forDroppedProject(String projectName, GrantRewrite rewrite) {
+        final var collectionPrefix = projectName + "|";
+        pruneGrants(projectName, rewrite, user -> withoutGrants(user, projectName::equals,
+                key -> key.startsWith(collectionPrefix), projectName::equals));
     }
 
-    public static void forDroppedCollection(String dbName, String collName, GrantRewrite rewrite) {
-        final var collectionKey = dbName + "|" + collName;
-        pruneGrants(dbName + "|" + collName, rewrite,
+    public static void forDroppedCollection(String projectName, String collName, GrantRewrite rewrite) {
+        final var collectionKey = projectName + "|" + collName;
+        pruneGrants(projectName + "|" + collName, rewrite,
                 user -> withoutGrants(user, _ -> false, collectionKey::equals, _ -> false));
     }
 
     public static void forDeletedUser(String username, GrantRewrite rewrite) {
         try {
-            final var rewritten = AdminOperationHelper.rewriteDatabases(database -> withoutOwner(database, username),
+            final var rewritten = AdminOperationHelper.rewriteProjects(project -> withoutOwner(project, username),
                     rewrite.version());
             if (rewrite instanceof GrantRewrite.Restamp(var into)) {
-                rewritten.forEach(dbName -> into.add(AdminRecordKey.database(dbName)));
+                rewritten.forEach(projectName -> into.add(AdminRecordKey.project(projectName)));
             }
         } catch (Exception failure) {
-            logger.error("Could not remove deleted user '" + username + "' from the database owners; a user "
+            logger.error("Could not remove deleted user '" + username + "' from the project owners; a user "
                     + "created later under that name would inherit them", failure);
         }
     }
@@ -48,32 +48,32 @@ public final class GrantPruner {
                 rewritten.forEach(username -> into.add(AdminRecordKey.user(username)));
             }
         } catch (Exception failure) {
-            logger.error("Could not remove the permission grants naming '" + target + "'; a database or collection "
+            logger.error("Could not remove the permission grants naming '" + target + "'; a project or collection "
                     + "created later under that name would inherit them", failure);
         }
     }
 
-    private static AdminDbEntry withoutOwner(AdminDbEntry database, String username) {
-        if (!database.isOwner(username)) {
+    private static AdminProjectEntry withoutOwner(AdminProjectEntry project, String username) {
+        if (!project.isOwner(username)) {
             return null;
         }
-        final var owners = new ArrayList<>(database.getOwners());
+        final var owners = new ArrayList<>(project.getOwners());
         owners.removeIf(username::equals);
-        return new AdminDbEntry(database.get_id(), new ArrayList<>(database.getCollections()), owners);
+        return new AdminProjectEntry(project.get_id(), new ArrayList<>(project.getCollections()), owners);
     }
 
-    private static AdminUserEntry withoutGrants(AdminUserEntry user, Predicate<String> databaseKey,
+    private static AdminUserEntry withoutGrants(AdminUserEntry user, Predicate<String> projectKey,
             Predicate<String> collectionKey, Predicate<String> scriptKey) {
-        final var databases = new HashMap<>(user.getDatabasePermissions());
+        final var projects = new HashMap<>(user.getProjectPermissions());
         final var collections = new HashMap<>(user.getCollectionPermissions());
         final var scripts = new HashMap<>(user.getScriptPermissions());
-        final var removed = removeKeys(databases, databaseKey) | removeKeys(collections, collectionKey)
+        final var removed = removeKeys(projects, projectKey) | removeKeys(collections, collectionKey)
                 | removeKeys(scripts, scriptKey);
         if (!removed) {
             return null;
         }
         return new AdminUserEntry(user.get_id(), user.getPasswordHash(), user.isAdmin(), user.getGlobalPermissions(),
-                databases, collections, scripts);
+                projects, collections, scripts);
     }
 
     private static boolean removeKeys(Map<String, ?> grants, Predicate<String> matches) {

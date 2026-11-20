@@ -190,30 +190,30 @@ public class ScriptAdmissionTest {
         assertEquals(0, admission.getRejected());
     }
 
-    private static ScriptAdmission tenantAdmission(int nodeWide, int perUser, int perDatabase) {
+    private static ScriptAdmission tenantAdmission(int nodeWide, int perUser, int perProject) {
         final var admission = new ScriptAdmission(nodeWide, 0L);
-        admission.reconfigure(nodeWide, 0L, perUser, perDatabase);
+        admission.reconfigure(nodeWide, 0L, perUser, perProject);
         return admission;
     }
 
     @Test
     public void test_per_user_cap_refuses_the_same_user_but_not_another() {
         final var admission = tenantAdmission(10, 1, 0);
-        assertAdmitted(admission.acquire("alice", "db1", false));
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_USER), admission.acquire("alice", "db1", false),
-                "alice is already at her ceiling");
-        assertAdmitted(admission.acquire("bob", "db1", false), "bob has his own slice");
+        assertAdmitted(admission.acquire("alice", "project1", false));
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_USER),
+                admission.acquire("alice", "project1", false), "alice is already at her ceiling");
+        assertAdmitted(admission.acquire("bob", "project1", false), "bob has his own slice");
         assertEquals(1L, admission.getRejectedPerUser());
     }
 
     @Test
-    public void test_per_database_cap_refuses_the_same_database_but_not_another() {
+    public void test_per_project_cap_refuses_the_same_project_but_not_another() {
         final var admission = tenantAdmission(10, 0, 1);
-        assertAdmitted(admission.acquire("alice", "db1", false));
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_DATABASE),
-                admission.acquire("bob", "db1", false), "db1 is already at its ceiling");
-        assertAdmitted(admission.acquire("bob", "db2", false));
-        assertEquals(1L, admission.getRejectedPerDatabase());
+        assertAdmitted(admission.acquire("alice", "project1", false));
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_PROJECT),
+                admission.acquire("bob", "project1", false), "project1 is already at its ceiling");
+        assertAdmitted(admission.acquire("bob", "project2", false));
+        assertEquals(1L, admission.getRejectedPerProject());
     }
 
     // The failure mode the Permit exists to prevent: a refusal at an inner level must give the node-wide
@@ -221,10 +221,10 @@ public class ScriptAdmissionTest {
     @Test
     public void test_an_inner_refusal_returns_the_node_wide_permit() {
         final var admission = tenantAdmission(2, 1, 0);
-        final var held = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "db1", false));
+        final var held = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "project1", false));
         assertEquals(1, admission.available());
 
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "db1", false));
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "project1", false));
         assertEquals(1, admission.available(), "the refused run must not still hold a node-wide permit");
 
         held.close();
@@ -234,17 +234,19 @@ public class ScriptAdmissionTest {
     @Test
     public void test_closing_a_permit_frees_every_slice_it_took() {
         final var admission = tenantAdmission(1, 1, 1);
-        final var permit = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "db1", false));
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "db1", false));
+        final var permit = assertInstanceOf(ScriptAdmission.Permit.class,
+                admission.acquire("alice", "project1", false));
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "project1", false));
 
         permit.close();
-        assertAdmitted(admission.acquire("alice", "db1", false), "every slice must be released together");
+        assertAdmitted(admission.acquire("alice", "project1", false), "every slice must be released together");
     }
 
     @Test
     public void test_closing_twice_is_a_no_op() {
         final var admission = tenantAdmission(1, 1, 1);
-        final var permit = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "db1", false));
+        final var permit = assertInstanceOf(ScriptAdmission.Permit.class,
+                admission.acquire("alice", "project1", false));
         permit.close();
         permit.close();
         assertEquals(1, admission.available(), "a double close must not inflate the pool");
@@ -254,14 +256,14 @@ public class ScriptAdmissionTest {
     public void test_zero_means_unlimited_at_both_tenant_levels() {
         final var admission = tenantAdmission(0, 0, 0);
         for (var i = 0; i < 20; i++) {
-            assertAdmitted(admission.acquire("alice", "db1", false));
+            assertAdmitted(admission.acquire("alice", "project1", false));
         }
         assertEquals(0L, admission.getRejectedPerUser());
-        assertEquals(0L, admission.getRejectedPerDatabase());
+        assertEquals(0L, admission.getRejectedPerProject());
     }
 
     @Test
-    public void test_a_null_username_or_database_skips_that_slice() {
+    public void test_a_null_username_or_project_skips_that_slice() {
         final var admission = tenantAdmission(5, 1, 1);
         final var first = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire(null, null, false));
         assertAdmitted(admission.acquire(null, null, false), "a run with no principal cannot be sliced by one");
@@ -281,50 +283,51 @@ public class ScriptAdmissionTest {
     @Test
     public void test_node_wide_refusal_reports_the_node_scope() {
         final var admission = tenantAdmission(1, 0, 0);
-        assertAdmitted(admission.acquire("alice", "db1", false));
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_NODE), admission.acquire("bob", "db2", false));
+        assertAdmitted(admission.acquire("alice", "project1", false));
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_NODE),
+                admission.acquire("bob", "project2", false));
     }
 
     @Test
-    public void lastDatabaseSlotIsReservedForOwnerAndAdmin() {
+    public void lastProjectSlotIsReservedForOwnerAndAdmin() {
         final var admission = tenantAdmission(10, 0, 3);
-        assertAdmitted(admission.acquire("alice", "db1", false));
-        assertAdmitted(admission.acquire("bob", "db1", false));
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("carol", "db1", false),
+        assertAdmitted(admission.acquire("alice", "project1", false));
+        assertAdmitted(admission.acquire("bob", "project1", false));
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("carol", "project1", false),
                 "the last slot is kept for the owner and admins");
 
-        final var owner = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("owner", "db1", true),
+        final var owner = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("owner", "project1", true),
                 "the owner takes the reserved slot");
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("admin", "db1", true),
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("admin", "project1", true),
                 "the reserve is one slot");
         owner.close();
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("carol", "db1", false),
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("carol", "project1", false),
                 "a released reserve stays reserved");
-        assertAdmitted(admission.acquire("admin", "db1", true));
+        assertAdmitted(admission.acquire("admin", "project1", true));
     }
 
     @Test
     public void ordinaryUsersStopAtLimitMinusOne() {
         final var admission = tenantAdmission(10, 0, 2);
-        final var first = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "db1", false));
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_DATABASE),
-                admission.acquire("bob", "db1", false));
+        final var first = assertInstanceOf(ScriptAdmission.Permit.class, admission.acquire("alice", "project1", false));
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_PROJECT),
+                admission.acquire("bob", "project1", false));
         first.close();
-        assertAdmitted(admission.acquire("bob", "db1", false), "a released shared slot is shared again");
+        assertAdmitted(admission.acquire("bob", "project1", false), "a released shared slot is shared again");
     }
 
     @Test
     public void limitOfOneStillAdmitsOrdinaryUser() {
         final var admission = tenantAdmission(10, 0, 1);
-        assertAdmitted(admission.acquire("alice", "db1", false), "below two slots there is no reserve");
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("owner", "db1", true));
+        assertAdmitted(admission.acquire("alice", "project1", false), "below two slots there is no reserve");
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("owner", "project1", true));
     }
 
     @Test
     public void privilegedRunsUseSharedSlotsFirst() {
         final var admission = tenantAdmission(10, 0, 2);
-        assertAdmitted(admission.acquire("owner", "db1", true));
-        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "db1", false));
-        assertAdmitted(admission.acquire("admin", "db1", true), "the reserve was left untouched");
+        assertAdmitted(admission.acquire("owner", "project1", true));
+        assertInstanceOf(ScriptAdmission.Refusal.class, admission.acquire("alice", "project1", false));
+        assertAdmitted(admission.acquire("admin", "project1", true), "the reserve was left untouched");
     }
 }

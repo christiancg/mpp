@@ -48,7 +48,7 @@ public class FieldIndexBatchRefusedTypeTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         maxMemory(Globals.CACHE_DISABLED);
         world = new RefusedTypeWorld(FIELD, POOL);
@@ -264,7 +264,7 @@ public class FieldIndexBatchRefusedTypeTest {
         seedEveryId(i -> i % 2 == 0 ? text("a" + i) : new JsonNumber(i));
         world.support().admitEveryType(FIELD);
         maxMemory(REFUSE_EVERYTHING);
-        IocContainer.get(Cache.class).evictFieldIndex(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL,
+        IocContainer.get(Cache.class).evictFieldIndex(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL,
                 Cache.getIndexIdentifier(FIELD, String.class));
         world.process(List.of(world.write("id0", text("refused-load"))), true);
         final var toNumber = world.write("id2", new JsonNumber(100));
@@ -330,7 +330,7 @@ public class FieldIndexBatchRefusedTypeTest {
     private void flip(Random random) throws Exception {
         if (random.nextBoolean()) {
             maxMemory(REFUSE_EVERYTHING);
-            IocContainer.get(Cache.class).evictFieldIndexAllTypes(FieldIndexBatchSupport.DB,
+            IocContainer.get(Cache.class).evictFieldIndexAllTypes(FieldIndexBatchSupport.PROJECT,
                     FieldIndexBatchSupport.COLL, FIELD);
         } else {
             maxMemory(Globals.CACHE_UNLIMITED);

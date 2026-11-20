@@ -21,8 +21,8 @@ final class PriorIndexedValues {
     private PriorIndexedValues() {
     }
 
-    static Set<String> fieldsOf(String dbName, String collName) {
-        return cache.fieldsKeepingPriorValues(dbName, collName);
+    static Set<String> fieldsOf(String projectName, String collName) {
+        return cache.fieldsKeepingPriorValues(projectName, collName);
     }
 
     static Map<String, IndexedValue> of(Set<String> fields, DbEntry previous) {
@@ -41,13 +41,13 @@ final class PriorIndexedValues {
         return priors;
     }
 
-    static Map<String, IndexedValue> ofStored(Set<String> fields, String dbName, String collName,
+    static Map<String, IndexedValue> ofStored(Set<String> fields, String projectName, String collName,
             PkIndexEntry previousRow) {
         if (fields.isEmpty()) {
             return null;
         }
         try {
-            return of(fields, cache.getById(dbName, collName, previousRow));
+            return of(fields, cache.getById(projectName, collName, previousRow));
         } catch (Exception e) {
             return null;
         }

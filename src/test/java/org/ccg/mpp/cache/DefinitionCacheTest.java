@@ -19,7 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class DefinitionCacheTest {
-    private static final String DB = "db";
+    private static final String PROJECT = "db";
     private static final String NAME = "proc";
     private static final int PUBLISH_LOOKUP = 2;
 
@@ -35,7 +35,7 @@ public class DefinitionCacheTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -51,7 +51,7 @@ public class DefinitionCacheTest {
     }
 
     private void writeSchema() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, new EJson().toJson(schema()));
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, new EJson().toJson(schema()));
     }
 
     private BoundedLruCache<String> valuesPausingAtPublish() {
@@ -72,9 +72,9 @@ public class DefinitionCacheTest {
     public void test_a_remove_between_the_generation_check_and_the_publish_is_not_undone() throws Exception {
         final var definitions = new DefinitionCache<>(this::valuesPausingAtPublish, () -> misses, "miss:",
                 (_, _) -> "loaded");
-        final var id = Cache.getCollectionIdentifier(DB, NAME);
+        final var id = Cache.getCollectionIdentifier(PROJECT, NAME);
         final var loaded = new String[1];
-        final var loader = new Thread(() -> loaded[0] = definitions.get(DB, NAME));
+        final var loader = new Thread(() -> loaded[0] = definitions.get(PROJECT, NAME));
         loaderThread = loader;
         loader.start();
         assertTrue(publishing.await(5, TimeUnit.SECONDS), "the load must reach its publish");
@@ -94,32 +94,32 @@ public class DefinitionCacheTest {
     @Test
     public void test_a_removal_during_an_in_flight_load_is_not_undone() throws Exception {
         writeSchema();
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL),
+        assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL),
                 "a delete that answered OK must not keep validating writes against the schema it removed");
     }
 
     @Test
     public void test_a_reload_after_a_removal_sees_the_new_definition() throws Exception {
         writeSchema();
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL),
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL),
                 "the generation guard must only skip the publish, never turn a present definition into a miss");
     }
 
     @Test
     public void test_a_miss_is_not_cached_across_a_concurrent_create() throws Exception {
-        assertNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
 
         writeSchema();
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL),
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL),
                 "a stale negative entry would report a schema that exists on disk as absent and skip validation");
     }
 }

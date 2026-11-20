@@ -11,7 +11,7 @@ public class CreateUserRequest extends PermissionsRequest {
         super(OperationType.CREATE_USER, null, null);
         this.admin = false;
         this.globalPermissions = new JsonArray();
-        this.databasePermissions = new JsonObject();
+        this.projectPermissions = new JsonObject();
         this.collectionPermissions = new JsonObject();
         this.scriptPermissions = new JsonObject();
     }

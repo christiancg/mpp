@@ -85,7 +85,7 @@ public sealed class ListensTests : IAsyncLifetime
             session.Send(ListenReply(request, listenId));
         };
         await using var client = await Connect();
-        await using var subscription = await client.Database("shop").Collection("orders").ListenAsync(Recorder());
+        await using var subscription = await client.Project("shop").Collection("orders").ListenAsync(Recorder());
         await WireConnectionTests.Eventually(() => _events.Count == 2);
         Assert.Equal(["update:h0", "update:early"], _events);
         Assert.True(subscription.IsActive);
@@ -103,7 +103,7 @@ public sealed class ListensTests : IAsyncLifetime
             s.Send(ListenReply(request, listenId));
         };
         await using var client = await Connect();
-        await using var subscription = await client.Database("shop").Collection("orders").ListenAsync(Recorder(async update =>
+        await using var subscription = await client.Project("shop").Collection("orders").ListenAsync(Recorder(async update =>
         {
             if (update.ResultHash == "slow")
             {
@@ -132,7 +132,7 @@ public sealed class ListensTests : IAsyncLifetime
             session.Send(ListenReply(request, listenId));
         };
         await using var client = await Connect();
-        var orders = client.Database("shop").Collection("orders");
+        var orders = client.Project("shop").Collection("orders");
         await using var first = await orders.ListenAsync(Recorder());
         await using var second = await orders.ListenAsync(Recorder());
         Assert.Equal(3, _server.Sessions.Count);
@@ -148,7 +148,7 @@ public sealed class ListensTests : IAsyncLifetime
             s.Send(ListenReply(request, listenId));
         };
         await using var client = await Connect();
-        var subscription = await client.Database("shop").Collection("orders").ListenAsync(Recorder());
+        var subscription = await client.Project("shop").Collection("orders").ListenAsync(Recorder());
         session!.Send(new JsonObject { ["type"] = "LISTEN", ["status"] = "NOT_FOUND", ["errorCode"] = "410-1", ["listenId"] = subscription.ListenId });
         await WireConnectionTests.Eventually(() => _events.Contains("ended:410-1"));
         Assert.False(subscription.IsActive);
@@ -160,7 +160,7 @@ public sealed class ListensTests : IAsyncLifetime
     public async Task AThrowingHandlerCallsOnErrorAndEndsTheSubscription()
     {
         await using var client = await Connect();
-        var subscription = await client.Database("shop").Collection("orders")
+        var subscription = await client.Project("shop").Collection("orders")
             .ListenAsync(Recorder(_ => throw new InvalidOperationException("handler bug")));
         await WireConnectionTests.Eventually(() => _events.Contains("error:handler bug"));
         await WireConnectionTests.Eventually(() => !subscription.IsActive);
@@ -171,8 +171,8 @@ public sealed class ListensTests : IAsyncLifetime
     public async Task DisposingAStillActiveSubscriptionStopsTheListen()
     {
         await using var client = await Connect();
-        var subscription = await client.Database("shop").Collection<Order>("orders").ListenAsync(
-            client.Database("shop").Collection<Order>("orders").AsQueryable().Where(o => o.Status == "new"),
+        var subscription = await client.Project("shop").Collection<Order>("orders").ListenAsync(
+            client.Project("shop").Collection<Order>("orders").AsQueryable().Where(o => o.Status == "new"),
             ListenHandler.Of<Order>(update => _events.Enqueue(update.Results[0].Id!)));
         Assert.Contains("\"value\":\"new\"", (await _server.NextRequestAsync("LISTEN")).ToJsonString(), StringComparison.Ordinal);
         await WireConnectionTests.Eventually(() => _events.Count == 1);
@@ -192,7 +192,7 @@ public sealed class ListensTests : IAsyncLifetime
             s.Send(ListenReply(request, listenId));
         };
         await using var client = await Connect();
-        var subscription = await client.Database("shop").Collection("orders").ListenAsync(Recorder());
+        var subscription = await client.Project("shop").Collection("orders").ListenAsync(Recorder());
         session!.Close();
         await WireConnectionTests.Eventually(() => _events.Any(item => item.StartsWith("error:", StringComparison.Ordinal)));
         Assert.False(subscription.IsActive);
@@ -202,7 +202,7 @@ public sealed class ListensTests : IAsyncLifetime
     public async Task AListenFromAnIQueryableEndingInSelectIsRefused()
     {
         await using var client = await Connect();
-        var orders = client.Database("shop").Collection<Order>("orders");
+        var orders = client.Project("shop").Collection<Order>("orders");
         await Assert.ThrowsAsync<NotSupportedException>(() => orders.ListenAsync(orders.AsQueryable().Select(o => o), ListenHandler.Of<Order>(_ => { })));
         await Assert.ThrowsAsync<ConflictException>(async () =>
         {

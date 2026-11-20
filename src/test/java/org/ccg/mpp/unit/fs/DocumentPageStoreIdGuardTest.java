@@ -32,7 +32,7 @@ public class DocumentPageStoreIdGuardTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -49,7 +49,7 @@ public class DocumentPageStoreIdGuardTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.addProperty("payload", id + "-value");
-        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var dbEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         dbEntry.set_id(id);
         return dbEntry;
     }
@@ -62,7 +62,7 @@ public class DocumentPageStoreIdGuardTest {
         TestUtils.setDbPath(fileSystem, TestGlobals.PATH);
         final var first = fileSystem.insertIntoCollection(entry("aaa"));
         final var second = fileSystem.insertIntoCollection(entry("bbb"));
-        final var stale = new PkIndexEntry(first.getDatabaseName(), first.getCollectionName(), first.getValue(),
+        final var stale = new PkIndexEntry(first.getProjectName(), first.getCollectionName(), first.getValue(),
                 second.getPosition(), second.getLength(), second.getPage(), first.getVersion());
 
         final var failure = assertThrows(IOException.class, () -> fileSystem.getById(stale),
@@ -76,15 +76,15 @@ public class DocumentPageStoreIdGuardTest {
         final var cache = IocContainer.get(Cache.class);
         save(processor, "aaa");
         save(processor, "bbb");
-        final var pkIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var pkIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         final var target = byId(pkIndex, "aaa");
         final var other = byId(pkIndex, "bbb");
-        cache.evictEntry(TestGlobals.DB, TestGlobals.COLL, "aaa");
+        cache.evictEntry(TestGlobals.PROJECT, TestGlobals.COLL, "aaa");
         target.setPosition(other.getPosition());
         target.setLength(other.getLength());
         target.setPage(other.getPage());
 
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("aaa");
         final var response = processor.processMessage(request);
 
@@ -97,7 +97,7 @@ public class DocumentPageStoreIdGuardTest {
     }
 
     private static void save(OperationProcessor processor, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(entry(id).getData());
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());

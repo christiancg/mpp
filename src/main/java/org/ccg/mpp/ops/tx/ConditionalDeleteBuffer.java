@@ -27,17 +27,17 @@ public final class ConditionalDeleteBuffer {
     }
 
     public static OperationResponse buffer(DeleteRequest request, Transaction transaction, Runnable onLockTimeout) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         return OperationResponse.respondOrError(OperationType.DELETE, ErrorCode.ERROR_TRANSACTION, () -> {
-            final var lockResult = TransactionBuffer.lockedRefusal(transaction, OperationType.DELETE, dbName, collName,
-                    1, onLockTimeout);
+            final var lockResult = TransactionBuffer.lockedRefusal(transaction, OperationType.DELETE, projectName,
+                    collName, 1, onLockTimeout);
             if (lockResult != null) {
                 return lockResult;
             }
             final List<JsonObject> matches;
             try {
-                matches = ConditionMatches.of(request.getDatabaseName(), request.getCollectionName(),
+                matches = ConditionMatches.of(request.getProjectName(), request.getCollectionName(),
                         request.getCondition(), transaction);
             } catch (ScriptCallableException scriptFailure) {
                 return new OperationResponse(OperationType.DELETE, scriptFailure.getMessage(),
@@ -48,17 +48,18 @@ public final class ConditionalDeleteBuffer {
             if (matches.size() > configuration.intValue(ConfigKey.DELETE_MAX_MATCHES)) {
                 return new OperationResponse(OperationType.DELETE, ErrorCode.DELETE_MATCHES_TOO_MANY);
             }
-            final var collId = Cache.getCollectionIdentifier(dbName, collName);
+            final var collId = Cache.getCollectionIdentifier(projectName, collName);
             final var prepared = new ArrayList<PreparedDelete>(matches.size());
             var totalBytes = 0L;
             for (final var match : matches) {
                 final var id = match.get(Globals.PK_FIELD).asJsonString().getValue();
-                final var hookError = TransactionWrites.runDeleteBeforeHooks(transaction, collId, dbName, collName, id);
+                final var hookError = TransactionWrites.runDeleteBeforeHooks(transaction, collId, projectName, collName,
+                        id);
                 if (hookError != null) {
                     return hookError;
                 }
-                final var payload = TransactionBuffer.deletePayload(transaction, collId, dbName, collName, id);
-                final var bytes = TransactionBuffer.byteSizeOf(dbName, collName, payload);
+                final var payload = TransactionBuffer.deletePayload(transaction, collId, projectName, collName, id);
+                final var bytes = TransactionBuffer.byteSizeOf(projectName, collName, payload);
                 prepared.add(new PreparedDelete(id, payload, bytes));
                 totalBytes += bytes;
             }
@@ -71,7 +72,7 @@ public final class ConditionalDeleteBuffer {
                 return sizeRefusal;
             }
             for (final var delete : prepared) {
-                TransactionBuffer.bufferPreparedDelete(transaction, dbName, collName, collId, delete.id(),
+                TransactionBuffer.bufferPreparedDelete(transaction, projectName, collName, collId, delete.id(),
                         delete.payload(), delete.bytes());
             }
             return new DeleteManyResponse(prepared.size());

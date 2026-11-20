@@ -12,38 +12,38 @@ public final class IndexFiles {
         this.paths = paths;
     }
 
-    public Set<String> equalsIds(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
+    public Set<String> equalsIds(String projectName, String collName, String fieldName, Class<?> type, List<?> values)
             throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? null : IndexFileLookup.anyOfIds(index, type, values);
     }
 
-    public Set<String> rangeIds(String dbName, String collName, String fieldName, Class<?> type,
+    public Set<String> rangeIds(String projectName, String collName, String fieldName, Class<?> type,
             List<IndexFileLookup.Bound> bounds) throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? null : IndexFileLookup.rangeIds(index, type, bounds);
     }
 
-    public Set<String> complementIds(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
-            throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+    public Set<String> complementIds(String projectName, String collName, String fieldName, Class<?> type,
+            List<?> values) throws IOException {
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? null : IndexFileLookup.complementIds(index, type, values);
     }
 
-    public long equalsCount(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
+    public long equalsCount(String projectName, String collName, String fieldName, Class<?> type, List<?> values)
             throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? IndexFileLookup.DECLINED : IndexFileLookup.anyOfCount(index, type, values);
     }
 
-    public long rangeCount(String dbName, String collName, String fieldName, Class<?> type,
+    public long rangeCount(String projectName, String collName, String fieldName, Class<?> type,
             List<IndexFileLookup.Bound> bounds) throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? IndexFileLookup.DECLINED : IndexFileLookup.rangeCount(index, type, bounds);
     }
 
-    public long idCount(String dbName, String collName, String fieldName, Class<?> type) throws IOException {
-        final var index = paths.indexFile(dbName, collName, fieldName, IndexKind.fileLabel(type));
+    public long idCount(String projectName, String collName, String fieldName, Class<?> type) throws IOException {
+        final var index = paths.indexFile(projectName, collName, fieldName, IndexKind.fileLabel(type));
         return index == null ? IndexFileLookup.DECLINED : IndexFileLookup.idCount(index, type);
     }
 }

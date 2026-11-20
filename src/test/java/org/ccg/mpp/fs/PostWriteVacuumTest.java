@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PostWriteVacuumTest {
-    private static final String DB = "postWriteDb";
+    private static final String PROJECT = "postWriteProject";
     private static final String COLL = "postWriteColl";
     private static final long MAX_PAGE_SIZE = 1024 * 1024;
     private static final String LARGE = "x".repeat(20 * 1024);
@@ -44,7 +44,7 @@ public class PostWriteVacuumTest {
         shippedMaxPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", MAX_PAGE_SIZE);
         originalHalt = TestUtils.getPrivateField(faultInjector, "halt", IntConsumer.class);
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         rf.fx.seed(1, "d", "e");
     }
@@ -134,7 +134,7 @@ public class PostWriteVacuumTest {
     @Test
     public void test_a_vacuum_failure_after_a_durable_update_is_logged_and_the_update_stands() throws Exception {
         update("b", LARGE, 0);
-        assertTrue(rf.fx.paths.vacuumFile(DB, COLL, 0).mkdirs(), "a folder where the temp file goes");
+        assertTrue(rf.fx.paths.vacuumFile(PROJECT, COLL, 0).mkdirs(), "a folder where the temp file goes");
 
         final var updated = update("b", "small-b", 0);
 
@@ -152,7 +152,7 @@ public class PostWriteVacuumTest {
         final var observed = new ArrayList<String>();
         TestUtils.setPrivateField(faultInjector, "enabled", true);
         TestUtils.setPrivateField(faultInjector, "halt", (IntConsumer) _ -> observed.add(describe(old)));
-        faultInjector.arm(FaultPoint.WAL_REWRITE_BEGUN, FaultAction.HALT, DB + "|" + COLL);
+        faultInjector.arm(FaultPoint.WAL_REWRITE_BEGUN, FaultAction.HALT, PROJECT + "|" + COLL);
 
         update("b", "small-b", 0);
 
@@ -192,6 +192,6 @@ public class PostWriteVacuumTest {
                     rf.valueOf(entry.getIndex()));
         }
         assertTrue(rf.fx.everyRowReadsItsOwnRecord());
-        assertFalse(rf.fx.paths.vacuumFile(DB, COLL, 0).exists());
+        assertFalse(rf.fx.paths.vacuumFile(PROJECT, COLL, 0).exists());
     }
 }

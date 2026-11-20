@@ -69,7 +69,7 @@ public class TriggerRunDirectory {
         row.addProperty("runId", run.getRunId());
         row.addProperty("node", nodeAddress);
         row.addProperty("status", run.getStatus());
-        row.addProperty("database", run.getDatabase());
+        row.addProperty("project", run.getProject());
         row.addProperty("collection", run.getCollection());
         row.addProperty("trigger", run.getTriggerName());
         row.addProperty("procedure", run.getProcedureName());

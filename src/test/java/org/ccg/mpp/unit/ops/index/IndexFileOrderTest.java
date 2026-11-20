@@ -41,7 +41,7 @@ public class IndexFileOrderTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
     }
 
@@ -104,8 +104,8 @@ public class IndexFileOrderTest {
                 continue;
             }
             @SuppressWarnings("unchecked")
-            final var entry = (FieldIndexEntry<Object>) FieldIndexEntry.fromIndexFileEntry(FieldIndexBatchSupport.DB,
-                    FieldIndexBatchSupport.COLL, line, type);
+            final var entry = (FieldIndexEntry<Object>) FieldIndexEntry
+                    .fromIndexFileEntry(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, line, type);
             if (previous != null) {
                 assertTrue(order.compare(previous, entry) < 0,
                         label + ": " + previous.getValue() + " is written before " + entry.getValue());
@@ -124,10 +124,10 @@ public class IndexFileOrderTest {
             doc.add(FIELD, valueOf(random));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
+        final var bulk = new BulkSaveRequest(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, IocContainer.get(OperationProcessor.class).processMessage(bulk).getStatus());
-        IndexBuild.buildAll(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, List.of(FIELD));
+        IndexBuild.buildAll(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, List.of(FIELD));
         assertEveryTypeFileSorted("build");
     }
 

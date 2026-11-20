@@ -25,12 +25,12 @@ public class AdminIT extends ServerIT {
 
     @Test
     public void test_users_permissions_owners_and_passwords() {
-        client.database("admin_it").create();
-        client.database("admin_it").collection("orders").create();
+        client.project("admin_it").create();
+        client.project("admin_it").collection("orders").create();
         client.admin().users().create("bob", BOB_PASSWORD,
-                Permissions.builder().database("admin_it", DataPermission.READ).build());
+                Permissions.builder().project("admin_it", DataPermission.READ).build());
         try (var bob = asBob()) {
-            final var orders = bob.database("admin_it").collection("orders");
+            final var orders = bob.project("admin_it").collection("orders");
             assertTrue(orders.query().toList().isEmpty());
             final var refused = assertThrows(ForbiddenException.class, () -> orders.save(Document.of("_id", "x")));
             assertTrue(refused.rawCode().orElseThrow().startsWith("403"));
@@ -39,15 +39,15 @@ public class AdminIT extends ServerIT {
         }
         assertThrows(AuthenticationException.class, () -> asBob().close());
         client.admin().users().changePermissions("bob",
-                Permissions.builder().database("admin_it", DataPermission.READ_WRITE).build());
+                Permissions.builder().project("admin_it", DataPermission.READ_WRITE).build());
         client.admin().users().setPassword("bob", BOB_PASSWORD);
         try (var bob = asBob()) {
-            bob.database("admin_it").collection("orders").save(Document.of("_id", "y"));
+            bob.project("admin_it").collection("orders").save(Document.of("_id", "y"));
         }
-        client.database("admin_it").setOwners(List.of("bob"));
+        client.project("admin_it").setOwners(List.of("bob"));
         final var listed = client.admin().users().list(field("_id").eq("bob"));
         assertEquals(1, listed.size());
-        assertEquals(List.of("admin_it"), listed.get(0).ownedDatabases());
+        assertEquals(List.of("admin_it"), listed.get(0).ownedProjects());
         assertTrue(client.admin().users().list().size() >= 2);
         client.admin().users().delete("bob");
         assertTrue(client.admin().users().list(field("_id").eq("bob")).isEmpty());
@@ -59,9 +59,9 @@ public class AdminIT extends ServerIT {
         assertEquals("READY", info.state().orElseThrow());
         assertTrue(info.version().isPresent());
         assertTrue(info.raw().has("node"));
-        client.database("stats_it").create();
-        assertFalse(client.databaseStats().fieldNames().isEmpty());
-        assertNotNull(client.database("stats_it").stats());
+        client.project("stats_it").create();
+        assertFalse(client.projectStats().fieldNames().isEmpty());
+        assertNotNull(client.project("stats_it").stats());
         assertTrue(client.admin().transactions().list().isEmpty());
     }
 }

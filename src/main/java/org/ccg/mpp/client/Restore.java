@@ -16,7 +16,7 @@ public final class Restore {
     public static final int PROGRESS_EVERY = 1000;
     private static final int GZIP_MAGIC_FIRST = 0x1f;
     private static final int GZIP_MAGIC_SECOND = 0x8b;
-    private static final String CREATE_DATABASE_PREFIX = "{\"type\":\"CREATE_DATABASE\"";
+    private static final String CREATE_PROJECT_PREFIX = "{\"type\":\"CREATE_PROJECT\"";
 
     private final Connection connection;
     private final InputStream in;
@@ -29,7 +29,7 @@ public final class Restore {
     }
 
     public int run() {
-        final var existing = Set.copyOf(DumpScope.stringsOf(connection.sendOk(Requests.listDatabases()), "databases"));
+        final var existing = Set.copyOf(DumpScope.stringsOf(connection.sendOk(Requests.listProjects()), "projects"));
         final var lines = new CountingLines(readerOf(in).lines().iterator(), existing);
         final var runner = new CommandRunner(connection, err, false, true);
         var restored = 0;
@@ -46,7 +46,7 @@ public final class Restore {
             throw e;
         } finally {
             err.println("restored " + restored + " requests"
-                    + (lines.skipped > 0 ? ", skipped " + lines.skipped + " existing databases" : ""));
+                    + (lines.skipped > 0 ? ", skipped " + lines.skipped + " existing projects" : ""));
         }
     }
 
@@ -85,7 +85,7 @@ public final class Restore {
         public String next() {
             final var line = lines.next();
             handed++;
-            if (isExistingDatabaseCreation(line)) {
+            if (isExistingProjectCreation(line)) {
                 skipped++;
                 return "";
             }
@@ -98,12 +98,12 @@ public final class Restore {
             return line;
         }
 
-        private boolean isExistingDatabaseCreation(String line) {
-            if (!line.stripLeading().startsWith(CREATE_DATABASE_PREFIX)) {
+        private boolean isExistingProjectCreation(String line) {
+            if (!line.stripLeading().startsWith(CREATE_PROJECT_PREFIX)) {
                 return false;
             }
-            final var database = Connection.stringOf(Connection.parseReply(line), Requests.DATABASE);
-            return database != null && existing.contains(database);
+            final var project = Connection.stringOf(Connection.parseReply(line), Requests.PROJECT);
+            return project != null && existing.contains(project);
         }
     }
 }

@@ -55,7 +55,7 @@ public class SnapshotConsistencyTest {
         assertEquals(OperationStatus.OK, onTransactionThread(writer, "{\"type\":\"START_TRANSACTION\"}").getStatus());
         for (final var coll : List.of(SnapshotTestSupport.COLL, SnapshotTestSupport.OTHER)) {
             final var saved = onTransactionThread(writer,
-                    "{\"type\":\"SAVE\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\",\"collectionName\":\""
+                    "{\"type\":\"SAVE\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\",\"collectionName\":\""
                             + coll + "\",\"object\":{\"_id\":\"tx\"," + "\"v\":\"committed\"}}");
             assertEquals(OperationStatus.OK, saved.getStatus(), saved.getMessage());
         }
@@ -64,7 +64,8 @@ public class SnapshotConsistencyTest {
 
     private CompletableFuture<OperationResponse> startInBackground() {
         return CompletableFuture.supplyAsync(
-                () -> support.send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}"),
+                () -> support
+                        .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}"),
                 command -> Thread.ofVirtual().start(command));
     }
 
@@ -103,7 +104,7 @@ public class SnapshotConsistencyTest {
         final var writer = openTransactionWritingBothCollections();
         try {
             final var refused = support
-                    .send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}");
+                    .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}");
 
             assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), refused.getErrorCode(), refused.getMessage());
             assertEquals(0, support.registry.openCount());
@@ -117,14 +118,14 @@ public class SnapshotConsistencyTest {
         final var snapshotId = support.start();
         final var held = new CountDownLatch(1);
         final var release = new CountDownLatch(1);
-        final var collId = Cache.getCollectionIdentifier(SnapshotTestSupport.DB, SnapshotTestSupport.OTHER);
+        final var collId = Cache.getCollectionIdentifier(SnapshotTestSupport.PROJECT, SnapshotTestSupport.OTHER);
         final var holder = Thread.ofPlatform().start(() -> {
             try {
-                locks.lock(SnapshotTestSupport.DB, SnapshotTestSupport.OTHER);
+                locks.lock(SnapshotTestSupport.PROJECT, SnapshotTestSupport.OTHER);
                 locks.fence(List.of(collId));
                 held.countDown();
                 release.await();
-                locks.release(SnapshotTestSupport.DB, SnapshotTestSupport.OTHER);
+                locks.release(SnapshotTestSupport.PROJECT, SnapshotTestSupport.OTHER);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -134,7 +135,7 @@ public class SnapshotConsistencyTest {
             final var started = System.nanoTime();
 
             final var refusedStart = support
-                    .send("{\"type\":\"START_SNAPSHOT\",\"databaseName\":\"" + SnapshotTestSupport.DB + "\"}");
+                    .send("{\"type\":\"START_SNAPSHOT\",\"projectName\":\"" + SnapshotTestSupport.PROJECT + "\"}");
             final var refusedRead = support.read(support.client, snapshotId, SnapshotTestSupport.OTHER, null, 5);
 
             final var elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);

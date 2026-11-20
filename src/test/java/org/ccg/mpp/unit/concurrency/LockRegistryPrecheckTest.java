@@ -21,7 +21,7 @@ public class LockRegistryPrecheckTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -44,7 +44,7 @@ public class LockRegistryPrecheckTest {
 
     @Test
     public void test_reads_and_writes_of_unregistered_collections_create_no_lock_entry() throws Exception {
-        final var base = "{\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"";
+        final var base = "{\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\"";
         assertEquals(ErrorCode.COLLECTION_NOT_FOUND.getCode(),
                 answer("{\"type\":\"FIND_BY_ID\"," + base.substring(1) + "ghostRead1\",\"_id\":\"a\"}"));
         assertEquals(ErrorCode.COLLECTION_NOT_FOUND.getCode(),

@@ -9,28 +9,28 @@ import tools.jackson.databind.node.ObjectNode;
 
 public final class Schedules {
     private final ClientContext context;
-    private final String database;
+    private final String project;
 
-    public Schedules(ClientContext context, String database) {
+    public Schedules(ClientContext context, String project) {
         this.context = context;
-        this.database = database;
+        this.project = project;
     }
 
     public long save(ScheduleDefinition schedule) {
-        return context.channel().send(Operation.SAVE_SCHEDULE, context.scripts().saveSchedule(database, schedule))
+        return context.channel().send(Operation.SAVE_SCHEDULE, context.scripts().saveSchedule(project, schedule))
                 .path("version").asLong(0);
     }
 
     public void delete(String name) {
-        context.channel().send(Operation.DELETE_SCHEDULE, context.scripts().deleteSchedule(database, name));
+        context.channel().send(Operation.DELETE_SCHEDULE, context.scripts().deleteSchedule(project, name));
     }
 
     public List<ScheduleInfo> list() {
-        return schedules(context.scripts().listSchedules(database));
+        return schedules(context.scripts().listSchedules(project));
     }
 
     public List<ScheduleInfo> list(boolean includeArgs) {
-        return schedules(context.scripts().listSchedules(database, includeArgs));
+        return schedules(context.scripts().listSchedules(project, includeArgs));
     }
 
     private List<ScheduleInfo> schedules(ObjectNode request) {

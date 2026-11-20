@@ -1,6 +1,6 @@
 # AsyncSchedules
 
-The scheduled procedure runs of a database.
+The scheduled procedure runs of a project.
 
 The sync class `Schedules` has the same members; its methods block and return the value directly.
 
@@ -17,7 +17,7 @@ Deletes a schedule by name.
 
 ## list
 
-Lists the database's schedules.
+Lists the project's schedules.
 
 Args:
     include_args: also return each schedule's arguments

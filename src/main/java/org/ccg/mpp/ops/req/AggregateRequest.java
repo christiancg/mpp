@@ -8,8 +8,8 @@ public class AggregateRequest extends OperationRequest {
     private List<BaseAggregationStep> aggregationSteps;
     private boolean analyze;
 
-    public AggregateRequest(String databaseName, String collectionName) {
-        super(OperationType.AGGREGATE, databaseName, collectionName);
+    public AggregateRequest(String projectName, String collectionName) {
+        super(OperationType.AGGREGATE, projectName, collectionName);
     }
 
     public List<BaseAggregationStep> getAggregationSteps() {

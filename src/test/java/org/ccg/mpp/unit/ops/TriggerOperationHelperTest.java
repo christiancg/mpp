@@ -41,7 +41,7 @@ public class TriggerOperationHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -55,17 +55,18 @@ public class TriggerOperationHelperTest {
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "recalc", "return 1;"), ACTOR);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "recalc", "return 1;"),
+                ACTOR);
     }
 
     private static SaveTriggerRequest request(String name) {
-        return new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, name, List.of("CREATED"), "recalc");
+        return new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, name, List.of("CREATED"), "recalc");
     }
 
     private SaveTriggerResponse save(SaveTriggerRequest request) throws Exception {
@@ -79,7 +80,7 @@ public class TriggerOperationHelperTest {
         final var response = save(request("audit"));
         assertEquals(1L, response.getVersion());
         assertEquals(ACTOR, response.getDefiner());
-        final var stored = cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL);
+        final var stored = cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, stored.size());
         assertEquals("audit", stored.getFirst().getName());
         assertEquals("recalc", stored.getFirst().getProcedureName());
@@ -87,12 +88,13 @@ public class TriggerOperationHelperTest {
 
     @Test
     public void test_save_rejects_the_reserved_history_collection() throws Exception {
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT,
+                Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         AdminOperationHelper.saveCollectionEntry(
-                new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME));
+                new org.ccg.mpp.data.admin.AdminCollEntry(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME));
 
-        final var response = TriggerOperationHelper.executeSave(new SaveTriggerRequest(TestGlobals.DB,
+        final var response = TriggerOperationHelper.executeSave(new SaveTriggerRequest(TestGlobals.PROJECT,
                 Globals.SCRIPT_RUNS_COLLECTION_NAME, "t", List.of("CREATED"), "recalc"), ACTOR);
 
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), response.getErrorCode(),
@@ -102,13 +104,13 @@ public class TriggerOperationHelperTest {
     @Test
     public void test_save_rejects_unknown_collection() throws Exception {
         final var response = TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, "missingColl", "t", List.of("CREATED"), "recalc"), ACTOR);
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+                new SaveTriggerRequest(TestGlobals.PROJECT, "missingColl", "t", List.of("CREATED"), "recalc"), ACTOR);
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
     public void test_save_rejects_empty_events() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of(), "recalc");
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of(), "recalc");
         final var response = TriggerOperationHelper.executeSave(request, ACTOR);
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().contains("at least one event"));
@@ -116,7 +118,7 @@ public class TriggerOperationHelperTest {
 
     @Test
     public void test_save_rejects_unknown_event() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("EXPLODED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of("EXPLODED"),
                 "recalc");
         final var response = TriggerOperationHelper.executeSave(request, ACTOR);
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), response.getErrorCode());
@@ -134,7 +136,7 @@ public class TriggerOperationHelperTest {
 
     @Test
     public void test_save_rejects_missing_procedure() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("CREATED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of("CREATED"),
                 "nonexistent");
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(),
                 TriggerOperationHelper.executeSave(request, ACTOR).getErrorCode());
@@ -142,10 +144,11 @@ public class TriggerOperationHelperTest {
 
     @Test
     public void test_save_rejects_disabled_procedure() throws Exception {
-        final var disabled = new SaveProcedureRequest(TestGlobals.DB, "off", "return 1;");
+        final var disabled = new SaveProcedureRequest(TestGlobals.PROJECT, "off", "return 1;");
         disabled.setEnabled(false);
         ProcedureOperationHelper.executeSave(disabled, ACTOR);
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "t", List.of("CREATED"), "off");
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "t", List.of("CREATED"),
+                "off");
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(),
                 TriggerOperationHelper.executeSave(request, ACTOR).getErrorCode());
     }
@@ -156,7 +159,7 @@ public class TriggerOperationHelperTest {
         final var second = request("audit");
         second.setMode(TriggerDefinition.MODE_BATCH);
         assertEquals(2L, save(second).getVersion());
-        final var stored = cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL);
+        final var stored = cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, stored.size());
         assertTrue(stored.getFirst().isBatchMode());
     }
@@ -165,7 +168,7 @@ public class TriggerOperationHelperTest {
     public void test_save_keeps_other_triggers() throws Exception {
         save(request("first"));
         save(request("second"));
-        assertEquals(2, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(2, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 
     @Test
@@ -180,7 +183,7 @@ public class TriggerOperationHelperTest {
     @Test
     public void test_save_stamps_definer_from_acting_user() throws Exception {
         save(request("audit"));
-        assertEquals(ACTOR, cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst().getDefiner());
+        assertEquals(ACTOR, cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().getDefiner());
     }
 
     @Test
@@ -190,7 +193,7 @@ public class TriggerOperationHelperTest {
                 .saveUserEntry(new AdminUserEntry("bob", "h", true, Set.of(), new HashMap<>(), new HashMap<>()));
         try {
             TriggerOperationHelper.executeSave(request("audit"), "bob");
-            assertEquals("bob", cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst().getDefiner());
+            assertEquals("bob", cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().getDefiner());
         } finally {
             AdminOperationHelper.deleteUserEntry("bob");
         }
@@ -198,70 +201,77 @@ public class TriggerOperationHelperTest {
 
     @Test
     public void test_delete_is_idempotent_when_absent() throws Exception {
-        assertEquals(OperationStatus.OK, TriggerOperationHelper
-                .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "never"), ACTOR).getStatus());
+        assertEquals(OperationStatus.OK,
+                TriggerOperationHelper
+                        .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "never"), ACTOR)
+                        .getStatus());
     }
 
     @Test
     public void test_delete_removes_the_trigger_and_the_file_when_last() throws Exception {
         save(request("audit"));
-        assertEquals(OperationStatus.OK, TriggerOperationHelper
-                .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit"), ACTOR).getStatus());
-        assertTrue(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
-        assertNull(fs.metadataFiles().readTriggers(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(OperationStatus.OK,
+                TriggerOperationHelper
+                        .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit"), ACTOR)
+                        .getStatus());
+        assertTrue(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
+        assertNull(fs.metadataFiles().readTriggers(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_delete_rejects_unknown_collection() throws Exception {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), TriggerOperationHelper
-                .executeDelete(new DeleteTriggerRequest(TestGlobals.DB, "missingColl", "t"), ACTOR).getErrorCode());
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(),
+                TriggerOperationHelper
+                        .executeDelete(new DeleteTriggerRequest(TestGlobals.PROJECT, "missingColl", "t"), ACTOR)
+                        .getErrorCode());
     }
 
     @Test
     public void test_deleting_referenced_procedure_is_rejected() throws Exception {
         save(request("audit"));
         final var response = ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, "recalc"), ACTOR);
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, "recalc"), ACTOR);
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().contains("audit"));
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "recalc"));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "recalc"));
     }
 
     @Test
     public void test_deleting_unreferenced_procedure_is_allowed() throws Exception {
         save(request("audit"));
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "spare", "return 2;"), ACTOR);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "spare", "return 2;"),
+                ACTOR);
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, "spare"), ACTOR).getStatus());
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, "spare"), ACTOR).getStatus());
     }
 
     @Test
     public void test_list_returns_the_collection_name() throws Exception {
         save(request("audit"));
         final var response = (ListTriggersResponse) TriggerOperationHelper
-                .executeList(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL));
+                .executeList(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(1, response.getTriggers().size());
         assertEquals(TestGlobals.COLL,
                 response.getTriggers().getFirst().get("collectionName").asJsonString().getValue());
     }
 
     @Test
-    public void test_list_without_collection_covers_the_whole_database() throws Exception {
+    public void test_list_without_collection_covers_the_whole_project() throws Exception {
         save(request("audit"));
         final var response = (ListTriggersResponse) TriggerOperationHelper
-                .executeList(new ListTriggersRequest(TestGlobals.DB, null));
+                .executeList(new ListTriggersRequest(TestGlobals.PROJECT, null));
         assertEquals(1, response.getTriggers().size());
     }
 
     @Test
-    public void test_list_rejects_unknown_database() {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(),
-                TriggerOperationHelper.executeList(new ListTriggersRequest("missingDb", null)).getErrorCode());
+    public void test_list_rejects_unknown_project() {
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(),
+                TriggerOperationHelper.executeList(new ListTriggersRequest("missingProject", null)).getErrorCode());
     }
 
     @Test
     public void test_trigger_referencing_finds_nothing_when_absent() {
-        assertNull(TriggerOperationHelper.triggerReferencing(TestGlobals.DB, "recalc"));
+        assertNull(TriggerOperationHelper.triggerReferencing(TestGlobals.PROJECT, "recalc"));
     }
 
     @Test

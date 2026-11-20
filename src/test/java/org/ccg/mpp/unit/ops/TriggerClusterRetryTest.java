@@ -58,7 +58,7 @@ public class TriggerClusterRetryTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerMaxAttempts", 3);
         TestUtils.setPrivateField(configuration, "triggerRunRetentionMs", 3_600_000L);
@@ -97,10 +97,10 @@ public class TriggerClusterRetryTest {
         TriggerTestSupport.clearTriggersAndProcedures();
         TriggerTestSupport.consumeAllPendingRuns();
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "audit", "import db from 'db'; import args from 'args';"
+                new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "import db from 'db'; import args from 'args';"
                         + " db.save(db.name, '" + TestGlobals.COLL + "', { _id: 'written-by-' + args.id });"),
                 DEFINER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(trigger()));
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(trigger()));
         realOwnership = TestUtils.getPrivateField(coordinator, "ownershipManager", OwnershipManager.class);
         final var withoutQuorum = mock(OwnershipManager.class);
         when(withoutQuorum.hasQuorum()).thenReturn(false);
@@ -116,7 +116,7 @@ public class TriggerClusterRetryTest {
     }
 
     private static void saveDocument(String id) throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         request.setObject(object);
@@ -125,7 +125,7 @@ public class TriggerClusterRetryTest {
     }
 
     private static void saveDocumentWithValue(String id) throws Exception {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("value", new JsonString("A"));
@@ -135,28 +135,29 @@ public class TriggerClusterRetryTest {
     }
 
     private static String recordedRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(entry(id))));
+        return TriggerRunLog
+                .record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit",
+                        EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(), List.of(entry(id))));
     }
 
     private static String pendingRunFor(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(),
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "audit", EventType.CREATED, false, DEFINER, 0, System.currentTimeMillis(),
                 List.of(entry(id, "captured"))));
     }
 
     private static void dispatchLastAttempt(String id, String runId) {
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", false, List.of(entry(id)), DEFINER, 0, runId, 1));
     }
 
     private static void dispatchLastAttemptFiredAt(String id, String runId, long firedAt) {
-        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit",
+        TriggerDispatcher.dispatch(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 "audit", false, List.of(entry(id)), DEFINER, 0, runId, 1, firedAt));
     }
 
     private static TriggerEvent eventFor(String id, String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit", false,
                 List.of(entry(id, "captured")), DEFINER, 0, runId, 1);
     }
 
@@ -224,7 +225,7 @@ public class TriggerClusterRetryTest {
     public void test_a_cluster_unavailable_retry_for_a_vanished_document_is_left_to_its_run() throws Exception {
         saveDocumentWithValue("vanished");
         final var runId = pendingRunFor("vanished");
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("vanished");
         DeleteOperationHelper.executeDelete(delete);
 
@@ -253,11 +254,11 @@ public class TriggerClusterRetryTest {
     public void test_an_unreadable_procedure_leaves_the_run_pending_for_an_in_process_retry() throws Exception {
         saveDocumentWithValue("unreadable");
         final var runId = pendingRunFor("unreadable");
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(trigger()));
-        final var folder = new File(TestUtils.getDbPath(fs), TestGlobals.DB + File.separator + ".procedures");
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(trigger()));
+        final var folder = new File(TestUtils.getDbPath(fs), TestGlobals.PROJECT + File.separator + ".procedures");
         assertTrue(folder.mkdirs() || folder.isDirectory());
         Files.writeString(new File(folder, "audit.json").toPath(), "{not json");
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
 
         assertDoesNotThrow(() -> TriggerDispatcher.dispatch(eventFor("unreadable", runId)));
 
@@ -270,8 +271,8 @@ public class TriggerClusterRetryTest {
     public void test_a_cluster_retry_keeps_the_original_fired_at() throws Exception {
         saveDocumentWithValue("carried");
         final var firedAt = System.currentTimeMillis() - 5_000L;
-        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                false, List.of(entry("carried", "captured")), DEFINER, 0, "run", 1, firedAt);
+        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", false, List.of(entry("carried", "captured")), DEFINER, 0, "run", 1, firedAt);
 
         final var waiting = original.retry(original.getAttempt());
 
@@ -283,8 +284,8 @@ public class TriggerClusterRetryTest {
     public void test_an_attempt_retry_keeps_the_original_fired_at() throws Exception {
         saveDocumentWithValue("attempted");
         final var firedAt = System.currentTimeMillis() - 5_000L;
-        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit",
-                false, List.of(entry("attempted", "captured")), DEFINER, 0, "run", 1, firedAt);
+        final var original = new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
+                "audit", false, List.of(entry("attempted", "captured")), DEFINER, 0, "run", 1, firedAt);
 
         final var retry = original.retry(2);
 

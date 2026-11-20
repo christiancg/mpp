@@ -12,19 +12,19 @@ final class DumpSnapshot implements AutoCloseable {
     private static final Set<String> LOST = Set.of("404-13", "409-17");
 
     private final Connection connection;
-    private final String database;
+    private final String project;
     private final String id;
     private final List<String> collections;
 
-    private DumpSnapshot(Connection connection, String database, String id, List<String> collections) {
+    private DumpSnapshot(Connection connection, String project, String id, List<String> collections) {
         this.connection = connection;
-        this.database = database;
+        this.project = project;
         this.id = id;
         this.collections = collections;
     }
 
-    static DumpSnapshot open(Connection connection, String database, List<String> collections) {
-        final var request = Requests.startSnapshot(database, collections);
+    static DumpSnapshot open(Connection connection, String project, List<String> collections) {
+        final var request = Requests.startSnapshot(project, collections);
         var reply = connection.send(request);
         var backoff = OPEN_BACKOFF;
         for (var attempt = 1; attempt < OPEN_ATTEMPTS
@@ -40,7 +40,7 @@ final class DumpSnapshot implements AutoCloseable {
         if (id == null) {
             throw DumpScope.unexpectedReply(Requests.SNAPSHOT_ID);
         }
-        return new DumpSnapshot(connection, database, id, DumpScope.stringsOf(reply, Requests.COLLECTION_NAMES));
+        return new DumpSnapshot(connection, project, id, DumpScope.stringsOf(reply, Requests.COLLECTION_NAMES));
     }
 
     List<String> collections() {
@@ -48,11 +48,11 @@ final class DumpSnapshot implements AutoCloseable {
     }
 
     JsonObject read(String collection, String afterId, int limit) {
-        final var request = Requests.readSnapshot(database, collection, id, afterId, limit);
+        final var request = Requests.readSnapshot(project, collection, id, afterId, limit);
         final var reply = connection.send(request);
         final var errorCode = Connection.errorCodeOf(reply);
         if (errorCode != null && LOST.contains(errorCode)) {
-            throw new ClientException("the snapshot of " + database + " was lost ("
+            throw new ClientException("the snapshot of " + project + " was lost ("
                     + Connection.stringOf(reply, Connection.MESSAGE) + "); the dump is incomplete",
                     ClientException.FAILED);
         }
@@ -60,13 +60,13 @@ final class DumpSnapshot implements AutoCloseable {
     }
 
     ClientException refused(String collection, String afterId, int limit, JsonObject reply) {
-        return Connection.refused(Requests.readSnapshot(database, collection, id, afterId, limit), reply);
+        return Connection.refused(Requests.readSnapshot(project, collection, id, afterId, limit), reply);
     }
 
     @Override
     public void close() {
         try {
-            connection.send(Requests.releaseSnapshot(database, id));
+            connection.send(Requests.releaseSnapshot(project, id));
         } catch (ClientException ignored) {
         }
     }

@@ -21,7 +21,7 @@ public class AdminCollEntryTest {
     @Test
     public void test_default_constructor_sets_admin_names() {
         AdminCollEntry entry = new AdminCollEntry("db", "coll");
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, entry.getCollectionName());
         assertEquals(Set.of(), entry.getIndexes());
         assertTrue(entry.get_id().contains("db"));
@@ -30,31 +30,31 @@ public class AdminCollEntryTest {
 
     @Test
     public void test_constructs_admin_coll_entry_with_indexes() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
         Set<String> indexes = new HashSet<>();
         indexes.add("index1");
         indexes.add("index2");
 
-        AdminCollEntry entry = new AdminCollEntry(dbName, collName, indexes);
+        AdminCollEntry entry = new AdminCollEntry(projectName, collName, indexes);
 
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, entry.getCollectionName());
-        assertEquals(Cache.getCollectionIdentifier(dbName, collName), entry.get_id());
+        assertEquals(Cache.getCollectionIdentifier(projectName, collName), entry.get_id());
         assertEquals(indexes, entry.getIndexes());
     }
 
     @Test
     public void test_handles_empty_indexes_set() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
         Set<String> indexes = new HashSet<>();
 
-        AdminCollEntry entry = new AdminCollEntry(dbName, collName, indexes);
+        AdminCollEntry entry = new AdminCollEntry(projectName, collName, indexes);
 
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, entry.getCollectionName());
-        assertEquals(Cache.getCollectionIdentifier(dbName, collName), entry.get_id());
+        assertEquals(Cache.getCollectionIdentifier(projectName, collName), entry.get_id());
         assertTrue(entry.getIndexes().isEmpty());
     }
 
@@ -71,13 +71,13 @@ public class AdminCollEntryTest {
 
         assertEquals("test_id", entry.get_id());
         assertEquals(Set.of("index1", "index2"), entry.getIndexes());
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, entry.getCollectionName());
     }
 
     @Test
     public void test_update_indexes_with_new_set() {
-        AdminCollEntry entry = new AdminCollEntry("testDb", "testCollection");
+        AdminCollEntry entry = new AdminCollEntry("testProject", "testCollection");
         Set<String> newIndexes = new HashSet<>(Arrays.asList("index1", "index2"));
         entry.setIndexes(newIndexes);
 

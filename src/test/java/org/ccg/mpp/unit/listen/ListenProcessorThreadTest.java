@@ -39,19 +39,19 @@ public class ListenProcessorThreadTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
         saveReader(PermissionLevel.READ);
     }
 
     private static void saveReader(PermissionLevel level) throws Exception {
-        final var databasePermissions = new HashMap<String, PermissionLevel>();
+        final var projectPermissions = new HashMap<String, PermissionLevel>();
         if (level != null) {
-            databasePermissions.put(TestGlobals.DB, level);
+            projectPermissions.put(TestGlobals.PROJECT, level);
         }
         AdminOperationHelper.saveUserEntry(
-                new AdminUserEntry(READER, "unused", false, new HashSet<>(), databasePermissions, new HashMap<>()));
+                new AdminUserEntry(READER, "unused", false, new HashSet<>(), projectPermissions, new HashMap<>()));
     }
 
     private static UUID authenticatedClient() {
@@ -84,7 +84,7 @@ public class ListenProcessorThreadTest {
     public void sameHash_registrationStays() throws Exception {
         final var clientId = authenticatedClient();
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         final var hash = ResultHasher.hash(List.of(), false);
@@ -107,7 +107,7 @@ public class ListenProcessorThreadTest {
     public void nullWriter_registrationIsUnregistered() throws Exception {
         final var clientId = authenticatedClient();
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         final var listenId = registerDelivered(manager, clientId, dirtyReq, "stale-hash-that-will-not-match");
@@ -147,7 +147,7 @@ public class ListenProcessorThreadTest {
     @Test
     public void queryRerunThrows_isCaughtAndRegistrationSurvives() throws Exception {
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL) {
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL) {
             private int calls;
 
             @Override
@@ -207,7 +207,7 @@ public class ListenProcessorThreadTest {
     @Test
     public void writerLockNull_registrationIsUnregistered() throws Exception {
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         final var listenId = registerDelivered(manager, UUID.randomUUID(), dirtyReq, "stale-hash-for-lock-null-test");
@@ -253,7 +253,7 @@ public class ListenProcessorThreadTest {
     @Test
     public void hashChanged_pushesUpdateToWriter() throws Exception {
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         final var clientTracker = IocContainer.get(ClientTracker.class);
@@ -286,7 +286,7 @@ public class ListenProcessorThreadTest {
     @Test
     public void writeFails_unregistersAndReleasesLock() throws Exception {
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         final var clientTracker = IocContainer.get(ClientTracker.class);
@@ -395,7 +395,7 @@ public class ListenProcessorThreadTest {
 
     private ListenManager registerUnchanged(UUID clientId) {
         final var manager = new ListenManager();
-        final var dirtyReq = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var dirtyReq = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         dirtyReq.setAggregationSteps(List.of());
         dirtyReq.setDirtyRead(true);
         lastListenId = registerDelivered(manager, clientId, dirtyReq, ResultHasher.hash(List.of(), false));

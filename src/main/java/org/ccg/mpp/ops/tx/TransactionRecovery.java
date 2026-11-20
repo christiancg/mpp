@@ -144,7 +144,7 @@ public final class TransactionRecovery {
     }
 
     public static void recordIntoOverlay(Transaction transaction, AdminTransactionEntry op) {
-        final var collId = Cache.getCollectionIdentifier(op.getTargetDb(), op.getTargetColl());
+        final var collId = Cache.getCollectionIdentifier(op.getTargetProject(), op.getTargetColl());
         if (!op.getInsertedIds().isEmpty()) {
             transaction.recordInserts(op.getSeq(), op.getInsertedIds());
         }

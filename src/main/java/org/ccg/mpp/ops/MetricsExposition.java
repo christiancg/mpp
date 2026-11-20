@@ -160,11 +160,11 @@ public final class MetricsExposition {
         final var fsync = name("fsync_duration_seconds");
         text.family(fsync, PrometheusText.HISTOGRAM, "Seconds one force to the device took.").histogram(fsync,
                 ForceMetrics.durations());
-        final var stored = StoredTotals.ofEveryUserDatabase();
-        gauge(text, "databases", "User databases.", stored.databases());
-        gauge(text, "collections", "Collections across every user database.", stored.collections());
-        gauge(text, "documents", "Documents across every user database, from the page rows.", stored.entries());
-        gauge(text, "live_bytes", "Live document bytes across every user database, from the page rows.",
+        final var stored = StoredTotals.ofEveryUserProject();
+        gauge(text, "projects", "User projects.", stored.projects());
+        gauge(text, "collections", "Collections across every user project.", stored.collections());
+        gauge(text, "documents", "Documents across every user project, from the page rows.", stored.entries());
+        gauge(text, "live_bytes", "Live document bytes across every user project, from the page rows.",
                 stored.sizeBytes());
     }
 }

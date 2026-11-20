@@ -45,7 +45,7 @@ Groups rows by a field: each output row holds the key and a `group` array.
 
 Adds the matching rows of another collection as an array.
 
-@param collection the other collection, in the same database
+@param collection the other collection, in the same project
 @param localField the field of this collection's rows
 @param remoteField the field of the other collection's rows
 @param asField where the matches are stored

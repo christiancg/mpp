@@ -49,7 +49,7 @@ public class TransactionCrashAtomicityTest {
 
     @BeforeEach
     void freshCollection() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     private static JsonObject document(String id) {
@@ -70,7 +70,7 @@ public class TransactionCrashAtomicityTest {
     private static Transaction bufferInMemory(String... ids) {
         final var transaction = new Transaction(UUID.randomUUID(), UUID.randomUUID());
         for (final var id : ids) {
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(document(id));
             request.set_id(id);
             TransactionOperationHelper.bufferSave(request, transaction);
@@ -86,15 +86,15 @@ public class TransactionCrashAtomicityTest {
         assertEquals(2, transaction.getPendingOps().size());
         assertTrue(transaction.getBufferedOpIds().stream().noneMatch(cache.getTransactionPkIndexes()::containsKey),
                 "a buffered op reaches admin/transactions only with the record that decides or prepares it");
-        assertTrue(fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME).stream()
-                .noneMatch(row -> row.getValue().startsWith(txId)));
+        assertTrue(fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME)
+                .stream().noneMatch(row -> row.getValue().startsWith(txId)));
         TestUtils.releaseAllLocks();
         TransactionOperationHelper.cleanupOrphansAtStartup();
         assertFalse(documentExists("in-memory-a"), "a crash before the commit leaves nothing to replay");
     }
 
     private boolean documentExists(String id) throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, java.util.Set.of(id)).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, java.util.Set.of(id)).isEmpty();
     }
 
     @Test
@@ -104,12 +104,12 @@ public class TransactionCrashAtomicityTest {
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("fenced"));
         request.set_id("fenced");
         TransactionOperationHelper.bufferSave(request, transaction);
         final var corrupt = new org.ccg.mpp.data.admin.AdminTransactionEntry(transaction.getTransactionId().toString(),
-                "client", 99, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
+                "client", 99, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT,
                 TestGlobals.COLL, new JsonObject());
         transaction.addPendingOp(corrupt);
 
@@ -135,7 +135,7 @@ public class TransactionCrashAtomicityTest {
         final var transaction = bufferSlice("a", "b", "c");
         final var txId = transaction.getTransactionId().toString();
         TxCommitLog.recordLocalCommit(txId, transaction.getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         // Simulates the crash: the first op landed, the rest did not.
         assertTrue(TransactionRecovery.finishLocalCommit(txId));
 
@@ -149,7 +149,7 @@ public class TransactionCrashAtomicityTest {
     public void test_startup_sweep_finishes_a_marked_commit_and_discards_an_unmarked_one() throws Exception {
         final var decided = bufferSlice("decided");
         TxCommitLog.recordLocalCommit(decided.getTransactionId().toString(), decided.getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         final var undecided = bufferSlice("undecided");
         TestUtils.releaseAllLocks();
 
@@ -167,14 +167,14 @@ public class TransactionCrashAtomicityTest {
         final var txId = transaction.getTransactionId().toString();
         final var opIds = List.copyOf(transaction.getBufferedOpIds());
         TxCommitLog.recordLocalCommit(txId, opIds,
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         final var ops = AdminOperationHelper.readTransactionOps(opIds);
         assertEquals(1, ops.size());
 
         assertTrue(TransactionRecovery.finishLocalCommit(txId));
         assertTrue(TransactionRecovery.finishLocalCommit(txId));
 
-        assertEquals(1, cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, java.util.Set.of("dup")).size());
+        assertEquals(1, cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, java.util.Set.of("dup")).size());
     }
 
     @Test
@@ -182,10 +182,10 @@ public class TransactionCrashAtomicityTest {
         final var transaction = bufferSlice("stuck-at-startup");
         final var txId = transaction.getTransactionId().toString();
         final var corrupt = new AdminTransactionEntry(txId, "client", 99, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, "ghost-collection", document("unreachable"));
+                TestGlobals.PROJECT, "ghost-collection", document("unreachable"));
         AdminOperationHelper.saveTransactionOp(corrupt);
         transaction.getBufferedOpIds().add(corrupt.get_id());
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         TxCommitLog.recordLocalCommit(txId, transaction.getBufferedOpIds(), List.of(collId));
         TestUtils.releaseAllLocks();
 
@@ -209,12 +209,12 @@ public class TransactionCrashAtomicityTest {
     @Test
     public void test_a_partially_applied_2pc_recovery_replay_keeps_its_collection_locked() throws Exception {
         final var dtxId = UUID.randomUUID().toString();
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         final var goodOp = new AdminTransactionEntry(dtxId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, TestGlobals.COLL, document("prepared-doc"));
+                TestGlobals.PROJECT, TestGlobals.COLL, document("prepared-doc"));
         AdminOperationHelper.saveTransactionOp(goodOp);
         final var corrupt = new AdminTransactionEntry(dtxId, "client", 1, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, "ghost-collection", document("unreachable"));
+                TestGlobals.PROJECT, "ghost-collection", document("unreachable"));
         AdminOperationHelper.saveTransactionOp(corrupt);
         Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:5000", List.of("127.0.0.1:5000"), List.of(collId));
 
@@ -240,7 +240,7 @@ public class TransactionCrashAtomicityTest {
     public void test_a_fully_applied_startup_replay_still_releases_its_lock() throws Exception {
         final var transaction = bufferSlice("released-at-startup");
         final var txId = transaction.getTransactionId().toString();
-        final var collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         TxCommitLog.recordLocalCommit(txId, transaction.getBufferedOpIds(), List.of(collId));
         TestUtils.releaseAllLocks();
 

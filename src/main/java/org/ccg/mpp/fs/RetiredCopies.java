@@ -6,19 +6,19 @@ import java.util.List;
 public interface RetiredCopies {
     RetiredCopies NONE = new RetiredCopies() {
         @Override
-        public boolean watches(String dbName) {
+        public boolean watches(String projectName) {
             return false;
         }
 
         @Override
-        public void retiring(String dbName, String collName, List<RetiredCopy> retired, List<String> born,
+        public void retiring(String projectName, String collName, List<RetiredCopy> retired, List<String> born,
                 OldLines oldLines) {
         }
     };
 
-    boolean watches(String dbName);
+    boolean watches(String projectName);
 
-    void retiring(String dbName, String collName, List<RetiredCopy> retired, List<String> born, OldLines oldLines);
+    void retiring(String projectName, String collName, List<RetiredCopy> retired, List<String> born, OldLines oldLines);
 
     record RetiredCopy(String id, long page, long offset, long length) {
     }

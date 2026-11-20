@@ -112,7 +112,7 @@ public class ScriptRunDirectoryTest {
         final var row = local.getFirst();
         assertEquals(run.runId(), row.getRunId());
         assertEquals("CALL_PROCEDURE", row.getKind());
-        assertEquals("shop", row.getDatabase());
+        assertEquals("shop", row.getProject());
         assertEquals("reprice", row.getName());
         assertEquals("alice", row.getUsername());
         assertEquals(run.startedAt(), row.getStartedAt());

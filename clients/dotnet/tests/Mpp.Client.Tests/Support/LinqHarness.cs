@@ -13,7 +13,7 @@ internal sealed class LinqHarness
     public LinqHarness(TimeZoneInfo? zone = null, JsonSerializerOptions? json = null)
     {
         Context = RecordingChannel.Context(Channel, zone, json);
-        var shop = new Database(Context, "shop");
+        var shop = new Project(Context, "shop");
         Orders = shop.Collection<Order>("orders");
         Customers = shop.Collection<Customer>("customers");
         Fluent = Orders.Query();

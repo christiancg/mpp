@@ -13,7 +13,7 @@ public class RunScriptRequestTest {
     public void test_no_arg_constructor_sets_type_and_empty_args() {
         final var request = new RunScriptRequest();
         assertEquals(OperationType.RUN_SCRIPT, request.getType());
-        assertNull(request.getDatabaseName());
+        assertNull(request.getProjectName());
         assertNull(request.getCollectionName());
         assertNull(request.getScript());
         assertTrue(request.getArgs().entrySet().isEmpty());
@@ -23,8 +23,8 @@ public class RunScriptRequestTest {
     public void test_full_constructor_sets_fields() {
         final var args = new JsonObject();
         args.add("n", new JsonNumber(1));
-        final var request = new RunScriptRequest("myDb", "return 1;", args);
-        assertEquals("myDb", request.getDatabaseName());
+        final var request = new RunScriptRequest("myProject", "return 1;", args);
+        assertEquals("myProject", request.getProjectName());
         assertEquals("return 1;", request.getScript());
         assertEquals(1, request.getArgs().get("n").asJsonNumber().getValue().intValue());
     }

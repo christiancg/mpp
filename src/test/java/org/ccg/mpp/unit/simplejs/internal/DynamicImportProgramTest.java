@@ -10,7 +10,7 @@ import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class DynamicImportProgramTest {
@@ -41,7 +41,7 @@ public class DynamicImportProgramTest {
 
     @Test
     public void test_dynamic_import_db() {
-        final var db = new FakeDatabaseAccess();
+        final var db = new FakeProjectAccess();
         final var stored = new JsonObject();
         stored.add("_id", new JsonString("u1"));
         db.nextFindResult = stored;

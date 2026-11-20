@@ -29,9 +29,9 @@ public final class ClusterWriteHelper {
     private ClusterWriteHelper() {
     }
 
-    public static OperationResponse guard(OperationType type, String dbName, String collName) {
-        final var refusal = errorFor(type, coordinator.guardWrite(dbName, collName));
-        return refusal != null ? refusal : CollectionReadinessGuard.precheck(type, dbName, collName);
+    public static OperationResponse guard(OperationType type, String projectName, String collName) {
+        final var refusal = errorFor(type, coordinator.guardWrite(projectName, collName));
+        return refusal != null ? refusal : CollectionReadinessGuard.precheck(type, projectName, collName);
     }
 
     private static OperationResponse errorFor(OperationType type, WriteGuard guard) {
@@ -44,40 +44,40 @@ public final class ClusterWriteHelper {
         };
     }
 
-    public static OperationResponse afterSave(String dbName, String collName, OperationResponse response) {
+    public static OperationResponse afterSave(String projectName, String collName, OperationResponse response) {
         if (response instanceof SaveResponse saveResponse) {
             return withReplication(response, OperationType.SAVE,
-                    coordinator.replicateUpsert(dbName, collName, List.of(saveResponse.get_id())));
+                    coordinator.replicateUpsert(projectName, collName, List.of(saveResponse.get_id())));
         }
         return response;
     }
 
-    static OperationResponse afterSave(String dbName, String collName, OperationResponse response,
+    static OperationResponse afterSave(String projectName, String collName, OperationResponse response,
             WriteEffects effects) {
         if (response instanceof SaveResponse saveResponse && effects.defersReplication()) {
             effects.replicateUpsertLater(saveResponse.get_id());
             return response;
         }
-        return afterSave(dbName, collName, response);
+        return afterSave(projectName, collName, response);
     }
 
-    public static OperationResponse afterBulkSave(String dbName, String collName, OperationResponse response) {
+    public static OperationResponse afterBulkSave(String projectName, String collName, OperationResponse response) {
         if (response instanceof BulkSaveResponse bulkSaveResponse) {
             final var ids = new ArrayList<>(bulkSaveResponse.getInserted());
             ids.addAll(bulkSaveResponse.getUpdated());
             return withReplication(response, OperationType.BULK_SAVE,
-                    coordinator.replicateUpsert(dbName, collName, ids));
+                    coordinator.replicateUpsert(projectName, collName, ids));
         }
         return response;
     }
 
-    public static DeleteReservation reserveDelete(String dbName, String collName, String id)
+    public static DeleteReservation reserveDelete(String projectName, String collName, String id)
             throws java.io.IOException {
-        final var reservation = coordinator.reserveDelete(dbName, collName, List.of(id));
+        final var reservation = coordinator.reserveDelete(projectName, collName, List.of(id));
         try {
             reservation.awaitTombstones();
         } catch (java.io.IOException e) {
-            coordinator.retractDelete(dbName, collName, List.of(id), reservation.version());
+            coordinator.retractDelete(projectName, collName, List.of(id), reservation.version());
             throw e;
         }
         return reservation;
@@ -98,77 +98,78 @@ public final class ClusterWriteHelper {
     }
 
     private static void retractDelete(DeleteRequest request, Long reservedVersion) throws java.io.IOException {
-        coordinator.retractDelete(request.getDatabaseName(), request.getCollectionName(), List.of(request.get_id()),
+        coordinator.retractDelete(request.getProjectName(), request.getCollectionName(), List.of(request.get_id()),
                 reservedVersion);
     }
 
-    public static OperationResponse afterDelete(String dbName, String collName, String id, Long reservedVersion,
+    public static OperationResponse afterDelete(String projectName, String collName, String id, Long reservedVersion,
             OperationResponse response) {
         if (response instanceof DeleteResponse) {
             return withReplication(response, OperationType.DELETE,
-                    coordinator.replicateDelete(dbName, collName, List.of(id), reservedVersion));
+                    coordinator.replicateDelete(projectName, collName, List.of(id), reservedVersion));
         }
         return response;
     }
 
-    static OperationResponse afterDelete(String dbName, String collName, String id, Long reservedVersion,
+    static OperationResponse afterDelete(String projectName, String collName, String id, Long reservedVersion,
             OperationResponse response, WriteEffects effects) {
         if (response instanceof DeleteResponse && effects.defersReplication()) {
             effects.replicateDeleteLater(id, reservedVersion,
-                    () -> coordinator.retractDelete(dbName, collName, List.of(id), reservedVersion));
+                    () -> coordinator.retractDelete(projectName, collName, List.of(id), reservedVersion));
             return response;
         }
-        return afterDelete(dbName, collName, id, reservedVersion, response);
+        return afterDelete(projectName, collName, id, reservedVersion, response);
     }
 
-    public static ReservedDelete deleteReserved(String dbName, String collName, List<String> ids) throws Exception {
-        final var reservation = coordinator.reserveDelete(dbName, collName, ids);
+    public static ReservedDelete deleteReserved(String projectName, String collName, List<String> ids)
+            throws Exception {
+        final var reservation = coordinator.reserveDelete(projectName, collName, ids);
         if (reservation.ownerLost()) {
             return null;
         }
         try {
             reservation.awaitTombstones();
         } catch (java.io.IOException e) {
-            coordinator.retractDelete(dbName, collName, ids, reservation.version());
+            coordinator.retractDelete(projectName, collName, ids, reservation.version());
             throw e;
         }
-        return new ReservedDelete(bulkDeleteOrRetract(coordinator, dbName, collName, ids, reservation.version()),
+        return new ReservedDelete(bulkDeleteOrRetract(coordinator, projectName, collName, ids, reservation.version()),
                 reservation.version());
     }
 
-    static ReservedDelete deleteReservedBesideForce(ClusterCoordinator through, String dbName, String collName,
+    static ReservedDelete deleteReservedBesideForce(ClusterCoordinator through, String projectName, String collName,
             List<String> ids) throws Exception {
-        final var reservation = through.reserveDelete(dbName, collName, ids);
+        final var reservation = through.reserveDelete(projectName, collName, ids);
         if (reservation.ownerLost()) {
             return null;
         }
-        final var removed = bulkDeleteOrRetract(through, dbName, collName, ids, reservation.version());
+        final var removed = bulkDeleteOrRetract(through, projectName, collName, ids, reservation.version());
         reservation.awaitTombstones();
         return new ReservedDelete(removed, reservation.version());
     }
 
-    private static List<String> bulkDeleteOrRetract(ClusterCoordinator through, String dbName, String collName,
+    private static List<String> bulkDeleteOrRetract(ClusterCoordinator through, String projectName, String collName,
             List<String> ids, Long reservedVersion) throws Exception {
         try {
-            return DeleteOperationHelper.executeBulkDelete(dbName, collName, ids, listenManager, true);
+            return DeleteOperationHelper.executeBulkDelete(projectName, collName, ids, listenManager, true);
         } catch (Exception e) {
-            through.retractDelete(dbName, collName, ids, reservedVersion);
+            through.retractDelete(projectName, collName, ids, reservedVersion);
             throw e;
         }
     }
 
-    static ReplicationOutcome replicateReserved(ClusterCoordinator through, String dbName, String collName,
+    static ReplicationOutcome replicateReserved(ClusterCoordinator through, String projectName, String collName,
             ReservedDelete reserved) {
         return reserved.removed().isEmpty()
                 ? ReplicationOutcome.NOT_CLUSTERED
-                : through.replicateDelete(dbName, collName, reserved.removed(), reserved.version());
+                : through.replicateDelete(projectName, collName, reserved.removed(), reserved.version());
     }
 
-    public static OperationResponse afterDeleteMany(String dbName, String collName, ReservedDelete reserved,
+    public static OperationResponse afterDeleteMany(String projectName, String collName, ReservedDelete reserved,
             OperationResponse response) {
         if (response instanceof DeleteManyResponse && reserved != null) {
             return withReplication(response, OperationType.DELETE,
-                    replicateReserved(coordinator, dbName, collName, reserved));
+                    replicateReserved(coordinator, projectName, collName, reserved));
         }
         return response;
     }
@@ -189,13 +190,13 @@ public final class ClusterWriteHelper {
         };
     }
 
-    public static OperationResponse refusalUnderLock(OperationType type, String dbName, String collName) {
-        if (!coordinator.stillOwns(dbName, collName)) {
+    public static OperationResponse refusalUnderLock(OperationType type, String projectName, String collName) {
+        if (!coordinator.stillOwns(projectName, collName)) {
             return new OperationResponse(type, ErrorCode.NOT_COLLECTION_OWNER);
         }
-        final var subject = Cache.getCollectionIdentifier(dbName, collName);
+        final var subject = Cache.getCollectionIdentifier(projectName, collName);
         faultInjector.at(FaultPoint.WRITE_OWNERSHIP_RECHECKED, subject);
         faultInjector.at(FaultPoint.WRITE_OWNER_PROBED, subject);
-        return CollectionReadinessGuard.check(type, dbName, collName);
+        return CollectionReadinessGuard.check(type, projectName, collName);
     }
 }

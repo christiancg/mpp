@@ -3,7 +3,7 @@ package org.ccg.mpp.cluster.msg;
 public class TriggerRunRow {
     private String runId;
     private String status;
-    private String database;
+    private String project;
     private String collection;
     private String triggerName;
     private String procedureName;
@@ -17,11 +17,11 @@ public class TriggerRunRow {
     public TriggerRunRow() {
     }
 
-    public TriggerRunRow(String runId, String status, String database, String collection, String triggerName,
+    public TriggerRunRow(String runId, String status, String project, String collection, String triggerName,
             String procedureName, String eventType, int attempts, String lastError, long firedAt, long nextAttemptAt) {
         this.runId = runId;
         this.status = status;
-        this.database = database;
+        this.project = project;
         this.collection = collection;
         this.triggerName = triggerName;
         this.procedureName = procedureName;
@@ -40,8 +40,8 @@ public class TriggerRunRow {
         return status;
     }
 
-    public String getDatabase() {
-        return database;
+    public String getProject() {
+        return project;
     }
 
     public String getCollection() {

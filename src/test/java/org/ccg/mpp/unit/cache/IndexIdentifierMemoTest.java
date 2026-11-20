@@ -45,7 +45,7 @@ public class IndexIdentifierMemoTest {
     public void evictingEveryTypeOfTheFieldForgetsItsIdentifiers() {
         final var before = Cache.memoizedIndexIdentifier(FIELD, Number.class);
 
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
 
         final var after = Cache.memoizedIndexIdentifier(FIELD, Number.class);
         assertEquals(before, after);

@@ -12,8 +12,8 @@ import org.ccg.mpp.ops.req.ChangePermissionsRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
 import org.ccg.mpp.ops.req.ListUsersRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 
 public final class UserRequestValidator {
     private static final Cache cache = IocContainer.get(Cache.class);
@@ -45,10 +45,10 @@ public final class UserRequestValidator {
         if (request.getPassword() == null || request.getPassword().length() < PASSWORD_MIN_LENGTH) {
             return ValidationResult.fail("password must be at least " + PASSWORD_MIN_LENGTH + " characters");
         }
-        final var dbPermsResult = validateRawPermissionMaps(request.getRawDatabasePermissions(),
+        final var projectPermsResult = validateRawPermissionMaps(request.getRawProjectPermissions(),
                 request.getRawCollectionPermissions());
-        if (!dbPermsResult.isValid()) {
-            return dbPermsResult;
+        if (!projectPermsResult.isValid()) {
+            return projectPermsResult;
         }
         return validateRawScriptPermissions(request.getRawScriptPermissions());
     }
@@ -70,10 +70,10 @@ public final class UserRequestValidator {
         if (!request.getUsername().matches(NameValidations.USERNAME_PATTERN)) {
             return ValidationResult.fail("username must be 3-64 alphanumeric characters, underscores, or hyphens");
         }
-        final var dbPermsResult = validateRawPermissionMaps(request.getRawDatabasePermissions(),
+        final var projectPermsResult = validateRawPermissionMaps(request.getRawProjectPermissions(),
                 request.getRawCollectionPermissions());
-        if (!dbPermsResult.isValid()) {
-            return dbPermsResult;
+        if (!projectPermsResult.isValid()) {
+            return projectPermsResult;
         }
         return validateRawScriptPermissions(request.getRawScriptPermissions());
     }
@@ -95,10 +95,10 @@ public final class UserRequestValidator {
         return DataRequestValidator.validateAggregationSteps(request.getAggregationSteps());
     }
 
-    static ValidationResult validateSetDatabaseOwners(SetDatabaseOwnersRequest request) {
-        final var dbResult = NameValidations.validateDbName(request.getDatabaseName(), true);
-        if (!dbResult.isValid()) {
-            return dbResult;
+    static ValidationResult validateSetProjectOwners(SetProjectOwnersRequest request) {
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         for (var owner : request.getOwners()) {
             if (!owner.matches(NameValidations.NAME_PATTERN)) {
@@ -117,13 +117,13 @@ public final class UserRequestValidator {
             return ValidationResult.ok();
         }
         for (var entry : scriptPermissions.entrySet()) {
-            final var dbName = entry.getKey();
-            if (NameValidations.isReservedDbName(dbName)) {
-                return ValidationResult.fail("databaseName '" + dbName + "' is reserved");
+            final var projectName = entry.getKey();
+            if (NameValidations.isReservedProjectName(projectName)) {
+                return ValidationResult.fail("projectName '" + projectName + "' is reserved");
             }
-            if (!dbName.matches(NameValidations.NAME_PATTERN)) {
+            if (!projectName.matches(NameValidations.NAME_PATTERN)) {
                 return ValidationResult.fail(
-                        "database name in script permissions must be 3-64 alphanumeric characters, underscores, or hyphens");
+                        "project name in script permissions must be 3-64 alphanumeric characters, underscores, or hyphens");
             }
             // The boolean form is still accepted for backward compatibility; a typo'd level name must fail
             // loudly rather than read as NONE.
@@ -133,29 +133,28 @@ public final class UserRequestValidator {
             }
             if (value.getJsonType() != JsonBaseElement.JsonType.STRING
                     || !ScriptPermissionLevel.isValidName(value.asJsonString().getValue())) {
-                return ValidationResult.fail("script permission for database '" + dbName
+                return ValidationResult.fail("script permission for project '" + projectName
                         + "' must be one of NONE, RUN, MANAGE (or the legacy true/false)");
             }
         }
         return ValidationResult.ok();
     }
 
-    static ValidationResult validateRawPermissionMaps(JsonObject databasePermissions,
-            JsonObject collectionPermissions) {
-        if (databasePermissions != null) {
-            for (var entry : databasePermissions.entrySet()) {
-                final var dbName = entry.getKey();
-                if (NameValidations.isReservedDbName(dbName)) {
-                    return ValidationResult.fail("databaseName '" + dbName + "' is reserved");
+    static ValidationResult validateRawPermissionMaps(JsonObject projectPermissions, JsonObject collectionPermissions) {
+        if (projectPermissions != null) {
+            for (var entry : projectPermissions.entrySet()) {
+                final var projectName = entry.getKey();
+                if (NameValidations.isReservedProjectName(projectName)) {
+                    return ValidationResult.fail("projectName '" + projectName + "' is reserved");
                 }
-                if (!dbName.matches(NameValidations.NAME_PATTERN)) {
+                if (!projectName.matches(NameValidations.NAME_PATTERN)) {
                     return ValidationResult.fail(
-                            "database name in permissions must be 3-64 alphanumeric characters, underscores, or hyphens");
+                            "project name in permissions must be 3-64 alphanumeric characters, underscores, or hyphens");
                 }
                 try {
                     PermissionLevel.valueOf(entry.getValue().asJsonString().getValue());
                 } catch (Exception e) {
-                    return ValidationResult.fail("invalid permission level for database '" + dbName + "'");
+                    return ValidationResult.fail("invalid permission level for project '" + projectName + "'");
                 }
             }
         }
@@ -164,16 +163,16 @@ public final class UserRequestValidator {
                 final var collKey = entry.getKey();
                 final var parts = collKey.split("\\|", -1);
                 if (parts.length != 2) {
-                    return ValidationResult.fail("collection permission key must be in format 'database|collection'");
+                    return ValidationResult.fail("collection permission key must be in format 'project|collection'");
                 }
-                final var dbName = parts[0];
+                final var projectName = parts[0];
                 final var collName = parts[1];
-                if (NameValidations.isReservedDbName(dbName)) {
-                    return ValidationResult.fail("databaseName '" + dbName + "' is reserved");
+                if (NameValidations.isReservedProjectName(projectName)) {
+                    return ValidationResult.fail("projectName '" + projectName + "' is reserved");
                 }
-                if (!dbName.matches(NameValidations.NAME_PATTERN)) {
+                if (!projectName.matches(NameValidations.NAME_PATTERN)) {
                     return ValidationResult.fail(
-                            "database name in collection permission must be 3-64 alphanumeric characters, underscores, or hyphens");
+                            "project name in collection permission must be 3-64 alphanumeric characters, underscores, or hyphens");
                 }
                 if (!collName.matches(NameValidations.NAME_PATTERN)) {
                     return ValidationResult.fail(

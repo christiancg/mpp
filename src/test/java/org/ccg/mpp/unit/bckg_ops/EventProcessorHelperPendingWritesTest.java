@@ -32,13 +32,13 @@ public class EventProcessorHelperPendingWritesTest {
     @BeforeEach
     public void setUp() throws NoSuchFieldException, IllegalAccessException, IOException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         pendingIndexWrites = IocContainer.get(PendingIndexWrites.class);
     }
 
     @AfterEach
     public void tearDown() throws NoSuchFieldException, IllegalAccessException {
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.standardTearDown();
     }
 
@@ -46,16 +46,17 @@ public class EventProcessorHelperPendingWritesTest {
         final var data = new JsonObject();
         data.addProperty("_id", id);
         data.addProperty("myField", "myValue");
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
     }
 
     private EntityEvent markedEvent(String id) {
-        final var generation = pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, id);
-        return new EntityEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, entryWithId(id), 0L, generation);
+        final var generation = pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, id);
+        return new EntityEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, entryWithId(id), 0L,
+                generation);
     }
 
     private boolean isPending(String id) {
-        return pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(id);
+        return pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(id);
     }
 
     @Test
@@ -105,7 +106,7 @@ public class EventProcessorHelperPendingWritesTest {
     @Test
     public void test_a_dropped_collection_still_clears_the_pending_write() throws Exception {
         final var event = markedEvent("dropped");
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         EventProcessorHelper.processEvent(event);
         Assertions.assertFalse(isPending("dropped"),
                 "a collection that no longer exists is an absence, not an abandoned rebuild");
@@ -145,9 +146,9 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_a_failed_bulk_event_leaves_inserted_and_updated_ids_pending() {
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "bulk-new");
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "bulk-old");
-        final var event = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(entryWithId("bulk-new")),
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "bulk-new");
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "bulk-old");
+        final var event = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entryWithId("bulk-new")),
                 List.of(entryWithId("bulk-old")));
         try (var mocked = mockStatic(IndexHelper.class)) {
             mocked.when(() -> IndexHelper.bulkUpdateIndexes(anyString(), anyString(), any(), anyLong(), any()))
@@ -160,18 +161,18 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_clear_collection_removes_every_pending_id() {
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "one");
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "two");
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        Assertions.assertTrue(pendingIndexWrites.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "one");
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "two");
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        Assertions.assertTrue(pendingIndexWrites.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     @Test
     public void test_clear_collection_leaves_the_dirty_marker_for_reindex_to_retire() {
-        pendingIndexWrites.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("marked"));
+        pendingIndexWrites.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("marked"));
         Assertions.assertFalse(TestUtils.dirtyIndexCollections().isEmpty());
 
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         Assertions.assertFalse(TestUtils.dirtyIndexCollections().isEmpty(),
                 "clearCollection drops the in-memory marks; REINDEX is what clears the on-disk marker beside them");
@@ -179,7 +180,7 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_clear_collection_on_an_unmarked_collection_is_a_no_op() {
-        Assertions.assertDoesNotThrow(() -> pendingIndexWrites.clearCollection(TestGlobals.DB, "never-marked"));
+        Assertions.assertDoesNotThrow(() -> pendingIndexWrites.clearCollection(TestGlobals.PROJECT, "never-marked"));
     }
 
     @Test
@@ -218,7 +219,7 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_a_bulk_index_failure_still_applies_both_page_deltas() {
-        final var event = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(entryWithId("bulk-in")),
+        final var event = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entryWithId("bulk-in")),
                 List.of(entryWithId("bulk-up")));
         try (var mocked = mockStatic(IndexHelper.class); var admin = mockStatic(AdminOperationHelper.class)) {
             admin.when(() -> AdminOperationHelper.getCollectionEntry(anyString(), anyString())).thenCallRealMethod();
@@ -254,8 +255,8 @@ public class EventProcessorHelperPendingWritesTest {
     public void test_a_busy_group_is_deferred_while_other_events_still_run() throws Exception {
         final var busyA = markedEvent("busy-a");
         final var busyB = markedEvent("busy-b");
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "bulk-free");
-        final var other = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(entryWithId("bulk-free")),
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "bulk-free");
+        final var other = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entryWithId("bulk-free")),
                 List.of());
         try (var mocked = mockStatic(IndexHelper.class)) {
             mocked.when(() -> IndexHelper.bulkUpdateIndexes(anyString(), anyString(), any(), anyLong(), any()))
@@ -271,8 +272,8 @@ public class EventProcessorHelperPendingWritesTest {
     @Test
     public void test_an_entity_event_from_before_a_full_rebuild_leaves_a_later_mark_pending() throws Exception {
         final var staleEvent = markedEvent("rebuilt");
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, "rebuilt");
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, "rebuilt");
 
         EventProcessorHelper.processEvent(staleEvent);
 
@@ -281,11 +282,12 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_a_bulk_event_from_before_a_full_rebuild_leaves_later_marks_pending() throws Exception {
-        final var generation = pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, List.of("bulk-a", "bulk-b"));
-        final var staleEvent = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(entryWithId("bulk-a")),
-                List.of(entryWithId("bulk-b")), 0L, generation);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, List.of("bulk-a", "bulk-b"));
+        final var generation = pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL,
+                List.of("bulk-a", "bulk-b"));
+        final var staleEvent = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL,
+                List.of(entryWithId("bulk-a")), List.of(entryWithId("bulk-b")), 0L, generation);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, List.of("bulk-a", "bulk-b"));
 
         EventProcessorHelper.processEvent(staleEvent);
 
@@ -295,9 +297,9 @@ public class EventProcessorHelperPendingWritesTest {
 
     @Test
     public void test_a_current_generation_bulk_event_clears_its_marks() throws Exception {
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        final var generation = pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, List.of("bulk-c"));
-        final var event = new BulkEntityEvent(TestGlobals.DB, TestGlobals.COLL, List.of(entryWithId("bulk-c")),
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var generation = pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, List.of("bulk-c"));
+        final var event = new BulkEntityEvent(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entryWithId("bulk-c")),
                 List.of(), 0L, generation);
 
         EventProcessorHelper.processEvent(event);

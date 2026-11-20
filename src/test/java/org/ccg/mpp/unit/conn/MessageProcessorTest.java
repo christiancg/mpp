@@ -35,7 +35,7 @@ public class MessageProcessorTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -57,7 +57,7 @@ public class MessageProcessorTest {
     @Test
     public void test_valid_message_is_processed_and_response_written() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        String msg = "{\"type\":\"LIST_DATABASES\"}\n";
+        String msg = "{\"type\":\"LIST_PROJECTS\"}\n";
         Socket socket = TestUtils.clientSocket(new ByteArrayInputStream(msg.getBytes(StandardCharsets.UTF_8)), out);
 
         MessageProcessor mp = new MessageProcessor(socket);
@@ -66,8 +66,8 @@ public class MessageProcessorTest {
         t.join(3000);
 
         String response = out.toString(StandardCharsets.UTF_8);
-        assertTrue(response.contains("LIST_DATABASES"), "Response should echo operation type");
-        assertTrue(response.contains("401-1"), "LIST_DATABASES requires authentication");
+        assertTrue(response.contains("LIST_PROJECTS"), "Response should echo operation type");
+        assertTrue(response.contains("401-1"), "LIST_PROJECTS requires authentication");
     }
 
     @Test
@@ -129,7 +129,7 @@ public class MessageProcessorTest {
         createAnalyzeAdmin("validation_admin");
         final var response = runMessages("""
                 {"type":"AUTHENTICATE","username":"validation_admin","password":"password123"}
-                {"type":"SAVE","databaseName":"ab","collectionName":"myColl","object":{}}
+                {"type":"SAVE","projectName":"ab","collectionName":"myColl","object":{}}
                 """);
 
         assertTrue(response.contains("\"type\":\"SAVE\",\"status\":\"ERROR\""), response);
@@ -139,7 +139,7 @@ public class MessageProcessorTest {
     @Test
     public void test_an_unauthenticated_invalid_request_is_not_validated() throws Exception {
         final var response = runMessages(
-                "{\"type\":\"SAVE\",\"databaseName\":\"ab\",\"collectionName\":\"myColl\",\"object\":{}}\n");
+                "{\"type\":\"SAVE\",\"projectName\":\"ab\",\"collectionName\":\"myColl\",\"object\":{}}\n");
 
         assertTrue(response.contains("401-1"), response);
         assertFalse(response.contains("400-1"), response);
@@ -148,7 +148,7 @@ public class MessageProcessorTest {
     @Test
     public void test_unauthenticated_request_returns_unauthenticated() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        String msg = "{\"type\":\"SAVE\",\"databaseName\":\"testDb\",\"collectionName\":\"testColl\",\"object\":{}}\n";
+        String msg = "{\"type\":\"SAVE\",\"projectName\":\"testProject\",\"collectionName\":\"testColl\",\"object\":{}}\n";
         Socket socket = TestUtils.clientSocket(new ByteArrayInputStream(msg.getBytes(StandardCharsets.UTF_8)), out);
 
         MessageProcessor mp = new MessageProcessor(socket);
@@ -167,7 +167,7 @@ public class MessageProcessorTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         String messages = """
                 {"type":"AUTHENTICATE","username":"msg_proce_admin","password":"password123"}
-                {"type":"SAVE","databaseName":"testDb","collectionName":"testColl","object":{"name":"test"}}
+                {"type":"SAVE","projectName":"testProject","collectionName":"testColl","object":{"name":"test"}}
                 """;
         Socket socket = TestUtils.clientSocket(new ByteArrayInputStream(messages.getBytes(StandardCharsets.UTF_8)),
                 out);
@@ -209,14 +209,14 @@ public class MessageProcessorTest {
         createReq.setPassword("password123");
         createReq.setAdmin(false);
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         String messages = """
                 {"type":"AUTHENTICATE","username":"noPermsUser","password":"password123"}
-                {"type":"SAVE","databaseName":"testDb","collectionName":"testColl","object":{}}
+                {"type":"SAVE","projectName":"testProject","collectionName":"testColl","object":{}}
                 """;
         Socket socket = TestUtils.clientSocket(new ByteArrayInputStream(messages.getBytes(StandardCharsets.UTF_8)),
                 out);
@@ -249,9 +249,9 @@ public class MessageProcessorTest {
     public void test_aggregate_analyze_returns_analyzeResult_over_wire() throws Exception {
         createAnalyzeAdmin("analyze_admin");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"analyze_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"int1\",\"status\":\"active\"}}\n"
-                + "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"analyze\":true,\"aggregationSteps\":[{\"type\":\"FILTER\",\"operator\":"
                 + "{\"fieldOperatorType\":\"EQUALS\",\"field\":\"status\",\"value\":{\"$string\":\"active\"}}}]}\n";
 
@@ -284,9 +284,9 @@ public class MessageProcessorTest {
     public void test_aggregate_without_analyze_omits_analyzeResult_over_wire() throws Exception {
         createAnalyzeAdmin("analyze_admin2");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"analyze_admin2\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"int1\",\"status\":\"active\"}}\n"
-                + "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[{\"type\":\"FILTER\",\"operator\":"
                 + "{\"fieldOperatorType\":\"EQUALS\",\"field\":\"status\",\"value\":{\"$string\":\"active\"}}}]}\n";
 
@@ -299,9 +299,9 @@ public class MessageProcessorTest {
     public void test_aggregate_analyze_suggests_moving_filter() throws Exception {
         createAnalyzeAdmin("analyze_admin3");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"analyze_admin3\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"int1\",\"status\":\"active\"}}\n"
-                + "{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"analyze\":true,\"aggregationSteps\":["
                 + "{\"type\":\"SORT\",\"fieldName\":\"status\",\"ascending\":true},"
                 + "{\"type\":\"FILTER\",\"operator\":{\"fieldOperatorType\":\"EQUALS\",\"field\":\"status\","
@@ -317,9 +317,9 @@ public class MessageProcessorTest {
     public void test_transaction_happy_path_over_socket() throws Exception {
         createAnalyzeAdmin("txn_admin");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"txn_admin\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"wire-txn-1\","
-                + "\"name\":\"wired\"}}\n" + "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB
+                + "\"name\":\"wired\"}}\n" + "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"wire-txn-1\"}\n"
                 + "{\"type\":\"COMMIT_TRANSACTION\"}\n";
 
@@ -330,7 +330,7 @@ public class MessageProcessorTest {
         assertTrue(response.contains("wired"), "Read-your-writes should return the buffered document");
 
         final var processor = IocContainer.get(OperationProcessor.class);
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("wire-txn-1");
         assertEquals(OperationStatus.OK, processor.processMessage(find).getStatus());
     }
@@ -339,7 +339,7 @@ public class MessageProcessorTest {
     public void test_transaction_rollback_over_socket() throws Exception {
         createAnalyzeAdmin("txn_admin_rb");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"txn_admin_rb\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"wire-rb-1\"}}\n"
                 + "{\"type\":\"ROLLBACK_TRANSACTION\"}\n";
 
@@ -347,7 +347,7 @@ public class MessageProcessorTest {
         assertTrue(response.contains("ROLLBACK_TRANSACTION"), "Should include ROLLBACK_TRANSACTION response");
 
         final var processor = IocContainer.get(OperationProcessor.class);
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("wire-rb-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find).getStatus());
     }
@@ -356,13 +356,13 @@ public class MessageProcessorTest {
     public void test_disconnect_auto_rolls_back() throws Exception {
         createAnalyzeAdmin("txn_admin_disc");
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"txn_admin_disc\",\"password\":\"password123\"}\n"
-                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+                + "{\"type\":\"START_TRANSACTION\"}\n" + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"wire-disc-1\"}}\n";
 
         runMessages(messages);
 
         final var processor = IocContainer.get(OperationProcessor.class);
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("wire-disc-1");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find).getStatus(),
                 "Uncommitted write must not survive disconnect");
@@ -371,15 +371,15 @@ public class MessageProcessorTest {
         assertTrue(cache.getTransactionPkIndexes().isEmpty(), "Buffered op records must be cleaned up on disconnect");
 
         final var locks = IocContainer.get(ResourceLocking.class);
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL), "Collection lock must be released");
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL), "Collection lock must be released");
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
     public void test_ioexception_on_output_stream_is_handled() throws Exception {
         OutputStream throwingOut = mock(OutputStream.class);
         doThrow(new IOException("write failed")).when(throwingOut).write(any(byte[].class), anyInt(), anyInt());
-        String msg = "{\"type\":\"LIST_DATABASES\"}\n";
+        String msg = "{\"type\":\"LIST_PROJECTS\"}\n";
         Socket socket = TestUtils.clientSocket(new ByteArrayInputStream(msg.getBytes(StandardCharsets.UTF_8)),
                 throwingOut);
 

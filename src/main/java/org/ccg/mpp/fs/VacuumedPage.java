@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.function.Function;
 import org.ccg.mpp.data.PkIndexEntry;
 
-public record VacuumedPage(String dbName, String collName, long page, Map<String, Move> moves) {
+public record VacuumedPage(String projectName, String collName, long page, Map<String, Move> moves) {
     public record Move(long from, long to) {
     }
 

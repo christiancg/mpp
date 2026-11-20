@@ -15,102 +15,104 @@ import org.junit.jupiter.api.Test;
 public class SearchUtilsRangeTest {
     @Test
     public void test_greater_than_operator() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN, 15);
         assertEquals(Set.of("id2", "id3"), result);
     }
 
     @Test
     public void test_greater_than_equals_operator() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN_EQUALS, 20);
         assertEquals(Set.of("id2", "id3"), result);
     }
 
     @Test
     public void test_finding_by_operator_smaller_than() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 5, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 10, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 15, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 5, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 10, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 15, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN, 12);
         assertEquals(Set.of("id1", "id2"), result);
     }
 
     @Test
     public void test_finding_by_operator_smaller_than_equals() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 5, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 10, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 15, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 5, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 10, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 15, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN_EQUALS, 10);
         assertEquals(Set.of("id1", "id2"), result);
     }
 
     @Test
     public void test_greater_than_string_value_returns_empty() {
-        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "apple", Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", "banana", Set.of("id2")));
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("project1", "col1", "apple", Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", "banana", Set.of("id2")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN, "apple");
         assertTrue(result.isEmpty());
     }
 
     @Test
     public void test_smaller_than_string_value_returns_empty() {
-        List<FieldIndexEntry<String>> entries = List.of(new FieldIndexEntry<>("db1", "col1", "apple", Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", "banana", Set.of("id2")));
+        List<FieldIndexEntry<String>> entries = List.of(
+                new FieldIndexEntry<>("project1", "col1", "apple", Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", "banana", Set.of("id2")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN, "banana");
         assertTrue(result.isEmpty());
     }
 
     @Test
     public void test_greater_than_single_element_list_returns_the_entry() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN, 5);
         assertEquals(Set.of("id1"), result);
     }
 
     @Test
     public void test_smaller_than_single_element_list_returns_the_entry() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN, 20);
         assertEquals(Set.of("id1"), result);
     }
 
     @Test
     public void test_greater_than_value_below_first_entry_returns_all() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN, 5);
         assertEquals(Set.of("id1", "id2", "id3"), result);
     }
 
     @Test
     public void test_smaller_than_value_above_last_entry_returns_all() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN, 40);
         assertEquals(Set.of("id1", "id2", "id3"), result);
     }
 
     @Test
     public void test_smaller_than_equals_value_equals_last_returns_all() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.SMALLER_THAN_EQUALS, 30);
         assertEquals(Set.of("id1", "id2", "id3"), result);
     }
 
     @Test
     public void test_greater_than_equals_value_equals_first_returns_all() {
-        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("db1", "col1", 10, Set.of("id1")),
-                new FieldIndexEntry<>("db1", "col1", 20, Set.of("id2")),
-                new FieldIndexEntry<>("db1", "col1", 30, Set.of("id3")));
+        List<FieldIndexEntry<Number>> entries = List.of(new FieldIndexEntry<>("project1", "col1", 10, Set.of("id1")),
+                new FieldIndexEntry<>("project1", "col1", 20, Set.of("id2")),
+                new FieldIndexEntry<>("project1", "col1", 30, Set.of("id3")));
         Set<String> result = SearchUtils.findingByOperator(entries, FieldOperatorType.GREATER_THAN_EQUALS, 10);
         assertEquals(Set.of("id1", "id2", "id3"), result);
     }

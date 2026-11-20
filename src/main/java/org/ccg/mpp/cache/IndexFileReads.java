@@ -21,91 +21,91 @@ final class IndexFileReads {
     private IndexFileReads() {
     }
 
-    static boolean fromFile(UserCache userCache, String dbName, String collName, String fieldName, Class<?> type) {
+    static boolean fromFile(UserCache userCache, String projectName, String collName, String fieldName, Class<?> type) {
         if (!IndexFileLookup.supports(type)) {
             return false;
         }
         final var identifier = Cache.memoizedIndexIdentifier(fieldName, type);
-        return userCache.residentFieldIndex(dbName, collName, identifier) == null
-                && cache.isFieldIndexTypeRefused(dbName, collName, identifier)
-                && shouldServeFromFile(dbName, collName, identifier);
+        return userCache.residentFieldIndex(projectName, collName, identifier) == null
+                && cache.isFieldIndexTypeRefused(projectName, collName, identifier)
+                && shouldServeFromFile(projectName, collName, identifier);
     }
 
-    private static boolean shouldServeFromFile(String dbName, String collName, String indexIdentifier) {
-        return !cache.displacesColderIndexes(dbName, collName, indexIdentifier);
+    private static boolean shouldServeFromFile(String projectName, String collName, String indexIdentifier) {
+        return !cache.displacesColderIndexes(projectName, collName, indexIdentifier);
     }
 
-    static boolean reloadsLargeIndex(UserCache userCache, String dbName, String collName, String fieldName) {
+    static boolean reloadsLargeIndex(UserCache userCache, String projectName, String collName, String fieldName) {
         for (final var type : IndexKind.scalarIndexClasses()) {
             final var identifier = Cache.memoizedIndexIdentifier(fieldName, type);
-            if (userCache.residentFieldIndex(dbName, collName, identifier) == null
-                    && !cache.isFieldIndexTypeAbsent(dbName, collName, identifier)
-                    && reloadsLargeIndex(userCache, dbName, collName, fieldName, type, identifier)) {
+            if (userCache.residentFieldIndex(projectName, collName, identifier) == null
+                    && !cache.isFieldIndexTypeAbsent(projectName, collName, identifier)
+                    && reloadsLargeIndex(userCache, projectName, collName, fieldName, type, identifier)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean reloadsLargeIndex(UserCache userCache, String dbName, String collName, String fieldName,
+    private static boolean reloadsLargeIndex(UserCache userCache, String projectName, String collName, String fieldName,
             Class<?> type, String identifier) {
-        final var bytes = fs.indexFileBytes(dbName, collName, fieldName, IndexKind.fileLabel(type));
+        final var bytes = fs.indexFileBytes(projectName, collName, fieldName, IndexKind.fileLabel(type));
         if (bytes <= Globals.TRANSIENT_SORT_WALK_MAX_INDEX_BYTES) {
             return false;
         }
-        return cache.isFieldIndexTypeRefused(dbName, collName, identifier) || !userCache.loadsAdmitted(dbName, collName,
-                AccessKind.FIELD_INDEX, CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes));
+        return cache.isFieldIndexTypeRefused(projectName, collName, identifier) || !userCache.loadsAdmitted(projectName,
+                collName, AccessKind.FIELD_INDEX, CacheSizeEstimator.estimateFieldIndexSizeFromFileBytes(bytes));
     }
 
-    static boolean typeExists(UserCache userCache, String dbName, String collName, String fieldName, Class<?> type)
+    static boolean typeExists(UserCache userCache, String projectName, String collName, String fieldName, Class<?> type)
             throws IOException {
         final var identifier = Cache.memoizedIndexIdentifier(fieldName, type);
-        if (userCache.residentFieldIndex(dbName, collName, identifier) != null) {
+        if (userCache.residentFieldIndex(projectName, collName, identifier) != null) {
             return true;
         }
-        return cache.isFieldIndexTypeRefused(dbName, collName, identifier)
-                ? fs.indexTypeFileExists(dbName, collName, fieldName, IndexKind.fileLabel(type))
-                : userCache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, type) != null;
+        return cache.isFieldIndexTypeRefused(projectName, collName, identifier)
+                ? fs.indexTypeFileExists(projectName, collName, fieldName, IndexKind.fileLabel(type))
+                : userCache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, type) != null;
     }
 
-    static boolean kindExists(UserCache userCache, String dbName, String collName, String fieldName, IndexKind kind)
-            throws IOException {
+    static boolean kindExists(UserCache userCache, String projectName, String collName, String fieldName,
+            IndexKind kind) throws IOException {
         final var identifier = Cache.memoizedHashIndexIdentifier(fieldName, kind);
-        if (userCache.residentFieldIndex(dbName, collName, identifier) != null) {
+        if (userCache.residentFieldIndex(projectName, collName, identifier) != null) {
             return true;
         }
-        return cache.isFieldIndexTypeRefused(dbName, collName, identifier)
-                ? fs.indexTypeFileExists(dbName, collName, fieldName, kind.label())
-                : userCache.getHashIndexAndLoadIfNecessary(dbName, collName, fieldName, kind) != null;
+        return cache.isFieldIndexTypeRefused(projectName, collName, identifier)
+                ? fs.indexTypeFileExists(projectName, collName, fieldName, kind.label())
+                : userCache.getHashIndexAndLoadIfNecessary(projectName, collName, fieldName, kind) != null;
     }
 
-    static Set<String> anyOfIds(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
+    static Set<String> anyOfIds(String projectName, String collName, String fieldName, Class<?> type, List<?> values)
             throws IOException {
-        return fs.indexFiles().equalsIds(dbName, collName, fieldName, type, values);
+        return fs.indexFiles().equalsIds(projectName, collName, fieldName, type, values);
     }
 
-    static Set<String> windowIds(String dbName, String collName, String fieldName, Class<?> type,
+    static Set<String> windowIds(String projectName, String collName, String fieldName, Class<?> type,
             FieldOperatorType opType, Object value) throws IOException {
         return switch (opType) {
-            case EQUALS -> anyOfIds(dbName, collName, fieldName, type, List.of(value));
+            case EQUALS -> anyOfIds(projectName, collName, fieldName, type, List.of(value));
             case GREATER_THAN, GREATER_THAN_EQUALS, SMALLER_THAN, SMALLER_THAN_EQUALS ->
-                fs.indexFiles().rangeIds(dbName, collName, fieldName, type, List.of(boundOf(opType, value)));
+                fs.indexFiles().rangeIds(projectName, collName, fieldName, type, List.of(boundOf(opType, value)));
             default -> null;
         };
     }
 
-    static Set<String> rangeIds(String dbName, String collName, RangeBounds bounds) throws IOException {
-        return fs.indexFiles().rangeIds(dbName, collName, bounds.fieldName(), Number.class, fileBounds(bounds));
+    static Set<String> rangeIds(String projectName, String collName, RangeBounds bounds) throws IOException {
+        return fs.indexFiles().rangeIds(projectName, collName, bounds.fieldName(), Number.class, fileBounds(bounds));
     }
 
-    static OptionalLong rangeCount(String dbName, String collName, RangeBounds bounds) throws IOException {
-        return known(
-                fs.indexFiles().rangeCount(dbName, collName, bounds.fieldName(), Number.class, fileBounds(bounds)));
+    static OptionalLong rangeCount(String projectName, String collName, RangeBounds bounds) throws IOException {
+        return known(fs.indexFiles().rangeCount(projectName, collName, bounds.fieldName(), Number.class,
+                fileBounds(bounds)));
     }
 
-    static OptionalLong anyOfCount(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
+    static OptionalLong anyOfCount(String projectName, String collName, String fieldName, Class<?> type, List<?> values)
             throws IOException {
-        return known(fs.indexFiles().equalsCount(dbName, collName, fieldName, type, values));
+        return known(fs.indexFiles().equalsCount(projectName, collName, fieldName, type, values));
     }
 
     private static OptionalLong known(long count) {
@@ -120,14 +120,14 @@ final class IndexFileReads {
         return fileBounds;
     }
 
-    static Set<String> complementIds(String dbName, String collName, String fieldName, Class<?> type, List<?> values)
-            throws IOException {
-        return fs.indexFiles().complementIds(dbName, collName, fieldName, type, values);
+    static Set<String> complementIds(String projectName, String collName, String fieldName, Class<?> type,
+            List<?> values) throws IOException {
+        return fs.indexFiles().complementIds(projectName, collName, fieldName, type, values);
     }
 
-    static long idCount(String dbName, String collName, String fieldName, Class<?> type) throws IOException {
-        return idCounts.count(dbName, collName, Cache.memoizedIndexIdentifier(fieldName, type),
-                () -> fs.indexFiles().idCount(dbName, collName, fieldName, type));
+    static long idCount(String projectName, String collName, String fieldName, Class<?> type) throws IOException {
+        return idCounts.count(projectName, collName, Cache.memoizedIndexIdentifier(fieldName, type),
+                () -> fs.indexFiles().idCount(projectName, collName, fieldName, type));
     }
 
     private static IndexFileLookup.Bound boundOf(FieldOperatorType opType, Object value) {

@@ -39,7 +39,7 @@ public class TransactionWritesDeleteHookTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "beforeHookTimeoutMs", COLD_HOOK_TIMEOUT_MS);
@@ -60,7 +60,7 @@ public class TransactionWritesDeleteHookTest {
     }
 
     private void saveCommitted(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         request.setObject(object);
@@ -70,15 +70,15 @@ public class TransactionWritesDeleteHookTest {
 
     private OperationResponse bufferDelete(String id) {
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request, client);
     }
 
     private void makeTheVictimUnreadable() {
-        cache.evictEntry(TestGlobals.DB, TestGlobals.COLL, "victim");
-        final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        cache.evictEntry(TestGlobals.PROJECT, TestGlobals.COLL, "victim");
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
         for (final var page : Objects.requireNonNull(folder.listFiles((_, name) -> name.endsWith(".dat")))) {
             assertTrue(page.delete());
         }

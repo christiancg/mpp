@@ -38,23 +38,23 @@ public class ConnectionTest {
 
     @Test
     public void test_send_receives_one_reply_per_request() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES", "\"databases\":[\"a\"]"));
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS", "\"projects\":[\"a\"]"));
         try (var connection = server.connect()) {
-            final var first = connection.send(Requests.listDatabases());
-            final var second = connection.sendLine("{\"type\":\"LIST_DATABASES\"}");
+            final var first = connection.send(Requests.listProjects());
+            final var second = connection.sendLine("{\"type\":\"LIST_PROJECTS\"}");
 
             assertTrue(Connection.isOk(first));
             assertEquals(first, second);
         }
-        assertEquals(List.of("LIST_DATABASES", "LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("LIST_PROJECTS", "LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test
     public void test_a_line_with_newlines_is_sent_as_one_request() throws IOException {
         try (var connection = server.connect()) {
-            connection.sendLine("{\"type\":\n\"LIST_DATABASES\"\r}");
+            connection.sendLine("{\"type\":\n\"LIST_PROJECTS\"\r}");
         }
-        assertEquals("{\"type\": \"LIST_DATABASES\" }", server.lines().getFirst());
+        assertEquals("{\"type\": \"LIST_PROJECTS\" }", server.lines().getFirst());
     }
 
     @Test
@@ -70,9 +70,9 @@ public class ConnectionTest {
 
     @Test
     public void test_crlf_reply_is_parsed() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES") + "\r");
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS") + "\r");
         try (var connection = server.connect()) {
-            assertTrue(Connection.isOk(connection.send(Requests.listDatabases())));
+            assertTrue(Connection.isOk(connection.send(Requests.listProjects())));
         }
     }
 
@@ -139,11 +139,11 @@ public class ConnectionTest {
 
     @Test
     public void test_send_ok_names_the_refused_request() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.error("LIST_DATABASES", "FORBIDDEN", "403-1"));
+        server.reply("LIST_PROJECTS", FakeLineServer.error("LIST_PROJECTS", "FORBIDDEN", "403-1"));
         try (var connection = server.connect()) {
-            final var error = assertThrows(ClientException.class, () -> connection.sendOk(Requests.listDatabases()));
+            final var error = assertThrows(ClientException.class, () -> connection.sendOk(Requests.listProjects()));
             assertEquals(ClientException.FAILED, error.exitCode());
-            assertTrue(error.getMessage().startsWith("LIST_DATABASES failed:"));
+            assertTrue(error.getMessage().startsWith("LIST_PROJECTS failed:"));
         }
     }
 
@@ -211,10 +211,10 @@ public class ConnectionTest {
 
     @Test
     public void aReplyLongerThanTheCapFails() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES", "\"blob\":\"" + "x".repeat(4096) + "\""));
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS", "\"blob\":\"" + "x".repeat(4096) + "\""));
         try (var connection = new Connection(new Socket(InetAddress.getLoopbackAddress(), server.port()), Duration.ZERO,
                 Duration.ofSeconds(10), 1024)) {
-            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listDatabases()));
+            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listProjects()));
 
             assertEquals(ClientException.FAILED, failure.exitCode());
             assertTrue(failure.getMessage().contains("longer than 1024 bytes"), failure.getMessage());
@@ -223,11 +223,11 @@ public class ConnectionTest {
 
     @Test
     public void aReplyAtTheCapIsRead() throws IOException {
-        final var reply = FakeLineServer.ok("LIST_DATABASES");
-        server.reply("LIST_DATABASES", reply);
+        final var reply = FakeLineServer.ok("LIST_PROJECTS");
+        server.reply("LIST_PROJECTS", reply);
         try (var connection = new Connection(new Socket(InetAddress.getLoopbackAddress(), server.port()), Duration.ZERO,
                 Duration.ofSeconds(10), reply.length())) {
-            assertTrue(Connection.isOk(connection.send(Requests.listDatabases())));
+            assertTrue(Connection.isOk(connection.send(Requests.listProjects())));
         }
     }
 
@@ -237,7 +237,7 @@ public class ConnectionTest {
                 var socket = new Socket(InetAddress.getLoopbackAddress(), silent.getLocalPort());
                 var accepted = silent.accept()) {
             final var connection = new Connection(socket, Duration.ZERO, Duration.ofMillis(300), 1024);
-            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listDatabases()));
+            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listProjects()));
 
             assertEquals(ClientException.UNREACHABLE, failure.exitCode());
             assertTrue(failure.getMessage().contains("no reply from the server within 0.3 s"), failure.getMessage());
@@ -248,7 +248,7 @@ public class ConnectionTest {
     @Test
     public void theDefaultConnectionHasAReadTimeout() throws IOException {
         try (var connection = server.connect()) {
-            assertTrue(Connection.isOk(connection.send(Requests.listDatabases())));
+            assertTrue(Connection.isOk(connection.send(Requests.listProjects())));
         }
         assertTrue(Connection.READ_TIMEOUT.toMillis() > 0);
     }
@@ -284,10 +284,10 @@ public class ConnectionTest {
 
     @Test
     public void anOverlongReplyLeavesTheConnectionUsable() throws IOException {
-        server.reply("LIST_DATABASES", FakeLineServer.ok("LIST_DATABASES", "\"blob\":\"" + "x".repeat(100_000) + "\""));
+        server.reply("LIST_PROJECTS", FakeLineServer.ok("LIST_PROJECTS", "\"blob\":\"" + "x".repeat(100_000) + "\""));
         try (var connection = new Connection(new Socket(InetAddress.getLoopbackAddress(), server.port()), Duration.ZERO,
                 Duration.ofSeconds(10), 1024)) {
-            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listDatabases()));
+            final var failure = assertThrows(ClientException.class, () -> connection.send(Requests.listProjects()));
             assertTrue(Connection.isReplyTooLong(failure));
 
             assertTrue(Connection.isOk(connection.sendLine("{\"type\":\"LIST_COLLECTIONS\"}")),

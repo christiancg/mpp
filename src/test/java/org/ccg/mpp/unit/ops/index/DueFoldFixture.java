@@ -48,24 +48,24 @@ public final class DueFoldFixture {
             }
             objects.add(doc);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             SaveOperationHelper.executeBulkSave(request);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         TestUtils.discardQueuedBackgroundEvents(taskManager);
-        IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, ids());
+        IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ids());
     }
 
     public Marked markDue(List<String> fields) throws Exception {
         saveRound(fields, 0);
         for (final var field : fields) {
-            IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
+            IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
         }
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.copyOf(fields));
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.copyOf(fields));
         saveRound(fields, 1);
         final var from = System.currentTimeMillis();
         saveRound(fields, 2);
@@ -77,7 +77,7 @@ public final class DueFoldFixture {
     }
 
     public static File logOf(String field) {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + "-" + field + "-String" + Globals.INDEX_LOG_FILE_EXTENSION);
     }
 }

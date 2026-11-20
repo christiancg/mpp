@@ -38,36 +38,36 @@ public class MemoryManagement {
     private final AtomicBoolean usageFlushQueued = new AtomicBoolean(false);
     private volatile ScheduledExecutorService scheduler;
 
-    public static String buildKey(AccessKind kind, String dbName, String collName, String indexKey) {
-        return UsageTracker.buildKey(kind, dbName, collName, indexKey);
+    public static String buildKey(AccessKind kind, String projectName, String collName, String indexKey) {
+        return UsageTracker.buildKey(kind, projectName, collName, indexKey);
     }
 
-    public void recordAccess(AccessKind kind, String dbName, String collName, String indexKey) {
-        usageTracker.recordAccess(kind, dbName, collName, indexKey);
+    public void recordAccess(AccessKind kind, String projectName, String collName, String indexKey) {
+        usageTracker.recordAccess(kind, projectName, collName, indexKey);
     }
 
-    public UsageCounter getCounter(AccessKind kind, String dbName, String collName, String indexKey) {
-        return usageTracker.getCounter(kind, dbName, collName, indexKey);
+    public UsageCounter getCounter(AccessKind kind, String projectName, String collName, String indexKey) {
+        return usageTracker.getCounter(kind, projectName, collName, indexKey);
     }
 
     public Map<String, UsageCounter> getCountersSnapshot() {
         return usageTracker.getCountersSnapshot();
     }
 
-    public void clearCounter(AccessKind kind, String dbName, String collName, String indexKey) {
-        usageTracker.clearCounter(kind, dbName, collName, indexKey);
+    public void clearCounter(AccessKind kind, String projectName, String collName, String indexKey) {
+        usageTracker.clearCounter(kind, projectName, collName, indexKey);
     }
 
     public void putCounter(UsageCounter counter) {
         usageTracker.putCounter(counter);
     }
 
-    public void forgetUsage(String dbName, String collName) {
-        usageTracker.forgetCollection(dbName, collName);
+    public void forgetUsage(String projectName, String collName) {
+        usageTracker.forgetCollection(projectName, collName);
     }
 
-    public void forgetDatabaseUsage(String dbName) {
-        usageTracker.forgetDatabase(dbName);
+    public void forgetProjectUsage(String projectName) {
+        usageTracker.forgetProject(projectName);
     }
 
     public void loadProfileFromAdmin() {
@@ -241,7 +241,7 @@ public class MemoryManagement {
             if (remaining <= targetBytes) {
                 break;
             }
-            final var collection = Cache.getCollectionIdentifier(resource.dbName(), resource.collName());
+            final var collection = Cache.getCollectionIdentifier(resource.projectName(), resource.collName());
             if (busyCollections.contains(collection)) {
                 continue;
             }
@@ -250,8 +250,9 @@ public class MemoryManagement {
                 continue;
             }
             final var indexedField = lockedFieldOf(resource);
-            if (indexedField != null && !locks.tryLockIndex(resource.dbName(), resource.collName(), indexedField)) {
-                locks.releaseWrite(resource.dbName(), resource.collName());
+            if (indexedField != null
+                    && !locks.tryLockIndex(resource.projectName(), resource.collName(), indexedField)) {
+                locks.releaseWrite(resource.projectName(), resource.collName());
                 continue;
             }
             try {
@@ -259,19 +260,19 @@ public class MemoryManagement {
                 remaining -= resource.estimatedSizeBytes();
             } finally {
                 if (indexedField != null) {
-                    locks.releaseIndex(resource.dbName(), resource.collName(), indexedField);
+                    locks.releaseIndex(resource.projectName(), resource.collName(), indexedField);
                 }
-                locks.releaseWrite(resource.dbName(), resource.collName());
+                locks.releaseWrite(resource.projectName(), resource.collName());
             }
         }
     }
 
     private boolean lockForEviction(CacheableResource resource, long lockWaitMillis) {
         if (lockWaitMillis == NO_LOCK_WAIT) {
-            return locks.tryLockWrite(resource.dbName(), resource.collName());
+            return locks.tryLockWrite(resource.projectName(), resource.collName());
         }
         try {
-            return locks.tryLockWrite(resource.dbName(), resource.collName(), lockWaitMillis);
+            return locks.tryLockWrite(resource.projectName(), resource.collName(), lockWaitMillis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

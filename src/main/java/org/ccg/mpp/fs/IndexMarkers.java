@@ -27,33 +27,33 @@ public final class IndexMarkers {
         this.paths = paths;
     }
 
-    public void mark(String dbName, String collName, String fieldName) throws IOException {
+    public void mark(String projectName, String collName, String fieldName) throws IOException {
         ensureLoaded();
-        final var marker = buildingFile(dbName, collName, fieldName);
+        final var marker = buildingFile(projectName, collName, fieldName);
         if (!marker.getParentFile().exists()) {
             return;
         }
         touch(marker);
-        marked.add(keyOf(dbName, collName, fieldName));
+        marked.add(keyOf(projectName, collName, fieldName));
     }
 
-    public void clear(String dbName, String collName, String fieldName) {
+    public void clear(String projectName, String collName, String fieldName) {
         ensureLoaded();
-        if (delete(buildingFile(dbName, collName, fieldName), keyOf(dbName, collName, fieldName))) {
-            marked.remove(keyOf(dbName, collName, fieldName));
+        if (delete(buildingFile(projectName, collName, fieldName), keyOf(projectName, collName, fieldName))) {
+            marked.remove(keyOf(projectName, collName, fieldName));
         }
     }
 
-    public boolean isMarked(String dbName, String collName, String fieldName) {
+    public boolean isMarked(String projectName, String collName, String fieldName) {
         ensureLoaded();
         if (marked.isEmpty()) {
             return false;
         }
-        final var key = keyOf(dbName, collName, fieldName);
+        final var key = keyOf(projectName, collName, fieldName);
         if (!marked.contains(key)) {
             return false;
         }
-        if (buildingFile(dbName, collName, fieldName).exists()) {
+        if (buildingFile(projectName, collName, fieldName).exists()) {
             return true;
         }
         marked.remove(key);
@@ -73,24 +73,24 @@ public final class IndexMarkers {
         return result;
     }
 
-    public void markDirty(String dbName, String collName) throws IOException {
-        final var marker = dirtyFile(dbName, collName);
+    public void markDirty(String projectName, String collName) throws IOException {
+        final var marker = dirtyFile(projectName, collName);
         if (marker.getParentFile().exists()) {
-            dirtyWritten.add(dbName + "|" + collName);
+            dirtyWritten.add(projectName + "|" + collName);
             touch(marker);
         }
     }
 
-    public void clearDirty(String dbName, String collName) {
-        if (dirtyWritten.contains(dbName + "|" + collName)) {
-            retireDirty(dbName, collName);
+    public void clearDirty(String projectName, String collName) {
+        if (dirtyWritten.contains(projectName + "|" + collName)) {
+            retireDirty(projectName, collName);
         }
     }
 
-    public void retireDirty(String dbName, String collName) {
-        final var owner = dbName + "|" + collName;
-        final var marker = dirtyFile(dbName, collName);
-        if (marker.exists() && !indexLogsForced(dbName, collName)) {
+    public void retireDirty(String projectName, String collName) {
+        final var owner = projectName + "|" + collName;
+        final var marker = dirtyFile(projectName, collName);
+        if (marker.exists() && !indexLogsForced(projectName, collName)) {
             return;
         }
         if (delete(marker, owner)) {
@@ -98,40 +98,41 @@ public final class IndexMarkers {
         }
     }
 
-    private boolean indexLogsForced(String dbName, String collName) {
+    private boolean indexLogsForced(String projectName, String collName) {
         final var group = new ForceGroup();
-        FieldIndexLog.forceUnforced(paths.collectionFolder(dbName, collName), group);
+        FieldIndexLog.forceUnforced(paths.collectionFolder(projectName, collName), group);
         try {
             group.force();
             return true;
         } catch (IOException e) {
-            logger.warning("Kept the index-dirty marker of " + dbName + "|" + collName + ": its field-index logs could"
-                    + " not be forced, so the next startup still repairs that work: " + e.getMessage());
+            logger.warning(
+                    "Kept the index-dirty marker of " + projectName + "|" + collName + ": its field-index logs could"
+                            + " not be forced, so the next startup still repairs that work: " + e.getMessage());
             return false;
         }
     }
 
-    public void clearUncleanStop(String dbName, String collName) {
-        delete(uncleanStopFile(dbName, collName), dbName + "|" + collName);
+    public void clearUncleanStop(String projectName, String collName) {
+        delete(uncleanStopFile(projectName, collName), projectName + "|" + collName);
     }
 
     public List<String> retainUncleanStops() {
         final var retained = new ArrayList<String>();
         for (final var collection : liveCollections()) {
-            final var dbName = collection.getParentFile().getName();
+            final var projectName = collection.getParentFile().getName();
             final var collName = collection.getName();
-            final var marker = dirtyFile(dbName, collName);
-            final var uncleanStop = uncleanStopFile(dbName, collName);
+            final var marker = dirtyFile(projectName, collName);
+            final var uncleanStop = uncleanStopFile(projectName, collName);
             if (marker.exists()) {
                 if (uncleanStop.exists() || retain(marker, uncleanStop)) {
-                    delete(marker, dbName + "|" + collName);
+                    delete(marker, projectName + "|" + collName);
                 } else {
-                    logger.warning("Could not retain the unclean-stop marker for " + dbName + "|" + collName
+                    logger.warning("Could not retain the unclean-stop marker for " + projectName + "|" + collName
                             + "; the next write to it may retire the warning before REINDEX runs");
                 }
             }
             if (marker.exists() || uncleanStop.exists()) {
-                retained.add(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
+                retained.add(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
             }
         }
         return retained;
@@ -157,7 +158,7 @@ public final class IndexMarkers {
         }
     }
 
-    private void loadCollection(String dbName, File collection) {
+    private void loadCollection(String projectName, File collection) {
         final var prefix = collection.getName() + "-";
         final var markers = collection
                 .listFiles(file -> file.getName().startsWith(prefix) && file.getName().endsWith(BUILDING_SUFFIX));
@@ -168,19 +169,19 @@ public final class IndexMarkers {
             final var name = marker.getName();
             final var fieldName = name.substring(prefix.length(), name.length() - BUILDING_SUFFIX.length());
             if (!fieldName.isEmpty()) {
-                marked.add(keyOf(dbName, collection.getName(), fieldName));
+                marked.add(keyOf(projectName, collection.getName(), fieldName));
             }
         }
     }
 
     private List<File> liveCollections() {
         final var result = new ArrayList<File>();
-        final var databases = new File(paths.dbPath()).listFiles(FolderQuarantine::isLiveFolder);
-        if (databases == null) {
+        final var projects = new File(paths.dbPath()).listFiles(FolderQuarantine::isLiveFolder);
+        if (projects == null) {
             return result;
         }
-        for (final var database : databases) {
-            final var collections = database.listFiles(FolderQuarantine::isLiveFolder);
+        for (final var project : projects) {
+            final var collections = project.listFiles(FolderQuarantine::isLiveFolder);
             if (collections != null) {
                 result.addAll(List.of(collections));
             }
@@ -213,20 +214,21 @@ public final class IndexMarkers {
         return true;
     }
 
-    private File buildingFile(String dbName, String collName, String fieldName) {
-        return new File(paths.collectionFolder(dbName, collName),
+    private File buildingFile(String projectName, String collName, String fieldName) {
+        return new File(paths.collectionFolder(projectName, collName),
                 collName + "-" + FilePaths.embedded(fieldName) + BUILDING_SUFFIX);
     }
 
-    private File dirtyFile(String dbName, String collName) {
-        return new File(paths.collectionFolder(dbName, collName), collName + DIRTY_SUFFIX);
+    private File dirtyFile(String projectName, String collName) {
+        return new File(paths.collectionFolder(projectName, collName), collName + DIRTY_SUFFIX);
     }
 
-    private File uncleanStopFile(String dbName, String collName) {
-        return new File(paths.collectionFolder(dbName, collName), collName + UNCLEAN_STOP_SUFFIX);
+    private File uncleanStopFile(String projectName, String collName) {
+        return new File(paths.collectionFolder(projectName, collName), collName + UNCLEAN_STOP_SUFFIX);
     }
 
-    private static String keyOf(String dbName, String collName, String fieldName) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR + fieldName;
+    private static String keyOf(String projectName, String collName, String fieldName) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR
+                + fieldName;
     }
 }

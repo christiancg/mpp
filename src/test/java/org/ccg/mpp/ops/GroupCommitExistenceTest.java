@@ -22,7 +22,7 @@ public class GroupCommitExistenceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         recorder = RecordingForcer.install(true);
         fixture = new GroupCommitFixture(recorder);
         assertEquals(OperationStatus.OK, fixture.save("seed", "v0").getStatus());

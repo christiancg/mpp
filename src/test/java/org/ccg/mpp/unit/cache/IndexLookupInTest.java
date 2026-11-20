@@ -51,19 +51,20 @@ public class IndexLookupInTest {
     public void test_numeric_in_matches_a_wire_parsed_integer_operand() throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        final var dbName = "db";
+        final var projectName = "db";
         final var collName = "coll";
         final var fieldName = "score";
         final var arr = new JsonArray();
         arr.add(new JsonNumber("10"));
         arr.add(new JsonNumber("20"));
         final var operator = new FieldOperator(FieldOperatorType.IN, fieldName, arr);
-        final List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(dbName, collName, 10.0, Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, 30.0, Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        final List<FieldIndexEntry<Number>> idx = List.of(
+                new FieldIndexEntry<>(projectName, collName, 10.0, Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, 30.0, Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        final var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        final var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"),
@@ -76,23 +77,25 @@ public class IndexLookupInTest {
     public void test_numeric_not_in_matches_a_wire_parsed_integer_operand() throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        final var dbName = "db";
+        final var projectName = "db";
         final var collName = "coll";
         final var fieldName = "score";
         final var arr = new JsonArray();
         arr.add(new JsonNumber("10"));
         final var operator = new FieldOperator(FieldOperatorType.NOT_IN, fieldName, arr);
-        final List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(dbName, collName, 10.0, Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, 30.0, Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any())).thenReturn(null);
-        when(cache.getHashIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any(IndexKind.class)))
+        final List<FieldIndexEntry<Number>> idx = List.of(
+                new FieldIndexEntry<>(projectName, collName, 10.0, Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, 30.0, Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any()))
+                .thenReturn(null);
+        when(cache.getHashIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any(IndexKind.class)))
                 .thenReturn(null);
         when(cache.residentFieldIndex(any(), any(), any())).thenReturn(null);
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.pkCountForCoverage(dbName, collName)).thenReturn(2);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.pkCountForCoverage(projectName, collName)).thenReturn(2);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        final var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        final var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result, "with no other index on the field NOT_IN is complement-safe and must use the index");
         assertTrue(result.contains("id2"));
@@ -103,23 +106,26 @@ public class IndexLookupInTest {
     public void test_an_empty_index_of_another_type_still_disqualifies_not_in() throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        final var dbName = "db";
+        final var projectName = "db";
         final var collName = "coll";
         final var fieldName = "score";
         final var arr = new JsonArray();
         arr.add(new JsonNumber("10"));
         final var operator = new FieldOperator(FieldOperatorType.NOT_IN, fieldName, arr);
-        final List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(dbName, collName, 10.0, Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, 30.0, Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any())).thenReturn(null);
-        when(cache.getHashIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any(IndexKind.class)))
+        final List<FieldIndexEntry<Number>> idx = List.of(
+                new FieldIndexEntry<>(projectName, collName, 10.0, Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, 30.0, Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any()))
+                .thenReturn(null);
+        when(cache.getHashIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any(IndexKind.class)))
                 .thenReturn(null);
         when(cache.residentFieldIndex(any(), any(), any())).thenReturn(null);
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Boolean.class)).thenReturn(List.of());
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Boolean.class))
+                .thenReturn(List.of());
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        final var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        final var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNull(result, "a zero-byte index file loads as an empty list, so leaving one behind costs the index path"
                 + " - which is why removing an index's last line deletes the file");
@@ -129,20 +135,21 @@ public class IndexLookupInTest {
     public void test_a_mixed_integral_and_fractional_in_list_matches_both() throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        final var dbName = "db";
+        final var projectName = "db";
         final var collName = "coll";
         final var fieldName = "score";
         final var arr = new JsonArray();
         arr.add(new JsonNumber("5"));
         arr.add(new JsonNumber("2.5"));
         final var operator = new FieldOperator(FieldOperatorType.IN, fieldName, arr);
-        final List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(dbName, collName, 2.5, Set.of("id2")),
-                new FieldIndexEntry<>(dbName, collName, 5.0, Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, 9.0, Set.of("id3")));
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        final List<FieldIndexEntry<Number>> idx = List.of(
+                new FieldIndexEntry<>(projectName, collName, 2.5, Set.of("id2")),
+                new FieldIndexEntry<>(projectName, collName, 5.0, Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, 9.0, Set.of("id3")));
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        final var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        final var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"));
@@ -154,7 +161,7 @@ public class IndexLookupInTest {
     public void complementCoverageBySizeSum() throws IOException {
         final var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        final var dbName = "db";
+        final var projectName = "db";
         final var collName = "coll";
         final var fieldName = "score";
         final var arr = new JsonArray();
@@ -162,26 +169,27 @@ public class IndexLookupInTest {
         final var notIn = new FieldOperator(FieldOperatorType.NOT_IN, fieldName, arr);
         final var notEquals = new FieldOperator(FieldOperatorType.NOT_EQUALS, fieldName, new JsonNumber("10"));
         final List<FieldIndexEntry<Number>> idx = List.of(
-                new FieldIndexEntry<>(dbName, collName, 10.0, Set.of("id1", "id3")),
-                new FieldIndexEntry<>(dbName, collName, 30.0, Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any())).thenReturn(null);
-        when(cache.getHashIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any(IndexKind.class)))
+                new FieldIndexEntry<>(projectName, collName, 10.0, Set.of("id1", "id3")),
+                new FieldIndexEntry<>(projectName, collName, 30.0, Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any()))
+                .thenReturn(null);
+        when(cache.getHashIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any(IndexKind.class)))
                 .thenReturn(null);
         when(cache.residentFieldIndex(any(), any(), any())).thenReturn(null);
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(eq(dbName), eq(collName), eq(fieldName), any(), any())).thenCallRealMethod();
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(eq(projectName), eq(collName), eq(fieldName), any(), any())).thenCallRealMethod();
 
-        when(cache.pkCountForCoverage(dbName, collName)).thenReturn(3);
-        assertEquals(Set.of("id2"), cache.getIdsFromIndex(dbName, collName, fieldName, notIn, arr));
-        assertEquals(Set.of("id2"), cache.getIdsFromIndex(dbName, collName, fieldName, notEquals, 10.0));
+        when(cache.pkCountForCoverage(projectName, collName)).thenReturn(3);
+        assertEquals(Set.of("id2"), cache.getIdsFromIndex(projectName, collName, fieldName, notIn, arr));
+        assertEquals(Set.of("id2"), cache.getIdsFromIndex(projectName, collName, fieldName, notEquals, 10.0));
 
-        when(cache.pkCountForCoverage(dbName, collName)).thenReturn(4);
-        assertNull(cache.getIdsFromIndex(dbName, collName, fieldName, notIn, arr),
+        when(cache.pkCountForCoverage(projectName, collName)).thenReturn(4);
+        assertNull(cache.getIdsFromIndex(projectName, collName, fieldName, notIn, arr),
                 "a document the index does not hold may carry a null, which NOT_IN matches");
-        when(cache.pkCountForCoverage(dbName, collName)).thenReturn(UserCache.UNKNOWN_COUNT);
-        assertNull(cache.getIdsFromIndex(dbName, collName, fieldName, notEquals, 10.0));
-        when(cache.pkCountForCoverage(dbName, collName)).thenReturn(2);
-        assertNull(cache.getIdsFromIndex(dbName, collName, fieldName, notEquals, 10.0),
+        when(cache.pkCountForCoverage(projectName, collName)).thenReturn(UserCache.UNKNOWN_COUNT);
+        assertNull(cache.getIdsFromIndex(projectName, collName, fieldName, notEquals, 10.0));
+        when(cache.pkCountForCoverage(projectName, collName)).thenReturn(2);
+        assertNull(cache.getIdsFromIndex(projectName, collName, fieldName, notEquals, 10.0),
                 "more indexed ids than documents is drift, never coverage");
     }
 }

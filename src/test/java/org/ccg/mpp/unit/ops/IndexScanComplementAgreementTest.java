@@ -50,8 +50,8 @@ public class IndexScanComplementAgreementTest extends FilterResolutionSupport {
             case JsonString string -> string.getValue();
             default -> operand;
         };
-        return cache.getIdsFromIndex(TestGlobals.DB, TestGlobals.COLL, FIELD, new FieldOperator(type, FIELD, operand),
-                value);
+        return cache.getIdsFromIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                new FieldOperator(type, FIELD, operand), value);
     }
 
     @Test
@@ -211,14 +211,14 @@ public class IndexScanComplementAgreementTest extends FilterResolutionSupport {
         insert("2", FIELD, new JsonNumber(2));
         indexField(FIELD);
         insert("2", FIELD, new JsonString("now a string"));
-        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL, "2");
+        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL, "2");
         assertEquals(1, rowsJson(where(FieldOperatorType.NOT_EQUALS, new JsonNumber(1))).size());
         assertEquals(2, rowsJson(where(FieldOperatorType.NOT_EQUALS, new JsonNumber(2))).size());
     }
 
     private void deleteWithIndexMaintenancePending(String id) throws IOException {
-        TestUtils.uncacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, id);
-        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.DB, TestGlobals.COLL, id);
+        TestUtils.uncacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, id);
+        IocContainer.get(PendingIndexWrites.class).mark(TestGlobals.PROJECT, TestGlobals.COLL, id);
     }
 
     private void storeOneAndNullThenIndex() throws Exception {

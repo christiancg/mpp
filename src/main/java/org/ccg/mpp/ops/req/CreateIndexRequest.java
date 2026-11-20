@@ -8,13 +8,13 @@ public class CreateIndexRequest extends OperationRequest {
     private String fieldName;
     private List<String> fieldNames;
 
-    public CreateIndexRequest(String databaseName, String collectionName, String fieldName) {
-        super(OperationType.CREATE_INDEX, databaseName, collectionName);
+    public CreateIndexRequest(String projectName, String collectionName, String fieldName) {
+        super(OperationType.CREATE_INDEX, projectName, collectionName);
         this.fieldName = fieldName;
     }
 
-    public static CreateIndexRequest ofFields(String databaseName, String collectionName, List<String> fieldNames) {
-        final var request = new CreateIndexRequest(databaseName, collectionName, null);
+    public static CreateIndexRequest ofFields(String projectName, String collectionName, List<String> fieldNames) {
+        final var request = new CreateIndexRequest(projectName, collectionName, null);
         request.setFieldNames(fieldNames);
         return request;
     }

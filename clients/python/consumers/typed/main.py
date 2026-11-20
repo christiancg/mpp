@@ -27,7 +27,7 @@ class Shop:
 
 
 def typed_sync(client: MppClient) -> list[Shop]:
-    shops: Collection[Shop, Shop] = client.database("geo").collection("shops", Shop)
+    shops: Collection[Shop, Shop] = client.project("geo").collection("shops", Shop)
     saved: SaveResult = shops.save(Shop("a", GeoPoint(1, 2), datetime(2024, 1, 1)))
     del saved
     query: Query[Shop] = shops.query().filter(field("name").eq("a")).limit(5)
@@ -43,7 +43,7 @@ def typed_sync(client: MppClient) -> list[Shop]:
 
 
 async def typed_async(client: AsyncMppClient) -> list[Document]:
-    raw: AsyncCollection[Document, Document] = client.database("geo").collection("shops")
+    raw: AsyncCollection[Document, Document] = client.project("geo").collection("shops")
     async with client.transaction() as transaction:
         await transaction.collection("geo", "shops").delete("s-1")
     return await raw.query().sort("name").to_list()

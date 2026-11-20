@@ -71,9 +71,9 @@ public class FieldPathCallersTest extends FilterResolutionSupport {
 
     private void store(JsonObject object) throws IOException {
         final var id = object.get(Globals.PK_FIELD).asJsonString().getValue();
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private static FieldOperator op(FieldOperatorType type, String field, JsonBaseElement value) {

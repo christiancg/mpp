@@ -26,7 +26,7 @@ public final class CommittedOpTriggers {
         final var saveWrites = new LinkedHashMap<TargetKey, LinkedHashMap<String, Boolean>>();
         final var deletes = new LinkedHashMap<TargetKey, List<DbEntry>>();
         for (final var op : ops) {
-            final var target = new TargetKey(op.getTargetDb(), op.getTargetColl());
+            final var target = new TargetKey(op.getTargetProject(), op.getTargetColl());
             final var inserted = transaction.insertedIdsFor(op.getSeq());
             switch (op.getOpType()) {
                 case AdminTransactionEntry.OP_TYPE_SAVE, AdminTransactionEntry.OP_TYPE_BULK_SAVE -> {
@@ -49,17 +49,17 @@ public final class CommittedOpTriggers {
         var staged = StagedTriggerRuns.none();
         for (final var entry : deletes.entrySet()) {
             final var target = entry.getKey();
-            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommitted(target.dbName(), target.collName(),
-                    EventType.DELETED, entry.getValue(), actingUser, triggerDepth, txId, batch));
+            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommitted(target.projectName(),
+                    target.collName(), EventType.DELETED, entry.getValue(), actingUser, triggerDepth, txId, batch));
         }
         for (final var entry : saveWrites.entrySet()) {
             final var target = entry.getKey();
             final var createdIds = new ArrayList<String>();
             final var updatedIds = new ArrayList<String>();
             entry.getValue().forEach((id, wasInserted) -> (wasInserted ? createdIds : updatedIds).add(id));
-            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommittedIds(target.dbName(),
+            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommittedIds(target.projectName(),
                     target.collName(), EventType.CREATED, createdIds, actingUser, triggerDepth, txId, batch));
-            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommittedIds(target.dbName(),
+            staged = StagedTriggerRuns.combine(staged, TriggerHelper.stageCommittedIds(target.projectName(),
                     target.collName(), EventType.UPDATED, updatedIds, actingUser, triggerDepth, txId, batch));
         }
         batch.flushStaging(TRANSACTION_SUBJECT + txId);
@@ -84,15 +84,16 @@ public final class CommittedOpTriggers {
         if (createdInThisTransaction || !payload.has(DELETED_DOCUMENT_FIELD) || skippedByReplay(outcomes, target, id)) {
             return null;
         }
-        return DbEntry.fromJsonObject(target.dbName(), target.collName(),
+        return DbEntry.fromJsonObject(target.projectName(), target.collName(),
                 payload.get(DELETED_DOCUMENT_FIELD).asJsonObject());
     }
 
-    private record TargetKey(String dbName, String collName) {
+    private record TargetKey(String projectName, String collName) {
     }
 
     private static boolean skippedByReplay(Map<String, ApplyOutcome> outcomes, TargetKey target, String id) {
-        return !outcomes.getOrDefault(VersionedApply.key(target.dbName(), target.collName(), id), ApplyOutcome.APPLIED)
+        return !outcomes
+                .getOrDefault(VersionedApply.key(target.projectName(), target.collName(), id), ApplyOutcome.APPLIED)
                 .firesTriggers();
     }
 }

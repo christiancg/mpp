@@ -14,8 +14,8 @@ public final class CollectionReadinessGuard {
     private CollectionReadinessGuard() {
     }
 
-    public static OperationResponse check(OperationType type, String dbName, String collName) {
-        if (cache.getAdminCollectionEntry(dbName, collName) != null) {
+    public static OperationResponse check(OperationType type, String projectName, String collName) {
+        if (cache.getAdminCollectionEntry(projectName, collName) != null) {
             return null;
         }
         return clusterConfig.isEnabled()
@@ -23,29 +23,29 @@ public final class CollectionReadinessGuard {
                 : new OperationResponse(type, ErrorCode.COLLECTION_NOT_FOUND);
     }
 
-    public static OperationResponse precheck(OperationType type, String dbName, String collName) {
+    public static OperationResponse precheck(OperationType type, String projectName, String collName) {
         try {
-            return check(type, dbName, collName);
+            return check(type, projectName, collName);
         } catch (RuntimeException deferredToTheLockedCheck) {
             return null;
         }
     }
 
-    public static OperationResponse precheckRead(OperationType type, String dbName, List<String> collNames) {
+    public static OperationResponse precheckRead(OperationType type, String projectName, List<String> collNames) {
         try {
-            return checkRead(type, dbName, collNames);
+            return checkRead(type, projectName, collNames);
         } catch (RuntimeException deferredToTheLockedCheck) {
             return null;
         }
     }
 
-    public static OperationResponse checkRead(OperationType type, String dbName, List<String> collNames) {
-        if (isAdminDatabase(dbName)) {
+    public static OperationResponse checkRead(OperationType type, String projectName, List<String> collNames) {
+        if (isAdminProject(projectName)) {
             return null;
         }
         for (final var collName : collNames) {
             if (!Globals.SCRIPT_RUNS_COLLECTION_NAME.equals(collName)) {
-                final var refusal = check(type, dbName, collName);
+                final var refusal = check(type, projectName, collName);
                 if (refusal != null) {
                     return refusal;
                 }
@@ -54,7 +54,7 @@ public final class CollectionReadinessGuard {
         return null;
     }
 
-    private static boolean isAdminDatabase(String dbName) {
-        return Globals.ADMIN_DB_NAME.equals(dbName) || Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    private static boolean isAdminProject(String projectName) {
+        return Globals.ADMIN_PROJECT_NAME.equals(projectName) || Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName);
     }
 }

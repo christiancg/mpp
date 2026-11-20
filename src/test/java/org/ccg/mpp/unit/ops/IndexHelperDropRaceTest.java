@@ -47,7 +47,7 @@ public class IndexHelperDropRaceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", 10_000L);
     }
 
@@ -66,17 +66,17 @@ public class IndexHelperDropRaceTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(ID));
         object.add(FIELD, new JsonString("value"));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(ID);
         SaveOperationHelper.executeSave(request);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        AdminOperationHelper.saveNewIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        AdminOperationHelper.saveNewIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
     }
 
     private static List<String> fieldIndexFiles() {
-        final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
         final var prefix = TestGlobals.COLL + "-" + FIELD + "-";
         final var names = folder.list((_, name) -> name.startsWith(prefix) && name.endsWith(".idx"));
         return names == null ? List.of() : List.of(names);
@@ -86,14 +86,14 @@ public class IndexHelperDropRaceTest {
             AtomicReference<Throwable> failure) {
         return new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 try {
                     taken.countDown();
                     drop.await();
-                    IndexHelper.dropIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-                    AdminOperationHelper.deleteIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                    IndexHelper.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+                    AdminOperationHelper.deleteIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 } finally {
-                    locks.release(TestGlobals.DB, TestGlobals.COLL);
+                    locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
                 }
             } catch (Throwable t) {
                 failure.set(t);
@@ -135,7 +135,7 @@ public class IndexHelperDropRaceTest {
     public void a_drop_index_while_maintenance_waits_leaves_no_index_file() throws Exception {
         saveIndexedDocument();
 
-        dropIndexWhileMaintenanceWaits(() -> IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, ID));
+        dropIndexWhileMaintenanceWaits(() -> IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ID));
 
         assertEquals(List.of(), fieldIndexFiles(), "maintenance must not write an index the drop just removed");
     }
@@ -145,7 +145,7 @@ public class IndexHelperDropRaceTest {
         saveIndexedDocument();
 
         dropIndexWhileMaintenanceWaits(
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of(ID)));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of(ID)));
 
         assertEquals(List.of(), fieldIndexFiles());
     }
@@ -156,10 +156,10 @@ public class IndexHelperDropRaceTest {
         final var release = new CountDownLatch(1);
         final var holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 taken.countDown();
                 release.await();
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -168,8 +168,8 @@ public class IndexHelperDropRaceTest {
         assertTrue(taken.await(5, TimeUnit.SECONDS));
         try {
             TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", 1L);
-            assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, ID));
-            assertDoesNotThrow(() -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of(ID)));
+            assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, ID));
+            assertDoesNotThrow(() -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of(ID)));
         } finally {
             release.countDown();
             holder.join(5000);
@@ -177,7 +177,7 @@ public class IndexHelperDropRaceTest {
     }
 
     private void budgetTheLockAt100Ms() throws Exception {
-        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL)
+        IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL)
                 .setIndexes(Set.of(FIELD));
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", 100L);
     }
@@ -187,10 +187,10 @@ public class IndexHelperDropRaceTest {
         idleRelease = new CountDownLatch(1);
         idleHolder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 taken.countDown();
                 idleRelease.await();
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -205,16 +205,16 @@ public class IndexHelperDropRaceTest {
         holdTheCollectionLikeAnIdleTransaction();
 
         assertThrows(CollectionBusyException.class,
-                () -> IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "any"),
+                () -> IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "any"),
                 "a background worker must not park on one collection while every other collection waits behind it");
         assertThrows(CollectionBusyException.class,
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("any")));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("any")));
     }
 
     @Test
     public void test_index_maintenance_runs_when_the_collection_is_free() throws Exception {
         budgetTheLockAt100Ms();
 
-        assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "missing"));
+        assertDoesNotThrow(() -> IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "missing"));
     }
 }

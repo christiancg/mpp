@@ -52,10 +52,10 @@ public class TransactionTriggerStagingTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition(TRIGGER, new LinkedHashSet<>(Set.of(EventType.CREATED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
         for (final var run : TriggerRunLog.pending()) {
@@ -65,7 +65,7 @@ public class TransactionTriggerStagingTest {
 
     @AfterEach
     public void tearDown() throws Exception {
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.setPrivateField(configuration, "triggersEnabled", false);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -77,7 +77,7 @@ public class TransactionTriggerStagingTest {
         TransactionOperationHelper.start(clientId);
         final var object = new JsonObject();
         object.addProperty("_id", DOC_ID);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(DOC_ID);
         assertEquals(OperationStatus.OK, TransactionOperationHelper
@@ -97,7 +97,7 @@ public class TransactionTriggerStagingTest {
     }
 
     private static List<String> recordIdsOfTheRun(String txId) {
-        return TriggerRunLog.recordIdsFor(TriggerRunLog.deterministicRunId(txId, TestGlobals.DB, TestGlobals.COLL,
+        return TriggerRunLog.recordIdsFor(TriggerRunLog.deterministicRunId(txId, TestGlobals.PROJECT, TestGlobals.COLL,
                 TRIGGER, EventType.CREATED, DOC_ID));
     }
 
@@ -157,13 +157,13 @@ public class TransactionTriggerStagingTest {
 
     @Test
     public void test_same_named_triggers_in_two_collections_keep_separate_records() throws Exception {
-        cache.putTriggers(TestGlobals.DB, OTHER_COLL,
+        cache.putTriggers(TestGlobals.PROJECT, OTHER_COLL,
                 List.of(triggerOn(EventType.CREATED, TriggerDefinition.MODE_DOCUMENT)));
         try {
             final var batch = WriteEffects.batched();
-            TriggerHelper.stageCommitted(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+            TriggerHelper.stageCommitted(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                     List.of(entryOf(TestGlobals.COLL, DOC_ID)), "owner", 0, TX_ID, batch);
-            TriggerHelper.stageCommitted(TestGlobals.DB, OTHER_COLL, EventType.CREATED,
+            TriggerHelper.stageCommitted(TestGlobals.PROJECT, OTHER_COLL, EventType.CREATED,
                     List.of(entryOf(OTHER_COLL, DOC_ID)), "owner", 0, TX_ID, batch);
             batch.flushStaging(TX_ID);
 
@@ -172,21 +172,19 @@ public class TransactionTriggerStagingTest {
             assertEquals(Set.of(TestGlobals.COLL, OTHER_COLL),
                     runs.stream().map(AdminTriggerRunEntry::getCollName).collect(Collectors.toSet()));
         } finally {
-            cache.removeTriggers(TestGlobals.DB, OTHER_COLL);
+            cache.removeTriggers(TestGlobals.PROJECT, OTHER_COLL);
         }
     }
 
     @Test
     public void test_batch_deleted_trigger_records_one_run_for_all_deletes() throws Exception {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(triggerOn(EventType.DELETED, TriggerDefinition.MODE_BATCH)));
 
         final var batch = WriteEffects.batched();
-        TriggerHelper
-                .stageCommitted(
-                        TestGlobals.DB, TestGlobals.COLL, EventType.DELETED, List.of(entryOf(TestGlobals.COLL, "d1"),
-                                entryOf(TestGlobals.COLL, "d2"), entryOf(TestGlobals.COLL, "d3")),
-                        "owner", 0, TX_ID, batch);
+        TriggerHelper.stageCommitted(TestGlobals.PROJECT, TestGlobals.COLL, EventType.DELETED, List
+                .of(entryOf(TestGlobals.COLL, "d1"), entryOf(TestGlobals.COLL, "d2"), entryOf(TestGlobals.COLL, "d3")),
+                "owner", 0, TX_ID, batch);
         batch.flushStaging(TX_ID);
 
         final var runs = TriggerRunLog.pending();
@@ -202,6 +200,6 @@ public class TransactionTriggerStagingTest {
     private static DbEntry entryOf(String collName, String id) {
         final var object = new JsonObject();
         object.addProperty("_id", id);
-        return DbEntry.fromJsonObject(TestGlobals.DB, collName, object);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, object);
     }
 }

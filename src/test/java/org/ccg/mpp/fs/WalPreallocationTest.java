@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalPreallocationTest {
-    private static final String DB = "preallocDb";
+    private static final String PROJECT = "preallocProject";
     private static final String COLL = "preallocColl";
     private static final long MIN = Globals.WAL_PREALLOCATE_MIN_BYTES;
     private static final long MAX = Globals.WAL_PREALLOCATE_MAX_BYTES;
@@ -30,12 +30,12 @@ public class WalPreallocationTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
     private File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private byte[] logBytes() throws IOException {
@@ -99,11 +99,11 @@ public class WalPreallocationTest {
             recorder.refusingWhen(
                     (_, name) -> name.endsWith(Globals.WAL_EXTENSION) && walForces.getAndIncrement() == 1);
             final var wal = new WriteAheadLog(rf.fx.paths);
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             rf.replacer.delete(rf.fx.indexed("c"));
 
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
         }
 
         final var bytes = logBytes();

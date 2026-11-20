@@ -17,14 +17,14 @@ The `AGGREGATE` operation. Runs a query pipeline on a collection.
 ## Delete
 The `DELETE` operation. Deletes a document.
 
-## CreateDatabase
-The `CREATE_DATABASE` operation. Creates a database.
+## CreateProject
+The `CREATE_PROJECT` operation. Creates a project.
 
-## DropDatabase
-The `DROP_DATABASE` operation. Drops a database.
+## DropProject
+The `DROP_PROJECT` operation. Drops a project.
 
-## ListDatabases
-The `LIST_DATABASES` operation. Lists the databases.
+## ListProjects
+The `LIST_PROJECTS` operation. Lists the projects.
 
 ## CreateCollection
 The `CREATE_COLLECTION` operation. Creates a collection.
@@ -33,7 +33,7 @@ The `CREATE_COLLECTION` operation. Creates a collection.
 The `DROP_COLLECTION` operation. Drops a collection.
 
 ## ListCollections
-The `LIST_COLLECTIONS` operation. Lists a database's collections.
+The `LIST_COLLECTIONS` operation. Lists a project's collections.
 
 ## CreateIndex
 The `CREATE_INDEX` operation. Creates field indexes.
@@ -71,8 +71,8 @@ The `DELETE_USER` operation. Deletes a user.
 ## ChangePermissions
 The `CHANGE_PERMISSIONS` operation. Replaces a user's permissions.
 
-## SetDatabaseOwners
-The `SET_DATABASE_OWNERS` operation. Replaces a database's owners.
+## SetProjectOwners
+The `SET_PROJECT_OWNERS` operation. Replaces a project's owners.
 
 ## ListUsers
 The `LIST_USERS` operation. Lists users.
@@ -80,8 +80,8 @@ The `LIST_USERS` operation. Lists users.
 ## SetPassword
 The `SET_PASSWORD` operation. Sets a user's password.
 
-## GetDatabaseStats
-The `GET_DATABASE_STATS` operation. Reads database statistics.
+## GetProjectStats
+The `GET_PROJECT_STATS` operation. Reads project statistics.
 
 ## Listen
 The `LISTEN` operation. Registers a listenable query.
@@ -114,7 +114,7 @@ The `SAVE_PROCEDURE` operation. Saves a stored procedure.
 The `DELETE_PROCEDURE` operation. Deletes a stored procedure.
 
 ## ListProcedures
-The `LIST_PROCEDURES` operation. Lists a database's stored procedures.
+The `LIST_PROCEDURES` operation. Lists a project's stored procedures.
 
 ## CallProcedure
 The `CALL_PROCEDURE` operation. Calls a stored procedure.
@@ -135,7 +135,7 @@ The `SAVE_SCHEDULE` operation. Saves a schedule.
 The `DELETE_SCHEDULE` operation. Deletes a schedule.
 
 ## ListSchedules
-The `LIST_SCHEDULES` operation. Lists a database's schedules.
+The `LIST_SCHEDULES` operation. Lists a project's schedules.
 
 ## ListScripts
 The `LIST_SCRIPTS` operation. Lists the running scripts.
@@ -174,4 +174,4 @@ Whether the operation only reads: `FIND_BY_ID`, `AGGREGATE`, `SERVER_INFO` and t
 The wire name, such as `FIND_BY_ID`.
 
 ## Scope
-What the request names: a database, a collection, both or neither.
+What the request names: a project, a collection, both or neither.

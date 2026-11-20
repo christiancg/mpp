@@ -71,10 +71,10 @@ public class ResourceLockingReadSetTest {
         final var release = new CountDownLatch(1);
         final var writer = new Thread(() -> {
             try {
-                rl.lock("lockDb", "busy");
+                rl.lock("lockProject", "busy");
                 held.countDown();
                 release.await();
-                rl.release("lockDb", "busy");
+                rl.release("lockProject", "busy");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -83,7 +83,7 @@ public class ResourceLockingReadSetTest {
         writer.start();
         try {
             assertTrue(held.await(5, TimeUnit.SECONDS));
-            final var identifier = Cache.getCollectionIdentifier("lockDb", "busy");
+            final var identifier = Cache.getCollectionIdentifier("lockProject", "busy");
 
             final var acquired = rl.acquireReadLocks(false, List.of(identifier), TIMEOUT_MS);
 

@@ -21,7 +21,7 @@ public record PipelineHostBindings(ResourceLimits limits, ZoneId timeZone, Local
     }
 
     @Override
-    public DatabaseAccess database() {
+    public ProjectAccess project() {
         return null;
     }
 

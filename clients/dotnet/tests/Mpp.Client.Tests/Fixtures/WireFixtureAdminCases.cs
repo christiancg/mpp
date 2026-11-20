@@ -25,9 +25,9 @@ internal static class WireFixtureAdminCases
 
     private static void Ddl(Dictionary<string, FixtureCall> cases)
     {
-        cases["ddl.list_databases"] = r => r.Raw(RequestEncoder.Request("LIST_DATABASES"));
-        cases["ddl.create_database"] = r => r.Shop.CreateAsync();
-        cases["ddl.drop_database"] = r => r.Shop.DropAsync();
+        cases["ddl.list_projects"] = r => r.Raw(RequestEncoder.Request("LIST_PROJECTS"));
+        cases["ddl.create_project"] = r => r.Shop.CreateAsync();
+        cases["ddl.drop_project"] = r => r.Shop.DropAsync();
         cases["ddl.list_collections"] = r => r.Shop.ListCollectionsAsync();
         cases["ddl.create_collection"] = r => r.Orders.CreateAsync();
         cases["ddl.drop_collection"] = r => r.Orders.DropAsync();
@@ -44,8 +44,8 @@ internal static class WireFixtureAdminCases
         cases["schema.get"] = r => r.Orders.Schema().GetAsync();
         cases["schema.delete"] = r => r.Orders.Schema().DeleteAsync();
         cases["info.server_info"] = r => r.Raw(RequestEncoder.Request("SERVER_INFO"));
-        cases["info.database_stats_all"] = r => r.Raw(RequestEncoder.Request("GET_DATABASE_STATS"));
-        cases["info.database_stats_one"] = r => r.Shop.StatsAsync();
+        cases["info.project_stats_all"] = r => r.Raw(RequestEncoder.Request("GET_PROJECT_STATS"));
+        cases["info.project_stats_one"] = r => r.Shop.StatsAsync();
         cases["info.close_connection"] = r => r.Raw(RequestEncoder.Request("CLOSE_CONNECTION"));
     }
 
@@ -93,7 +93,7 @@ internal static class WireFixtureAdminCases
             new TriggerDefinition("rollup", "rollup", [TriggerEvent.Created]) { Mode = TriggerMode.Batch });
         cases["scripting.delete_trigger"] = r => r.Orders.Triggers().DeleteAsync("audit");
         cases["scripting.list_triggers_collection"] = r => r.Orders.Triggers().ListAsync();
-        cases["scripting.list_triggers_database"] = r => r.Shop.ListTriggersAsync();
+        cases["scripting.list_triggers_project"] = r => r.Shop.ListTriggersAsync();
         cases["scripting.test_trigger"] = r => r.Orders.Triggers().TestAsync("normalize", TriggerEvent.Created, Document.Of("_id", "o-1", "qty", 2));
         cases["scripting.save_schedule_cron"] = r => r.Shop.Schedules().SaveAsync(new ScheduleDefinition("nightly", "rollup")
         {
@@ -127,8 +127,8 @@ internal static class WireFixtureAdminCases
         cases["users.create"] = r => r.Admin.Users().CreateAsync("bob", "Secret-1234", new Permissions
         {
             Admin = false,
-            Global = [GlobalPermission.CreateDatabase],
-            Databases = new Dictionary<string, DataPermission> { ["shop"] = DataPermission.ReadWrite },
+            Global = [GlobalPermission.CreateProject],
+            Projects = new Dictionary<string, DataPermission> { ["shop"] = DataPermission.ReadWrite },
             Collections = new Dictionary<string, DataPermission> { [Permissions.CollectionKey("shop", "orders")] = DataPermission.Read },
             Scripts = new Dictionary<string, ScriptPermission> { ["shop"] = ScriptPermission.Manage },
         });
@@ -136,13 +136,13 @@ internal static class WireFixtureAdminCases
         cases["users.delete"] = r => r.Admin.Users().DeleteAsync("bob");
         cases["users.change_permissions"] = r => r.Admin.Users().ChangePermissionsAsync("bob", new Permissions
         {
-            Databases = new Dictionary<string, DataPermission> { ["shop"] = DataPermission.Read },
+            Projects = new Dictionary<string, DataPermission> { ["shop"] = DataPermission.Read },
             Scripts = new Dictionary<string, ScriptPermission> { ["shop"] = ScriptPermission.Run },
         });
         cases["users.set_password_own"] = r => r.Raw(ScriptRequestEncoder.SetPassword("alice", "Secret-1234", "Secret-5678"));
         cases["users.set_password_admin"] = r => r.Admin.Users().SetPasswordAsync("bob", "Secret-5678");
         cases["users.list"] = r => r.Admin.Users().ListAsync();
         cases["users.list_filtered"] = r => r.Admin.Users().ListAsync(Field("admin").Eq(true));
-        cases["users.set_database_owners"] = r => r.Shop.SetOwnersAsync(["alice", "bob"]);
+        cases["users.set_project_owners"] = r => r.Shop.SetOwnersAsync(["alice", "bob"]);
     }
 }

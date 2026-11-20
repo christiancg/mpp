@@ -61,4 +61,4 @@ A filter that runs a SimpleJS predicate on each document; needs the script permi
 
 ## collection_key
 
-Returns the key `database|collection` that collection permissions use.
+Returns the key `project|collection` that collection permissions use.

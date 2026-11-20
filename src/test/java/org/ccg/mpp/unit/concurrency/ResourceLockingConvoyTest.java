@@ -24,9 +24,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 public class ResourceLockingConvoyTest {
-    private static final String DB = "convoy_db";
+    private static final String PROJECT = "convoy_project";
     private static final String COLL = "convoy_coll";
-    private static final String ID = Cache.getCollectionIdentifier(DB, COLL);
+    private static final String ID = Cache.getCollectionIdentifier(PROJECT, COLL);
     private static final long WAIT_MS = 5_000L;
     private static final long BLOCKED_MS = 200L;
     private final ResourceLocking rl = new ResourceLocking();
@@ -95,10 +95,10 @@ public class ResourceLockingConvoyTest {
 
     private CompletableFuture<Boolean> queuedWriter(CountDownLatch release) throws Exception {
         final var writer = inOtherThread(() -> {
-            rl.lock(DB, COLL);
+            rl.lock(PROJECT, COLL);
             release.await();
             return true;
-        }, () -> rl.release(DB, COLL));
+        }, () -> rl.release(PROJECT, COLL));
         awaitQueuedWriter();
         return writer;
     }
@@ -209,41 +209,41 @@ public class ResourceLockingConvoyTest {
     @Test
     public void test_long_readers_return_to_zero_on_every_release_path() throws Exception {
         assertNotNull(rl.acquireReadLocks(false, List.of(ID), 0L));
-        rl.lockRead(DB, COLL);
-        assertTrue(rl.tryLockRead(DB, COLL, 0L));
+        rl.lockRead(PROJECT, COLL);
+        assertTrue(rl.tryLockRead(PROJECT, COLL, 0L));
         rl.lockReadByName(ID);
         assertEquals(4, rl.longReaders(ID));
         rl.releaseReadLocks(List.of(ID));
-        rl.releaseRead(DB, COLL);
+        rl.releaseRead(PROJECT, COLL);
         rl.releaseReadByName(ID);
-        rl.releaseRead(DB, COLL);
+        rl.releaseRead(PROJECT, COLL);
         assertEquals(0, rl.longReaders(ID));
-        rl.releaseRead(DB, COLL);
+        rl.releaseRead(PROJECT, COLL);
         assertEquals(0, rl.longReaders(ID), "a release without a hold never goes below zero");
 
         final var held = rl.acquirePointReadLock(false, ID, 0L);
         assertEquals(0, rl.longReaders(ID), "a point read is not a long reader");
         rl.releasePointReadLocks(held);
 
-        assertTrue(rl.tryLockIndexRead(DB, COLL, "field"));
+        assertTrue(rl.tryLockIndexRead(PROJECT, COLL, "field"));
         final var indexId = ID + "|field";
         assertEquals(1, rl.longReaders(indexId));
-        rl.releaseIndexRead(DB, COLL, "field");
+        rl.releaseIndexRead(PROJECT, COLL, "field");
         assertEquals(0, rl.longReaders(indexId));
 
-        rl.removeLock(DB, COLL);
+        rl.removeLock(PROJECT, COLL);
         assertEquals(0, rl.longReaders(ID));
     }
 
     @Test
     public void test_a_read_that_retries_on_the_gate_counts_once() throws Exception {
-        rl.lock(DB, COLL);
+        rl.lock(PROJECT, COLL);
         final CompletableFuture<Boolean> scan;
         final var scanHolds = new CountDownLatch(1);
         final var scanRelease = new CountDownLatch(1);
-        try (var ignored = rl.openSettleWindow(DB, COLL)) {
-            assertFalse(inOtherThread(() -> rl.tryLockRead(DB, COLL, 100L), () -> rl.releaseRead(DB, COLL)).get(WAIT_MS,
-                    TimeUnit.MILLISECONDS), "a bounded read times out on the gate");
+        try (var ignored = rl.openSettleWindow(PROJECT, COLL)) {
+            assertFalse(inOtherThread(() -> rl.tryLockRead(PROJECT, COLL, 100L), () -> rl.releaseRead(PROJECT, COLL))
+                    .get(WAIT_MS, TimeUnit.MILLISECONDS), "a bounded read times out on the gate");
             assertEquals(0, rl.longReaders(ID));
             scan = inOtherThread(() -> {
                 final var acquired = rl.acquireReadLocks(false, List.of(ID), 0L) != null;
@@ -269,8 +269,8 @@ public class ResourceLockingConvoyTest {
         final var closeNow = new CountDownLatch(1);
         final var owner = Thread.ofPlatform().start(() -> {
             try {
-                rl.lock(DB, COLL);
-                try (var window = rl.openSettleWindow(DB, COLL)) {
+                rl.lock(PROJECT, COLL);
+                try (var window = rl.openSettleWindow(PROJECT, COLL)) {
                     opened.countDown();
                     failNow.await();
                     window.fail();
@@ -280,7 +280,7 @@ public class ResourceLockingConvoyTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                rl.release(DB, COLL);
+                rl.release(PROJECT, COLL);
             }
         });
         assertTrue(opened.await(WAIT_MS, TimeUnit.MILLISECONDS));
@@ -301,15 +301,15 @@ public class ResourceLockingConvoyTest {
 
     @Test
     public void test_removing_a_collection_lock_leaves_its_index_locks() throws Exception {
-        rl.lockRead(DB, COLL);
-        rl.releaseRead(DB, COLL);
-        assertTrue(rl.tryLockIndexRead(DB, COLL, "field"));
-        rl.releaseIndexRead(DB, COLL, "field");
+        rl.lockRead(PROJECT, COLL);
+        rl.releaseRead(PROJECT, COLL);
+        assertTrue(rl.tryLockIndexRead(PROJECT, COLL, "field"));
+        rl.releaseIndexRead(PROJECT, COLL, "field");
         final var type = new ReflectionUtils.TypeToken<Map<String, ReadTrackingLock>>() {
         };
         final var registry = TestUtils.getPrivateField(rl, "locks", type);
 
-        rl.removeCollectionLock(DB, COLL);
+        rl.removeCollectionLock(PROJECT, COLL);
 
         assertFalse(registry.containsKey(ID));
         assertTrue(registry.containsKey(ID + "|field"));

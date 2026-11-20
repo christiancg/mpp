@@ -36,7 +36,7 @@ public class AggregationScriptIntegrationTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (var i = 1; i <= 5; i++) {
             save("doc" + i, i * 10, i);
         }
@@ -49,7 +49,7 @@ public class AggregationScriptIntegrationTest {
     }
 
     private static void save(String id, double price, double qty) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("price", new JsonNumber(price));
@@ -59,7 +59,7 @@ public class AggregationScriptIntegrationTest {
     }
 
     private static AggregateRequest aggregate(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return request;
     }
@@ -218,7 +218,7 @@ public class AggregationScriptIntegrationTest {
     }
 
     @Test
-    public void test_script_has_no_database_access() {
+    public void test_script_has_no_project_access() {
         final var filter = new FilterAggregationStep(
                 new ScriptOperator("import db from 'db'; export default (doc) => true;"));
         final var response = processor.processMessage(aggregate(filter));

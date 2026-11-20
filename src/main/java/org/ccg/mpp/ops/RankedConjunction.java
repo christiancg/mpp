@@ -17,7 +17,7 @@ final class RankedConjunction {
     private RankedConjunction() {
     }
 
-    static Stream<JsonObject> filter(ConjunctionOperator operator, Stream<JsonObject> input, String dbName,
+    static Stream<JsonObject> filter(ConjunctionOperator operator, Stream<JsonObject> input, String projectName,
             String collName, PipelineContext context) throws IOException {
         if (input != null) {
             final List<JsonObject> buffered;
@@ -25,11 +25,12 @@ final class RankedConjunction {
                 buffered = rows.toList();
             }
             final var test = compiled(operator, context,
-                    ranking -> bufferedMembership(ranking, buffered, dbName, collName, context));
+                    ranking -> bufferedMembership(ranking, buffered, projectName, collName, context));
             return context.watch(buffered.stream()).filter(test);
         }
-        final var test = compiled(operator, context, ranking -> sourceMembership(ranking, dbName, collName, context));
-        return context.source(null, dbName, collName).filter(test);
+        final var test = compiled(operator, context,
+                ranking -> sourceMembership(ranking, projectName, collName, context));
+        return context.source(null, projectName, collName).filter(test);
     }
 
     private static Predicate<JsonObject> compiled(ConjunctionOperator operator, PipelineContext context,
@@ -42,10 +43,10 @@ final class RankedConjunction {
     }
 
     private static Predicate<JsonObject> bufferedMembership(CustomOperator ranking, List<JsonObject> buffered,
-            String dbName, String collName, PipelineContext context) {
+            String projectName, String collName, PipelineContext context) {
         final Set<JsonObject> ranked = Collections.newSetFromMap(new IdentityHashMap<>());
-        try (var rows = FilterOperatorHelper.rankedRows(ranking, context.watch(buffered.stream()), dbName, collName,
-                context)) {
+        try (var rows = FilterOperatorHelper.rankedRows(ranking, context.watch(buffered.stream()), projectName,
+                collName, context)) {
             rows.forEach(ranked::add);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -53,10 +54,10 @@ final class RankedConjunction {
         return ranked::contains;
     }
 
-    private static Predicate<JsonObject> sourceMembership(CustomOperator ranking, String dbName, String collName,
+    private static Predicate<JsonObject> sourceMembership(CustomOperator ranking, String projectName, String collName,
             PipelineContext context) {
         final var keys = new HashSet<>();
-        try (var rows = FilterOperatorHelper.rankedRows(ranking, null, dbName, collName, context)) {
+        try (var rows = FilterOperatorHelper.rankedRows(ranking, null, projectName, collName, context)) {
             rows.forEach(row -> keys.add(OperatorPredicate.keyOf(row)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);

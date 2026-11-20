@@ -26,7 +26,7 @@ public class InsertOnlyGuardTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         assertEquals(OperationStatus.OK, processor.processMessage(request("stored", false)).getStatus());
     }
 
@@ -40,7 +40,7 @@ public class InsertOnlyGuardTest {
     private static SaveRequest request(String id, boolean failOnUpdate) {
         final var object = new JsonObject();
         object.addProperty("v", "x");
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         request.setFailOnUpdate(failOnUpdate);
@@ -48,12 +48,12 @@ public class InsertOnlyGuardTest {
     }
 
     private String refusalCode(SaveRequest request) throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var response = InsertOnlyGuard.check(request);
             return response == null ? null : response.getErrorCode();
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -80,7 +80,7 @@ public class InsertOnlyGuardTest {
     @Test
     public void test_a_collection_that_cannot_be_cached_is_answered_from_the_primary_key_file() throws Exception {
         TestUtils.setPrivateField(configuration, "maxMemory", Globals.CACHE_DISABLED);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(ErrorCode.DOCUMENT_ALREADY_EXISTS.getCode(), refusalCode(request("stored", true)));
         assertNull(refusalCode(request("absent", true)));

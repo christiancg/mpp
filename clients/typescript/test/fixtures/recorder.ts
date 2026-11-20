@@ -1,11 +1,11 @@
-import { Admin, type Collection, Database, type Document, type Stored } from "../../src/index.js";
+import { Admin, type Collection, Project, type Document, type Stored } from "../../src/index.js";
 import type { ClientContext } from "../../src/internal/client-context.js";
 import { RecordingChannel, recordingContext } from "../support/recording-channel.js";
 
 export class Recorder {
     readonly channel = new RecordingChannel();
     readonly context: ClientContext = recordingContext(this.channel);
-    readonly shop = new Database(this.context, "shop");
+    readonly shop = new Project(this.context, "shop");
     readonly orders: Collection<Document, Stored<Document>> = this.shop.collection("orders");
     readonly admin = new Admin(this.context);
     readonly encoder = this.context.encoder;

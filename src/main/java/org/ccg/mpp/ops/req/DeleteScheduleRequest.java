@@ -9,8 +9,8 @@ public class DeleteScheduleRequest extends OperationRequest {
         super(OperationType.DELETE_SCHEDULE, null, null);
     }
 
-    public DeleteScheduleRequest(String databaseName, String name) {
-        super(OperationType.DELETE_SCHEDULE, databaseName, null);
+    public DeleteScheduleRequest(String projectName, String name) {
+        super(OperationType.DELETE_SCHEDULE, projectName, null);
         this.name = name;
     }
 

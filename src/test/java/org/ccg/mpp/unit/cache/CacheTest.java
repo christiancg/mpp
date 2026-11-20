@@ -26,19 +26,19 @@ public class CacheTest extends CacheFixtureSupport {
 
     @Test
     public void test_concatenates_dbname_and_coll_name_correctly() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        String expected = "testDb" + Globals.COLL_IDENTIFIER_SEPARATOR + "testColl";
-        String result = Cache.getCollectionIdentifier(dbName, collName);
+        String expected = "testProject" + Globals.COLL_IDENTIFIER_SEPARATOR + "testColl";
+        String result = Cache.getCollectionIdentifier(projectName, collName);
         assertEquals(expected, result);
     }
 
     @Test
     public void test_handles_empty_dbname_and_coll_name_gracefully() {
-        String dbName = "a";
+        String projectName = "a";
         String collName = "a";
         String expected = "a" + Globals.COLL_IDENTIFIER_SEPARATOR + "a";
-        String result = Cache.getCollectionIdentifier(dbName, collName);
+        String result = Cache.getCollectionIdentifier(projectName, collName);
         assertEquals(expected, result);
     }
 
@@ -76,9 +76,9 @@ public class CacheTest extends CacheFixtureSupport {
         Cache cache = new Cache();
         final var obj = new JsonObject();
         obj.addProperty(Globals.PK_FIELD, "u1");
-        cache.addEntryToCache("userDb", "c1", DbEntry.fromJsonObject("userDb", "c1", obj));
+        cache.addEntryToCache("userProject", "c1", DbEntry.fromJsonObject("userProject", "c1", obj));
         final var userCache = IocContainer.get(org.ccg.mpp.cache.UserCache.class);
-        final var cached = userCache.getCachedCollection("userDb", "c1");
+        final var cached = userCache.getCachedCollection("userProject", "c1");
         assertNotNull(cached);
         assertTrue(cached.containsKey("u1"));
     }
@@ -86,21 +86,21 @@ public class CacheTest extends CacheFixtureSupport {
     @Test
     public void test_facade_delegates_admin_method() {
         Cache cache = new Cache();
-        cache.updatePageSizeInMemory("userDb", "c1", 0L, 100L);
+        cache.updatePageSizeInMemory("userProject", "c1", 0L, 100L);
         final var adminCache = IocContainer.get(org.ccg.mpp.cache.AdminCache.class);
-        assertNotNull(adminCache.getAdminPageEntries("userDb", "c1"));
-        assertEquals(0L, cache.getAdminPageEntry("userDb", "c1", 0L).getPage());
+        assertNotNull(adminCache.getAdminPageEntries("userProject", "c1"));
+        assertEquals(0L, cache.getAdminPageEntry("userProject", "c1", 0L).getPage());
     }
 
     @Test
     public void test_returns_whole_collection_from_cache_if_exists_and_complete()
             throws NoSuchFieldException, IllegalAccessException, java.io.IOException, InterruptedException {
         Cache cache = new Cache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
 
-        final var pageEntry = new org.ccg.mpp.data.admin.AdminPageEntry(dbName, collName, 0);
+        final var pageEntry = new org.ccg.mpp.data.admin.AdminPageEntry(projectName, collName, 0);
         pageEntry.setEntryCount(2);
         final var pageList = new java.util.ArrayList<org.ccg.mpp.data.admin.AdminPageEntry>();
         pageList.add(pageEntry);
@@ -124,16 +124,16 @@ public class CacheTest extends CacheFixtureSupport {
         final var collectionMap = CacheResidents.documentsByCollection(userCache);
         collectionMap.put(collectionIdentifier, wholeCollection);
         final var locks = IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
-        locks.lock(dbName, collName);
+        locks.lock(projectName, collName);
         try {
-            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
-            pkIndex.add(new org.ccg.mpp.data.PkIndexEntry(dbName, collName, "1", 0, 1, 0));
-            pkIndex.add(new org.ccg.mpp.data.PkIndexEntry(dbName, collName, "2", 1, 1, 0));
+            final var pkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
+            pkIndex.add(new org.ccg.mpp.data.PkIndexEntry(projectName, collName, "1", 0, 1, 0));
+            pkIndex.add(new org.ccg.mpp.data.PkIndexEntry(projectName, collName, "2", 1, 1, 0));
         } finally {
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
         }
 
-        Map<String, DbEntry> result = cache.getWholeCollection(dbName, collName);
+        Map<String, DbEntry> result = cache.getWholeCollection(projectName, collName);
 
         assertEquals(2, result.size());
         assertTrue(result.containsKey("1"));
@@ -149,12 +149,12 @@ public class CacheTest extends CacheFixtureSupport {
         fsField.setAccessible(true);
         fsField.set(cache, fsMock);
 
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
 
-        when(fsMock.streamPages(dbName, collName)).thenThrow(new IOException("File not found"));
+        when(fsMock.streamPages(projectName, collName)).thenThrow(new IOException("File not found"));
 
-        assertThrows(RuntimeException.class, () -> cache.getWholeCollection(dbName, collName));
+        assertThrows(RuntimeException.class, () -> cache.getWholeCollection(projectName, collName));
     }
 
     @Test
@@ -167,28 +167,28 @@ public class CacheTest extends CacheFixtureSupport {
         fsField.set(cache, fsMock);
 
         when(fsMock.streamEntries(anyString(), anyString())).thenThrow(IOException.class);
-        assertThrows(IOException.class, () -> cache.streamCollection("dbName", "collName"));
+        assertThrows(IOException.class, () -> cache.streamCollection("projectName", "collName"));
     }
 
     @Test
     public void test_get_whole_collection_returns_cached_when_pages_metadata_missing()
             throws IOException, InterruptedException {
         Cache cache = new Cache();
-        String dbName = "myDb";
+        String projectName = "myProject";
         String collName = "myColl";
         DbEntry e = new DbEntry();
         e.set_id("1");
-        cache.addEntryToCache(dbName, collName, e);
+        cache.addEntryToCache(projectName, collName, e);
         final var locks = IocContainer.get(org.ccg.mpp.concurrency.ResourceLocking.class);
-        locks.lock(dbName, collName);
+        locks.lock(projectName, collName);
         try {
-            cache.getPkIndexAndLoadIfNecessary(dbName, collName)
-                    .add(new org.ccg.mpp.data.PkIndexEntry(dbName, collName, "1", 0, 1, 0));
+            cache.getPkIndexAndLoadIfNecessary(projectName, collName)
+                    .add(new org.ccg.mpp.data.PkIndexEntry(projectName, collName, "1", 0, 1, 0));
         } finally {
-            locks.release(dbName, collName);
+            locks.release(projectName, collName);
         }
 
-        Map<String, DbEntry> result = cache.getWholeCollection(dbName, collName);
+        Map<String, DbEntry> result = cache.getWholeCollection(projectName, collName);
         assertEquals(1, result.size());
     }
 
@@ -210,9 +210,9 @@ public class CacheTest extends CacheFixtureSupport {
         final var registered = ArgumentCaptor.forClass(Consumer.class);
         verify(fsMock).onVacuum(registered.capture());
         final Consumer<VacuumedPage> listener = registered.getValue();
-        final var admin = new VacuumedPage(Globals.ADMIN_DB_NAME, "collections", 0, Map.of());
-        final var pages = new VacuumedPage(Globals.ADMIN_PAGES_DB_NAME, "userDb_userColl", 2, Map.of());
-        final var user = new VacuumedPage("userDb", "userColl", 1, Map.of());
+        final var admin = new VacuumedPage(Globals.ADMIN_PROJECT_NAME, "collections", 0, Map.of());
+        final var pages = new VacuumedPage(Globals.ADMIN_PAGES_PROJECT_NAME, "userProject_userColl", 2, Map.of());
+        final var user = new VacuumedPage("userProject", "userColl", 1, Map.of());
 
         listener.accept(admin);
         listener.accept(pages);

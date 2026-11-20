@@ -48,7 +48,7 @@ public class TransactionTriggerTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -70,7 +70,7 @@ public class TransactionTriggerTest {
     }
 
     private void installTriggerFor(EventType... events) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(events)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
     }
@@ -91,14 +91,14 @@ public class TransactionTriggerTest {
     }
 
     private void save(String id, int value, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, value));
         request.set_id(id);
         processor.processMessage(request, clientId);
     }
 
     private void delete(String id, UUID clientId) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         processor.processMessage(request, clientId);
     }
@@ -124,7 +124,7 @@ public class TransactionTriggerTest {
     }
 
     private void bulkSave(UUID clientId) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(java.util.Arrays.stream(new String[]{"tx-bulk-old", "tx-bulk-new"})
                 .map(id -> document(id, 0)).toList());
         processor.processMessage(request, clientId);

@@ -9,22 +9,22 @@ from mpp.errors import NotFoundError
 
 
 class AsyncSchema:
-    def __init__(self, context: ClientContext, database: str, collection: str) -> None:
+    def __init__(self, context: ClientContext, project: str, collection: str) -> None:
         self._context = context
-        self._database = database
+        self._project = project
         self._collection = collection
 
     async def save(self, schema: Mapping[str, object]) -> tuple[str, ...]:
         encoder = self._context.encoder
         reply = await self._context.channel.send(
-            "SAVE_SCHEMA", encoder.save_schema(self._database, self._collection, encoder.document(schema))
+            "SAVE_SCHEMA", encoder.save_schema(self._project, self._collection, encoder.document(schema))
         )
         return strings(reply.get("warnings"))
 
     async def get(self) -> Document | None:
         try:
             reply = await self._context.channel.send(
-                "GET_SCHEMA", self._context.encoder.get_schema(self._database, self._collection)
+                "GET_SCHEMA", self._context.encoder.get_schema(self._project, self._collection)
             )
         except NotFoundError:
             return None
@@ -32,5 +32,5 @@ class AsyncSchema:
 
     async def delete(self) -> None:
         await self._context.channel.send(
-            "DELETE_SCHEMA", self._context.encoder.delete_schema(self._database, self._collection)
+            "DELETE_SCHEMA", self._context.encoder.delete_schema(self._project, self._collection)
         )

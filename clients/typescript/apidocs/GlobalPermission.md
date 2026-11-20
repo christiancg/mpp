@@ -1,3 +1,3 @@
 # GlobalPermission
 
-A server-wide grant: `CREATE_DATABASE` or `DROP_DATABASE`.
+A server-wide grant: `CREATE_PROJECT` or `DROP_PROJECT`.

@@ -4,7 +4,7 @@ This is everything a client and the server say to each other: framing, authentic
 like, how replies are matched to requests and which errors are safe to retry. After that come every operation, the
 permission model and every error code.
 
-If you only want to use the database from an application, take one of the [client libraries](../clients/README.md),
+If you only want to use MPP from an application, take one of the [client libraries](../clients/README.md),
 which already implement all of this. This page is for writing or debugging a client, or for talking to the server by
 hand. The machine-readable side of it is [`clients/protocol`](../clients/protocol/README.md): the operation, error-code
 and custom-type catalogues generated from the server, and the request and response fixtures every official client is
@@ -93,11 +93,11 @@ every `LISTEN` registration. None of it can be handed to another connection.
 ## Request envelope
 
 A request is one JSON object with a `type` naming the operation (the full list is in
-[`operations.json`](../clients/protocol/operations.json)). Operations on a database carry `databaseName`, operations on
-a collection carry `databaseName` and `collectionName`, and each operation adds its own fields.
+[`operations.json`](../clients/protocol/operations.json)). Operations on a project carry `projectName`, operations on
+a collection carry `projectName` and `collectionName`, and each operation adds its own fields.
 
 ```json
-{"type":"FIND_BY_ID","databaseName":"shop","collectionName":"orders","_id":"o-1"}
+{"type":"FIND_BY_ID","projectName":"shop","collectionName":"orders","_id":"o-1"}
 ```
 
 - Fields the operation doesn't know are ignored.
@@ -234,51 +234,51 @@ a request or reply field, an operation, an error code. It is `1` today. What may
 
 ## Naming rules
 
-- Database and collection names: 3-64 letters, digits, `_` and `-`. `admin` and `admin_pages` are reserved database
+- Project and collection names: 3-64 letters, digits, `_` and `-`. `admin` and `admin_pages` are reserved project
   names and `script_runs` a reserved collection name, in any case (`Admin` is refused too).
 - `_id`: 1-64 letters, digits, `_` and `-`.
 - Indexed field names: 1-64 characters from `A-Z a-z 0-9 _ . -`, where a dot addresses a nested field
   (`address.city`). Other fields can't be indexed but can still be queried, with a scan.
 - Names must differ by more than case, because they end up as file names and some filesystems ignore case.
-  `CREATE_DATABASE`, `CREATE_COLLECTION`, `CREATE_INDEX`, `SAVE_PROCEDURE` and `SAVE_SCHEDULE` answer `409-11` when a
+  `CREATE_PROJECT`, `CREATE_COLLECTION`, `CREATE_INDEX`, `SAVE_PROCEDURE` and `SAVE_SCHEDULE` answer `409-11` when a
   sibling differs from the new name only by case, on every filesystem.
 
 ## Operations
 
-### `LIST_DATABASES`
+### `LIST_PROJECTS`
 ```json
-{"type":"LIST_DATABASES"}
+{"type":"LIST_PROJECTS"}
 ```
-An admin sees every database. Anyone else sees the ones they own or hold any grant on (database, one of its
+An admin sees every project. Anyone else sees the ones they own or hold any grant on (project, one of its
 collections, or a script level other than `NONE`).
 
-### `CREATE_DATABASE`
+### `CREATE_PROJECT`
 ```json
-{"type":"CREATE_DATABASE","databaseName":"my_db"}
+{"type":"CREATE_PROJECT","projectName":"my_project"}
 ```
-The creator becomes its first owner. Refused with `400-41` once the server holds `maxDatabases` databases.
+The creator becomes its first owner. Refused with `400-41` once the server holds `maxProjects` projects.
 
-### `DROP_DATABASE`
+### `DROP_PROJECT`
 ```json
-{"type":"DROP_DATABASE","databaseName":"my_db"}
+{"type":"DROP_PROJECT","projectName":"my_project"}
 ```
-Needs admin or ownership. Drops everything stored with the database, procedures and schedules included.
+Needs admin or ownership. Drops everything stored with the project, procedures and schedules included.
 
 ### `LIST_COLLECTIONS`
 ```json
-{"type":"LIST_COLLECTIONS","databaseName":"my_db"}
+{"type":"LIST_COLLECTIONS","projectName":"my_project"}
 ```
 
 ### `CREATE_COLLECTION`
 ```json
-{"type":"CREATE_COLLECTION","databaseName":"my_db","collectionName":"my_coll"}
+{"type":"CREATE_COLLECTION","projectName":"my_project","collectionName":"my_coll"}
 ```
-Refused with `400-40` once the database holds `maxCollectionsPerDatabase` collections. Creating one that already exists
+Refused with `400-40` once the project holds `maxCollectionsPerProject` collections. Creating one that already exists
 is always allowed.
 
 ### `DROP_COLLECTION`
 ```json
-{"type":"DROP_COLLECTION","databaseName":"my_db","collectionName":"my_coll"}
+{"type":"DROP_COLLECTION","projectName":"my_project","collectionName":"my_coll"}
 ```
 Drops its documents, indexes, schema and triggers.
 
@@ -286,15 +286,15 @@ Drops its documents, indexes, schema and triggers.
 Saves one document. With an `_id` that exists it replaces that document, with one that doesn't it creates it, and
 without an `_id` it creates one under a UUID. The reply carries the `_id` and `inserted`.
 ```json
-{"type":"SAVE","databaseName":"my_db","collectionName":"my_coll","object":{"name":"Alice"}}
-{"type":"SAVE","databaseName":"my_db","collectionName":"my_coll","object":{"_id":"user-1","name":"Alice"}}
+{"type":"SAVE","projectName":"my_project","collectionName":"my_coll","object":{"name":"Alice"}}
+{"type":"SAVE","projectName":"my_project","collectionName":"my_coll","object":{"_id":"user-1","name":"Alice"}}
 ```
 The `_id` may also go beside `object`. When both are given, the one inside `object` wins.
 
 With `"failOnUpdate": true` the save only inserts: if a document with that `_id` exists it is refused with `409-18`
 and nothing is written.
 ```json
-{"type":"SAVE","databaseName":"my_db","collectionName":"my_coll","failOnUpdate":true,"object":{"_id":"user-1","name":"Alice"}}
+{"type":"SAVE","projectName":"my_project","collectionName":"my_coll","failOnUpdate":true,"object":{"_id":"user-1","name":"Alice"}}
 {"type":"SAVE","status":"ERROR","message":"A document with this _id already exists","errorCode":"409-18"}
 ```
 - A refused insert runs no hook, fires no trigger and notifies no `LISTEN`. A schema violation is still reported first,
@@ -309,7 +309,7 @@ the same one an `AGGREGATE` `FILTER` step takes. `object` is merged into each ma
 or replaced and the rest of the document is kept. A nested object replaces the stored one whole, a `null` stores
 `null`, and nothing is removed.
 ```json
-{"type":"SAVE","databaseName":"my_db","collectionName":"my_coll",
+{"type":"SAVE","projectName":"my_project","collectionName":"my_coll",
  "condition":{"conjunctionType":"AND","operators":[
    {"fieldOperatorType":"EQUALS","field":"status","value":"pending"},
    {"fieldOperatorType":"SMALLER_THAN","field":"createdAt","value":1700000000000}]},
@@ -334,12 +334,12 @@ or replaced and the rest of the document is kept. A nested object replaces the s
 Saves several documents (at least one) with the same rules as `SAVE`. The same `_id` twice in one request is `400-3`,
 and a schema violation refuses the whole batch.
 ```json
-{"type":"BULK_SAVE","databaseName":"my_db","collectionName":"my_coll","objects":[{"name":"Alice"},{"_id":"user-2","name":"Bob"}]}
+{"type":"BULK_SAVE","projectName":"my_project","collectionName":"my_coll","objects":[{"name":"Alice"},{"_id":"user-2","name":"Bob"}]}
 ```
 
 ### `FIND_BY_ID`
 ```json
-{"type":"FIND_BY_ID","databaseName":"my_db","collectionName":"my_coll","_id":"user-1"}
+{"type":"FIND_BY_ID","projectName":"my_project","collectionName":"my_coll","_id":"user-1"}
 ```
 Answers `404-2` when there is no such document. Like `AGGREGATE`, it accepts `"dirtyRead": true` to skip the collection
 lock (see [Concurrency & locking](../README.md#concurrency--locking)).
@@ -347,14 +347,14 @@ lock (see [Concurrency & locking](../README.md#concurrency--locking)).
 ### `DELETE`
 Takes either an `_id` or a `condition`. Both, or neither, is `400-1`.
 ```json
-{"type":"DELETE","databaseName":"my_db","collectionName":"my_coll","_id":"user-1"}
+{"type":"DELETE","projectName":"my_project","collectionName":"my_coll","_id":"user-1"}
 ```
 With `_id` it deletes that document and answers `404-2` when there is none.
 
 With `condition` it deletes every matching document. The condition is the same filter operator an
 [`AGGREGATE`](#aggregate) `FILTER` step takes, with the same indexes and limits (`400-27`, `408-6`, `503-20`).
 ```json
-{"type":"DELETE","databaseName":"my_db","collectionName":"my_coll",
+{"type":"DELETE","projectName":"my_project","collectionName":"my_coll",
  "condition":{"conjunctionType":"AND","operators":[
    {"fieldOperatorType":"EQUALS","field":"status","value":"archived"},
    {"fieldOperatorType":"SMALLER_THAN","field":"updatedAt","value":1700000000000}]}}
@@ -378,7 +378,7 @@ top-level fields are `"dirtyRead": true` (see [Concurrency & locking](../README.
 ```json
 {
   "type": "AGGREGATE",
-  "databaseName": "my_db",
+  "projectName": "my_project",
   "collectionName": "my_coll",
   "aggregationSteps": [
     {"type":"FILTER","operator":{"fieldOperatorType":"EQUALS","field":"status","value":"active"}},
@@ -485,7 +485,7 @@ total at most `maxEntrySize` bytes. Past either the pipeline stops with `400-28`
 
 ### Script operators (SimpleJS in the pipeline)
 
-A pipeline can run JavaScript in three places. All three need `scriptsEnabled` and a script grant on the database
+A pipeline can run JavaScript in three places. All three need `scriptsEnabled` and a script grant on the project
 (admin, owner or `scriptPermissions` of at least `RUN`). A `READ` grant isn't enough. They are refused inside a
 `LISTEN` (`400-19`).
 
@@ -566,7 +566,7 @@ and only applies to `AGGREGATE`. In analyze mode an empty result is `OK` with th
     "indexUsed": true,
     "indexesUsed": ["status"],
     "documentsScanned": 42,
-    "locksAcquired": ["my_db|my_coll", "my_db|my_coll|status"],
+    "locksAcquired": ["my_project|my_coll", "my_project|my_coll|status"],
     "suggestions": []
   }
 }
@@ -584,8 +584,8 @@ A pipeline with script operators also reports `scriptInvocations` and `scriptMil
 
 ### `CREATE_INDEX`
 ```json
-{"type":"CREATE_INDEX","databaseName":"my_db","collectionName":"my_coll","fieldName":"email"}
-{"type":"CREATE_INDEX","databaseName":"my_db","collectionName":"my_coll","fieldNames":["email","status","age"]}
+{"type":"CREATE_INDEX","projectName":"my_project","collectionName":"my_coll","fieldName":"email"}
+{"type":"CREATE_INDEX","projectName":"my_project","collectionName":"my_coll","fieldNames":["email","status","age"]}
 ```
 `fieldName` and `fieldNames` can be combined. Every field that isn't indexed yet is built in one pass over the
 collection, and fields already indexed are skipped (the message says which). If every field is already indexed it
@@ -597,24 +597,24 @@ collection is `404-11` (`503-10` on a cluster node it hasn't reached yet).
 
 ### `DROP_INDEX`
 ```json
-{"type":"DROP_INDEX","databaseName":"my_db","collectionName":"my_coll","fieldName":"email"}
+{"type":"DROP_INDEX","projectName":"my_project","collectionName":"my_coll","fieldName":"email"}
 ```
 
 ### `REINDEX`
 Rebuilds field indexes from the documents, for when an index went stale. Without `fieldNames` it rebuilds every index
 of the collection. Needs `READ_WRITE`.
 ```json
-{"type":"REINDEX","databaseName":"my_db","collectionName":"my_coll","fieldNames":["email"]}
+{"type":"REINDEX","projectName":"my_project","collectionName":"my_coll","fieldNames":["email"]}
 {"type":"REINDEX","status":"OK","message":"Rebuilt 1 index(es)","rebuiltFields":["email"]}
 ```
-A named field without an index is `404-6`. Admin databases can't be reindexed. In a cluster every node rebuilds, and
+A named field without an index is `404-6`. Admin projects can't be reindexed. In a cluster every node rebuilds, and
 the answer is `503-3` when a majority didn't confirm (the rebuild stands where it ran).
 
 `"primaryKey": true` also rebuilds the primary-key index from the page files, then the page metadata. It's the repair
 for a primary-key index that can't be read (every request on the collection fails until then) or disagrees with the
 pages.
 ```json
-{"type":"REINDEX","databaseName":"my_db","collectionName":"my_coll","primaryKey":true}
+{"type":"REINDEX","projectName":"my_project","collectionName":"my_coll","primaryKey":true}
 {"type":"REINDEX","status":"OK","message":"Rebuilt the primary-key index (2 entries)","rebuiltFields":[],"primaryKeyEntries":2,"unversionedEntries":0}
 ```
 - Each entry keeps the write version the old index had for it. An id the old index didn't know, or every id when it
@@ -632,7 +632,7 @@ document must comply (see [Schema validation](#schema-validation)). Needs admin 
 ```json
 {
   "type": "SAVE_SCHEMA",
-  "databaseName": "my_db",
+  "projectName": "my_project",
   "collectionName": "my_coll",
   "schema": {
     "type": "object",
@@ -659,13 +659,13 @@ document must comply (see [Schema validation](#schema-validation)). Needs admin 
 ### `DELETE_SCHEMA`
 Removes the collection's schema. Answers `OK` whether or not there was one. Needs admin or ownership.
 ```json
-{"type":"DELETE_SCHEMA","databaseName":"my_db","collectionName":"my_coll"}
+{"type":"DELETE_SCHEMA","projectName":"my_project","collectionName":"my_coll"}
 ```
 
 ### `GET_SCHEMA`
 Returns the schema as it was saved. Needs `READ`.
 ```json
-{"type":"GET_SCHEMA","databaseName":"my_db","collectionName":"my_coll"}
+{"type":"GET_SCHEMA","projectName":"my_project","collectionName":"my_coll"}
 {"type":"GET_SCHEMA","status":"OK","message":"Ok","schema":{"type":"object","required":["_id"]}}
 ```
 Answers `404-12` when there is no schema, `404-11` when the collection doesn't exist, and `503-11` when the stored
@@ -681,7 +681,7 @@ It takes the same `aggregationSteps` as `AGGREGATE` and needs `READ` on every co
 ```json
 {
   "type": "LISTEN",
-  "databaseName": "my_db",
+  "projectName": "my_project",
   "collectionName": "my_coll",
   "aggregationSteps": [
     {"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "status", "value": "active"}}
@@ -695,7 +695,7 @@ The reply has `"isUpdate": false`, and every push `"isUpdate": true`:
 {"type":"LISTEN","status":"OK","message":"Query results updated","listenId":"550e8400-e29b-41d4-a716-446655440000",
  "results":["..."],"resultHash":"b7c2...f308","isUpdate":true}
 ```
-When the server ends a listen on its own, because a collection it reads or its database was dropped or the user can no
+When the server ends a listen on its own, because a collection it reads or its project was dropped or the user can no
 longer read it, it pushes one last frame and nothing after it:
 ```json
 {"type":"LISTEN","status":"NOT_FOUND","errorCode":"410-1","message":"The listen ended: a collection it reads was dropped",
@@ -796,14 +796,14 @@ the right outcome (see [docs/clustering.md](clustering.md)).
 A missing `dtxId` or another `decision` is `400-1`.
 
 ### `RUN_SCRIPT`
-Runs a JavaScript program inside one database, the request's `databaseName`. The engine and everything a script can
+Runs a JavaScript program inside one project, the request's `projectName`. The engine and everything a script can
 use are described in [docs/simplejs.md](simplejs.md). Needs admin, ownership or `scriptPermissions` of at least `RUN`
-on the database, and answers `403-2` when the server runs with `scriptsEnabled=false`.
+on the project, and answers `403-2` when the server runs with `scriptsEnabled=false`.
 
 ```json
 {
   "type": "RUN_SCRIPT",
-  "databaseName": "mydb",
+  "projectName": "myproject",
   "script": "import db from \"db\";\nimport args from \"args\";\nconst u = db.findById(db.name, \"users\", args.userId);\nconsole.log(`found ${u._id}`);\nreturn { name: u.name };",
   "args": { "userId": "u1" }
 }
@@ -825,7 +825,7 @@ on the database, and answers `403-2` when the server runs with `scriptsEnabled=f
 }
 ```
 
-- `script` is required. `args` is any object, read with `import args from "args"`. `db.name` is the database the
+- `script` is required. `args` is any object, read with `import args from "args"`. `db.name` is the project the
   script runs in.
 - `result` is the top-level `return`, else `export default`, else an object of the named exports, else `null`. A
   returned promise is awaited, and one that never settles fails the run with `400-20`.
@@ -836,13 +836,13 @@ on the database, and answers `403-2` when the server runs with `scriptsEnabled=f
 - `runId` identifies the run, so a slow one can be found with [`LIST_SCRIPTS`](#list_scripts-admin-only) and stopped
   with [`CANCEL_SCRIPT`](#cancel_script-admin-only).
 - Every operation the script sends is authorized again against the caller's own permissions, and the schema still
-  applies to its writes. A script can't leave its database.
+  applies to its writes. A script can't leave its project.
 - The `db` module can `findById`, `aggregate`, `cursor`, `save`, `bulkSave`, `delete`, `listCollections`,
-  `listDatabases` and run a `transaction`. Nothing else is reachable: no DDL, no user management. A failed operation
+  `listProjects` and run a `transaction`. Nothing else is reachable: no DDL, no user management. A failed operation
   throws a catchable `Error`.
-- A script can import any stored procedure of its database with `import ... from "procedures/<name>"`.
+- A script can import any stored procedure of its project with `import ... from "procedures/<name>"`.
 - `fetch` reaches public hosts only, unless the operator lists others in `scriptFetchAllowlist`.
-- Finished runs are recorded in the database's `script_runs` collection, which you can query with `AGGREGATE` (see
+- Finished runs are recorded in the project's `script_runs` collection, which you can query with `AGGREGATE` (see
   [docs/simplejs.md](simplejs.md) for what is recorded).
 - In a cluster the script may run on another node, chosen by load, and its operations are routed to each collection's
   owner.
@@ -853,7 +853,7 @@ Errors:
 |---|---|
 | `403-2` | Scripting is disabled |
 | `403-1` | The caller may not run scripts here |
-| `404-4` | Unknown database |
+| `404-4` | Unknown project |
 | `400-10` | Source over `scriptMaxSourceBytes` |
 | `400-9` | The script threw or didn't parse; `message` is `"<ErrorName>: <message>"` |
 | `400-11` | Instruction or depth budget exceeded |
@@ -863,19 +863,19 @@ Errors:
 | `400-20` | The returned promise never settled |
 | `408-1` | Over `scriptTimeoutMs` |
 | `408-2` | Cancelled |
-| `503-6` | A concurrency limit refused it; the message says which (`node`, `user` or `database`). Nothing ran |
+| `503-6` | A concurrency limit refused it; the message says which (`node`, `user` or `project`). Nothing ran |
 | `503-7` | It was placed on another node that never reported back. It isn't run again here, because it may have run there |
 | `409-6` | Sent with a transaction open |
 
 ### `SAVE_PROCEDURE`
-Stores a named script in a database so it can be called by name. Needs admin, ownership or `scriptPermissions` of
+Stores a named script in a project so it can be called by name. Needs admin, ownership or `scriptPermissions` of
 `MANAGE`. The source is parsed when it's saved, so a broken procedure is refused here and not on somebody's first call.
 Saving an existing name replaces it and raises its `version`.
 
 ```json
 {
   "type": "SAVE_PROCEDURE",
-  "databaseName": "mydb",
+  "projectName": "myproject",
   "name": "recalcTotals",
   "script": "import db from \"db\";\nimport args from \"args\";\nconst o = db.findById(db.name, \"orders\", args.id);\nreturn o.qty * o.price;",
   "description": "optional",
@@ -897,20 +897,20 @@ Saving an existing name replaces it and raises its `version`.
   user, an owner or an admin can change it (`403-4`). Otherwise that user's trigger would run code they never saw.
 
 Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` bound by another user's trigger or schedule, `404-4`
-unknown database, `400-1` an invalid name (same rules as a collection) or an empty script, `400-10` source too big,
+unknown project, `400-1` an invalid name (same rules as a collection) or an empty script, `400-10` source too big,
 `400-13` doesn't parse (the message has the line and column), `400-18` an import that doesn't resolve, `400-34` more
-than `maxProceduresPerDatabase`, `409-8` version conflict.
+than `maxProceduresPerProject`, `409-8` version conflict.
 
 ### `DELETE_PROCEDURE`
 ```json
-{"type":"DELETE_PROCEDURE","databaseName":"mydb","name":"recalcTotals"}
+{"type":"DELETE_PROCEDURE","projectName":"myproject","name":"recalcTotals"}
 ```
 Answers `OK` whether or not the procedure existed. Refused with `400-14` while a trigger uses it and `400-16` while a
 schedule does (the message names it), and with `403-4` under the same rule as `SAVE_PROCEDURE`.
 
 ### `LIST_PROCEDURES`
 ```json
-{"type":"LIST_PROCEDURES","databaseName":"mydb","includeSource":false}
+{"type":"LIST_PROCEDURES","projectName":"myproject","includeSource":false}
 ```
 ```json
 {
@@ -922,14 +922,14 @@ schedule does (the message names it), and with `403-4` under the same rule as `S
   ]
 }
 ```
-Needs `READ` on the database. `sourceHash` only shows for callers who could read the source (`MANAGE`, owner or admin).
+Needs `READ` on the project. `sourceHash` only shows for callers who could read the source (`MANAGE`, owner or admin).
 `"includeSource": true` adds the `source` and needs the same, or it answers `403-6`.
 
 ### `CALL_PROCEDURE`
 Runs a stored procedure. Same permission as [`RUN_SCRIPT`](#run_script), same sandbox, same reply and the same errors,
 plus `404-8` when the procedure doesn't exist or is disabled.
 ```json
-{"type":"CALL_PROCEDURE","databaseName":"mydb","procedureName":"recalcTotals","args":{"id":"o1"}}
+{"type":"CALL_PROCEDURE","projectName":"myproject","procedureName":"recalcTotals","args":{"id":"o1"}}
 {"type":"CALL_PROCEDURE","status":"OK","message":"Procedure executed successfully","result":42,"logs":[],"logsTruncated":false,"runId":"3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83"}
 ```
 The procedure runs with the caller's permissions, so calling one never grants more than the caller already has.
@@ -943,7 +943,7 @@ node that doesn't answer is left out (and logged) instead of failing the listing
 ```json
 {"type":"LIST_SCRIPTS","status":"OK","message":"Ok","scripts":[
   {"runId":"3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83","node":"10.0.0.2:8990","kind":"CALL_PROCEDURE",
-   "database":"shop","name":"reprice","username":"alice","ageMs":18244}]}
+   "project":"shop","name":"reprice","username":"alice","ageMs":18244}]}
 ```
 `kind` is `RUN_SCRIPT`, `CALL_PROCEDURE`, `TRIGGER` or `SCHEDULE`. `name` is the procedure, trigger or schedule, `null`
 for `RUN_SCRIPT`. `username` is whose permissions the run has (the caller, or the definer of a trigger or schedule), and
@@ -968,7 +968,7 @@ Lists the trigger runs still recorded across the cluster: pending ones, and dead
 ```
 ```json
 {"type":"LIST_TRIGGER_RUNS","status":"OK","message":"Ok","runs":[
-  {"runId":"8f0e...","node":"10.0.0.4:8990","status":"DEAD","database":"shop","collection":"orders",
+  {"runId":"8f0e...","node":"10.0.0.4:8990","status":"DEAD","project":"shop","collection":"orders",
    "trigger":"auditOrders","procedure":"audit","event":"UPDATED","attempts":3,
    "lastError":"TypeError: Cannot read properties of null","ageMs":91234,"nextAttemptAt":0}]}
 ```
@@ -989,13 +989,13 @@ Replays or discards one recorded trigger run, wherever it lives.
 ### `SAVE_TRIGGER`
 Runs a stored procedure around writes to a collection: after they commit (the default) or before, where it can refuse
 or rewrite the document. Needs admin, ownership, or `MANAGE` together with `READ_WRITE` on the collection (through its
-own collection grant if it has one, otherwise the database grant), and the same goes for `DELETE_TRIGGER` and
+own collection grant if it has one, otherwise the project grant), and the same goes for `DELETE_TRIGGER` and
 `TEST_TRIGGER`. Triggers only fire when the server runs with `triggersEnabled=true`, but they can be managed either way.
 
 ```json
 {
   "type": "SAVE_TRIGGER",
-  "databaseName": "mydb",
+  "projectName": "myproject",
   "collectionName": "orders",
   "name": "auditWrites",
   "events": ["CREATED", "UPDATED", "DELETED"],
@@ -1015,19 +1015,19 @@ own collection grant if it has one, otherwise the database grant), and the same 
 - An after trigger runs asynchronously once the write has committed, so it can't refuse or change the write, and its
   failures never reach the writer.
 - It runs with the permissions of whoever saved it (its `definer`), not the writer's. Saving it again makes the saving
-  user the definer. If the definer is deleted or loses script `RUN` on the database or `READ` on the collection, the
+  user the definer. If the definer is deleted or loses script `RUN` on the project or `READ` on the collection, the
   trigger is disabled (`LIST_TRIGGERS` shows `enabled: false` and a `disabledReason`) until it's saved again.
 - `mode` is `document` (one run per document, the default) or `batch` (one run per `BULK_SAVE`, or per collection and
   event for a transaction).
 - `allowCascade` defaults to `false`, so writes made by a trigger fire nothing. With it on, a chain stops at
   `triggerMaxDepth`.
 - A write inside a transaction fires when the transaction commits, so a rolled-back write fires nothing.
-- The procedure gets `{event, database, collection, id, document, trigger, actingUser, definer, firedAt, depth}` as its
+- The procedure gets `{event, project, collection, id, document, trigger, actingUser, definer, firedAt, depth}` as its
   `args`. In `batch` mode `documents` replaces `id` and `document`. `firedAt` stays the same on every retry.
 - A failed run is retried with a growing backoff up to `triggerMaxAttempts`, then kept as a dead run for
   [`LIST_TRIGGER_RUNS`](#list_trigger_runs-admin-only) and [`RESOLVE_TRIGGER_RUN`](#resolve_trigger_run-admin-only). The
   server log has its stack.
-- Dropping a collection or database discards its pending and dead runs.
+- Dropping a collection or project discards its pending and dead runs.
 - There's no dry run for an after trigger. Keep the logic in a procedure and test it with
   [`CALL_PROCEDURE`](#call_procedure).
 
@@ -1053,7 +1053,7 @@ export default function (document, context) {
 ```
 
 The procedure is called once per document with `(document, context)`, where `context` is
-`{event, database, collection, trigger, actingUser, firedAt, id}`. What it returns decides the write:
+`{event, project, collection, trigger, actingUser, firedAt, id}`. What it returns decides the write:
 
 | Returned | Outcome |
 |---|---|
@@ -1084,7 +1084,7 @@ permission as `SAVE_TRIGGER`. It runs on the node you're connected to.
 ```json
 {
   "type": "TEST_TRIGGER",
-  "databaseName": "mydb",
+  "projectName": "myproject",
   "collectionName": "orders",
   "name": "normalizeOrder",
   "event": "CREATED",
@@ -1104,17 +1104,17 @@ unknown or disabled procedure, `400-14` an unknown event, an event the trigger d
 
 ### `DELETE_TRIGGER`
 ```json
-{"type":"DELETE_TRIGGER","databaseName":"mydb","collectionName":"orders","name":"auditWrites"}
+{"type":"DELETE_TRIGGER","projectName":"myproject","collectionName":"orders","name":"auditWrites"}
 ```
 Answers `OK` whether or not the trigger existed. Only its definer, an owner or an admin can delete or replace a trigger
 someone else installed (`403-5`).
 
 ### `LIST_TRIGGERS`
 ```json
-{"type":"LIST_TRIGGERS","databaseName":"mydb","collectionName":"orders"}
+{"type":"LIST_TRIGGERS","projectName":"myproject","collectionName":"orders"}
 ```
-Without `collectionName` it lists every trigger of the database. Each entry has its `collectionName` and `definer`.
-Needs `READ` on the database.
+Without `collectionName` it lists every trigger of the project. Each entry has its `collectionName` and `definer`.
+Needs `READ` on the project.
 
 ### `SAVE_SCHEDULE`
 Runs a stored procedure on a clock. Needs admin, ownership or `MANAGE`. A schedule touches no collection by itself, so
@@ -1125,7 +1125,7 @@ existing name replaces it and raises its `version`.
 ```json
 {
   "type": "SAVE_SCHEDULE",
-  "databaseName": "mydb",
+  "projectName": "myproject",
   "name": "nightlyRollup",
   "procedureName": "rollup",
   "cron": "0 3 * * *",
@@ -1159,21 +1159,21 @@ existing name replaces it and raises its `version`.
 - When a run can't get a script slot, that occurrence is skipped and recorded as `SKIPPED` in `script_runs`.
 
 Errors: `403-2` schedules disabled, `403-1` not allowed, `403-5` replacing another user's schedule, `404-4` unknown
-database, `404-8` unknown procedure, `400-1` an invalid name, `400-16` neither or both of `cron` and `intervalMs`, a bad
-cron or a negative `timeoutMs`, `400-17` more than `scheduleMaxPerDatabase`, `400-29` `timeoutMs` over
-`scheduleMaxTimeoutMs`, `400-33` more than `scheduleMaxTotalPerUser` for the user across every database, `400-35`
+project, `404-8` unknown procedure, `400-1` an invalid name, `400-16` neither or both of `cron` and `intervalMs`, a bad
+cron or a negative `timeoutMs`, `400-17` more than `scheduleMaxPerProject`, `400-29` `timeoutMs` over
+`scheduleMaxTimeoutMs`, `400-33` more than `scheduleMaxTotalPerUser` for the user across every project, `400-35`
 firing more often than `scheduleMinIntervalMs` allows, `409-8` version conflict.
 
 ### `DELETE_SCHEDULE`
 ```json
-{"type":"DELETE_SCHEDULE","databaseName":"mydb","name":"nightlyRollup"}
+{"type":"DELETE_SCHEDULE","projectName":"myproject","name":"nightlyRollup"}
 ```
 Answers `OK` whether or not the schedule existed. Only its definer, an owner or an admin can delete someone else's
 (`403-5`).
 
 ### `LIST_SCHEDULES`
 ```json
-{"type":"LIST_SCHEDULES","databaseName":"mydb"}
+{"type":"LIST_SCHEDULES","projectName":"myproject"}
 ```
 ```json
 {
@@ -1187,7 +1187,7 @@ Answers `OK` whether or not the schedule existed. Only its definer, an owner or 
   ]
 }
 ```
-Needs `READ` on the database. `args` is left out unless the request sets `"includeArgs": true`, which needs `MANAGE`,
+Needs `READ` on the project. `args` is left out unless the request sets `"includeArgs": true`, which needs `MANAGE`,
 ownership or admin (`403-6` otherwise). `nextRunAt` and `owner` are the answering node's view, and `owner` is missing
 when clustering is off.
 
@@ -1261,13 +1261,13 @@ are slowed down, never locked out:
   "username": "bob",
   "password": "secret1234",
   "admin": false,
-  "globalPermissions": ["CREATE_DATABASE"],
-  "databasePermissions": {"ordersDb": "READ_WRITE"},
-  "collectionPermissions": {"analyticsDb|events": "READ"},
-  "scriptPermissions": {"ordersDb": "MANAGE"}
+  "globalPermissions": ["CREATE_PROJECT"],
+  "projectPermissions": {"ordersProject": "READ_WRITE"},
+  "collectionPermissions": {"analyticsProject|events": "READ"},
+  "scriptPermissions": {"ordersProject": "MANAGE"}
 }
 ```
-Every permission field is optional. `collectionPermissions` keys are `database|collection`, and `scriptPermissions`
+Every permission field is optional. `collectionPermissions` keys are `project|collection`, and `scriptPermissions`
 values are `NONE`, `RUN` or `MANAGE`. See [Permission model](#permission-model).
 
 ### `DELETE_USER` (admin only)
@@ -1284,9 +1284,9 @@ Replaces all of the user's permissions. The last admin can't be demoted (`400-5`
   "username": "bob",
   "admin": false,
   "globalPermissions": [],
-  "databasePermissions": {"ordersDb": "READ"},
+  "projectPermissions": {"ordersProject": "READ"},
   "collectionPermissions": {},
-  "scriptPermissions": {"ordersDb": "RUN"}
+  "scriptPermissions": {"ordersProject": "RUN"}
 }
 ```
 
@@ -1308,57 +1308,57 @@ A change signs the user out everywhere else: their other connections get `401-1`
 connection that changed its own password stays signed in, and when an admin changes someone's password every
 connection of that user is signed out. In a cluster the other nodes do the same.
 
-### `SET_DATABASE_OWNERS` (admin only)
-Replaces the owners of a database. Every user must exist.
+### `SET_PROJECT_OWNERS` (admin only)
+Replaces the owners of a project. Every user must exist.
 ```json
-{"type":"SET_DATABASE_OWNERS","databaseName":"my_db","owners":["Alice","bob"]}
+{"type":"SET_PROJECT_OWNERS","projectName":"my_project","owners":["Alice","bob"]}
 ```
 
-### `GET_DATABASE_STATS`
-Returns memory use, totals, and a breakdown per database and collection.
+### `GET_PROJECT_STATS`
+Returns memory use, totals, and a breakdown per project and collection.
 ```json
-{"type":"GET_DATABASE_STATS"}
+{"type":"GET_PROJECT_STATS"}
 ```
 ```json
-{"type":"GET_DATABASE_STATS","status":"OK","stats":{
+{"type":"GET_PROJECT_STATS","status":"OK","stats":{
   "memory":{"heapUsedBytes":123456789,"heapMaxBytes":6442450944,"heapCommittedBytes":268435456,
     "userCacheBytes":2097152,"residentTombstoneBytes":0,"maxMemoryBytes":536870912,
     "cachingDisabled":false,"cacheUnlimited":false},
   "triggers":{"enabled":true,"fired":128,"failed":0,"dropped":0,"queued":0},
   "scripts":{"routingEnabled":true,"running":2,"capacity":16,"available":14,"rejected":0,"waited":7,
     "forwarded":118,"forwardFallbacks":3,"outcomeUnknown":0,"localityWeight":50,"localityPreferred":47,"cancelled":1},
-  "totals":{"userCount":3,"databaseCount":1,"collectionCount":2,"indexCount":1,"pageCount":4,
+  "totals":{"userCount":3,"projectCount":1,"collectionCount":2,"indexCount":1,"pageCount":4,
     "entryCount":5000,"sizeBytes":2560000},
-  "databases":[{"name":"my_db","collectionCount":2,"indexCount":1,"pageCount":4,"entryCount":5000,"sizeBytes":2560000,
+  "projects":[{"name":"my_project","collectionCount":2,"indexCount":1,"pageCount":4,"entryCount":5000,"sizeBytes":2560000,
     "collections":[{"name":"my_coll","indexCount":1,"indexes":["email"],"pageCount":2,"entryCount":3000,
       "sizeBytes":1536000}]}]}}
 ```
 `memory.userCacheBytes` is the cache size `maxMemory` is enforced against, and the `heap*` fields are the JVM's own.
 
 Any authenticated user can send it, and the answer only covers what they can see. An admin gets everything. Anyone
-else gets the databases [`LIST_DATABASES`](#list_databases) shows them, the collections in them they own or can read,
+else gets the projects [`LIST_PROJECTS`](#list_projects) shows them, the collections in them they own or can read,
 and `totals` over that, without `userCount`. The node-wide sections (`memory`, `inDoubtTransactions`, `triggers`,
 `schedules`, `scripts`) are for admins only.
 
 ### Snapshots (`START_SNAPSHOT`, `READ_SNAPSHOT`, `RELEASE_SNAPSHOT`)
 
-A snapshot is a consistent view of a database that stays readable while writes go on. It's what
+A snapshot is a consistent view of a project that stays readable while writes go on. It's what
 [`--dump`](../README.md#client-shell-exec-dumprestore) uses. Any client may send these, but the
 [client libraries](../README.md#client-libraries) don't expose them.
 
-`START_SNAPSHOT` needs `READ` on the database and covers the collections the user can read (all of them, or those in
+`START_SNAPSHOT` needs `READ` on the project and covers the collections the user can read (all of them, or those in
 `collectionNames`). It waits at most `transactionLockTimeoutMs` for a point between transactions and answers `409-5`
 past it, or `503-18` when a committed transaction is still being applied.
 ```json
-{"type":"START_SNAPSHOT","databaseName":"shop","collectionNames":["orders","customers"]}
+{"type":"START_SNAPSHOT","projectName":"shop","collectionNames":["orders","customers"]}
 {"type":"START_SNAPSHOT","status":"OK","message":"Ok","errorCode":null,"snapshotId":"6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10","collectionNames":["customers","orders"]}
 ```
 `READ_SNAPSHOT` pages one collection in `_id` order, `limit` (1 to 100000) ids at a time after `afterId` (`null` for the
 first page). A page can hold fewer documents than `limit` while `done` is `false`; the next page starts after `lastId`.
 ```json
-{"type":"READ_SNAPSHOT","databaseName":"shop","collectionName":"orders","snapshotId":"6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10","afterId":null,"limit":1000}
+{"type":"READ_SNAPSHOT","projectName":"shop","collectionName":"orders","snapshotId":"6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10","afterId":null,"limit":1000}
 {"type":"READ_SNAPSHOT","status":"OK","message":"Ok","errorCode":null,"results":[{"_id":"o-1","total":12}],"lastId":"o-1","done":false}
-{"type":"RELEASE_SNAPSHOT","databaseName":"shop","snapshotId":"6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10"}
+{"type":"RELEASE_SNAPSHOT","projectName":"shop","snapshotId":"6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10"}
 ```
 - A snapshot belongs to the connection that opened it. Another connection's id answers `404-13`.
 - It's released by `RELEASE_SNAPSHOT`, by closing the connection, by not reading it for `snapshotIdleTimeoutMs`
@@ -1388,7 +1388,7 @@ How much comes back depends on who asks:
   `expectedSize` when clustering is on.
   ```json
   {"type":"SERVER_INFO","status":"OK","message":"Ok","server":{"state":"READY","version":"0.1.0",
-    "protocolVersion":1,"storageFormatVersion":1,"startedAtMs":1762790400000,"uptimeMs":5231,
+    "protocolVersion":2,"storageFormatVersion":2,"startedAtMs":1762790400000,"uptimeMs":5231,
     "node":{"clusterEnabled":true,"nodeId":"n1","aliveMembers":3,"expectedSize":3,"syncWrites":true,"tlsEnabled":false}}}
   ```
 
@@ -1413,32 +1413,32 @@ Returns the users and their permissions, never their password hashes. `aggregati
   ]
 }
 ```
-Each user has `_id` (the username), `admin`, `globalPermissions`, `databasePermissions`, `collectionPermissions`,
-`scriptPermissions` and `ownedDatabases`, so for example a `FILTER` on `ownedDatabases CONTAINS "mydb"` finds the
-owners of a database. No match answers `404-5`.
+Each user has `_id` (the username), `admin`, `globalPermissions`, `projectPermissions`, `collectionPermissions`,
+`scriptPermissions` and `ownedProjects`, so for example a `FILTER` on `ownedProjects CONTAINS "myproject"` finds the
+owners of a project. No match answers `404-5`.
 
 ## Permission model
 
 | Permission | Grants |
 |---|---|
 | `admin` flag | Everything |
-| Database ownership | Everything in that database, including dropping it |
-| `globalPermissions` | `CREATE_DATABASE`, the right to create databases |
-| `databasePermissions` | `READ` or `READ_WRITE` on every collection of a database |
-| `collectionPermissions` | `READ` or `READ_WRITE` on one `database\|collection` |
-| `scriptPermissions` | Per database: `NONE`, `RUN` or `MANAGE` |
+| Project ownership | Everything in that project, including dropping it |
+| `globalPermissions` | `CREATE_PROJECT`, the right to create projects |
+| `projectPermissions` | `READ` or `READ_WRITE` on every collection of a project |
+| `collectionPermissions` | `READ` or `READ_WRITE` on one `project\|collection` |
+| `scriptPermissions` | Per project: `NONE`, `RUN` or `MANAGE` |
 
-Ownership wins over the data grants. A `collectionPermissions` entry replaces the database grant for that collection,
-so it can widen it or narrow it: a database `READ_WRITE` with a `READ` entry for one collection leaves that collection
-read-only. A collection without its own entry uses the database grant. `READ_WRITE` includes `READ`. There's no way to
+Ownership wins over the data grants. A `collectionPermissions` entry replaces the project grant for that collection,
+so it can widen it or narrow it: a project `READ_WRITE` with a `READ` entry for one collection leaves that collection
+read-only. A collection without its own entry uses the project grant. `READ_WRITE` includes `READ`. There's no way to
 deny reads on a single collection.
 
 | Needs | Operations |
 |---|---|
 | `READ` | `FIND_BY_ID`, `AGGREGATE`, `LIST_COLLECTIONS`, `GET_SCHEMA`, `LISTEN`, `LIST_PROCEDURES`, `LIST_TRIGGERS`, `LIST_SCHEDULES`, `START_SNAPSHOT` |
 | `READ_WRITE` | `SAVE`, `BULK_SAVE`, `DELETE`, `CREATE_COLLECTION`, `DROP_COLLECTION`, `CREATE_INDEX`, `DROP_INDEX`, `REINDEX` |
-| Admin or ownership | `DROP_DATABASE`, `SAVE_SCHEMA`, `DELETE_SCHEMA` |
-| Any authenticated user | `LIST_DATABASES`, `GET_DATABASE_STATS` (both filtered to what the user can see), `START_TRANSACTION`, `COMMIT_TRANSACTION`, `ROLLBACK_TRANSACTION`, `SET_PASSWORD` for their own password |
+| Admin or ownership | `DROP_PROJECT`, `SAVE_SCHEMA`, `DELETE_SCHEMA` |
+| Any authenticated user | `LIST_PROJECTS`, `GET_PROJECT_STATS` (both filtered to what the user can see), `START_TRANSACTION`, `COMMIT_TRANSACTION`, `ROLLBACK_TRANSACTION`, `SET_PASSWORD` for their own password |
 
 A `JOIN` also needs `READ` on the joined collection, and a pipeline with a script operator also needs script `RUN`.
 Inside a transaction every operation is checked on its own, so a `READ` user can open one but not write in it. Because
@@ -1453,7 +1453,7 @@ also stops the user from creating it.
 | `RUN` | [`RUN_SCRIPT`](#run_script), [`CALL_PROCEDURE`](#call_procedure) and script operators in a pipeline |
 | `MANAGE` | Everything `RUN` allows, plus [`SAVE_PROCEDURE`](#save_procedure), [`DELETE_PROCEDURE`](#delete_procedure), [`SAVE_TRIGGER`](#save_trigger), [`DELETE_TRIGGER`](#delete_trigger), [`TEST_TRIGGER`](#test_trigger), [`SAVE_SCHEDULE`](#save_schedule) and [`DELETE_SCHEDULE`](#delete_schedule). The trigger operations also need `READ_WRITE` on the collection |
 
-Admins and owners have `MANAGE` on the databases they reach. `true` is read as `RUN` and `false` as `NONE`; any other
+Admins and owners have `MANAGE` on the projects they reach. `true` is read as `RUN` and `false` as `NONE`; any other
 value is `400-1`.
 
 Installing code is its own level, separate from `READ_WRITE`, because triggers and schedules run with their installer's
@@ -1469,7 +1469,7 @@ between two steps. They only work when the server was started with `faultInjecti
 otherwise. All three are admin only, act on the node you're connected to and are refused inside a transaction.
 
 A fault is armed at a named point and fires once, the first time a thread reaches that point with a matching subject.
-The subject is `<db>|<collection>` except where the table says otherwise.
+The subject is `<project>|<collection>` except where the table says otherwise.
 
 | Point | Fires when |
 |---|---|
@@ -1546,7 +1546,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `400-14` | `ERROR` |  | The trigger definition isn't valid, or a trigger still uses the procedure |
 | `400-15` | `ERROR` |  | Script result is too big |
 | `400-16` | `ERROR` |  | The schedule definition isn't valid, or a schedule still uses the procedure |
-| `400-17` | `ERROR` |  | The database has the maximum number of schedules |
+| `400-17` | `ERROR` |  | The project has the maximum number of schedules |
 | `400-18` | `ERROR` |  | A procedure imports a `procedures/<name>` that doesn't exist or is disabled |
 | `400-19` | `ERROR` |  | Script operators aren't allowed in a `LISTEN` |
 | `400-20` | `ERROR` |  | The script's result promise never settled |
@@ -1563,14 +1563,14 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `400-31` | `ERROR` |  | A schema regular expression exceeds `schemaMaxPatternLength` |
 | `400-32` | `ERROR` |  | The collection has the maximum number of triggers |
 | `400-33` | `ERROR` |  | The user has the maximum number of schedules |
-| `400-34` | `ERROR` |  | The database has the maximum number of procedures |
+| `400-34` | `ERROR` |  | The project has the maximum number of procedures |
 | `400-35` | `ERROR` |  | The schedule fires more often than `scheduleMinIntervalMs` allows |
 | `400-36` | `ERROR` |  | The aggregation built more than `aggregateMaxResultBytes` |
 | `400-37` | `ERROR` |  | The `LISTEN` request exceeds `listenMaxRequestBytes` |
 | `400-38` | `ERROR` |  | The user already has `maxListensPerUser` listens |
 | `400-39` | `ERROR` |  | The schema has more than `schemaMaxPatterns` regular expressions |
-| `400-40` | `ERROR` |  | The database has the maximum number of collections |
-| `400-41` | `ERROR` |  | The server has the maximum number of databases |
+| `400-40` | `ERROR` |  | The project has the maximum number of collections |
+| `400-41` | `ERROR` |  | The server has the maximum number of projects |
 | `400-42` | `ERROR` |  | The collection has the maximum number of indexes |
 | `400-43` | `ERROR` |  | The command isn't valid (not JSON, unknown `type`, too dense, too deep, a bad value or field); the connection stays open |
 | `400-44` | `ERROR` |  | The delete condition matches more than `deleteMaxMatches` documents; nothing was deleted |
@@ -1588,7 +1588,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `404-1` | `NOT_FOUND` |  | User not found |
 | `404-2` | `NOT_FOUND` |  | Entry not found |
 | `404-3` | `NOT_FOUND` |  | No results |
-| `404-4` | `NOT_FOUND` |  | Database not found |
+| `404-4` | `NOT_FOUND` |  | Project not found |
 | `404-5` | `NOT_FOUND` |  | No users found |
 | `404-6` | `NOT_FOUND` |  | No index on that field |
 | `404-7` | `NOT_FOUND` |  | Listen not found |
@@ -1604,7 +1604,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `408-5` | `ERROR` |  | The transaction was rolled back after `transactionMaxAgeMs`; answered once, to the next request |
 | `408-6` | `ERROR` |  | The aggregation exceeded `aggregateTimeoutMs` |
 | `409-1` | `ERROR` |  | User already exists |
-| `409-2` | `ERROR` |  | Database already exists |
+| `409-2` | `ERROR` |  | Project already exists |
 | `409-3` | `ERROR` |  | A transaction is already open on this connection |
 | `409-4` | `ERROR` |  | No transaction is open on this connection |
 | `409-5` | `ERROR` |  | Couldn't lock the collection in time; the transaction is aborted |
@@ -1635,10 +1635,10 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `500-8` | `ERROR` |  | Error retrieving entry |
 | `500-9` | `ERROR` |  | Error processing aggregation |
 | `500-10` | `ERROR` |  | Error deleting entry |
-| `500-11` | `ERROR` |  | Error creating database |
-| `500-12` | `ERROR` |  | Error updating database owners |
-| `500-13` | `ERROR` |  | Error dropping database |
-| `500-14` | `ERROR` |  | Error listing databases |
+| `500-11` | `ERROR` |  | Error creating project |
+| `500-12` | `ERROR` |  | Error updating project owners |
+| `500-13` | `ERROR` |  | Error dropping project |
+| `500-14` | `ERROR` |  | Error listing projects |
 | `500-15` | `ERROR` |  | Error creating collection |
 | `500-16` | `ERROR` |  | Error dropping collection |
 | `500-17` | `ERROR` |  | Error listing collections |
@@ -1646,7 +1646,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `500-19` | `ERROR` |  | Error listing users |
 | `500-20` | `ERROR` |  | Error dropping index |
 | `500-21` | `ERROR` |  | Error reindexing |
-| `500-22` | `ERROR` |  | Error gathering database stats |
+| `500-22` | `ERROR` |  | Error gathering project stats |
 | `500-23` | `ERROR` |  | Error processing a listen |
 | `500-24` | `ERROR` |  | Error processing a transaction operation |
 | `500-25` | `ERROR` |  | Error saving the schema |
@@ -1667,7 +1667,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `503-3` | `ERROR` |  | Timed out waiting for the replication quorum. The write did happen, so don't resend it blindly |
 | `503-4` | `ERROR` | yes | The collection's owner is unreachable |
 | `503-5` | `ERROR` | yes | The admin coordinator is synchronizing |
-| `503-6` | `ERROR` |  | Too many scripts running; the message names the limit (`node`, `user` or `database`). Nothing ran |
+| `503-6` | `ERROR` |  | Too many scripts running; the message names the limit (`node`, `user` or `project`). Nothing ran |
 | `503-7` | `ERROR` |  | The node the script was placed on never reported an outcome, so it may have run |
 | `503-8` | `ERROR` |  | The collection's owner never reported an outcome, so the write may have been applied |
 | `503-9` | `ERROR` | yes | The admin coordinator couldn't be found |

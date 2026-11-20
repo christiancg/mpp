@@ -47,7 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 public class RefusedTypeWritePathTest {
-    private static final String DB = FieldIndexBatchSupport.DB;
+    private static final String PROJECT = FieldIndexBatchSupport.PROJECT;
     private static final String COLL = FieldIndexBatchSupport.COLL;
     private static final String FIELD = "f";
     private static final String SLOT_CLASS = "org.ccg.mpp.ops.index.FieldIndexSlot";
@@ -64,7 +64,7 @@ public class RefusedTypeWritePathTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         saveTaskManager = TestUtils.getPrivateStaticField(SaveOperationHelper.class, "taskManager",
                 BackgroundTaskManager.class);
@@ -72,8 +72,8 @@ public class RefusedTypeWritePathTest {
                 BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", taskManager);
         TestUtils.setPrivateStaticField(DeleteOperationHelper.class, "taskManager", taskManager);
-        IndexHelper.createIndex(DB, COLL, FIELD);
-        cache.getAdminCollectionEntry(DB, COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(PROJECT, COLL, FIELD);
+        cache.getAdminCollectionEntry(PROJECT, COLL).setIndexes(Set.of(FIELD));
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
     }
 
@@ -97,45 +97,45 @@ public class RefusedTypeWritePathTest {
     }
 
     private void save(String id, String value) throws Exception {
-        final var request = new SaveRequest(DB, COLL);
+        final var request = new SaveRequest(PROJECT, COLL);
         request.setObject(document(id, value));
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
             SaveOperationHelper.executeSave(request);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
     private void delete(String id) throws Exception {
-        final var request = new DeleteRequest(DB, COLL);
+        final var request = new DeleteRequest(PROJECT, COLL);
         request.set_id(id);
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
             DeleteOperationHelper.executeDelete(request);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
     private void bulkSave(JsonObject... objects) throws Exception {
-        final var request = new BulkSaveRequest(DB, COLL);
+        final var request = new BulkSaveRequest(PROJECT, COLL);
         request.setObjects(new ArrayList<>(List.of(objects)));
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
             SaveOperationHelper.executeBulkSave(request);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
     private void bulkDelete(String... ids) throws Exception {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            DeleteOperationHelper.executeBulkDelete(DB, COLL, List.of(ids), (_, _) -> {
+            DeleteOperationHelper.executeBulkDelete(PROJECT, COLL, List.of(ids), (_, _) -> {
             }, true);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
@@ -147,7 +147,7 @@ public class RefusedTypeWritePathTest {
     }
 
     private List<DbEntry> storedDocuments() throws Exception {
-        return realFs.getByIndexEntries(realFs.readWholePkIndexFile(DB, COLL));
+        return realFs.getByIndexEntries(realFs.readWholePkIndexFile(PROJECT, COLL));
     }
 
     private void assertIndexMatchesTheDocuments() throws Exception {

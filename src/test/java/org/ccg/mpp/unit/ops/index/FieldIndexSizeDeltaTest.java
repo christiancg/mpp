@@ -39,7 +39,7 @@ public class FieldIndexSizeDeltaTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
     }
 
@@ -94,7 +94,7 @@ public class FieldIndexSizeDeltaTest {
         for (var i = 0; i < 40; i++) {
             final var document = support.documentOf("id" + i);
             assertNotNull(document);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, document);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, document);
             pkIds.put(document.get_id(), document.get_id());
         }
         assertRememberedTracksTheMeasure(92, true);

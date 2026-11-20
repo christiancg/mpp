@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Admin, Database, field, LocalTime, NotFoundError, TriggerEvent, TriggerRunDecision } from "../../src/index.js";
+import { Admin, Project, field, LocalTime, NotFoundError, TriggerEvent, TriggerRunDecision } from "../../src/index.js";
 import type { JsonObject } from "../../src/internal/values-codec.js";
 import { RecordingChannel, recordingContext } from "../support/recording-channel.js";
 
@@ -7,7 +7,7 @@ function setup(reply: (request: JsonObject) => JsonObject) {
     const channel = new RecordingChannel();
     channel.replies = (request) => ({ type: request.type ?? null, status: "OK", ...reply(request) });
     const context = recordingContext(channel);
-    const shop = new Database(context, "shop");
+    const shop = new Project(context, "shop");
     return { channel, shop, orders: shop.collection("orders"), admin: new Admin(context) };
 }
 
@@ -18,7 +18,7 @@ describe("collection replies", () => {
         );
         expect(await orders.save({ total: 1 })).toEqual({ id: "o-9", inserted: true });
         expect(await orders.saveAll([{ _id: "a" }, { _id: "b" }])).toEqual({ inserted: ["a"], updated: ["b"] });
-        expect([orders.databaseName, orders.name]).toEqual(["shop", "orders"]);
+        expect([orders.projectName, orders.name]).toEqual(["shop", "orders"]);
     });
 
     test("insert sends the save frame with failOnUpdate and decodes the reply like save", async () => {
@@ -26,7 +26,7 @@ describe("collection replies", () => {
         expect(await orders.insert({ _id: "o-3", status: "new" })).toEqual({ id: "o-3", inserted: true });
         expect(channel.requests[0]).toEqual({
             type: "SAVE",
-            databaseName: "shop",
+            projectName: "shop",
             collectionName: "orders",
             failOnUpdate: true,
             object: { _id: "o-3", status: "new" },
@@ -51,7 +51,7 @@ describe("collection replies", () => {
         expect(await orders.updateWhere(field("status").eq("pending"), { status: "expired" })).toBe(2);
         expect(channel.requests[0]).toEqual({
             type: "SAVE",
-            databaseName: "shop",
+            projectName: "shop",
             collectionName: "orders",
             condition: { fieldOperatorType: "EQUALS", field: "status", value: "pending" },
             object: { status: "expired" },
@@ -71,7 +71,7 @@ describe("collection replies", () => {
 
     test("findById decodes custom values and answers undefined only for 404-2", async () => {
         const channel = new RecordingChannel();
-        const orders = new Database(recordingContext(channel), "shop").collection("orders");
+        const orders = new Project(recordingContext(channel), "shop").collection("orders");
         channel.replies = () => ({ status: "OK", object: { _id: "o-1", opensAt: "#time(09:30)" } });
         expect(await orders.findById("o-1")).toEqual({ _id: "o-1", opensAt: LocalTime.of(9, 30) });
         channel.replies = () => ({ status: "OK" });
@@ -85,7 +85,7 @@ describe("collection replies", () => {
     test("a codec maps both ways", async () => {
         const channel = new RecordingChannel();
         channel.replies = () => ({ status: "OK", object: { _id: "o-1", cents: 250 } });
-        const orders = new Database(recordingContext(channel), "shop").collection("orders", {
+        const orders = new Project(recordingContext(channel), "shop").collection("orders", {
             encode: (order: { id: string; price: number }) => ({ _id: order.id, cents: order.price * 100 }),
             decode: (document) => ({ id: document._id as string, price: Number(document.cents) / 100 }),
         });
@@ -96,7 +96,7 @@ describe("collection replies", () => {
 
     test("a Date is stored through the temporal zone", async () => {
         const channel = new RecordingChannel();
-        const orders = new Database(recordingContext(channel, "UTC"), "shop").collection<{ at: Date }>("orders");
+        const orders = new Project(recordingContext(channel, "UTC"), "shop").collection<{ at: Date }>("orders");
         await orders.save({ at: new Date(Date.UTC(2024, 0, 1, 10, 0)) });
         expect(channel.last().object).toEqual({ at: "#datetime(2024-01-01T10:00)" });
     });
@@ -113,7 +113,7 @@ describe("collection replies", () => {
 
     test("schema returns warnings, the schema, or undefined when there is none", async () => {
         const channel = new RecordingChannel();
-        const orders = new Database(recordingContext(channel), "shop").collection("orders");
+        const orders = new Project(recordingContext(channel), "shop").collection("orders");
         channel.replies = () => ({ status: "OK", warnings: ["w"], schema: { type: "object" } });
         expect(await orders.schema().save({ type: "object" })).toEqual(["w"]);
         expect(await orders.schema().get()).toEqual({ type: "object" });
@@ -194,7 +194,7 @@ describe("scripting replies", () => {
                     return { triggers: [{ name: "t", collection: "orders" }] };
                 case "LIST_COLLECTIONS":
                     return { collections: ["orders"] };
-                case "GET_DATABASE_STATS":
+                case "GET_PROJECT_STATS":
                     return { stats: { size: 1 } };
                 default:
                     return { version: 4 };
@@ -247,18 +247,18 @@ describe("admin replies", () => {
         const admin = new Admin(recordingContext(channel));
         channel.replies = () => ({
             status: "OK",
-            users: [{ _id: "bob", admin: true, databasePermissions: { shop: "READ" }, ownedDatabases: ["shop"] }],
+            users: [{ _id: "bob", admin: true, projectPermissions: { shop: "READ" }, ownedProjects: ["shop"] }],
         });
         expect(await admin.users().list()).toEqual([
             {
                 username: "bob",
                 admin: true,
                 globalPermissions: [],
-                databasePermissions: { shop: "READ" },
+                projectPermissions: { shop: "READ" },
                 collectionPermissions: {},
                 scriptPermissions: {},
-                ownedDatabases: ["shop"],
-                raw: { _id: "bob", admin: true, databasePermissions: { shop: "READ" }, ownedDatabases: ["shop"] },
+                ownedProjects: ["shop"],
+                raw: { _id: "bob", admin: true, projectPermissions: { shop: "READ" }, ownedProjects: ["shop"] },
             },
         ]);
         channel.replies = () => ({ status: "NOT_FOUND", errorCode: "404-5" });
@@ -275,7 +275,7 @@ describe("admin replies", () => {
             username: "bob",
             admin: false,
             globalPermissions: [],
-            databasePermissions: {},
+            projectPermissions: {},
             collectionPermissions: {},
             scriptPermissions: {},
         });
@@ -303,7 +303,7 @@ describe("admin replies", () => {
             participants: ["n1"],
             ageMs: 4,
         });
-        expect((await admin.scripts().list())[0]).toMatchObject({ runId: "r", node: "n1", database: undefined });
+        expect((await admin.scripts().list())[0]).toMatchObject({ runId: "r", node: "n1", project: undefined });
         expect(await admin.scripts().cancel("r")).toBe(true);
         expect((await admin.triggerRuns().list())[0]).toMatchObject({ status: "DEAD", attempts: 3, lastError: "boom" });
         expect(await admin.triggerRuns().resolve("t", TriggerRunDecision.REPLAY)).toBe(true);

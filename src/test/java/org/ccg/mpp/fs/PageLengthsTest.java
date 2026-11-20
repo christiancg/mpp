@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PageLengthsTest {
-    private static final String DB = "lengthsDb";
+    private static final String PROJECT = "lengthsProject";
     private static final String COLL = "lengthsColl";
     private static final byte[] LINE = "{\"_id\":\"x\"}\n".getBytes(StandardCharsets.UTF_8);
 
@@ -28,7 +28,7 @@ public class PageLengthsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c", "d");
     }
 
@@ -49,7 +49,7 @@ public class PageLengthsTest {
         appendRaw(page(0));
 
         assertEquals(seeded, PageLengths.lengthOf(page(0)), "a remembered length is answered without a stat");
-        assertEquals(seeded, PageLengths.of(rf.fx.paths, DB, COLL).applyAsLong(0L));
+        assertEquals(seeded, PageLengths.of(rf.fx.paths, PROJECT, COLL).applyAsLong(0L));
         assertEquals(PageLengths.UNKNOWN, PageLengths.terminatedLength(page(0)),
                 "a seeded length says nothing about the page's last byte");
     }
@@ -57,7 +57,7 @@ public class PageLengthsTest {
     @Test
     public void test_a_collection_handle_seeds_and_reuses_each_page() throws IOException {
         appendRaw(page(1));
-        final var lengths = PageLengths.of(rf.fx.paths, DB, COLL);
+        final var lengths = PageLengths.of(rf.fx.paths, PROJECT, COLL);
 
         assertEquals(page(1).length(), lengths.applyAsLong(1L));
         assertEquals(page(1).length(), PageLengths.knownLength(page(1)));
@@ -78,7 +78,7 @@ public class PageLengthsTest {
         rf.replacer.delete(rf.fx.indexed("b"));
         final var before = PageLengths.lengthOf(page(0));
 
-        rf.vacuum.vacuum(DB, COLL, 0, PageRows.of(rf.fx.store, null, DB, COLL, 0));
+        rf.vacuum.vacuum(PROJECT, COLL, 0, PageRows.of(rf.fx.store, null, PROJECT, COLL, 0));
 
         assertTrue(page(0).length() < before);
         assertEquals(page(0).length(), PageLengths.knownLength(page(0)));
@@ -90,7 +90,7 @@ public class PageLengthsTest {
             rf.replacer.delete(rf.fx.indexed(id));
         }
 
-        rf.vacuum.vacuum(DB, COLL, 0, PageRows.of(rf.fx.store, null, DB, COLL, 0));
+        rf.vacuum.vacuum(PROJECT, COLL, 0, PageRows.of(rf.fx.store, null, PROJECT, COLL, 0));
 
         assertEquals(0L, page(0).length());
         assertEquals(0L, PageLengths.knownLength(page(0)));
@@ -118,7 +118,7 @@ public class PageLengthsTest {
         final var log = new File(tmp, "group.wal");
         Files.write(log.toPath(), new byte[0]);
 
-        assertTrue(group.takeBack(log, 0L, rf.fx.paths.pkIndexFile(DB, COLL)));
+        assertTrue(group.takeBack(log, 0L, rf.fx.paths.pkIndexFile(PROJECT, COLL)));
 
         assertEquals(PageLengths.UNKNOWN, PageLengths.knownLength(page(0)));
         assertEquals(length, PageLengths.lengthOf(page(0)));
@@ -126,12 +126,12 @@ public class PageLengthsTest {
 
     @Test
     public void test_a_drop_forgets_every_page_under_the_folder() throws IOException {
-        final var other = new ReplacerFixture(tmp, DB, "otherColl");
+        final var other = new ReplacerFixture(tmp, PROJECT, "otherColl");
         other.fx.seed(0, "z");
         PageLengths.lengthOf(page(0));
         PageLengths.lengthOf(other.fx.page(0));
 
-        assertTrue(FileTreeDeleter.delete(rf.fx.paths.collectionFolder(DB, COLL)));
+        assertTrue(FileTreeDeleter.delete(rf.fx.paths.collectionFolder(PROJECT, COLL)));
 
         assertEquals(PageLengths.UNKNOWN, PageLengths.knownLength(page(0)));
         assertEquals(other.fx.page(0).length(), PageLengths.knownLength(other.fx.page(0)));
@@ -141,7 +141,7 @@ public class PageLengthsTest {
     public void test_a_quarantine_forgets_every_page_under_the_folder() {
         PageLengths.lengthOf(page(0));
 
-        assertTrue(new FolderQuarantine(rf.fx.paths).moveDatabaseAside(DB));
+        assertTrue(new FolderQuarantine(rf.fx.paths).moveProjectAside(PROJECT));
 
         assertEquals(PageLengths.UNKNOWN, PageLengths.knownLength(page(0)));
     }
@@ -160,15 +160,15 @@ public class PageLengthsTest {
     public void test_a_replay_forgets_the_collection() throws IOException {
         PageLengths.lengthOf(page(0));
 
-        WalRedo.replay(rf.fx.paths, DB, COLL, WalCodec.decodeAll(new byte[0]));
+        WalRedo.replay(rf.fx.paths, PROJECT, COLL, WalCodec.decodeAll(new byte[0]));
 
         assertEquals(PageLengths.UNKNOWN, PageLengths.knownLength(page(0)));
     }
 
     @Test
     public void test_files_that_are_not_tracked_pages_are_statted_every_time() throws IOException {
-        final var pkIndex = rf.fx.paths.pkIndexFile(DB, COLL);
-        final var farPage = rf.fx.paths.collectionPage(DB, COLL, PageLengths.MAX_TRACKED_PAGE + 1L);
+        final var pkIndex = rf.fx.paths.pkIndexFile(PROJECT, COLL);
+        final var farPage = rf.fx.paths.collectionPage(PROJECT, COLL, PageLengths.MAX_TRACKED_PAGE + 1L);
         appendRaw(farPage);
         final var before = pkIndex.length();
 
@@ -186,9 +186,9 @@ public class PageLengthsTest {
     @Test
     public void test_a_new_collection_folder_forgets_what_was_remembered_under_it() throws IOException {
         PageLengths.grew(page(0), 12_345L, true);
-        PkIndexStore.forgetState(rf.fx.paths.pkIndexFile(DB, COLL));
+        PkIndexStore.forgetState(rf.fx.paths.pkIndexFile(PROJECT, COLL));
 
-        FileTreeDeleter.forgetWrittenLengthsUnder(rf.fx.paths.collectionFolder(DB, COLL));
+        FileTreeDeleter.forgetWrittenLengthsUnder(rf.fx.paths.collectionFolder(PROJECT, COLL));
 
         assertEquals(PageLengths.UNKNOWN, PageLengths.knownLength(page(0)));
         assertEquals(List.of("a", "b", "c", "d"),
@@ -199,7 +199,7 @@ public class PageLengthsTest {
     public void test_a_page_past_the_tracked_range_is_statted_and_never_remembered() throws IOException {
         final var far = PageLengths.MAX_TRACKED_PAGE + 1L;
         appendRaw(page(far));
-        final var lengths = PageLengths.of(rf.fx.paths, DB, COLL);
+        final var lengths = PageLengths.of(rf.fx.paths, PROJECT, COLL);
 
         assertEquals(page(far).length(), lengths.applyAsLong(far));
         appendRaw(page(far));

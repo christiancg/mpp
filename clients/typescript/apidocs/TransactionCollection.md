@@ -2,9 +2,9 @@
 
 A collection seen through a transaction: every call runs on the transaction's connection.
 
-## databaseName
+## projectName
 
-The database the collection belongs to.
+The project the collection belongs to.
 
 ## name
 

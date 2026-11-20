@@ -15,7 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class IndexLineWriterTest {
-    private static final String DB = "writerDb";
+    private static final String PROJECT = "writerProject";
     private static final String COLL = "writerColl";
 
     @BeforeEach
@@ -24,7 +24,7 @@ public class IndexLineWriterTest {
     }
 
     private static FieldIndexEntry<Object> entry(Object value, String... ids) {
-        return new FieldIndexEntry<>(DB, COLL, value, new LinkedHashSet<>(List.of(ids)));
+        return new FieldIndexEntry<>(PROJECT, COLL, value, new LinkedHashSet<>(List.of(ids)));
     }
 
     private static byte[] expectedBytes(List<FieldIndexEntry<Object>> entries) throws IOException {

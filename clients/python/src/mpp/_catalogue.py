@@ -7,9 +7,9 @@ class Operation(StrEnum):
     FIND_BY_ID = 'FIND_BY_ID'
     AGGREGATE = 'AGGREGATE'
     DELETE = 'DELETE'
-    CREATE_DATABASE = 'CREATE_DATABASE'
-    DROP_DATABASE = 'DROP_DATABASE'
-    LIST_DATABASES = 'LIST_DATABASES'
+    CREATE_PROJECT = 'CREATE_PROJECT'
+    DROP_PROJECT = 'DROP_PROJECT'
+    LIST_PROJECTS = 'LIST_PROJECTS'
     CREATE_COLLECTION = 'CREATE_COLLECTION'
     DROP_COLLECTION = 'DROP_COLLECTION'
     LIST_COLLECTIONS = 'LIST_COLLECTIONS'
@@ -25,10 +25,10 @@ class Operation(StrEnum):
     CREATE_USER = 'CREATE_USER'
     DELETE_USER = 'DELETE_USER'
     CHANGE_PERMISSIONS = 'CHANGE_PERMISSIONS'
-    SET_DATABASE_OWNERS = 'SET_DATABASE_OWNERS'
+    SET_PROJECT_OWNERS = 'SET_PROJECT_OWNERS'
     LIST_USERS = 'LIST_USERS'
     SET_PASSWORD = 'SET_PASSWORD'
-    GET_DATABASE_STATS = 'GET_DATABASE_STATS'
+    GET_PROJECT_STATS = 'GET_PROJECT_STATS'
     LISTEN = 'LISTEN'
     STOP_LISTEN = 'STOP_LISTEN'
     START_TRANSACTION = 'START_TRANSACTION'
@@ -94,8 +94,8 @@ class ErrorCode(StrEnum):
     LISTEN_REQUEST_TOO_LARGE = '400-37'
     TOO_MANY_LISTENS_FOR_USER = '400-38'
     SCHEMA_TOO_MANY_PATTERNS = '400-39'
-    TOO_MANY_COLLECTIONS_FOR_DATABASE = '400-40'
-    TOO_MANY_DATABASES = '400-41'
+    TOO_MANY_COLLECTIONS_FOR_PROJECT = '400-40'
+    TOO_MANY_PROJECTS = '400-41'
     TOO_MANY_INDEXES_FOR_COLLECTION = '400-42'
     INVALID_COMMAND = '400-43'
     DELETE_MATCHES_TOO_MANY = '400-44'
@@ -113,7 +113,7 @@ class ErrorCode(StrEnum):
     USER_NOT_FOUND = '404-1'
     ENTRY_NOT_FOUND = '404-2'
     NO_RESULTS = '404-3'
-    DATABASE_NOT_FOUND = '404-4'
+    PROJECT_NOT_FOUND = '404-4'
     NO_USERS_FOUND = '404-5'
     INDEX_NOT_FOUND = '404-6'
     LISTEN_NOT_FOUND = '404-7'
@@ -129,7 +129,7 @@ class ErrorCode(StrEnum):
     TRANSACTION_TOO_OLD = '408-5'
     AGGREGATE_TIMEOUT = '408-6'
     USER_ALREADY_EXISTS = '409-1'
-    DATABASE_ALREADY_EXISTS = '409-2'
+    PROJECT_ALREADY_EXISTS = '409-2'
     TRANSACTION_ALREADY_ACTIVE = '409-3'
     NO_ACTIVE_TRANSACTION = '409-4'
     TRANSACTION_LOCK_TIMEOUT = '409-5'
@@ -160,10 +160,10 @@ class ErrorCode(StrEnum):
     ERROR_RETRIEVING = '500-8'
     ERROR_AGGREGATING = '500-9'
     ERROR_DELETING = '500-10'
-    ERROR_CREATING_DATABASE = '500-11'
-    ERROR_UPDATING_DATABASE_OWNERS = '500-12'
-    ERROR_DROPPING_DATABASE = '500-13'
-    ERROR_LISTING_DATABASES = '500-14'
+    ERROR_CREATING_PROJECT = '500-11'
+    ERROR_UPDATING_PROJECT_OWNERS = '500-12'
+    ERROR_DROPPING_PROJECT = '500-13'
+    ERROR_LISTING_PROJECTS = '500-14'
     ERROR_CREATING_COLLECTION = '500-15'
     ERROR_DROPPING_COLLECTION = '500-16'
     ERROR_LISTING_COLLECTIONS = '500-17'
@@ -227,12 +227,12 @@ OPERATIONS = (
     ('FIND_BY_ID', 'COLLECTION', False, True),
     ('AGGREGATE', 'COLLECTION', False, True),
     ('DELETE', 'COLLECTION', False, True),
-    ('CREATE_DATABASE', 'DATABASE', False, False),
-    ('DROP_DATABASE', 'DATABASE', False, False),
-    ('LIST_DATABASES', 'NONE', False, False),
+    ('CREATE_PROJECT', 'PROJECT', False, False),
+    ('DROP_PROJECT', 'PROJECT', False, False),
+    ('LIST_PROJECTS', 'NONE', False, False),
     ('CREATE_COLLECTION', 'COLLECTION', False, False),
     ('DROP_COLLECTION', 'COLLECTION', False, False),
-    ('LIST_COLLECTIONS', 'DATABASE', False, False),
+    ('LIST_COLLECTIONS', 'PROJECT', False, False),
     ('CREATE_INDEX', 'COLLECTION', False, False),
     ('DROP_INDEX', 'COLLECTION', False, False),
     ('REINDEX', 'COLLECTION', False, False),
@@ -245,10 +245,10 @@ OPERATIONS = (
     ('CREATE_USER', 'NONE', True, False),
     ('DELETE_USER', 'NONE', True, False),
     ('CHANGE_PERMISSIONS', 'NONE', True, False),
-    ('SET_DATABASE_OWNERS', 'DATABASE', True, False),
+    ('SET_PROJECT_OWNERS', 'PROJECT', True, False),
     ('LIST_USERS', 'NONE', True, False),
     ('SET_PASSWORD', 'NONE', False, False),
-    ('GET_DATABASE_STATS', 'DATABASE', False, False),
+    ('GET_PROJECT_STATS', 'PROJECT', False, False),
     ('LISTEN', 'COLLECTION', False, False),
     ('STOP_LISTEN', 'NONE', False, False),
     ('START_TRANSACTION', 'NONE', False, True),
@@ -256,17 +256,17 @@ OPERATIONS = (
     ('ROLLBACK_TRANSACTION', 'NONE', False, True),
     ('RESOLVE_TRANSACTION', 'NONE', True, False),
     ('LIST_TRANSACTIONS', 'NONE', True, False),
-    ('RUN_SCRIPT', 'DATABASE', False, False),
-    ('SAVE_PROCEDURE', 'DATABASE', False, False),
-    ('DELETE_PROCEDURE', 'DATABASE', False, False),
-    ('LIST_PROCEDURES', 'DATABASE', False, False),
-    ('CALL_PROCEDURE', 'DATABASE', False, False),
+    ('RUN_SCRIPT', 'PROJECT', False, False),
+    ('SAVE_PROCEDURE', 'PROJECT', False, False),
+    ('DELETE_PROCEDURE', 'PROJECT', False, False),
+    ('LIST_PROCEDURES', 'PROJECT', False, False),
+    ('CALL_PROCEDURE', 'PROJECT', False, False),
     ('SAVE_TRIGGER', 'COLLECTION', False, False),
     ('DELETE_TRIGGER', 'COLLECTION', False, False),
     ('LIST_TRIGGERS', 'OPTIONAL_COLLECTION', False, False),
-    ('SAVE_SCHEDULE', 'DATABASE', False, False),
-    ('DELETE_SCHEDULE', 'DATABASE', False, False),
-    ('LIST_SCHEDULES', 'DATABASE', False, False),
+    ('SAVE_SCHEDULE', 'PROJECT', False, False),
+    ('DELETE_SCHEDULE', 'PROJECT', False, False),
+    ('LIST_SCHEDULES', 'PROJECT', False, False),
     ('LIST_SCRIPTS', 'NONE', True, False),
     ('CANCEL_SCRIPT', 'NONE', True, False),
     ('TEST_TRIGGER', 'COLLECTION', False, False),
@@ -291,7 +291,7 @@ ERROR_CODES = (
     ('INVALID_TRIGGER', '400-14', 'ERROR', False, 'The trigger definition is not valid'),
     ('SCRIPT_RESULT_TOO_LARGE', '400-15', 'ERROR', False, 'Script result exceeds the maximum allowed size'),
     ('INVALID_SCHEDULE', '400-16', 'ERROR', False, 'The schedule definition is not valid'),
-    ('TOO_MANY_SCHEDULES', '400-17', 'ERROR', False, 'The database already has the maximum number of schedules'),
+    ('TOO_MANY_SCHEDULES', '400-17', 'ERROR', False, 'The project already has the maximum number of schedules'),
     ('PROCEDURE_IMPORT_NOT_FOUND', '400-18', 'ERROR', False, 'The procedure imports a procedure that does not exist'),
     ('SCRIPT_NOT_ALLOWED_IN_LISTEN', '400-19', 'ERROR', False, 'A SCRIPT operator is not allowed in a LISTEN pipeline'),
     ('SCRIPT_RESULT_PENDING', '400-20', 'ERROR', False, "The script's result promise never settled"),
@@ -308,14 +308,14 @@ ERROR_CODES = (
     ('SCHEMA_PATTERN_TOO_LONG', '400-31', 'ERROR', False, 'A schema regular expression exceeds the maximum length'),
     ('TOO_MANY_TRIGGERS', '400-32', 'ERROR', False, 'The collection has the maximum number of triggers'),
     ('TOO_MANY_SCHEDULES_FOR_USER', '400-33', 'ERROR', False, 'The user has the maximum number of schedules'),
-    ('TOO_MANY_PROCEDURES', '400-34', 'ERROR', False, 'The database has the maximum number of procedures'),
+    ('TOO_MANY_PROCEDURES', '400-34', 'ERROR', False, 'The project has the maximum number of procedures'),
     ('SCHEDULE_INTERVAL_TOO_SMALL', '400-35', 'ERROR', False, 'The schedule interval is below the allowed minimum'),
     ('AGGREGATE_RESULT_TOO_LARGE', '400-36', 'ERROR', False, 'The aggregation result exceeds the maximum result size'),
     ('LISTEN_REQUEST_TOO_LARGE', '400-37', 'ERROR', False, 'The listen request exceeds the maximum size a listen may retain'),
     ('TOO_MANY_LISTENS_FOR_USER', '400-38', 'ERROR', False, 'The user has the maximum number of listen registrations'),
     ('SCHEMA_TOO_MANY_PATTERNS', '400-39', 'ERROR', False, 'The schema has more regular expressions than allowed'),
-    ('TOO_MANY_COLLECTIONS_FOR_DATABASE', '400-40', 'ERROR', False, 'The database has the maximum number of collections'),
-    ('TOO_MANY_DATABASES', '400-41', 'ERROR', False, 'The server has the maximum number of databases'),
+    ('TOO_MANY_COLLECTIONS_FOR_PROJECT', '400-40', 'ERROR', False, 'The project has the maximum number of collections'),
+    ('TOO_MANY_PROJECTS', '400-41', 'ERROR', False, 'The server has the maximum number of projects'),
     ('TOO_MANY_INDEXES_FOR_COLLECTION', '400-42', 'ERROR', False, 'The collection has the maximum number of indexes'),
     ('INVALID_COMMAND', '400-43', 'ERROR', False, 'The command is not valid'),
     ('DELETE_MATCHES_TOO_MANY', '400-44', 'ERROR', False, 'The delete condition matches more documents than allowed'),
@@ -328,12 +328,12 @@ ERROR_CODES = (
     ('SCRIPTS_DISABLED', '403-2', 'FORBIDDEN', False, 'Script execution is disabled on this server'),
     ('FAULT_INJECTION_DISABLED', '403-3', 'FORBIDDEN', False, 'Fault injection is disabled on this server'),
     ('PROCEDURE_BOUND_BY_OTHER_DEFINER', '403-4', 'FORBIDDEN', False, 'Procedure is bound by a trigger or schedule that runs as another user'),
-    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger or schedule belongs to another user; only that user, a database owner or an admin may change it'),
+    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it'),
     ('SOURCE_REQUIRES_MANAGE', '403-6', 'FORBIDDEN', False, 'Procedure source requires script MANAGE'),
     ('USER_NOT_FOUND', '404-1', 'NOT_FOUND', False, 'User not found'),
     ('ENTRY_NOT_FOUND', '404-2', 'NOT_FOUND', False, 'Entry not found'),
     ('NO_RESULTS', '404-3', 'NOT_FOUND', False, 'No results'),
-    ('DATABASE_NOT_FOUND', '404-4', 'NOT_FOUND', False, 'Database not found'),
+    ('PROJECT_NOT_FOUND', '404-4', 'NOT_FOUND', False, 'Project not found'),
     ('NO_USERS_FOUND', '404-5', 'NOT_FOUND', False, 'No users found'),
     ('INDEX_NOT_FOUND', '404-6', 'NOT_FOUND', False, 'No index registered for the specified field'),
     ('LISTEN_NOT_FOUND', '404-7', 'NOT_FOUND', False, 'Listen registration not found'),
@@ -349,7 +349,7 @@ ERROR_CODES = (
     ('TRANSACTION_TOO_OLD', '408-5', 'ERROR', False, 'The transaction was rolled back after reaching its maximum age'),
     ('AGGREGATE_TIMEOUT', '408-6', 'ERROR', False, 'The aggregation exceeded its time budget'),
     ('USER_ALREADY_EXISTS', '409-1', 'ERROR', False, 'User already exists'),
-    ('DATABASE_ALREADY_EXISTS', '409-2', 'ERROR', False, 'Database already exists'),
+    ('PROJECT_ALREADY_EXISTS', '409-2', 'ERROR', False, 'Project already exists'),
     ('TRANSACTION_ALREADY_ACTIVE', '409-3', 'ERROR', False, 'A transaction is already in progress for this connection'),
     ('NO_ACTIVE_TRANSACTION', '409-4', 'ERROR', False, 'No active transaction for this connection'),
     ('TRANSACTION_LOCK_TIMEOUT', '409-5', 'ERROR', False, 'Could not acquire the collection lock in time; transaction aborted'),
@@ -380,10 +380,10 @@ ERROR_CODES = (
     ('ERROR_RETRIEVING', '500-8', 'ERROR', False, 'Error while retrieving entry'),
     ('ERROR_AGGREGATING', '500-9', 'ERROR', False, 'Error while processing aggregation'),
     ('ERROR_DELETING', '500-10', 'ERROR', False, 'Error while deleting entry'),
-    ('ERROR_CREATING_DATABASE', '500-11', 'ERROR', False, 'Error while creating database'),
-    ('ERROR_UPDATING_DATABASE_OWNERS', '500-12', 'ERROR', False, 'Error updating database owners'),
-    ('ERROR_DROPPING_DATABASE', '500-13', 'ERROR', False, 'Error while dropping database'),
-    ('ERROR_LISTING_DATABASES', '500-14', 'ERROR', False, 'Error while listing databases'),
+    ('ERROR_CREATING_PROJECT', '500-11', 'ERROR', False, 'Error while creating project'),
+    ('ERROR_UPDATING_PROJECT_OWNERS', '500-12', 'ERROR', False, 'Error updating project owners'),
+    ('ERROR_DROPPING_PROJECT', '500-13', 'ERROR', False, 'Error while dropping project'),
+    ('ERROR_LISTING_PROJECTS', '500-14', 'ERROR', False, 'Error while listing projects'),
     ('ERROR_CREATING_COLLECTION', '500-15', 'ERROR', False, 'Error while creating collection'),
     ('ERROR_DROPPING_COLLECTION', '500-16', 'ERROR', False, 'Error while dropping collection'),
     ('ERROR_LISTING_COLLECTIONS', '500-17', 'ERROR', False, 'Error while listing collections'),
@@ -391,7 +391,7 @@ ERROR_CODES = (
     ('ERROR_LISTING_USERS', '500-19', 'ERROR', False, 'Error listing users'),
     ('ERROR_DROPPING_INDEX', '500-20', 'ERROR', False, 'Error while dropping index'),
     ('ERROR_REINDEXING', '500-21', 'ERROR', False, 'Error while reindexing'),
-    ('ERROR_GATHERING_STATS', '500-22', 'ERROR', False, 'Error while gathering database stats'),
+    ('ERROR_GATHERING_STATS', '500-22', 'ERROR', False, 'Error while gathering project stats'),
     ('ERROR_LISTEN', '500-23', 'ERROR', False, 'Error while processing listen operation'),
     ('ERROR_TRANSACTION', '500-24', 'ERROR', False, 'Error while processing transaction operation'),
     ('ERROR_SAVING_SCHEMA', '500-25', 'ERROR', False, 'Error while saving collection schema'),

@@ -10,8 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.CancellationToken;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptErrorNames;
 import org.ccg.mpp.simplejs.host.ScriptResult;
@@ -31,7 +31,7 @@ public class NativeLoopBudgetTest {
         }
 
         @Override
-        public DatabaseAccess database() {
+        public ProjectAccess project() {
             return null;
         }
 

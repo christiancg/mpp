@@ -26,7 +26,7 @@ public class BackgroundLanesTest {
     private static final int MAX_BATCH = 256;
 
     private static EntityEvent eventOn(String collName) {
-        return new EntityEvent(EventType.CREATED, "laneDb", collName, new DbEntry());
+        return new EntityEvent(EventType.CREATED, "laneProject", collName, new DbEntry());
     }
 
     private static String collectionOnLane(BackgroundLanes lanes, int lane) {
@@ -55,8 +55,8 @@ public class BackgroundLanesTest {
         final var lanes = new BackgroundLanes(LANES);
         final var lane = lanes.laneOf(eventOn("orders"));
 
-        assertEquals(lane, lanes.laneOf(new EntityEvent(EventType.DELETED, "laneDb", "orders", new DbEntry())));
-        assertEquals(lane, lanes.laneOf(new BulkEntityEvent("laneDb", "orders", List.of(), List.of())));
+        assertEquals(lane, lanes.laneOf(new EntityEvent(EventType.DELETED, "laneProject", "orders", new DbEntry())));
+        assertEquals(lane, lanes.laneOf(new BulkEntityEvent("laneProject", "orders", List.of(), List.of())));
         assertEquals(0, lanes.laneOf(new UsageProfileCleanupEvent()));
         assertTrue(lane >= 0 && lane < LANES);
     }
@@ -134,7 +134,7 @@ public class BackgroundLanesTest {
         private final String label;
 
         private Recorded(String collName, List<String> seen, String label) {
-            super(EventType.CREATED, "laneDb", collName);
+            super(EventType.CREATED, "laneProject", collName);
             this.seen = seen;
             this.label = label;
         }

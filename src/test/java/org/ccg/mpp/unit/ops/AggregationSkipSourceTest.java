@@ -39,7 +39,7 @@ public class AggregationSkipSourceTest {
         TestUtils.standardInitialSetup();
         shippedPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", 1024L);
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var doc = new JsonObject();
@@ -47,10 +47,10 @@ public class AggregationSkipSourceTest {
             doc.addProperty("body", "text " + i + " " + "x".repeat(i % 5 * 20));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @AfterEach
@@ -61,7 +61,7 @@ public class AggregationSkipSourceTest {
     }
 
     private OperationResponse run(boolean analyze, BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAnalyze(analyze);
         request.setAggregationSteps(List.of(steps));
         final var response = processor.processMessage(request);

@@ -1,5 +1,5 @@
 export { MppClient, type TransactionBody } from "./client.js";
-export { Database } from "./database.js";
+export { Project } from "./project.js";
 export { Collection } from "./collection.js";
 export { Transaction, TransactionCollection } from "./transaction.js";
 export { Indexes } from "./indexes.js";

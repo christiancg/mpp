@@ -1,4 +1,4 @@
-The database, collection, document, user, procedure or other target does not exist (`404-*`).
+The project, collection, document, user, procedure or other target does not exist (`404-*`).
 
 ## NotFoundException()
 Creates an exception with a default message.

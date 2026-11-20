@@ -45,20 +45,20 @@ public final class IndexOperationHelper {
     }
 
     public static OperationResponse processDropIndex(DropIndexRequest dropIndexRequest) {
-        final var dbName = dropIndexRequest.getDatabaseName();
+        final var projectName = dropIndexRequest.getProjectName();
         final var collName = dropIndexRequest.getCollectionName();
         final var fieldName = dropIndexRequest.getFieldName();
         // The collection write lock makes the file deletion and the unregistration atomic with respect to
         // saves and the background indexer.
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.DROP_INDEX,
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.DROP_INDEX,
                 ErrorCode.ERROR_DROPPING_INDEX, () -> {
-                    if (cache.getIndexesForCollection(dbName, collName).contains(fieldName)) {
-                        fs.indexMarkers().mark(dbName, collName, fieldName);
+                    if (cache.getIndexesForCollection(projectName, collName).contains(fieldName)) {
+                        fs.indexMarkers().mark(projectName, collName, fieldName);
                     }
-                    final var result = IndexHelper.dropIndex(dbName, collName, fieldName);
+                    final var result = IndexHelper.dropIndex(projectName, collName, fieldName);
                     if (result) {
-                        AdminOperationHelper.deleteIndex(dbName, collName, fieldName);
-                        fs.indexMarkers().clear(dbName, collName, fieldName);
+                        AdminOperationHelper.deleteIndex(projectName, collName, fieldName);
+                        fs.indexMarkers().clear(projectName, collName, fieldName);
                         return OperationResponse.ok(OperationType.DROP_INDEX,
                                 "Successfully dropped index: " + fieldName);
                     } else {
@@ -72,11 +72,11 @@ public final class IndexOperationHelper {
     }
 
     public static OperationResponse processReindex(ReindexRequest request, boolean bounded) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        return OperationLocks.withCollectionLock(dbName, collName, OperationType.REINDEX, ErrorCode.ERROR_REINDEXING,
-                bounded, () -> {
-                    final var registeredIndexes = cache.getIndexesForCollection(dbName, collName);
+        return OperationLocks.withCollectionLock(projectName, collName, OperationType.REINDEX,
+                ErrorCode.ERROR_REINDEXING, bounded, () -> {
+                    final var registeredIndexes = cache.getIndexesForCollection(projectName, collName);
                     for (var fieldName : request.getFieldNames()) {
                         if (!registeredIndexes.contains(fieldName)) {
                             return new OperationResponse(OperationType.REINDEX, ErrorCode.INDEX_NOT_FOUND, fieldName);
@@ -86,7 +86,7 @@ public final class IndexOperationHelper {
                         return reindexWithPrimaryKey(request, registeredIndexes);
                     }
                     final var targets = fieldTargets(request, registeredIndexes, null);
-                    rebuildFieldIndexes(dbName, collName, targets, registeredIndexes);
+                    rebuildFieldIndexes(projectName, collName, targets, registeredIndexes);
                     if (targets.isEmpty()) {
                         return new ReindexResponse("No indexes to rebuild", List.of());
                     }
@@ -96,40 +96,40 @@ public final class IndexOperationHelper {
 
     private static OperationResponse reindexWithPrimaryKey(ReindexRequest request, Set<String> registeredIndexes)
             throws Exception {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         final PkRebuild rebuild;
-        cache.userCache().evictCollection(dbName, collName);
+        cache.userCache().evictCollection(projectName, collName);
         try {
-            rebuild = fs.planPkRebuild(dbName, collName);
+            rebuild = fs.planPkRebuild(projectName, collName);
         } catch (PkRebuildRefusedException refused) {
             return new OperationResponse(OperationType.REINDEX, ErrorCode.PRIMARY_KEY_REBUILD_REFUSED,
                     refused.getMessage());
         }
         final var targets = fieldTargets(request, registeredIndexes, rebuild);
-        recordFieldIndexWork(dbName, collName, rebuild, targets);
-        snapshots.abortCollection(dbName, collName, "the primary-key index of " + collName + " was rebuilt");
-        fs.applyPkRebuild(dbName, collName, rebuild);
-        faultInjector.at(FaultPoint.PK_INDEX_REPLACED, Cache.getCollectionIdentifier(dbName, collName));
-        cache.userCache().evictPkIndex(dbName, collName);
-        cache.userCache().evictCollectionDocuments(dbName, collName);
-        PageOccupancyReconciler.rebuildRows(dbName, collName);
-        rebuildFieldIndexes(dbName, collName, targets, registeredIndexes);
+        recordFieldIndexWork(projectName, collName, rebuild, targets);
+        snapshots.abortCollection(projectName, collName, "the primary-key index of " + collName + " was rebuilt");
+        fs.applyPkRebuild(projectName, collName, rebuild);
+        faultInjector.at(FaultPoint.PK_INDEX_REPLACED, Cache.getCollectionIdentifier(projectName, collName));
+        cache.userCache().evictPkIndex(projectName, collName);
+        cache.userCache().evictCollectionDocuments(projectName, collName);
+        PageOccupancyReconciler.rebuildRows(projectName, collName);
+        rebuildFieldIndexes(projectName, collName, targets, registeredIndexes);
         final var rebuiltFields = targets.isEmpty() ? "" : " and " + targets.size() + " index(es)";
         return new PrimaryKeyReindexResponse(
                 "Rebuilt the primary-key index (" + rebuild.entries() + " entries)" + rebuiltFields, targets, rebuild);
     }
 
-    private static void recordFieldIndexWork(String dbName, String collName, PkRebuild rebuild, List<String> targets)
-            throws IOException {
+    private static void recordFieldIndexWork(String projectName, String collName, PkRebuild rebuild,
+            List<String> targets) throws IOException {
         for (var fieldName : targets) {
-            fs.indexMarkers().mark(dbName, collName, fieldName);
+            fs.indexMarkers().mark(projectName, collName, fieldName);
         }
         if (!rebuild.previousReadable()) {
             return;
         }
         if (!rebuild.appeared().isEmpty()) {
-            PageOccupancyReconciler.scheduleIndexRepairOf(dbName, collName,
+            PageOccupancyReconciler.scheduleIndexRepairOf(projectName, collName,
                     rebuild.appeared().stream().map(PkIndexEntry::getValue).toList());
         }
         PageOccupancyReconciler.scheduleIndexCleanupFor(rebuild.vanished());
@@ -143,27 +143,27 @@ public final class IndexOperationHelper {
         return rebuild.previousReadable() ? request.getFieldNames() : everyIndex;
     }
 
-    private static void rebuildFieldIndexes(String dbName, String collName, List<String> targets,
+    private static void rebuildFieldIndexes(String projectName, String collName, List<String> targets,
             Set<String> registeredIndexes) throws IOException, InterruptedException {
         for (var fieldName : targets) {
-            fs.indexMarkers().mark(dbName, collName, fieldName);
+            fs.indexMarkers().mark(projectName, collName, fieldName);
         }
         for (var fieldName : targets) {
-            IndexHelper.dropIndex(dbName, collName, fieldName);
+            IndexHelper.dropIndex(projectName, collName, fieldName);
         }
-        IndexBuild.buildAll(dbName, collName, targets);
+        IndexBuild.buildAll(projectName, collName, targets);
         for (var fieldName : targets) {
-            fs.indexMarkers().clear(dbName, collName, fieldName);
+            fs.indexMarkers().clear(projectName, collName, fieldName);
         }
-        clearDirtyMarkerIfFullyRebuilt(dbName, collName, targets, registeredIndexes);
+        clearDirtyMarkerIfFullyRebuilt(projectName, collName, targets, registeredIndexes);
     }
 
-    private static void clearDirtyMarkerIfFullyRebuilt(String dbName, String collName, List<String> rebuiltFields,
+    private static void clearDirtyMarkerIfFullyRebuilt(String projectName, String collName, List<String> rebuiltFields,
             Set<String> registeredIndexes) {
         if (Set.copyOf(rebuiltFields).containsAll(registeredIndexes)) {
-            pendingIndexWrites.clearCollection(dbName, collName);
-            fs.indexMarkers().retireDirty(dbName, collName);
-            fs.indexMarkers().clearUncleanStop(dbName, collName);
+            pendingIndexWrites.clearCollection(projectName, collName);
+            fs.indexMarkers().retireDirty(projectName, collName);
+            fs.indexMarkers().clearUncleanStop(projectName, collName);
         }
     }
 }

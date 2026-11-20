@@ -1,4 +1,4 @@
-A user's access to a database or collection.
+A user's access to a project or collection.
 
 ## READ
 

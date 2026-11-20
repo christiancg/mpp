@@ -25,23 +25,24 @@ public final class FieldIndexLoader {
         this.paths = paths;
     }
 
-    <T> List<FieldIndexEntry<T>> readWholeFieldIndexFiles(String dbName, String collName, String fieldName,
+    <T> List<FieldIndexEntry<T>> readWholeFieldIndexFiles(String projectName, String collName, String fieldName,
             Class<T> indexType) throws IOException {
-        return load(dbName, collName, IndexKind.fileLabel(indexType), fieldName, "field",
-                line -> FieldIndexEntry.fromIndexFileEntry(dbName, collName, line, indexType), orderFor(indexType));
+        return load(projectName, collName, IndexKind.fileLabel(indexType), fieldName, "field",
+                line -> FieldIndexEntry.fromIndexFileEntry(projectName, collName, line, indexType),
+                orderFor(indexType));
     }
 
     // Sorted by hash so SearchUtils' binary search works.
-    List<FieldIndexEntry<String>> readWholeHashIndexFile(String dbName, String collName, String fieldName,
+    List<FieldIndexEntry<String>> readWholeHashIndexFile(String projectName, String collName, String fieldName,
             IndexKind kind) throws IOException {
-        return load(dbName, collName, kind.label(), fieldName, "hash",
-                line -> FieldIndexEntry.fromIndexFileEntry(dbName, collName, line, String.class), hashOrder());
+        return load(projectName, collName, kind.label(), fieldName, "hash",
+                line -> FieldIndexEntry.fromIndexFileEntry(projectName, collName, line, String.class), hashOrder());
     }
 
-    private <T> List<FieldIndexEntry<T>> load(String dbName, String collName, String indexTypeLabel, String fieldName,
-            String label, Function<String, FieldIndexEntry<T>> parser, Comparator<FieldIndexEntry<T>> order)
-            throws IOException {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, indexTypeLabel);
+    private <T> List<FieldIndexEntry<T>> load(String projectName, String collName, String indexTypeLabel,
+            String fieldName, String label, Function<String, FieldIndexEntry<T>> parser,
+            Comparator<FieldIndexEntry<T>> order) throws IOException {
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, indexTypeLabel);
         if (indexFile == null) {
             return null;
         }

@@ -39,7 +39,7 @@ public class RequestValidatorScriptOperatorTest {
     }
 
     private static AggregateRequest aggregate(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest("testDB", "testCollection");
+        final var request = new AggregateRequest("testProject", "testCollection");
         request.setAggregationSteps(List.of(steps));
         return request;
     }
@@ -101,7 +101,7 @@ public class RequestValidatorScriptOperatorTest {
 
     @Test
     public void test_rejects_script_inside_listen() {
-        final var request = new ListenRequest("testDB", "testCollection");
+        final var request = new ListenRequest("testProject", "testCollection");
         request.setAggregationSteps(List.of(scriptFilter(SOURCE)));
         final var result = RequestValidator.validate(request);
         assertFalse(result.isValid());
@@ -110,7 +110,7 @@ public class RequestValidatorScriptOperatorTest {
 
     @Test
     public void test_listen_without_a_script_is_still_accepted() {
-        final var request = new ListenRequest("testDB", "testCollection");
+        final var request = new ListenRequest("testProject", "testCollection");
         request.setAggregationSteps(List.of());
         assertTrue(RequestValidator.validate(request).isValid());
     }

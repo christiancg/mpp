@@ -38,14 +38,14 @@ public class TriggerDispatcherConsumeTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRetryBackoffMs", 60_000L);
         TestUtils.setPrivateField(configuration, "triggerRetryMaxBackoffMs", 60_000L);
         TriggerTestSupport.createDefiner(OWNER);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "audit",
                         TriggerDefinition.MODE_DOCUMENT, false, true, OWNER, 1L, 1L, 1L, OWNER)));
     }
@@ -60,16 +60,16 @@ public class TriggerDispatcherConsumeTest {
     }
 
     private void procedure(String source) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", source), OWNER);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", source), OWNER);
     }
 
     private static String pendingRun(String id) {
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit",
-                "audit", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(), List.of(entry(id))));
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
+                "audit", "audit", EventType.CREATED, false, OWNER, 0, System.currentTimeMillis(), List.of(entry(id))));
     }
 
     private static TriggerEvent fired(String id, String runId) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "audit", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "audit", false,
                 List.of(entry(id)), OWNER, 0, runId, 1);
     }
 
@@ -105,7 +105,7 @@ public class TriggerDispatcherConsumeTest {
         }
 
         assertTrue(TriggerRunLog.recordIdsFor(runId).isEmpty());
-        assertTrue(cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).containsKey("written-by-trigger"));
+        assertTrue(cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("written-by-trigger"));
     }
 
     @Test

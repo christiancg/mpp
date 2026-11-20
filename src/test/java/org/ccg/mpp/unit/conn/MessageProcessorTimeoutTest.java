@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 public class MessageProcessorTimeoutTest {
     private static final String ADMIN = "timeout_admin";
     private static final long SHORT_TIMEOUT_MS = 300;
-    private static final String COLLECTION_ID = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String COLLECTION_ID = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
 
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
     private final Configuration config = Configuration.getInstance();
@@ -35,7 +35,7 @@ public class MessageProcessorTimeoutTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         TestUtils.setPrivateField(config, "authTimeoutMs", SHORT_TIMEOUT_MS);
         TestUtils.setPrivateField(config, "transactionIdleTimeoutMs", SHORT_TIMEOUT_MS);
@@ -57,12 +57,12 @@ public class MessageProcessorTimeoutTest {
     }
 
     private static String save(String id) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\"}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\"}}";
     }
 
     private static String findById(String id) {
-        return "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}";
     }
 
@@ -70,9 +70,9 @@ public class MessageProcessorTimeoutTest {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var free = new AtomicBoolean();
         final var probe = Thread.ofPlatform().start(() -> {
-            free.set(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            free.set(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
             if (free.get()) {
-                locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join(5000);
@@ -147,14 +147,14 @@ public class MessageProcessorTimeoutTest {
         assertNull(connection.responseWithin(SHORT_TIMEOUT_MS * 3));
 
         assertEquals(0, connection.timeouts().getLast());
-        assertTrue(connection.exchange("{\"type\":\"LIST_DATABASES\"}").contains("\"OK\""));
+        assertTrue(connection.exchange("{\"type\":\"LIST_PROJECTS\"}").contains("\"OK\""));
     }
 
     @Test
     public void test_a_listen_connection_is_not_timed() throws Exception {
         connection.start();
         assertTrue(connection.exchange(authenticate()).contains("\"OK\""));
-        final var listen = connection.exchange("{\"type\":\"LISTEN\",\"databaseName\":\"" + TestGlobals.DB
+        final var listen = connection.exchange("{\"type\":\"LISTEN\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"aggregationSteps\":[]}");
         assertTrue(listen.contains("listenId"), listen);
 
@@ -228,7 +228,7 @@ public class MessageProcessorTimeoutTest {
     public void test_only_one_request_is_refused_after_a_reap() throws Exception {
         openAndReap("idle-6");
 
-        assertTrue(connection.exchange("{\"type\":\"LIST_DATABASES\"}").contains("409-16"));
+        assertTrue(connection.exchange("{\"type\":\"LIST_PROJECTS\"}").contains("409-16"));
         assertTrue(connection.exchange(save("after")).contains("\"OK\""));
         assertTrue(connection.exchange(findById("after")).contains("\"OK\""));
     }
@@ -265,7 +265,7 @@ public class MessageProcessorTimeoutTest {
     public void test_a_failed_reap_is_not_retried() throws Exception {
         openTransactionWithOneWrite("stranded");
         final var transaction = clientTracker.getActiveTransaction(connection.clientId());
-        final var strandedLock = TestGlobals.DB + "|stranded";
+        final var strandedLock = TestGlobals.PROJECT + "|stranded";
         final var locks = IocContainer.get(ResourceLocking.class);
         locks.lockWrite(strandedLock);
         transaction.getHeldLocks().add(strandedLock);

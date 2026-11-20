@@ -15,9 +15,9 @@ public sealed class ClientTests : IAsyncLifetime
     {
         _server = FakeServer.Start((request, session) => session.Send(RecordingChannel.Ok(request, new JsonObject
         {
-            ["databases"] = new JsonArray("shop"),
+            ["projects"] = new JsonArray("shop"),
             ["server"] = new JsonObject { ["state"] = "RUNNING", ["version"] = "1.0" },
-            ["stats"] = new JsonObject { ["databases"] = 1 },
+            ["stats"] = new JsonObject { ["projects"] = 1 },
         })));
         return ValueTask.CompletedTask;
     }
@@ -28,10 +28,10 @@ public sealed class ClientTests : IAsyncLifetime
     public async Task ClientCallsReachTheServer()
     {
         await using var client = await MppClient.ConnectAsync(_server.Settings(settings => settings with { Credentials = new Credentials("alice", "pw") }));
-        Assert.Equal(["shop"], await client.ListDatabasesAsync());
+        Assert.Equal(["shop"], await client.ListProjectsAsync());
         var info = await client.ServerInfoAsync();
         Assert.Equal(("RUNNING", "1.0"), (info.State, info.Version));
-        Assert.Equal(1, (await client.DatabaseStatsAsync()).GetDouble("databases"));
+        Assert.Equal(1, (await client.ProjectStatsAsync()).GetDouble("projects"));
         await client.ChangePasswordAsync("pw", "new");
         Assert.Equal("alice", (await _server.NextRequestAsync("SET_PASSWORD"))["username"]!.GetValue<string>());
         Assert.Equal("alice", (await _server.NextRequestAsync("AUTHENTICATE"))["username"]!.GetValue<string>());
@@ -52,7 +52,7 @@ public sealed class ClientTests : IAsyncLifetime
     public async Task SyncTerminalsBlockAndReturn()
     {
         await using var client = await MppClient.ConnectAsync(_server.Settings());
-        var orders = client.Database("shop").Collection<Order>("orders").AsQueryable();
+        var orders = client.Project("shop").Collection<Order>("orders").AsQueryable();
         Assert.Empty(orders.Where(o => o.Paid).ToList());
         Assert.Equal(0, orders.Count());
         Assert.Empty(orders.Provider.Execute<System.Collections.Generic.IEnumerable<Order>>(orders.Expression));
@@ -67,7 +67,7 @@ public sealed class ClientTests : IAsyncLifetime
     {
         var client = await MppClient.ConnectAsync(_server.Settings());
         await client.DisposeAsync();
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListDatabasesAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ListProjectsAsync());
         await client.DisposeAsync();
     }
 

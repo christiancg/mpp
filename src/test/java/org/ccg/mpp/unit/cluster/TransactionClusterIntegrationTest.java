@@ -56,7 +56,7 @@ public class TransactionClusterIntegrationTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         cluster.start(false, 1000L);
     }
@@ -97,7 +97,7 @@ public class TransactionClusterIntegrationTest {
     }
 
     private SaveRequest saveRequest(String coll, String id) {
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(doc(id));
         request.set_id(id);
         return request;
@@ -106,7 +106,7 @@ public class TransactionClusterIntegrationTest {
     private String collectionOwnedByOther() {
         for (var i = 0; i < 500; i++) {
             final var coll = "tx-routed-" + i;
-            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, coll)) {
                 return coll;
             }
         }
@@ -114,8 +114,8 @@ public class TransactionClusterIntegrationTest {
     }
 
     private void createCollection(String coll) throws Exception {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, coll));
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
     }
 
     private UUID newClient() {
@@ -175,7 +175,7 @@ public class TransactionClusterIntegrationTest {
 
     @Test
     public void test_replicate_tx_applies_batch() throws Exception {
-        final var entry = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        final var entry = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("rep-tx")), null, List.of("7"));
         final var message = new ClusterMessage(null, ClusterMessageType.REPLICATE_TX, SECRET, node("edge", 1), null);
         message.setTxReplication(new TxReplicationPayload(List.of(entry)));
@@ -271,7 +271,7 @@ public class TransactionClusterIntegrationTest {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
         assertNull(router.forward(new StartTransactionRequest(), "{}", true, "admin", clientId));
-        final var read = new FindByIdRequest(TestGlobals.DB, collectionOwnedByOther());
+        final var read = new FindByIdRequest(TestGlobals.PROJECT, collectionOwnedByOther());
         read.set_id("x");
         assertNull(router.forward(read, eJson.toJson(read), true, "admin", clientId));
     }
@@ -309,7 +309,7 @@ public class TransactionClusterIntegrationTest {
         final var relayed = router.forward(commit, eJson.toJson(commit), true, "admin", clientId);
         assertNotNull(relayed);
         assertTrue(relayed.contains("421-1"), "expected NOT_COLLECTION_OWNER, got: " + relayed);
-        final var find = new FindByIdRequest(TestGlobals.DB, coll);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, coll);
         find.set_id("fastpath");
         assertEquals(OperationStatus.NOT_FOUND, processor.processMessage(find).getStatus());
         assertNull(clientTracker.getActiveTransaction(clientId));
@@ -324,7 +324,7 @@ public class TransactionClusterIntegrationTest {
         processor.processMessage(new StartTransactionRequest(), clientId);
         final var save = saveRequest(coll, "read-yw");
         router.forward(save, eJson.toJson(save), true, "admin", clientId);
-        final var read = new FindByIdRequest(TestGlobals.DB, coll);
+        final var read = new FindByIdRequest(TestGlobals.PROJECT, coll);
         read.set_id("read-yw");
         final var relayed = router.forward(read, eJson.toJson(read), true, "admin", clientId);
         assertNotNull(relayed);
@@ -352,7 +352,7 @@ public class TransactionClusterIntegrationTest {
         final var dtxId = UUID.randomUUID().toString();
         Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:7000",
                 List.of("127.0.0.1:7000", cluster.serverAddress().toString()),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         final var message = new ClusterMessage(null, ClusterMessageType.LIST_TX, SECRET,
                 node("self", cluster.serverPort()), null);
         final var response = pool.request(cluster.serverAddress(), message, 2000);
@@ -388,10 +388,10 @@ public class TransactionClusterIntegrationTest {
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("durable-commit"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 0,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, obj));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, obj));
         Tx2pcLog.recordParticipantPrepared(dtxId, cluster.serverAddress().toString(),
                 List.of(cluster.serverAddress().toString()),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         final var response = pool.request(cluster.serverAddress(),
                 control(ClusterMessageType.COMMIT_TX, "gone-session", dtxId), 2000);
@@ -405,10 +405,10 @@ public class TransactionClusterIntegrationTest {
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("durable-abort"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "client", 0,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL, obj));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL, obj));
         Tx2pcLog.recordParticipantPrepared(dtxId, cluster.serverAddress().toString(),
                 List.of(cluster.serverAddress().toString()),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         final var response = pool.request(cluster.serverAddress(),
                 control(ClusterMessageType.ABORT_TX, "gone-session", dtxId), 2000);

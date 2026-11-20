@@ -24,14 +24,14 @@ public class SnapshotRegistry implements RetiredCopies {
     private final Map<String, List<Snapshot>> watched = new ConcurrentHashMap<>();
 
     @Override
-    public boolean watches(String dbName) {
-        return watched.containsKey(dbName);
+    public boolean watches(String projectName) {
+        return watched.containsKey(projectName);
     }
 
     @Override
-    public void retiring(String dbName, String collName, List<RetiredCopy> retired, List<String> born,
+    public void retiring(String projectName, String collName, List<RetiredCopy> retired, List<String> born,
             OldLines oldLines) {
-        final var open = watched.get(dbName);
+        final var open = watched.get(projectName);
         if (open == null) {
             return;
         }
@@ -64,14 +64,14 @@ public class SnapshotRegistry implements RetiredCopies {
         }
     }
 
-    public synchronized Snapshot open(String dbName, List<String> collectionNames, UUID owner) {
+    public synchronized Snapshot open(String projectName, List<String> collectionNames, UUID owner) {
         if (byId.size() >= configuration.intValue(ConfigKey.SNAPSHOT_MAX_OPEN)) {
             return null;
         }
-        final var snapshot = new Snapshot(UUID.randomUUID().toString(), dbName, owner, collectionNames,
+        final var snapshot = new Snapshot(UUID.randomUUID().toString(), projectName, owner, collectionNames,
                 System.nanoTime());
         byId.put(snapshot.id(), snapshot);
-        watched.compute(dbName, (_, open) -> {
+        watched.compute(projectName, (_, open) -> {
             final var next = open == null ? new CopyOnWriteArrayList<Snapshot>() : open;
             next.add(snapshot);
             return next;
@@ -114,12 +114,12 @@ public class SnapshotRegistry implements RetiredCopies {
         return expired;
     }
 
-    public void abortCollection(String dbName, String collName, String reason) {
-        abortWhere(snapshot -> snapshot.dbName().equals(dbName) && snapshot.holds(collName), reason);
+    public void abortCollection(String projectName, String collName, String reason) {
+        abortWhere(snapshot -> snapshot.projectName().equals(projectName) && snapshot.holds(collName), reason);
     }
 
-    public void abortDatabase(String dbName, String reason) {
-        abortWhere(snapshot -> snapshot.dbName().equals(dbName), reason);
+    public void abortProject(String projectName, String reason) {
+        abortWhere(snapshot -> snapshot.projectName().equals(projectName), reason);
     }
 
     public int openCount() {
@@ -138,7 +138,7 @@ public class SnapshotRegistry implements RetiredCopies {
         if (snapshot.abort(reason)) {
             unwatch(snapshot);
             discardImages(snapshot);
-            logger.warning("Aborted snapshot " + snapshot.id() + " of " + snapshot.dbName() + ": " + reason);
+            logger.warning("Aborted snapshot " + snapshot.id() + " of " + snapshot.projectName() + ": " + reason);
         }
     }
 
@@ -157,7 +157,7 @@ public class SnapshotRegistry implements RetiredCopies {
     }
 
     private void unwatch(Snapshot snapshot) {
-        watched.computeIfPresent(snapshot.dbName(), (_, open) -> {
+        watched.computeIfPresent(snapshot.projectName(), (_, open) -> {
             open.remove(snapshot);
             return open.isEmpty() ? null : open;
         });

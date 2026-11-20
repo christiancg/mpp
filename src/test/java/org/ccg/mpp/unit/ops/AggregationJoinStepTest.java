@@ -35,7 +35,7 @@ public class AggregationJoinStepTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -46,7 +46,7 @@ public class AggregationJoinStepTest {
 
     @Test
     public void test_handle_empty_collections_in_join() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         JoinAggregationStep joinStep = new JoinAggregationStep("joinCollection", "localField", "remoteField",
                 "asField");
         request.setAggregationSteps(List.of(joinStep));
@@ -64,19 +64,19 @@ public class AggregationJoinStepTest {
         JsonObject mainDoc = new JsonObject();
         mainDoc.add(Globals.PK_FIELD, new JsonString("main1"));
         mainDoc.addProperty("ref", 42);
-        DbEntry mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, mainDoc);
+        DbEntry mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, mainDoc);
         mainEntry.set_id("main1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
 
         JsonObject joinDoc = new JsonObject();
         joinDoc.add(Globals.PK_FIELD, new JsonString("join1"));
         joinDoc.addProperty("refKey", 42);
         joinDoc.addProperty("label", "matched");
-        DbEntry joinEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.JOIN_COLL, joinDoc);
+        DbEntry joinEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, joinDoc);
         joinEntry.set_id("join1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.JOIN_COLL, joinEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.JOIN_COLL, joinEntry);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -92,12 +92,12 @@ public class AggregationJoinStepTest {
         JsonObject noField = new JsonObject();
         noField.add(Globals.PK_FIELD, new JsonString("nf1"));
         noField.addProperty("other", "value");
-        DbEntry nfEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, noField);
+        DbEntry nfEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, noField);
         nfEntry.set_id("nf1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, nfEntry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, nfEntry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(
                 List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "missingField", "refKey", "joined")));
 
@@ -111,9 +111,9 @@ public class AggregationJoinStepTest {
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty("refKey", refKey);
         obj.addProperty("label", label);
-        final var e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.JOIN_COLL, obj);
+        final var e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, obj);
         e.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.JOIN_COLL, e);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.JOIN_COLL, e);
     }
 
     private static List<String> joinedIdsOf(List<JsonObject> rows) {
@@ -131,18 +131,18 @@ public class AggregationJoinStepTest {
         final var main = new JsonObject();
         main.add(Globals.PK_FIELD, new JsonString("m1"));
         main.addProperty("ref", 42);
-        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, main);
         mainEntry.set_id("m1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
         for (final var id : List.of("doc-06", "doc-01", "doc-05", "doc-02", "doc-04", "doc-03")) {
             addJoinDoc(cache, id, 42, "label-" + id);
         }
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
 
         final var scanned = joinedIdsOf(AggregationOperationHelper.processAggregation(req));
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
         final var indexed = joinedIdsOf(AggregationOperationHelper.processAggregation(req));
 
         assertEquals(List.of("doc-01", "doc-02", "doc-03", "doc-04", "doc-05", "doc-06"), scanned,
@@ -156,16 +156,16 @@ public class AggregationJoinStepTest {
         final var main = new JsonObject();
         main.add(Globals.PK_FIELD, new JsonString("m1"));
         main.addProperty("ref", 42);
-        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, main);
         mainEntry.set_id("m1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
 
         addJoinDoc(cache, "j1", 42, "matched");
         addJoinDoc(cache, "j2", 7, "nope");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -182,16 +182,16 @@ public class AggregationJoinStepTest {
         final var main = new JsonObject();
         main.add(Globals.PK_FIELD, new JsonString("m1"));
         main.addProperty("ref", 99);
-        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, main);
         mainEntry.set_id("m1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
 
         addJoinDoc(cache, "j1", 1, "no-match");
         addJoinDoc(cache, "j2", 2, "also-no");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "refKey");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "refKey");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.JOIN_COLL).setIndexes(Set.of("refKey"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -207,14 +207,14 @@ public class AggregationJoinStepTest {
         final var main = new JsonObject();
         main.add(Globals.PK_FIELD, new JsonString("m1"));
         main.addProperty("ref", 5);
-        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, main);
+        final var mainEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, main);
         mainEntry.set_id("m1");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, mainEntry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, mainEntry);
 
         addJoinDoc(cache, "j1", 5, "match");
         addJoinDoc(cache, "j2", 9, "no-match");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", "refKey", "joined")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -229,21 +229,21 @@ public class AggregationJoinStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("key", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, coll, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, coll, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, coll, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, coll, entry);
     }
 
     private List<JsonObject> join() throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "key", "key", "cfg")));
         return AggregationOperationHelper.processAggregation(request);
     }
 
     private void indexJoinKey() throws InterruptedException {
         final var cache = IocContainer.get(Cache.class);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.JOIN_COLL, "key");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.JOIN_COLL).setIndexes(Set.of("key"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.JOIN_COLL, "key");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.JOIN_COLL).setIndexes(Set.of("key"));
     }
 
     private static JsonObject regionKey() {
@@ -282,13 +282,13 @@ public class AggregationJoinStepTest {
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
         obj.add("mirror", new JsonString(id));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, coll, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, coll, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(IocContainer.get(Cache.class), TestGlobals.DB, coll, entry);
+        TestUtils.cacheEntry(IocContainer.get(Cache.class), TestGlobals.PROJECT, coll, entry);
     }
 
     private static List<JsonObject> joinOn(String remoteField) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", remoteField, "j")));
         return AggregationOperationHelper.processAggregation(request);
     }
@@ -335,7 +335,7 @@ public class AggregationJoinStepTest {
 
     private static AnalyzeContext analyzedJoinOn(String remoteField) throws IOException {
         final var analyze = new AnalyzeContext();
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", remoteField, "j")));
         AggregationOperationHelper.processAggregation(request, null, null, PipelineContext.fromConfiguration(analyze));
         return analyze;
@@ -364,13 +364,13 @@ public class AggregationJoinStepTest {
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
         try {
-            final var save = new SaveRequest(TestGlobals.DB, TestGlobals.JOIN_COLL);
+            final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("buffered"));
             save.setObject(object);
             save.set_id("buffered");
             TransactionOperationHelper.bufferSave(save, transaction);
-            final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setAggregationSteps(
                     List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "ref", Globals.PK_FIELD, "j")));
 

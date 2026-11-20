@@ -37,7 +37,7 @@ public static class Program
         {
             Hosts = [new ServerAddress("127.0.0.1", ((IPEndPoint)server.LocalEndpoint).Port)],
         });
-        var purchases = client.Database("shop").Collection<Purchase>("purchases");
+        var purchases = client.Project("shop").Collection<Purchase>("purchases");
         var fluent = purchases.Query()
             .Filter(And(Field("status").Eq("active"), Field("total").Gt(100)))
             .Sort("total", Order.Desc)

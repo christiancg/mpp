@@ -57,7 +57,7 @@ public class SaveOverflowGuardTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "maxPageSize", MAX_PAGE_SIZE);
         TestUtils.setPrivateField(configuration, "maxEntrySize", MAX_ENTRY_SIZE);
     }
@@ -78,7 +78,7 @@ public class SaveOverflowGuardTest {
     }
 
     private OperationStatus saveStatus(String id, int payloadLength) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, payloadLength));
         request.set_id(id);
         return processor.processMessage(request).getStatus();
@@ -89,8 +89,8 @@ public class SaveOverflowGuardTest {
     }
 
     private static File collectionFolder() {
-        return new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
+                + TestGlobals.COLL);
     }
 
     private List<Long> pageFileSizes() throws Exception {
@@ -105,7 +105,7 @@ public class SaveOverflowGuardTest {
     }
 
     private boolean isReadable(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse;
     }
@@ -170,18 +170,18 @@ public class SaveOverflowGuardTest {
     }
 
     private void bulkSave(List<JsonObject> objects) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private long sizeOfFirstPage() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(e -> e.getPage() == 0L)
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream().filter(e -> e.getPage() == 0L)
                 .mapToLong(AdminPageEntry::getPageSize).findFirst().orElse(0L);
     }
 
     private int entryCountOfFirstPage() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(e -> e.getPage() == 0L)
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream().filter(e -> e.getPage() == 0L)
                 .mapToInt(AdminPageEntry::getEntryCount).findFirst().orElse(0);
     }
 
@@ -204,19 +204,19 @@ public class SaveOverflowGuardTest {
     }
 
     private long pageOf(String id) throws Exception {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         final var position = Collections.binarySearch(primaryKeyIndex, id);
         assertTrue(position >= 0, id + " is not in the PK index");
         return primaryKeyIndex.get(position).getPage();
     }
 
     private long inMemorySizeOfPageZero() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream().filter(p -> p.getPage() == 0)
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream().filter(p -> p.getPage() == 0)
                 .mapToLong(AdminPageEntry::getPageSize).sum();
     }
 
     private static long liveBytesOfPageZero() throws Exception {
-        return IocContainer.get(FileSystem.class).readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        return IocContainer.get(FileSystem.class).readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(row -> row.getPage() == 0L).mapToLong(PkIndexEntry::getLength).sum();
     }
 
@@ -257,12 +257,12 @@ public class SaveOverflowGuardTest {
         seedOnePage();
         bulkSave(resizedSeeds(SEED_PAYLOAD + GROWTH));
         final var sizeAfterTheWrite = inMemorySizeOfPageZero();
-        final var updated = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL,
+        final var updated = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL,
                 document(seededId(0), SEED_PAYLOAD + GROWTH));
         updated.setPage(0);
         updated.setPreviousByteSize(updated.byteSize() - GROWTH);
 
-        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.UPDATED,
+        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.UPDATED,
                 List.of(EntityRef.of(updated)), 0L);
 
         assertEquals(sizeAfterTheWrite, inMemorySizeOfPageZero());
@@ -276,7 +276,7 @@ public class SaveOverflowGuardTest {
     }
 
     private int payloadLengthOfTheRelocatedDocument() {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(RELOCATED);
         final var response = processor.processMessage(request);
         assertInstanceOf(FindByIdResponse.class, response, RELOCATED + " must stay reachable by id");
@@ -284,7 +284,8 @@ public class SaveOverflowGuardTest {
     }
 
     private static int openIntents() throws IOException {
-        return IntentLogs.openIntents(new File(TestGlobals.PATH).getAbsolutePath(), TestGlobals.DB, TestGlobals.COLL);
+        return IntentLogs.openIntents(new File(TestGlobals.PATH).getAbsolutePath(), TestGlobals.PROJECT,
+                TestGlobals.COLL);
     }
 
     @Test

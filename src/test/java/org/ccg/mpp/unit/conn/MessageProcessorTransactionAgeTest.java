@@ -23,7 +23,7 @@ public class MessageProcessorTransactionAgeTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         TestUtils.setPrivateField(config, "transactionMaxAgeMs", MAX_AGE_MS);
         connection = new ScriptedConnection();
@@ -41,16 +41,16 @@ public class MessageProcessorTransactionAgeTest {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var free = new AtomicBoolean();
         final var probe = Thread.ofPlatform().start(() -> {
-            free.set(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
+            free.set(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
             if (free.get()) {
-                locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         });
         probe.join(5000);
         return free.get();
     }
 
-    private static final String FIND_AGED = "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB
+    private static final String FIND_AGED = "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
             + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"aged\"}";
 
     @Test
@@ -61,9 +61,11 @@ public class MessageProcessorTransactionAgeTest {
                 .exchange("{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN + "\",\"password\":\"password123\"}")
                 .contains("\"OK\""));
         assertTrue(connection.exchange("{\"type\":\"START_TRANSACTION\"}").contains("\"OK\""));
-        assertTrue(connection.exchange("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
-                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"aged\"}}")
-                .contains("\"OK\""));
+        assertTrue(
+                connection
+                        .exchange("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
+                                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"aged\"}}")
+                        .contains("\"OK\""));
         assertFalse(collectionIsWritable());
 
         final var deadline = System.nanoTime() + 5_000_000_000L;

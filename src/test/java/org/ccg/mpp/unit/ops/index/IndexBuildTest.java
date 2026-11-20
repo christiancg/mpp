@@ -64,7 +64,7 @@ public class IndexBuildTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -95,7 +95,7 @@ public class IndexBuildTest {
         for (final var field : FIELDS) {
             object.add(field, value);
         }
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
@@ -108,7 +108,7 @@ public class IndexBuildTest {
         for (var i = 0; i < documents; i++) {
             save("r" + i, FieldIndexBatchSupport.randomValue(random));
         }
-        try (var stored = realFs.streamEntries(TestGlobals.DB, TestGlobals.COLL)) {
+        try (var stored = realFs.streamEntries(TestGlobals.PROJECT, TestGlobals.COLL)) {
             stored.forEach(saved::add);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -116,11 +116,11 @@ public class IndexBuildTest {
     }
 
     private void build(List<String> fields) throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            IndexBuild.buildAll(TestGlobals.DB, TestGlobals.COLL, fields);
+            IndexBuild.buildAll(TestGlobals.PROJECT, TestGlobals.COLL, fields);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -154,21 +154,21 @@ public class IndexBuildTest {
     @Test
     public void test_one_pass_streams_the_pages_once_for_four_fields_and_admits_nothing() throws Exception {
         seed(7L, 120);
-        cache.userCache().evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         final var spied = spyTheBuildFileSystem();
 
         build(FIELDS);
 
-        verify(spied, times(1)).streamPages(TestGlobals.DB, TestGlobals.COLL);
+        verify(spied, times(1)).streamPages(TestGlobals.PROJECT, TestGlobals.COLL);
         for (final var field : FIELDS) {
             assertEquals(FieldIndexBatchSupport.legacyBuildSnapshot(saved, field),
                     FieldIndexBatchSupport.snapshot(field), field);
             for (final var type : IndexKind.scalarIndexClasses()) {
-                assertNull(cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL,
+                assertNull(cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL,
                         Cache.getIndexIdentifier(field, type)));
             }
         }
-        assertNull(cache.userCache().getCachedCollection(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.userCache().getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -187,7 +187,7 @@ public class IndexBuildTest {
         seed(11L, 30);
         build(FIELDS);
         for (final var field : FIELDS) {
-            realFs.indexMarkers().mark(TestGlobals.DB, TestGlobals.COLL, field);
+            realFs.indexMarkers().mark(TestGlobals.PROJECT, TestGlobals.COLL, field);
         }
         final var spied = spyTheBuildFileSystem();
         doThrow(new RuntimeException("disk full")).when(spied).writeIndexFile(anyString(), anyString(), eq("f3"),
@@ -197,7 +197,7 @@ public class IndexBuildTest {
 
         for (final var field : FIELDS) {
             assertFalse(anyTypeFileOf(field), field + " keeps no file after a failed build");
-            assertTrue(realFs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, field));
+            assertTrue(realFs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, field));
         }
     }
 
@@ -223,7 +223,7 @@ public class IndexBuildTest {
     @Test
     public void test_several_passes_each_stream_the_pages_once() throws Exception {
         seed(13L, 20);
-        cache.userCache().evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         final var spied = spyTheBuildFileSystem();
         try {
             TestUtils.setPrivateStaticField(IndexBuild.class, "bytesPerDocumentPerField",
@@ -234,7 +234,7 @@ public class IndexBuildTest {
                     IndexBuild.BUILDER_BYTES_PER_DOCUMENT_PER_FIELD);
         }
 
-        verify(spied, times(4)).streamPages(TestGlobals.DB, TestGlobals.COLL);
+        verify(spied, times(4)).streamPages(TestGlobals.PROJECT, TestGlobals.COLL);
         for (final var field : FIELDS) {
             assertEquals(FieldIndexBatchSupport.legacyBuildSnapshot(saved, field),
                     FieldIndexBatchSupport.snapshot(field), field);
@@ -252,7 +252,7 @@ public class IndexBuildTest {
                 (IntConsumer) _ -> observed.add(anyTypeFileOf("f1") && !anyTypeFileOf("f2")));
         try {
             faultInjector.arm(FaultPoint.INDEX_BUILD_FIELD_WRITTEN, FaultAction.HALT,
-                    Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                    Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
             build(List.of("f1", "f2"));
         } finally {
             faultInjector.releaseAll();
@@ -276,9 +276,9 @@ public class IndexBuildTest {
     @Test
     public void test_an_unreadable_page_fails_the_build_with_its_io_error() throws Exception {
         seed(19L, 5);
-        cache.userCache().evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         final var spied = spyTheBuildFileSystem();
-        doThrow(new IOException("unreadable")).when(spied).streamPages(TestGlobals.DB, TestGlobals.COLL);
+        doThrow(new IOException("unreadable")).when(spied).streamPages(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertThrows(IOException.class, () -> build(List.of("f1")));
         assertFalse(anyTypeFileOf("f1"));

@@ -13,10 +13,10 @@ import org.junit.jupiter.api.Test;
 public class PoolIT extends ServerIT {
     @Test
     public void test_many_threads_share_a_small_pool_and_every_write_lands() throws Exception {
-        client.database("pool_it").create();
-        client.database("pool_it").collection("events").create();
+        client.project("pool_it").create();
+        client.project("pool_it").collection("events").create();
         try (var pooled = MppClient.connect(ItSettings.of(server).poolSize(4).build())) {
-            final var events = pooled.database("pool_it").collection("events");
+            final var events = pooled.project("pool_it").collection("events");
             final var tasks = new ArrayList<FutureTask<Integer>>();
             for (var thread = 0; thread < 32; thread++) {
                 final var prefix = "t" + thread + "-";
@@ -40,10 +40,10 @@ public class PoolIT extends ServerIT {
 
     @Test
     public void test_closing_the_client_while_requests_run_fails_them_cleanly() throws Exception {
-        client.database("pool_close_it").create();
-        client.database("pool_close_it").collection("events").create();
+        client.project("pool_close_it").create();
+        client.project("pool_close_it").collection("events").create();
         final var closing = MppClient.connect(ItSettings.of(server).poolSize(2).build());
-        final var events = closing.database("pool_close_it").collection("events");
+        final var events = closing.project("pool_close_it").collection("events");
         final var tasks = new ArrayList<FutureTask<Integer>>();
         for (var thread = 0; thread < 4; thread++) {
             final var prefix = "c" + thread + "-";

@@ -33,8 +33,8 @@ public class AuthorizationCheckerScriptOperatorTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
     }
 
     @AfterAll
@@ -54,15 +54,15 @@ public class AuthorizationCheckerScriptOperatorTest {
     private static AdminUserEntry reader(ScriptPermissionLevel level) {
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         if (level != null) {
-            scriptPerms.put(TestGlobals.DB, level);
+            scriptPerms.put(TestGlobals.PROJECT, level);
         }
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        dbPerms.put(TestGlobals.DB, PermissionLevel.READ);
-        return new AdminUserEntry("user", "hash", false, new HashSet<>(), dbPerms, new HashMap<>(), scriptPerms);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        projectPerms.put(TestGlobals.PROJECT, PermissionLevel.READ);
+        return new AdminUserEntry("user", "hash", false, new HashSet<>(), projectPerms, new HashMap<>(), scriptPerms);
     }
 
     private static AggregateRequest aggregate(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return request;
     }
@@ -97,7 +97,7 @@ public class AuthorizationCheckerScriptOperatorTest {
     }
 
     @Test
-    public void test_database_owner_can() {
+    public void test_project_owner_can() {
         assertTrue(AuthorizationChecker.check(scriptedFilter(), owner()).isAllowed());
     }
 

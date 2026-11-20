@@ -7,7 +7,7 @@ import pytest
 
 from mpp import (
     AsyncAdmin,
-    AsyncDatabase,
+    AsyncProject,
     ConflictError,
     Document,
     NotFoundError,
@@ -32,8 +32,8 @@ def _replying(*frames: str) -> RecordingChannel:
     return channel
 
 
-def _shop(channel: RecordingChannel) -> AsyncDatabase:
-    return AsyncDatabase(recording_context(channel), "shop")
+def _shop(channel: RecordingChannel) -> AsyncProject:
+    return AsyncProject(recording_context(channel), "shop")
 
 
 @dataclass
@@ -105,7 +105,7 @@ async def test_a_missing_document_is_none_only_for_404_2() -> None:
 
 async def test_names_and_ids_are_checked_before_sending() -> None:
     channel = RecordingChannel()
-    with pytest.raises(ValueError, match="database name"):
+    with pytest.raises(ValueError, match="project name"):
         _shop(channel).__class__(recording_context(channel), "x")
     with pytest.raises(ValueError, match="collection name"):
         _shop(channel).collection("a b")
@@ -133,8 +133,8 @@ async def test_typed_collections_encode_and_decode_through_their_codec() -> None
         shop.collection("x-y", Order, codec=Upper())
 
 
-async def test_ddl_and_database_replies() -> None:
-    shop = _shop(_replying("ok.list_collections", "ok.get_database_stats", "ok.run_script", "ok.list_triggers"))
+async def test_ddl_and_project_replies() -> None:
+    shop = _shop(_replying("ok.list_collections", "ok.get_project_stats", "ok.run_script", "ok.list_triggers"))
     assert shop.name == "shop"
     assert await shop.list_collections() == ("orders",)
     assert await shop.stats() == {"memory": {"userCacheBytes": 1}}
@@ -202,7 +202,7 @@ async def test_admin_replies() -> None:
     channel.replies = lambda request: by_type.get(request["type"]) or replies(request)
     admin = AsyncAdmin(recording_context(channel))
     users = await admin.users().list()
-    assert (users[0].username, users[0].admin, users[0].database_permissions) == ("alice", True, {})
+    assert (users[0].username, users[0].admin, users[0].project_permissions) == ("alice", True, {})
     transactions = await admin.transactions().list()
     assert (transactions[0].age_ms, transactions[0].coordinator_reachable) == (42000, False)
     scripts = await admin.scripts().list()
@@ -220,5 +220,5 @@ async def test_an_empty_user_list_is_empty_for_404_5_and_404_3(code: str) -> Non
     assert await AsyncAdmin(recording_context(channel)).users().list() == []
 
 
-def test_collection_key_joins_database_and_collection() -> None:
+def test_collection_key_joins_project_and_collection() -> None:
     assert collection_key("shop", "orders") == "shop|orders"

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ClientMainTest {
-    private static final String LIST = "{\"type\":\"LIST_DATABASES\"}";
+    private static final String LIST = "{\"type\":\"LIST_PROJECTS\"}";
     private FakeLineServer server;
     private final ByteArrayOutputStream stdout = new ByteArrayOutputStream();
     private final ByteArrayOutputStream stderr = new ByteArrayOutputStream();
@@ -122,7 +122,7 @@ public class ClientMainTest {
         assertEquals(ClientException.OK, runAgainstServer("", "--exec", LIST, "--exec", LIST));
 
         assertEquals(2, out().lines().count());
-        assertEquals(List.of("AUTHENTICATE", "LIST_DATABASES", "LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("AUTHENTICATE", "LIST_PROJECTS", "LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test
@@ -147,12 +147,12 @@ public class ClientMainTest {
     public void test_shell_runs_until_exit() {
         assertEquals(ClientException.OK, runAgainstServer(LIST + "\nexit\n", "--shell"));
 
-        assertTrue(out().contains("\"type\": \"LIST_DATABASES\""), out());
+        assertTrue(out().contains("\"type\": \"LIST_PROJECTS\""), out());
     }
 
     @Test
-    public void test_dump_writes_to_stdout_and_restore_into_an_existing_database_sends_no_create_database() {
-        new FakeSource().database("shop", "orders").documents("shop", "orders", 3, 5).serveOn(server);
+    public void test_dump_writes_to_stdout_and_restore_into_an_existing_project_sends_no_create_project() {
+        new FakeSource().project("shop", "orders").documents("shop", "orders", 3, 5).serveOn(server);
 
         assertEquals(ClientException.OK, runAgainstServer("", "--dump"));
         final var dumped = out();
@@ -162,19 +162,19 @@ public class ClientMainTest {
         final var requestsBeforeRestore = server.types().size();
         assertEquals(ClientException.OK, runAgainstServer(dumped, "--restore"));
         assertEquals("", out());
-        assertTrue(err().contains("restored 2 requests, skipped 1 existing databases"), err());
+        assertTrue(err().contains("restored 2 requests, skipped 1 existing projects"), err());
         final var restoreTypes = server.types().subList(requestsBeforeRestore, server.types().size());
-        assertFalse(restoreTypes.contains("CREATE_DATABASE"), restoreTypes.toString());
+        assertFalse(restoreTypes.contains("CREATE_PROJECT"), restoreTypes.toString());
     }
 
     @Test
     public void test_a_failed_dump_returns_1() {
-        new FakeSource().database("shop", "orders").serveOn(server);
-        server.reply("GET_DATABASE_STATS", FakeLineServer.error("GET_DATABASE_STATS", "FORBIDDEN", "403-1"));
+        new FakeSource().project("shop", "orders").serveOn(server);
+        server.reply("GET_PROJECT_STATS", FakeLineServer.error("GET_PROJECT_STATS", "FORBIDDEN", "403-1"));
 
         assertEquals(ClientException.FAILED, runAgainstServer("", "--dump"));
 
-        assertTrue(err().startsWith("GET_DATABASE_STATS failed:"), err());
+        assertTrue(err().startsWith("GET_PROJECT_STATS failed:"), err());
         assertEquals("", out());
     }
 

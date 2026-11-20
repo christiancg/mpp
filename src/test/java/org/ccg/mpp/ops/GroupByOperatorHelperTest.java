@@ -54,7 +54,7 @@ public class GroupByOperatorHelperTest {
     @BeforeAll
     static void seed() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final List<JsonBaseElement> kinds = List.of(new JsonString("A"), new JsonString("B"), new JsonString("a"),
                 new JsonNumber(1), new JsonString("1"), JsonBoolean.TRUE);
         final var indexed = new ArrayList<JsonObject>();
@@ -87,13 +87,13 @@ public class GroupByOperatorHelperTest {
     }
 
     private static void save(String coll, List<JsonObject> objects) {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, coll);
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, coll);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "cat")).getStatus());
-        pending.clearCollection(TestGlobals.DB, coll);
+                processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "cat")).getStatus());
+        pending.clearCollection(TestGlobals.PROJECT, coll);
     }
 
     @AfterAll
@@ -103,7 +103,7 @@ public class GroupByOperatorHelperTest {
     }
 
     private static List<JsonObject> run(String coll, BaseAggregationStep... steps) throws Exception {
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(steps));
         return AggregationOperationHelper.processAggregation(request);
     }
@@ -200,17 +200,17 @@ public class GroupByOperatorHelperTest {
             final var counted = countOf(run(INDEXED, new GroupByAggregationStep("cat"), new CountAggregationStep()));
             assertEquals(6, counted);
             reader.verify(() -> IndexEntryReader.getIndexEntriesForField(any(), any(), any(), any()), never());
-            reader.verify(
-                    () -> IndexEntryReader.distinctValuesForField(eq(TestGlobals.DB), eq(INDEXED), eq("cat"), any()));
+            reader.verify(() -> IndexEntryReader.distinctValuesForField(eq(TestGlobals.PROJECT), eq(INDEXED), eq("cat"),
+                    any()));
         }
         assertEquals(6, run(INDEXED, new GroupByAggregationStep("cat")).size());
         assertEquals(6, countOf(run(INDEXED, new SkipAggregationStep(0), new GroupByAggregationStep("cat"),
                 new CountAggregationStep())));
-        pending.mark(TestGlobals.DB, INDEXED, "d1000");
+        pending.mark(TestGlobals.PROJECT, INDEXED, "d1000");
         try {
             assertEquals(6, countOf(run(INDEXED, new GroupByAggregationStep("cat"), new CountAggregationStep())));
         } finally {
-            pending.clearCollection(TestGlobals.DB, INDEXED);
+            pending.clearCollection(TestGlobals.PROJECT, INDEXED);
         }
     }
 

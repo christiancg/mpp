@@ -51,12 +51,12 @@ public class ForwardedTxSliceLostTest extends ClusterConnectionHandlerTestBase {
     }
 
     private static String save(String id) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
     }
 
     private static String findFirst() {
-        return "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"_id\":\"first\"}";
     }
 
@@ -228,22 +228,22 @@ public class ForwardedTxSliceLostTest extends ClusterConnectionHandlerTestBase {
         final var lateColl = "late-collection";
         final var document = new JsonObject();
         document.add("_id", new JsonString("late"));
-        final var op = new AdminTransactionEntry(txId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
-                lateColl, document);
+        final var op = new AdminTransactionEntry(txId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE,
+                TestGlobals.PROJECT, lateColl, document);
         AdminOperationHelper.saveTransactionOp(op);
         TxCommitLog.recordLocalCommit(txId, List.of(op.get_id()),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         final var reply = pool.request(cluster.serverAddress(), forwarded(txId, commit(), true), ACK_TIMEOUT_MS);
         assertEquals(ClusterMessageType.ERROR, reply.getType(), "a replay that could not finish is never acked");
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, lateColl)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, lateColl)).getStatus());
         IocContainer.get(Tx2pcRecovery.class).recoverNow();
 
         assertFalse(TxCommitLog.isLocallyCommitted(txId),
                 "the recovery thread finishes the slice, so the re-sent commit must not have kept its locks");
-        final var find = new FindByIdRequest(TestGlobals.DB, lateColl);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, lateColl);
         find.set_id("late");
         assertEquals(OperationStatus.OK, processor.processMessage(find).getStatus());
     }

@@ -43,7 +43,7 @@ public class MppAutoConfigurationTest {
                 .withConfiguration(AutoConfigurations.of(MppAutoConfiguration.class, MppDataAutoConfiguration.class,
                         MppRepositoriesAutoConfiguration.class, MppHealthContributorAutoConfiguration.class))
                 .withUserConfiguration(SampleConfiguration.class).withPropertyValues(
-                        "mpp.hosts=127.0.0.1:" + server.port(), "mpp.database=shop", "mpp.request-timeout=5s");
+                        "mpp.hosts=127.0.0.1:" + server.port(), "mpp.project=shop", "mpp.request-timeout=5s");
     }
 
     @AfterEach
@@ -81,7 +81,7 @@ public class MppAutoConfigurationTest {
             assertNotNull(context.getBean(MppTransactionManager.class));
             assertNotNull(context.getBean(GadgetRepository.class));
             assertTrue(context.getBean(MppMappingContext.class).hasPersistentEntityFor(Gadget.class));
-            assertEquals("shop", context.getBean(MppMappingContext.class).defaultDatabase());
+            assertEquals("shop", context.getBean(MppMappingContext.class).defaultProject());
             assertEquals(Duration.ofSeconds(5), context.getBean(ClientSettings.class).requestTimeout());
         });
     }

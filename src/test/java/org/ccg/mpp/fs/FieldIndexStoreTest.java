@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class FieldIndexStoreTest {
-    private static final String DB = "storedb";
+    private static final String PROJECT = "storedb";
     private static final String COLL = "docs";
     private static final String FIELD = "tag";
 
@@ -39,17 +39,17 @@ public class FieldIndexStoreTest {
     private static Fixture fixture(File tmp) {
         final var paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(new File(tmp, DB + File.separator + COLL).mkdirs());
+        assertTrue(new File(tmp, PROJECT + File.separator + COLL).mkdirs());
         return new Fixture(new FieldIndexStore(paths), new FieldIndexLoader(paths),
-                paths.indexFile(DB, COLL, FIELD, "String"));
+                paths.indexFile(PROJECT, COLL, FIELD, "String"));
     }
 
     private static FieldIndexEntry<String> entry(String value, String... ids) {
-        return new FieldIndexEntry<>(DB, COLL, value, new HashSet<>(Set.of(ids)));
+        return new FieldIndexEntry<>(PROJECT, COLL, value, new HashSet<>(Set.of(ids)));
     }
 
     private static Map<String, Set<String>> idsByValue(Fixture fixture) throws IOException {
-        final var loaded = fixture.loader().readWholeFieldIndexFiles(DB, COLL, FIELD, String.class);
+        final var loaded = fixture.loader().readWholeFieldIndexFiles(PROJECT, COLL, FIELD, String.class);
         assertNotNull(loaded);
         final var byValue = new HashMap<String, Set<String>>();
         loaded.forEach(e -> assertNull(byValue.put(e.getValue(), Set.copyOf(e.getIds())),
@@ -107,7 +107,7 @@ public class FieldIndexStoreTest {
         final Map<Class<?>, List<FieldIndexEntry<?>>> entries = Map.of(String.class,
                 List.of(entry("alpha", "a"), entry("beta", "b")));
 
-        assertThrows(RuntimeException.class, () -> fixture.store().writeIndexFile(DB, COLL, FIELD, entries));
+        assertThrows(RuntimeException.class, () -> fixture.store().writeIndexFile(PROJECT, COLL, FIELD, entries));
 
         assertFalse(fixture.indexFile().exists(), "a failed build must leave the type file absent, never partial");
     }
@@ -118,7 +118,7 @@ public class FieldIndexStoreTest {
         final Map<Class<?>, List<FieldIndexEntry<?>>> entries = Map.of(String.class,
                 List.of(entry("alpha", "a"), entry("beta", "b", "c")));
 
-        fixture.store().writeIndexFile(DB, COLL, FIELD, entries);
+        fixture.store().writeIndexFile(PROJECT, COLL, FIELD, entries);
 
         assertEquals(Map.of("alpha", Set.of("a"), "beta", Set.of("b", "c")), idsByValue(fixture));
     }
@@ -132,7 +132,7 @@ public class FieldIndexStoreTest {
         rewrite(fixture, List.of());
 
         assertFalse(fixture.indexFile().exists(), "an index with no entries left must not survive as an empty file");
-        assertNull(fixture.loader().readWholeFieldIndexFiles(DB, COLL, FIELD, String.class),
+        assertNull(fixture.loader().readWholeFieldIndexFiles(PROJECT, COLL, FIELD, String.class),
                 "an absent index must read as absent, not as an empty list");
     }
 
@@ -161,7 +161,7 @@ public class FieldIndexStoreTest {
             try {
                 start.await();
                 for (var i = 0; i < 200; i++) {
-                    final var loaded = fixture.loader().readWholeFieldIndexFiles(DB, COLL, FIELD, String.class);
+                    final var loaded = fixture.loader().readWholeFieldIndexFiles(PROJECT, COLL, FIELD, String.class);
                     if (loaded != null && !loaded.isEmpty()) {
                         assertEquals("only", loaded.getFirst().getValue());
                     }

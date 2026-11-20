@@ -28,13 +28,13 @@ public class AggregateHeldBudgetTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var documents = new StringBuilder(DOCUMENTS * 256);
         for (var i = 0; i < DOCUMENTS; i++) {
             documents.append(i == 0 ? "" : ",").append("{\"_id\":\"d").append(i).append("\",\"k\":\"g").append(i % 4)
                     .append("\",\"pad\":\"").repeat("x", 200).append("\"}");
         }
-        final var saved = run("{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        final var saved = run("{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"objects\":[" + documents + "]}");
         assertEquals(OperationStatus.OK, saved.getStatus(), saved.getMessage());
         baseline = pool.reservedBytes();
@@ -55,7 +55,7 @@ public class AggregateHeldBudgetTest {
     }
 
     private OperationResponse groupBy() {
-        return run("{\"type\":\"AGGREGATE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        return run("{\"type\":\"AGGREGATE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"aggregationSteps\":[{\"type\":\"GROUP_BY\",\"fieldName\":\"k\"}]}");
     }
 

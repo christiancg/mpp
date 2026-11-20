@@ -11,7 +11,7 @@ namespace Mpp.Client.IntegrationTests;
 
 public sealed class QueryIT(QueryIT.Server fixture) : IClassFixture<QueryIT.Server>
 {
-    private Collection<Document> Orders => fixture.Client.Database("query_it").Collection("orders");
+    private Collection<Document> Orders => fixture.Client.Project("query_it").Collection("orders");
 
     private static List<string?> Ids(IEnumerable<Document> rows) => [.. rows.Select(row => row.Id)];
 

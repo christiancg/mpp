@@ -53,7 +53,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
     }
 
     private ClusterMessage saveRequest(String id) {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
         final var message = envelope(ClusterMessageType.FORWARD_REQUEST);
         message.setForwardBody(raw);
@@ -68,7 +68,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
         final var blockedDone = new CountDownLatch(1);
         final Thread blocked;
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             blocked = Thread.ofVirtual().start(() -> {
                 try {
@@ -89,7 +89,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
             assertEquals(ClusterMessageType.GOSSIP_ACK, ack.getType());
             assertEquals(1L, blockedDone.getCount(), "the save must still be blocked, or this proved nothing");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertTrue(blockedDone.await(30, TimeUnit.SECONDS), "the save must finish once the lock is released");
@@ -100,7 +100,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
     // drain would silently drop committed work.
     @Test
     public void test_requests_already_queued_are_applied_after_the_peer_stops_sending() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try (var raw = new Socket("127.0.0.1", cluster.serverPort())) {
             final var out = new BufferedWriter(new OutputStreamWriter(raw.getOutputStream(), StandardCharsets.UTF_8));
             out.write(eJson.toJson(envelope(ClusterMessageType.HELLO)));
@@ -118,7 +118,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
             // socket, so that both requests are queued and the read loop has ended before the lock frees.
             Thread.sleep(500);
 
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
 
             for (final var id : QUEUED_IDS) {
                 assertNotNull(in.readLine(), () -> "no answer for " + id + ": the drain dropped it");
@@ -171,7 +171,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
         final var digestDone = new CountDownLatch(1);
         final Thread digest;
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             digest = Thread.ofVirtual().start(() -> {
                 try {
@@ -190,7 +190,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
             assertEquals(ClusterMessageType.ADMIN_SNAPSHOT_ACK, ack.getType());
             assertEquals(1L, digestDone.getCount(), "the digest must still be blocked, or this proved nothing");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             markAdminSyncCompleted(false);
         }
 
@@ -205,7 +205,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
 
     private ClusterMessage antiEntropyRequest(ClusterMessageType type, long incarnation) {
         final var message = envelope(type);
-        final var payload = new AntiEntropyPayload(TestGlobals.DB, TestGlobals.COLL);
+        final var payload = new AntiEntropyPayload(TestGlobals.PROJECT, TestGlobals.COLL);
         payload.setIds(List.of("a"));
         payload.setIncarnationValue(incarnation);
         message.setAntiEntropy(payload);
@@ -237,7 +237,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
     public void test_digest_carries_the_queried_incarnation_into_the_service() throws Exception {
         markAdminSyncCompleted(true);
         try {
-            IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL)
+            IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL)
                     .setIncarnation(100L);
 
             final var response = pool.request(cluster.serverAddress(),
@@ -275,7 +275,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
         final var document = new JsonObject();
         document.addProperty("_id", id);
         document.addProperty("v", 1);
-        return new ReplicationPayload(TestGlobals.DB, collName, ReplicationOp.UPSERT, List.of(document), null,
+        return new ReplicationPayload(TestGlobals.PROJECT, collName, ReplicationOp.UPSERT, List.of(document), null,
                 List.of("7"));
     }
 
@@ -297,7 +297,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
         final var parkedDone = new CountDownLatch(1);
         final Thread parked;
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             parked = requestInBackground(replicatedUpsert(TestGlobals.COLL, "parked"), parkedDone);
             assertFalse(parkedDone.await(1, TimeUnit.SECONDS), "the replicate should wait on the held lock");
@@ -308,7 +308,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
             assertEquals(ClusterMessageType.REPLICATE_ACK, ack.getType());
             assertEquals(1L, parkedDone.getCount(), "the first replicate must still be parked, or this proved nothing");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertTrue(parkedDone.await(30, TimeUnit.SECONDS));
@@ -319,15 +319,15 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
     @Test
     public void test_a_multi_collection_replicate_tx_uses_the_control_lane() throws Exception {
         TestUtils.createTestJoinCollection();
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, THIRD_COLL));
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, THIRD_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, THIRD_COLL));
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, THIRD_COLL);
         final var txDone = new CountDownLatch(1);
         final var tx = envelope(ClusterMessageType.REPLICATE_TX);
         tx.setTxReplication(new TxReplicationPayload(
                 List.of(upsertPayload(TestGlobals.COLL, "txA"), upsertPayload(TestGlobals.JOIN_COLL, "txB"))));
         final Thread parked;
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             parked = requestInBackground(tx, txDone);
             assertFalse(txDone.await(1, TimeUnit.SECONDS), "the batch should wait on the held lock");
@@ -339,7 +339,7 @@ public class ClusterConnectionHandlerTest extends ClusterConnectionHandlerTestBa
             final var ack = pool.request(cluster.serverAddress(), replicatedUpsert(THIRD_COLL, "laned"), 5000L);
             assertEquals(ClusterMessageType.REPLICATE_ACK, ack.getType(), "a collection lane is not behind it");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertTrue(txDone.await(30, TimeUnit.SECONDS));

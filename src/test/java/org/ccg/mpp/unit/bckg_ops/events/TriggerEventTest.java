@@ -29,7 +29,7 @@ public class TriggerEventTest {
     public void test_getters() {
         final var event = event();
         assertEquals(EventType.CREATED, event.getType());
-        assertEquals("db", event.getDbName());
+        assertEquals("db", event.getProjectName());
         assertEquals("coll", event.getCollName());
         assertEquals("audit", event.getTriggerName());
         assertEquals("recalc", event.getProcedureName());
@@ -64,7 +64,7 @@ public class TriggerEventTest {
         final var event = event();
         assertNotEquals(event, new TriggerEvent(EventType.UPDATED, "db", "coll", "audit", "recalc", false,
                 List.of(entry("a")), "alice", 0));
-        assertNotEquals(event, new TriggerEvent(EventType.CREATED, "otherDb", "coll", "audit", "recalc", false,
+        assertNotEquals(event, new TriggerEvent(EventType.CREATED, "otherProject", "coll", "audit", "recalc", false,
                 List.of(entry("a")), "alice", 0));
         assertNotEquals(event, new TriggerEvent(EventType.CREATED, "db", "otherColl", "audit", "recalc", false,
                 List.of(entry("a")), "alice", 0));

@@ -51,13 +51,13 @@ public class ConditionalDeleteTriggerTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         triggerExecutor.stop();
         TriggerTestSupport.consumeAllPendingRuns();
         triggerExecutor.start(dispatched::add);
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < 6; i++) {
             final var document = new JsonObject();
@@ -81,15 +81,15 @@ public class ConditionalDeleteTriggerTest {
 
     private void installDeletedTrigger(String mode) throws Exception {
         final var procedure = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "audit", "return 1;"), ACTOR);
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "return 1;"), ACTOR);
         assertEquals(OperationStatus.OK, procedure.getStatus(), procedure.getMessage());
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.DELETED)), "audit", mode,
                         TriggerDefinition.TIMING_AFTER, false, true, ACTOR, 1L, 1L, 1L, ACTOR)));
     }
 
     private OperationResponse deleteWhereNBelow(int bound) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.SMALLER_THAN, "n", new JsonNumber(bound)));
         return processor.processMessage(request);
     }

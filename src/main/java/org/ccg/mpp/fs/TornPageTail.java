@@ -20,11 +20,11 @@ final class TornPageTail {
         List<PkIndexEntry> read() throws IOException;
     }
 
-    static void healAll(FilePaths paths, String dbName, String collName, Iterable<Long> pages, PkEntries pkEntries)
+    static void healAll(FilePaths paths, String projectName, String collName, Iterable<Long> pages, PkEntries pkEntries)
             throws IOException {
         List<PkIndexEntry> entries = null;
         for (final var page : pages) {
-            final var file = paths.collectionPage(dbName, collName, page);
+            final var file = paths.collectionPage(projectName, collName, page);
             if (FileLocks.endOfLastCompleteLine(file) < 0) {
                 continue;
             }

@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 public class PendingMarkBeforeWriteTest {
     private static final String ID = "marked";
     private static final String OTHER = "other";
-    private static final String DIRTY_KEY = TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
+    private static final String DIRTY_KEY = TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL;
 
     private final PendingIndexWrites pending = IocContainer.get(PendingIndexWrites.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
@@ -45,7 +45,7 @@ public class PendingMarkBeforeWriteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalSaveTaskManager = TestUtils.getPrivateStaticField(SaveOperationHelper.class, "taskManager",
                 BackgroundTaskManager.class);
         stubTaskManager = new BackgroundTaskManager();
@@ -56,8 +56,8 @@ public class PendingMarkBeforeWriteTest {
     public void tearDown() throws Exception {
         writer.shutdownNow();
         TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", originalSaveTaskManager);
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        fs.indexMarkers().clearDirty(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.indexMarkers().clearDirty(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -70,20 +70,20 @@ public class PendingMarkBeforeWriteTest {
     }
 
     private static SaveRequest saveOf(String id, String value) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, value));
         request.set_id(id);
         return request;
     }
 
     private static DeleteRequest deleteOfTheMarkedId() {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(ID);
         return request;
     }
 
     private static File pageZero() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL,
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL,
                 TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + 0L + Globals.DB_FILE_EXTENSION);
     }
 
@@ -94,7 +94,7 @@ public class PendingMarkBeforeWriteTest {
         try {
             running = writer.submit(write);
             waitUntilPending();
-            assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(ID),
+            assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(ID),
                     "the id must be pending before its page write can land");
             assertFalse(TestUtils.dirtyIndexCollections().contains(DIRTY_KEY),
                     "a logged write writes no index-dirty marker: its log record is what startup replays");
@@ -108,7 +108,7 @@ public class PendingMarkBeforeWriteTest {
     @SuppressWarnings("BusyWait")
     private void waitUntilPending() throws InterruptedException {
         final var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(ID) && System.nanoTime() < deadline) {
+        while (!pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(ID) && System.nanoTime() < deadline) {
             Thread.sleep(5);
         }
     }
@@ -126,7 +126,7 @@ public class PendingMarkBeforeWriteTest {
     @Test
     public void test_an_update_marks_before_the_page_write() throws Exception {
         SaveOperationHelper.executeSave(saveOf(ID, "old"));
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertMarkedWhileThePageWriteIsBlocked(() -> SaveOperationHelper.executeSave(saveOf(ID, "new")));
     }
@@ -134,7 +134,7 @@ public class PendingMarkBeforeWriteTest {
     @Test
     public void test_a_delete_marks_before_the_page_write() throws Exception {
         SaveOperationHelper.executeSave(saveOf(ID, "old"));
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertMarkedWhileThePageWriteIsBlocked(() -> DeleteOperationHelper.executeDelete(deleteOfTheMarkedId()));
     }
@@ -145,7 +145,7 @@ public class PendingMarkBeforeWriteTest {
 
         assertThrows(Exception.class, () -> SaveOperationHelper.executeSave(saveOf(ID, "new")));
 
-        assertFalse(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(ID));
+        assertFalse(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(ID));
         assertFalse(TestUtils.dirtyIndexCollections().contains(DIRTY_KEY),
                 "a write that never landed must not leave a REINDEX warning behind");
     }
@@ -153,21 +153,21 @@ public class PendingMarkBeforeWriteTest {
     @Test
     public void test_a_failed_delete_leaves_nothing_pending() throws Exception {
         SaveOperationHelper.executeSave(saveOf(ID, "old"));
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        fs.indexMarkers().clearDirty(TestGlobals.DB, TestGlobals.COLL);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.indexMarkers().clearDirty(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         replacePageZeroWithADirectory();
 
         assertThrows(Exception.class, () -> DeleteOperationHelper.executeDelete(deleteOfTheMarkedId()));
 
-        assertFalse(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).contains(ID));
+        assertFalse(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).contains(ID));
     }
 
     @Test
     public void test_a_bulk_save_marks_every_id_once() throws Exception {
         SaveOperationHelper.executeSave(saveOf(OTHER, "old"));
-        pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document(ID, "new"), document(OTHER, "new")));
 
         SaveOperationHelper.executeBulkSave(bulk);
@@ -177,19 +177,19 @@ public class PendingMarkBeforeWriteTest {
                 .toList();
         assertEquals(1, events.size());
         final var event = events.getFirst();
-        pending.clear(TestGlobals.DB, TestGlobals.COLL, List.of(ID, OTHER), event.getPendingGeneration());
-        assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty(),
+        pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, List.of(ID, OTHER), event.getPendingGeneration());
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty(),
                 "an id marked twice stays pending after its one index event, keeping reads on the slow path");
     }
 
     @Test
     public void test_a_bulk_save_that_lands_nothing_leaves_nothing_pending() {
         replacePageZeroWithADirectory();
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document(ID, "new"), document(OTHER, "new")));
 
         assertThrows(Exception.class, () -> SaveOperationHelper.executeBulkSave(bulk));
 
-        assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 }

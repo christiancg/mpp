@@ -38,7 +38,7 @@ public class ScheduleExecutorTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -56,10 +56,10 @@ public class ScheduleExecutorTest {
         TestUtils.setPrivateField(configuration, "scheduleTickMs", 1000L);
         TestUtils.setPrivateField(configuration, "scheduleRefreshMs", 60000L);
         TestUtils.setPrivateField(configuration, "clusterEnabled", false);
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
         registry.clear();
     }
 
@@ -75,10 +75,10 @@ public class ScheduleExecutorTest {
     private ScheduleRegistry.Entry register(String name, boolean enabled) throws Exception {
         final var definition = new ScheduleDefinition(name, "p", null, 2000L, null, 0L, enabled, "alice", null, 1L, 1L,
                 1L, "alice");
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, name, eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, name);
-        registry.reload(TestGlobals.DB);
-        return registry.get(TestGlobals.DB, name);
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, name, eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, name);
+        registry.reload(TestGlobals.PROJECT);
+        return registry.get(TestGlobals.PROJECT, name);
     }
 
     @Test
@@ -280,7 +280,7 @@ public class ScheduleExecutorTest {
         final var latch = new CountDownLatch(1);
         executor = new ScheduleExecutor();
         executor.start(_ -> latch.countDown());
-        registry.get(TestGlobals.DB, "s").setNextRunAt(System.currentTimeMillis() - 1);
+        registry.get(TestGlobals.PROJECT, "s").setNextRunAt(System.currentTimeMillis() - 1);
         assertTrue(latch.await(5, TimeUnit.SECONDS));
     }
 

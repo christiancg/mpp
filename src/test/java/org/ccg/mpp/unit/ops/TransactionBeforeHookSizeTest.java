@@ -66,14 +66,14 @@ public class TransactionBeforeHookSizeTest {
     }
 
     private OperationResponse save(String id, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(oversized(id));
         request.set_id(id);
         return clientId == null ? processor.processMessage(request) : processor.processMessage(request, clientId);
     }
 
     private OperationResponse bulkSave(UUID clientId, String... ids) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(java.util.Arrays.stream(ids).map(TransactionBeforeHookSizeTest::oversized).toList());
         return processor.processMessage(request, clientId);
     }

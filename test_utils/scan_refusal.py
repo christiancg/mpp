@@ -8,7 +8,7 @@ from base_utils import Conn, check, check_status, section
 HOST = "127.0.0.1"
 SCAN_PORT = int(os.environ.get("MEMORY_TEST_SCAN_PORT", "9453"))
 SCAN_MAX_MEMORY = "2mb"
-SCAN_DB = "scan_refusal_db"
+SCAN_PROJECT = "scan_refusal_project"
 SCAN_COLL = "scan_refusal_coll"
 SCAN_DOCS = int(os.environ.get("MEMORY_TEST_SCAN_DOCS", "30000"))
 FITTING_DOCS = 300
@@ -17,7 +17,7 @@ BULK = 1000
 
 
 def send(c: Conn, request: dict) -> dict:
-    request.setdefault("databaseName", SCAN_DB)
+    request.setdefault("projectName", SCAN_PROJECT)
     request.setdefault("collectionName", SCAN_COLL)
     return c.send(request, timeout=300)
 
@@ -39,18 +39,18 @@ def unindexed_count(c: Conn):
 
 
 def memory_and_collection(c: Conn):
-    stats = c.send({"type": "GET_DATABASE_STATS"}).get("stats", {})
+    stats = c.send({"type": "GET_PROJECT_STATS"}).get("stats", {})
     collection = {}
-    for database in stats.get("databases", []):
-        if database.get("name") == SCAN_DB:
-            collection = next((coll for coll in database.get("collections", []) if coll.get("name") == SCAN_COLL),
+    for project in stats.get("projects", []):
+        if project.get("name") == SCAN_PROJECT:
+            collection = next((coll for coll in project.get("collections", []) if coll.get("name") == SCAN_COLL),
                               {})
     return stats.get("memory", {}), collection
 
 
 def test_a_scan_too_big_to_cache_is_never_admitted_and_answers_the_same(c: Conn):
     section(f"{SCANS} unindexed scans of {SCAN_DOCS} documents under maxMemory={SCAN_MAX_MEMORY}")
-    check_status("create the scan database", c.send({"type": "CREATE_DATABASE", "databaseName": SCAN_DB}), "OK")
+    check_status("create the scan project", c.send({"type": "CREATE_PROJECT", "projectName": SCAN_PROJECT}), "OK")
     if not load(c, SCAN_DOCS):
         return
     counts = []

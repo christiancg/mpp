@@ -85,10 +85,10 @@ export function user(row: Document): UserInfo {
         username: text(row, "_id"),
         admin: flag(row, "admin", false),
         globalPermissions: list(row, "globalPermissions"),
-        databasePermissions: grants(row, "databasePermissions"),
+        projectPermissions: grants(row, "projectPermissions"),
         collectionPermissions: grants(row, "collectionPermissions"),
         scriptPermissions: grants(row, "scriptPermissions"),
-        ownedDatabases: list(row, "ownedDatabases"),
+        ownedProjects: list(row, "ownedProjects"),
         raw: row,
     };
 }
@@ -109,7 +109,7 @@ export function scriptRun(row: Document): ScriptRun {
         runId: text(row, "runId"),
         node: optionalText(row, "node"),
         kind: text(row, "kind"),
-        database: optionalText(row, "database"),
+        project: optionalText(row, "project"),
         name: optionalText(row, "name"),
         username: optionalText(row, "username"),
         ageMs: whole(row, "ageMs"),
@@ -121,7 +121,7 @@ export function triggerRun(row: Document): TriggerRun {
     return {
         runId: text(row, "runId"),
         status: text(row, "status"),
-        database: optionalText(row, "database"),
+        project: optionalText(row, "project"),
         collection: optionalText(row, "collection"),
         trigger: optionalText(row, "trigger"),
         procedure: optionalText(row, "procedure"),

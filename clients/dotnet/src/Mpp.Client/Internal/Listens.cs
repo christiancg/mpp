@@ -28,14 +28,14 @@ internal sealed class Listens(ConnectionFactory factory, RequestEncoder encoder,
     }
 
     public async Task<Subscription> ListenAsync<T>(
-        string database,
+        string project,
         string collection,
         ImmutableArray<PipelineStep> steps,
         Func<Document, T> decode,
         ListenHandler<T> handler,
         CancellationToken ct)
     {
-        var request = encoder.Listen(database, collection, steps);
+        var request = encoder.Listen(project, collection, steps);
         await _queue.WaitAsync(ct).ConfigureAwait(false);
         try
         {

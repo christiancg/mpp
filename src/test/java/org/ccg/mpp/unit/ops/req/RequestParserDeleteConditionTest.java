@@ -17,7 +17,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 public class RequestParserDeleteConditionTest {
-    private static final String PREFIX = "{\"type\":\"DELETE\",\"databaseName\":\"shop\",\"collectionName\":\"orders\"";
+    private static final String PREFIX = "{\"type\":\"DELETE\",\"projectName\":\"shop\",\"collectionName\":\"orders\"";
 
     @BeforeAll
     public static void setUp() throws Exception {

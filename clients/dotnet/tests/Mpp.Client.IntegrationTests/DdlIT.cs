@@ -9,33 +9,33 @@ namespace Mpp.Client.IntegrationTests;
 public sealed class DdlIT(DefaultServer fixture) : IClassFixture<DefaultServer>
 {
     [Fact]
-    public async Task DatabasesAndCollectionsAreCreatedListedAndDropped()
+    public async Task ProjectsAndCollectionsAreCreatedListedAndDropped()
     {
-        var database = fixture.Client.Database("ddl_it");
-        await database.CreateAsync();
-        Assert.Contains("ddl_it", await fixture.Client.ListDatabasesAsync());
-        await Assert.ThrowsAsync<ConflictException>(() => database.CreateAsync());
-        await database.Collection("orders").CreateAsync();
-        await database.Collection("lines").CreateAsync();
-        Assert.Equal(["lines", "orders"], [.. (await database.ListCollectionsAsync()).Order()]);
-        await database.Collection("lines").DropAsync();
-        Assert.Equal(["orders"], await database.ListCollectionsAsync());
-        Assert.NotNull((await database.StatsAsync()).Get("collections") ?? true);
-        Assert.NotEqual(Document.Empty, await fixture.Client.DatabaseStatsAsync());
+        var project = fixture.Client.Project("ddl_it");
+        await project.CreateAsync();
+        Assert.Contains("ddl_it", await fixture.Client.ListProjectsAsync());
+        await Assert.ThrowsAsync<ConflictException>(() => project.CreateAsync());
+        await project.Collection("orders").CreateAsync();
+        await project.Collection("lines").CreateAsync();
+        Assert.Equal(["lines", "orders"], [.. (await project.ListCollectionsAsync()).Order()]);
+        await project.Collection("lines").DropAsync();
+        Assert.Equal(["orders"], await project.ListCollectionsAsync());
+        Assert.NotNull((await project.StatsAsync()).Get("collections") ?? true);
+        Assert.NotEqual(Document.Empty, await fixture.Client.ProjectStatsAsync());
         var info = await fixture.Client.ServerInfoAsync();
         Assert.NotNull(info.State ?? info.Version);
-        await database.DropAsync();
-        Assert.DoesNotContain("ddl_it", await fixture.Client.ListDatabasesAsync());
+        await project.DropAsync();
+        Assert.DoesNotContain("ddl_it", await fixture.Client.ListProjectsAsync());
     }
 
     [Fact]
     public async Task OwnersIndexesAndSchemas()
     {
-        var database = fixture.Client.Database("ddl_owned");
-        await database.CreateAsync();
+        var project = fixture.Client.Project("ddl_owned");
+        await project.CreateAsync();
         await fixture.Client.Admin().Users().CreateAsync("owner_it", "Owner-Secret-1234");
-        await database.SetOwnersAsync(["owner_it"]);
-        var orders = database.Collection("orders");
+        await project.SetOwnersAsync(["owner_it"]);
+        var orders = project.Collection("orders");
         await orders.CreateAsync();
         await orders.Indexes().CreateAsync("status", "total");
         await orders.SaveAsync(Document.Of("_id", "o", "status", "new", "total", 1));

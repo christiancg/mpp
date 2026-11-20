@@ -11,7 +11,7 @@ from mpp._internal.connection_factory import Opener, open_streams
 from mpp._internal.portal import SyncRuntime
 from mpp._internal.request_channel import Backoff, jittered_backoff
 from mpp._sync.admin import Admin
-from mpp._sync.database import Database
+from mpp._sync.project import Project
 from mpp._sync.transaction import Transaction
 from mpp.admin_types import ServerInfo
 from mpp.document import Document
@@ -41,17 +41,17 @@ class MppClient:
     def settings(self) -> ClientSettings:
         return self._inner.settings
 
-    def database(self, name: str) -> Database:
-        return Database(self._runtime, self._inner.database(name))
+    def project(self, name: str) -> Project:
+        return Project(self._runtime, self._inner.project(name))
 
-    def list_databases(self) -> tuple[str, ...]:
-        return self._runtime.run(self._inner.list_databases())
+    def list_projects(self) -> tuple[str, ...]:
+        return self._runtime.run(self._inner.list_projects())
 
     def server_info(self) -> ServerInfo:
         return self._runtime.run(self._inner.server_info())
 
-    def database_stats(self) -> Document:
-        return self._runtime.run(self._inner.database_stats())
+    def project_stats(self) -> Document:
+        return self._runtime.run(self._inner.project_stats())
 
     def change_password(self, current_password: str, new_password: str) -> None:
         self._runtime.run(self._inner.change_password(current_password, new_password))

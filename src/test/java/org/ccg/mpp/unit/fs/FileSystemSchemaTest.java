@@ -20,7 +20,7 @@ public class FileSystemSchemaTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -31,34 +31,34 @@ public class FileSystemSchemaTest {
 
     @BeforeEach
     void resetSchema() throws Exception {
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
     public void test_read_absent_schema_returns_null() throws Exception {
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_write_then_read() throws Exception {
         final var json = "{\"type\":\"object\"}";
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, json);
-        assertEquals(json, fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, json);
+        assertEquals(json, fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_overwrite() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\":\"object\"}");
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\":\"string\"}");
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, "{\"type\":\"object\"}");
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, "{\"type\":\"string\"}");
         assertEquals("{\"type\":\"string\"}",
-                fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+                fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_delete() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\":\"object\"}");
-        assertTrue(fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
-        assertFalse(fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, "{\"type\":\"object\"}");
+        assertTrue(fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(fs.metadataFiles().readCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertFalse(fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 }

@@ -50,11 +50,11 @@ public class ScheduleDispatcherTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OUTPUT_COLL));
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OUTPUT_COLL));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
         createUser(OWNER);
         createUser(OUTSIDER);
     }
@@ -65,7 +65,7 @@ public class ScheduleDispatcherTest {
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -92,20 +92,20 @@ public class ScheduleDispatcherTest {
         TestUtils.setPrivateField(configuration, "scriptMaxResultBytes", 16_777_216L);
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
         registry.clear();
     }
 
     private void storeProcedure(String source) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "job", source), OWNER);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "job", source), OWNER);
     }
 
     private void storeWritingProcedure() throws Exception {
@@ -117,10 +117,10 @@ public class ScheduleDispatcherTest {
             JsonObject args) throws Exception {
         final var definition = new ScheduleDefinition("s", procedureName, null, 60_000L, args, timeoutMs, enabled,
                 definer, null, 1L, 1L, 1L, definer);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, "s", eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, "s");
-        registry.reload(TestGlobals.DB);
-        return registry.get(TestGlobals.DB, "s");
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, "s", eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        registry.reload(TestGlobals.PROJECT);
+        return registry.get(TestGlobals.PROJECT, "s");
     }
 
     private static JsonObject idArgs(String id) {
@@ -130,7 +130,7 @@ public class ScheduleDispatcherTest {
     }
 
     private JsonObject outputRow(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, OUTPUT_COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, OUTPUT_COLL);
         request.set_id(id);
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
@@ -151,7 +151,7 @@ public class ScheduleDispatcherTest {
         ScheduleDispatcher.dispatch(register("job", OUTSIDER, true, 0L, idArgs("by-outsider")));
         assertNull(outputRow("by-outsider"));
         assertEquals(before + 1, scheduleExecutor.getSkipped());
-        final var stored = cache.getSchedule(TestGlobals.DB, "s");
+        final var stored = cache.getSchedule(TestGlobals.PROJECT, "s");
         assertFalse(stored.isEnabled(), "a definer without script RUN disables the schedule");
         assertTrue(stored.getDisabledReason().contains("no longer holds script RUN"));
     }
@@ -183,10 +183,10 @@ public class ScheduleDispatcherTest {
     @Test
     public void test_a_disabled_procedure_is_counted_and_skipped() throws Exception {
         storeWritingProcedure();
-        final var procedure = cache.getProcedure(TestGlobals.DB, "job");
+        final var procedure = cache.getProcedure(TestGlobals.PROJECT, "job");
         final var disabled = new org.ccg.mpp.data.ProcedureDefinition(procedure.getName(), procedure.getSource(),
                 procedure.getVersion(), null, false, 1L, 1L, OWNER);
-        cache.putProcedure(TestGlobals.DB, disabled);
+        cache.putProcedure(TestGlobals.PROJECT, disabled);
         final var entry = register("job", OWNER, true, 0L, idArgs("disabled-procedure"));
         final var before = scheduleExecutor.getSkipped();
         ScheduleDispatcher.dispatch(entry);
@@ -248,9 +248,9 @@ public class ScheduleDispatcherTest {
     public void test_a_run_queued_before_its_schedule_was_deleted_does_not_fire() throws Exception {
         storeWritingProcedure();
         final var queued = register("job", OWNER, true, 0L, idArgs("deleted-while-queued"));
-        fs.metadataFiles().deleteSchedule(TestGlobals.DB, "s");
-        cache.removeSchedule(TestGlobals.DB, "s");
-        registry.reload(TestGlobals.DB);
+        fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, "s");
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        registry.reload(TestGlobals.PROJECT);
 
         final var before = scheduleExecutor.getSkipped();
         ScheduleDispatcher.dispatch(queued);
@@ -274,10 +274,10 @@ public class ScheduleDispatcherTest {
     public void test_an_unchanged_reload_keeps_a_queued_run_valid() throws Exception {
         storeWritingProcedure();
         final var queued = register("job", OWNER, true, 0L, idArgs("unchanged-reload"));
-        cache.removeSchedule(TestGlobals.DB, "s");
-        registry.reload(TestGlobals.DB);
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        registry.reload(TestGlobals.PROJECT);
 
-        assertSame(queued, registry.get(TestGlobals.DB, "s"));
+        assertSame(queued, registry.get(TestGlobals.PROJECT, "s"));
         ScheduleDispatcher.dispatch(queued);
         assertNotNull(outputRow("unchanged-reload"));
     }

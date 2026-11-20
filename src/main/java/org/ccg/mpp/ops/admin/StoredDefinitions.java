@@ -13,57 +13,57 @@ public final class StoredDefinitions {
     private StoredDefinitions() {
     }
 
-    public static JsonObject procedure(String dbName, String name) throws IOException {
-        return parsed(fs.metadataFiles().readProcedure(dbName, name));
+    public static JsonObject procedure(String projectName, String name) throws IOException {
+        return parsed(fs.metadataFiles().readProcedure(projectName, name));
     }
 
-    public static JsonObject schedule(String dbName, String name) throws IOException {
-        return parsed(fs.metadataFiles().readSchedule(dbName, name));
+    public static JsonObject schedule(String projectName, String name) throws IOException {
+        return parsed(fs.metadataFiles().readSchedule(projectName, name));
     }
 
-    public static JsonObject triggers(String dbName, String collName) throws IOException {
-        return parsed(fs.metadataFiles().readTriggers(dbName, collName));
+    public static JsonObject triggers(String projectName, String collName) throws IOException {
+        return parsed(fs.metadataFiles().readTriggers(projectName, collName));
     }
 
-    public static JsonObject schema(String dbName, String collName) throws IOException {
-        return parsed(fs.metadataFiles().readCollectionSchema(dbName, collName));
+    public static JsonObject schema(String projectName, String collName) throws IOException {
+        return parsed(fs.metadataFiles().readCollectionSchema(projectName, collName));
     }
 
-    public static void writeProcedure(String dbName, String name, JsonObject definition) throws IOException {
-        fs.metadataFiles().writeProcedure(dbName, name,
-                eJson.toJson(restamped(definition, procedureVersion(dbName, name))));
+    public static void writeProcedure(String projectName, String name, JsonObject definition) throws IOException {
+        fs.metadataFiles().writeProcedure(projectName, name,
+                eJson.toJson(restamped(definition, procedureVersion(projectName, name))));
     }
 
-    public static void writeSchedule(String dbName, String name, JsonObject definition) throws IOException {
-        fs.metadataFiles().writeSchedule(dbName, name,
-                eJson.toJson(restamped(definition, scheduleVersion(dbName, name))));
+    public static void writeSchedule(String projectName, String name, JsonObject definition) throws IOException {
+        fs.metadataFiles().writeSchedule(projectName, name,
+                eJson.toJson(restamped(definition, scheduleVersion(projectName, name))));
     }
 
-    public static void writeTriggers(String dbName, String collName, JsonObject file) throws IOException {
-        fs.metadataFiles().writeTriggers(dbName, collName,
-                eJson.toJson(restamped(file, triggersVersion(dbName, collName))));
+    public static void writeTriggers(String projectName, String collName, JsonObject file) throws IOException {
+        fs.metadataFiles().writeTriggers(projectName, collName,
+                eJson.toJson(restamped(file, triggersVersion(projectName, collName))));
     }
 
-    public static void writeSchema(String dbName, String collName, JsonObject schema) throws IOException {
-        final var version = AdminStamp.over(schemaVersion(dbName, collName));
-        fs.metadataFiles().writeCollectionSchema(dbName, collName,
+    public static void writeSchema(String projectName, String collName, JsonObject schema) throws IOException {
+        final var version = AdminStamp.over(schemaVersion(projectName, collName));
+        fs.metadataFiles().writeCollectionSchema(projectName, collName,
                 eJson.toJson(AdminStamp.wrappedSchema(schema, version)));
     }
 
-    private static long triggersVersion(String dbName, String collName) {
-        return versionOrZero(() -> triggers(dbName, collName));
+    private static long triggersVersion(String projectName, String collName) {
+        return versionOrZero(() -> triggers(projectName, collName));
     }
 
-    private static long schemaVersion(String dbName, String collName) {
-        return versionOrZero(() -> schema(dbName, collName));
+    private static long schemaVersion(String projectName, String collName) {
+        return versionOrZero(() -> schema(projectName, collName));
     }
 
-    private static long procedureVersion(String dbName, String name) {
-        return versionOrZero(() -> procedure(dbName, name));
+    private static long procedureVersion(String projectName, String name) {
+        return versionOrZero(() -> procedure(projectName, name));
     }
 
-    private static long scheduleVersion(String dbName, String name) {
-        return versionOrZero(() -> schedule(dbName, name));
+    private static long scheduleVersion(String projectName, String name) {
+        return versionOrZero(() -> schedule(projectName, name));
     }
 
     private static JsonObject restamped(JsonObject definition, long replacedVersion) {

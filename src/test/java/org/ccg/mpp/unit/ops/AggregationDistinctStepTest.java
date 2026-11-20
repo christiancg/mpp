@@ -36,7 +36,7 @@ public class AggregationDistinctStepTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -47,7 +47,7 @@ public class AggregationDistinctStepTest {
 
     @Test
     public void test_process_distinct_operation_on_specific_field() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         DistinctAggregationStep distinctStep = new DistinctAggregationStep("distinctField");
         request.setAggregationSteps(List.of(distinctStep));
 
@@ -70,10 +70,10 @@ public class AggregationDistinctStepTest {
             obj.addProperty(fieldName, s);
         else if (fieldValue instanceof Number n)
             obj.addProperty(fieldName, n);
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     @Test
@@ -83,7 +83,7 @@ public class AggregationDistinctStepTest {
         insertEntry(cache, "d2", "color", "blue");
         insertEntry(cache, "d3", "color", "red");
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -97,7 +97,7 @@ public class AggregationDistinctStepTest {
         insertEntry(cache, "dn1", "color", "red");
         insertEntry(cache, "dn2", "color", "red");
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep(null)));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -111,7 +111,7 @@ public class AggregationDistinctStepTest {
         insertEntry(cache, "de1", "x", "same");
         insertEntry(cache, "de2", "x", "same");
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep("")));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -123,14 +123,14 @@ public class AggregationDistinctStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex(Cache cache, String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(field));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(field));
     }
 
     @Test
@@ -140,7 +140,7 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "c2", "color", new JsonString("blue"));
         addDoc(cache, "c3", "color", new JsonString("red"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var scanValues = AggregationOperationHelper.processAggregation(req).stream()
                 .map(o -> o.get("color").asJsonString().getValue()).collect(java.util.stream.Collectors.toSet());
@@ -160,9 +160,10 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "c1", "color", new JsonString("red"));
         addDoc(cache, "c2", "color", new JsonString("blue"));
         enableIndex(cache, "color");
-        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(org.ccg.mpp.cache.UserCache.class).evictCollectionDocuments(TestGlobals.PROJECT,
+                TestGlobals.COLL);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -176,7 +177,7 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "d2", "color", new JsonString("red"));
         enableIndex(cache, "color");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep(null)));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -189,7 +190,7 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "c1", "color", new JsonString("red"));
         addDoc(cache, "c2", "color", new JsonString("blue"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -207,7 +208,7 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "o2", "data", objVal);
         enableIndex(cache, "data");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("data")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -223,7 +224,7 @@ public class AggregationDistinctStepTest {
         final var cache = IocContainer.get(Cache.class);
         enableIndex(cache, "color");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("color")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -240,7 +241,7 @@ public class AggregationDistinctStepTest {
         addDoc(cache, "o1", "meta", obj);
         enableIndex(cache, "meta");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("meta")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -253,11 +254,11 @@ public class AggregationDistinctStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("kind", value);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         request.setObject(obj);
         IocContainer.get(OperationProcessor.class).processMessage(request);
-        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.DB, TestGlobals.COLL, id, 0L);
+        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.PROJECT, TestGlobals.COLL, id, 0L);
     }
 
     @Test
@@ -265,7 +266,7 @@ public class AggregationDistinctStepTest {
         saveDoc("n1", new JsonString("x"));
         saveDoc("n2", JsonNull.INSTANCE);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new DistinctAggregationStep("kind")));
         final var scanned = AggregationOperationHelper.processAggregation(req).size();
 
@@ -285,7 +286,7 @@ public class AggregationDistinctStepTest {
 
     @Test
     public void test_a_filter_with_an_and_conjunction_after_distinct() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep("category"),
                 new FilterAggregationStep(new ConjunctionOperator(ConjunctionOperatorType.AND, List.of(
                         new FieldOperator(FieldOperatorType.EQUALS, "category", new JsonString("books")),
@@ -318,11 +319,11 @@ public class AggregationDistinctStepTest {
         second.add(Globals.PK_FIELD, new JsonString("rowB"));
         second.addProperty("x", 1);
         for (final var row : List.of(first, second)) {
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, row);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, row);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep(null)));
 
         final var result = AggregationOperationHelper.processAggregation(request);
@@ -332,14 +333,14 @@ public class AggregationDistinctStepTest {
     }
 
     private static List<String> distinctRows(String field) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new DistinctAggregationStep(field)));
         return AggregationOperationHelper.processAggregation(request).stream()
                 .map(org.ccg.mpp.utils.JsonUtils::canonicalize).sorted().toList();
     }
 
     private static List<Object> distinctIndexValues(String field) throws IOException {
-        return IndexHelper.getDistinctIndexValues(TestGlobals.DB, TestGlobals.COLL, field,
+        return IndexHelper.getDistinctIndexValues(TestGlobals.PROJECT, TestGlobals.COLL, field,
                 org.ccg.mpp.analyze.ReadObserver.NONE);
     }
 
@@ -354,8 +355,8 @@ public class AggregationDistinctStepTest {
 
         final var missing = new JsonObject();
         missing.add(Globals.PK_FIELD, new JsonString("v4"));
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
-                DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, missing));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, missing));
 
         assertNull(distinctIndexValues("color"), "three ids under four pk rows can never cover the collection");
     }
@@ -388,11 +389,11 @@ public class AggregationDistinctStepTest {
         enableIndex(cache, "color");
         addDoc(cache, "p2", "color", new JsonString("green"));
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        final var generation = pending.mark(TestGlobals.DB, TestGlobals.COLL, "p2");
+        final var generation = pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "p2");
         try {
             assertEquals(List.of("{\"color\":\"green\"}", "{\"color\":\"red\"}"), distinctRows("color"));
         } finally {
-            pending.clear(TestGlobals.DB, TestGlobals.COLL, "p2", generation);
+            pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "p2", generation);
         }
     }
 }

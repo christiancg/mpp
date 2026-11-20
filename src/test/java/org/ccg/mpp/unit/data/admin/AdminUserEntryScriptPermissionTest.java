@@ -43,7 +43,7 @@ public class AdminUserEntryScriptPermissionTest {
     }
 
     @Test
-    public void test_absent_database_reads_as_none() {
+    public void test_absent_project_reads_as_none() {
         final var entry = entryWith(new HashMap<>());
         assertFalse(entry.canRunScripts("mydb"));
         assertFalse(entry.canManageScripts("mydb"));

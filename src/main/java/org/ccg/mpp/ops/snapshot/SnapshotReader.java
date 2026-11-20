@@ -24,8 +24,8 @@ public final class SnapshotReader {
     }
 
     public static Page read(Snapshot snapshot, String collName, String afterId, int limit) throws IOException {
-        final var dbName = snapshot.dbName();
-        final var loaded = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        final var projectName = snapshot.projectName();
+        final var loaded = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         final List<PkIndexEntry> rows = loaded == null ? List.of() : loaded;
         final var images = snapshot.existingImagesOf(collName);
         final Iterator<String> imageIds = images == null
@@ -50,7 +50,7 @@ public final class SnapshotReader {
         }
         final var done = rowIndex >= rows.size() && nextImage == null;
         final var lastId = candidates.isEmpty() ? afterId : candidates.getLast();
-        return new Page(documentsOf(dbName, collName, candidates, images), lastId, done);
+        return new Page(documentsOf(projectName, collName, candidates, images), lastId, done);
     }
 
     private static int orderOf(String rowId, String imageId) {
@@ -74,7 +74,7 @@ public final class SnapshotReader {
         return low;
     }
 
-    private static List<JsonObject> documentsOf(String dbName, String collName, List<String> candidates,
+    private static List<JsonObject> documentsOf(String projectName, String collName, List<String> candidates,
             CollectionImages images) throws IOException {
         final var currentIds = new LinkedHashSet<String>();
         for (final var id : candidates) {
@@ -84,7 +84,7 @@ public final class SnapshotReader {
         }
         final var current = new HashMap<String, JsonObject>();
         if (!currentIds.isEmpty()) {
-            for (final var entry : cache.getEntriesByIds(dbName, collName, currentIds)) {
+            for (final var entry : cache.getEntriesByIds(projectName, collName, currentIds)) {
                 current.put(entry.get_id(), entry.getData());
             }
         }
@@ -92,7 +92,7 @@ public final class SnapshotReader {
         for (final var id : candidates) {
             if (images != null && images.hasImage(id)) {
                 final var line = images.imageOf(id);
-                documents.add(DbEntry.fromBytes(dbName, collName, line, 0, line.length).getData());
+                documents.add(DbEntry.fromBytes(projectName, collName, line, 0, line.length).getData());
             } else if (current.containsKey(id)) {
                 documents.add(current.get(id));
             }

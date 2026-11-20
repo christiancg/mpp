@@ -33,16 +33,16 @@ UNCLEAN_SUFFIX = "-indexes.unclean"
 PROBE_ID = "durability_probe"
 
 
-def page_files(work_dir: str, db: str, coll: str) -> list:
-    folder = os.path.join(work_dir, "db", db, coll)
+def page_files(work_dir: str, project: str, coll: str) -> list:
+    folder = os.path.join(work_dir, "db", project, coll)
     if not os.path.isdir(folder):
         return []
     return sorted(f for f in os.listdir(folder) if f.endswith(".dat"))
 
 
-def recorded_pages(work_dir: str, db: str, coll: str) -> dict:
-    folder = os.path.join(work_dir, "db", "admin", "pages", f"{db}_{coll}")
-    prefix = f"{db}|{coll}|"
+def recorded_pages(work_dir: str, project: str, coll: str) -> dict:
+    folder = os.path.join(work_dir, "db", "admin", "pages", f"{project}_{coll}")
+    prefix = f"{project}|{coll}|"
     rows = {}
     if not os.path.isdir(folder):
         return rows
@@ -65,10 +65,10 @@ def live_records(content: bytes) -> list:
     return [line + b"\n" for line in content.split(b"\n")[:-1] if line and not line.startswith(b" ")]
 
 
-def actual_pages(work_dir: str, db: str, coll: str) -> dict:
-    folder = os.path.join(work_dir, "db", db, coll)
+def actual_pages(work_dir: str, project: str, coll: str) -> dict:
+    folder = os.path.join(work_dir, "db", project, coll)
     pages = {}
-    for name in page_files(work_dir, db, coll):
+    for name in page_files(work_dir, project, coll):
         with open(os.path.join(folder, name), "rb") as fp:
             records = live_records(fp.read())
         pages[int(name[len(coll) + 1:-len(".dat")])] = (sum(len(record) for record in records), len(records))
@@ -93,22 +93,22 @@ def occupancy_drift(recorded: dict, actual: dict, entries: bool = True) -> list:
     return [describe(page) for page in sorted(actual) if drifted(page)]
 
 
-def settled_drift(work_dir: str, db: str, coll: str, entries: bool = True, timeout_s: float = 10.0) -> list:
+def settled_drift(work_dir: str, project: str, coll: str, entries: bool = True, timeout_s: float = 10.0) -> list:
     def drift():
-        return occupancy_drift(recorded_pages(work_dir, db, coll), actual_pages(work_dir, db, coll), entries)
+        return occupancy_drift(recorded_pages(work_dir, project, coll), actual_pages(work_dir, project, coll), entries)
 
     bu.wait_until(lambda: not drift(), timeout_s=timeout_s, interval_s=0.2)
     return drift()
 
 
-def _aggregate(conn, db: str, coll: str, steps: list) -> dict:
-    return conn.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll, "aggregationSteps": steps})
+def _aggregate(conn, project: str, coll: str, steps: list) -> dict:
+    return conn.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll, "aggregationSteps": steps})
 
 
 def observed_state(conn, schema: WorkloadSchema) -> dict:
     state = {}
     for coll in schema.collections:
-        rows = rows_of(_aggregate(conn, schema.db, coll, FULL_SCAN))
+        rows = rows_of(_aggregate(conn, schema.project, coll, FULL_SCAN))
         if rows is None:
             state[coll] = None
             continue
@@ -220,13 +220,13 @@ def index_equals_scan(conn, state: dict, history: History, schema: WorkloadSchem
         for field_name in list(schema.indexed_fields.get(coll, [])) + [CHURNED_INDEX]:
             for value in _scalar_values(docs, field_name):
                 step = bu.filter_step(field_name, "EQUALS", value)
-                indexed = _id_multiset(_aggregate(conn, schema.db, coll, [step]))
-                scanned = _id_multiset(_aggregate(conn, schema.db, coll, FULL_SCAN + [step]))
+                indexed = _id_multiset(_aggregate(conn, schema.project, coll, [step]))
+                scanned = _id_multiset(_aggregate(conn, schema.project, coll, FULL_SCAN + [step]))
                 if indexed != scanned:
                     found.append(Divergence("O3", history.seed, f"{coll}: {field_name} EQUALS {value!r} answered"
                                                                  f" {indexed} by index and {scanned} by scan"))
         for doc_id in schema.ids.get(coll, []):
-            response = conn.send({"type": "FIND_BY_ID", "databaseName": schema.db, "collectionName": coll,
+            response = conn.send({"type": "FIND_BY_ID", "projectName": schema.project, "collectionName": coll,
                                   "_id": doc_id})
             point = (response.get("object") or {}).get("w", NOBODY) if response.get("status") == "OK" else None
             scanned = _token_of(state, coll, doc_id)
@@ -243,19 +243,19 @@ def counts_agree(conn, state: dict, history: History, schema: WorkloadSchema) ->
         if state.get(coll) is None:
             continue
         rows = len(state[coll])
-        pk = count_of(_aggregate(conn, schema.db, coll, [{"type": "COUNT"}]))
-        scanned = count_of(_aggregate(conn, schema.db, coll, FULL_SCAN + [{"type": "COUNT"}]))
+        pk = count_of(_aggregate(conn, schema.project, coll, [{"type": "COUNT"}]))
+        scanned = count_of(_aggregate(conn, schema.project, coll, FULL_SCAN + [{"type": "COUNT"}]))
         if not pk == scanned == rows:
             found.append(Divergence("O4", history.seed, f"{coll}: index-only COUNT {pk}, scanned COUNT {scanned},"
                                                          f" scanned rows {rows}"))
         if not schema.work_dir:
             continue
-        drift = settled_drift(schema.work_dir, schema.db, coll)
+        drift = settled_drift(schema.work_dir, schema.project, coll)
         if drift:
             found.append(Divergence("O4", history.seed, f"{coll}: admin/pages never settled: {drift}"))
             continue
         recorded = sum(int(row.get("entryCount", 0))
-                       for row in recorded_pages(schema.work_dir, schema.db, coll).values())
+                       for row in recorded_pages(schema.work_dir, schema.project, coll).values())
         if recorded != rows:
             found.append(Divergence("O4", history.seed,
                                     f"{coll}: admin/pages count {recorded} entries, the scan {rows}"))
@@ -269,7 +269,7 @@ def check_all(conn, history: History, schema: WorkloadSchema) -> list:
 
 
 def background_idle(conn) -> bool:
-    background = conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("background", {})
+    background = conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("background", {})
     return background.get("pending", 1) == 0 and background.get("maintenance", 1) == 0
 
 
@@ -293,7 +293,7 @@ def snapshot(conn, schema: WorkloadSchema) -> dict:
     state = observed_state(conn, schema)
     return {coll: None if state.get(coll) is None else {
         "docs": {doc_id: token for doc_id, (token, _) in state[coll].items()},
-        "pk": count_of(_aggregate(conn, schema.db, coll, [{"type": "COUNT"}]))} for coll in schema.collections}
+        "pk": count_of(_aggregate(conn, schema.project, coll, [{"type": "COUNT"}]))} for coll in schema.collections}
 
 
 def _state_delta(before, after) -> str:
@@ -314,12 +314,12 @@ def check_idempotent(before: dict, conn, history: History, schema: WorkloadSchem
                                                          f" {_state_delta(before.get(coll), after.get(coll))}"))
     found += check_all(conn, history, schema)
     for coll in schema.collections:
-        saved = conn.send({"type": "SAVE", "databaseName": schema.db, "collectionName": coll,
+        saved = conn.send({"type": "SAVE", "projectName": schema.project, "collectionName": coll,
                            "object": {"_id": PROBE_ID, "w": "probe"}})
         if saved.get("status") not in ACCEPTED:
             found.append(Divergence("O6", history.seed, f"{coll}: refused a write after recovery: {saved}"))
             continue
-        conn.send({"type": "DELETE", "databaseName": schema.db, "collectionName": coll, "_id": PROBE_ID})
+        conn.send({"type": "DELETE", "projectName": schema.project, "collectionName": coll, "_id": PROBE_ID})
     return found
 
 
@@ -333,8 +333,8 @@ UNCAUGHT_MARKER = "Exception in thread"
 O7_PROBE_ID = PROBE_ID
 
 
-def find_token(conn, db: str, coll: str, doc_id: str) -> tuple:
-    answer = conn.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id})
+def find_token(conn, project: str, coll: str, doc_id: str) -> tuple:
+    answer = conn.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": doc_id})
     if answer.get("status") == "OK":
         return "present", (answer.get("object") or {}).get("w", NOBODY)
     if answer.get("status") == "NOT_FOUND":
@@ -361,9 +361,9 @@ def _send_within(connect, conn, request: dict, deadline: float) -> tuple:
     return conn, answer
 
 
-def _probe_requests(db: str, coll: str, seed: int) -> list:
+def _probe_requests(project: str, coll: str, seed: int) -> list:
     def on(request: dict) -> dict:
-        return {"databaseName": db, "collectionName": coll, **request}
+        return {"projectName": project, "collectionName": coll, **request}
 
     probe = {"_id": O7_PROBE_ID, "w": f"o7-{seed}"}
     return [
@@ -378,10 +378,10 @@ def _probe_requests(db: str, coll: str, seed: int) -> list:
     ]
 
 
-def _probe_collection(connect, conn, db: str, coll: str, seed: int, lock_timeout_ms: int, divergences: list):
+def _probe_collection(connect, conn, project: str, coll: str, seed: int, lock_timeout_ms: int, divergences: list):
     in_transaction = False
     abandoned = False
-    for label, request in _probe_requests(db, coll, seed):
+    for label, request in _probe_requests(project, coll, seed):
         if label in ("transactional SAVE", "COMMIT_TRANSACTION") and abandoned:
             continue
         started = time.monotonic()
@@ -395,8 +395,8 @@ def _probe_collection(connect, conn, db: str, coll: str, seed: int, lock_timeout
             in_transaction = False
         if not ok:
             divergences.append(Divergence(
-                "O7", seed, f"{db}|{coll}: {label} did not succeed within {lock_timeout_ms} ms ({elapsed_ms:.0f} ms):"
-                            f" status={answer.get('status')} code={answer.get('errorCode')}"
+                "O7", seed, f"{project}|{coll}: {label} did not succeed within {lock_timeout_ms} ms"
+                            f" ({elapsed_ms:.0f} ms): status={answer.get('status')} code={answer.get('errorCode')}"
                             f" message={str(answer.get('message'))[:200]!r}"))
         if in_transaction and not ok:
             conn.send({"type": "ROLLBACK_TRANSACTION"}, timeout=5.0)
@@ -416,7 +416,7 @@ def check_no_stranded_state(connect, schema: WorkloadSchema, seed: int, lock_tim
     conn = connect()
     try:
         for coll in schema.collections:
-            conn = _probe_collection(connect, conn, schema.db, coll, seed, lock_timeout_ms, divergences)
+            conn = _probe_collection(connect, conn, schema.project, coll, seed, lock_timeout_ms, divergences)
     finally:
         conn.close()
     return divergences + uncaught_exceptions(seed, server_output)
@@ -437,7 +437,7 @@ def _created_before(others: list, entry) -> bool:
 
 
 def _survived(conn, schema: WorkloadSchema, entry, doc_id: str, token, others: list):
-    state, found = find_token(conn, schema.db, entry.coll, doc_id)
+    state, found = find_token(conn, schema.project, entry.coll, doc_id)
     if state == "error":
         return None, f"FIND_BY_ID failed: {str(found)[:200]}"
     if token is None:
@@ -458,7 +458,7 @@ def check_outcome_honesty(conn, history: History, schema: WorkloadSchema) -> lis
                 continue
             survived, what = _survived(conn, schema, entry, doc_id, token, others)
             if survived is None:
-                divergences.append(Divergence("O8", history.seed, f"{schema.db}|{entry.coll}|{doc_id}: {what}"
+                divergences.append(Divergence("O8", history.seed, f"{schema.project}|{entry.coll}|{doc_id}: {what}"
                                                                    f" while checking an error-answered {entry.op}"))
             elif survived:
                 survivors.append(f"{doc_id}={what}")
@@ -466,7 +466,7 @@ def check_outcome_honesty(conn, history: History, schema: WorkloadSchema) -> lis
             continue
         partial_bulk = entry.op == BULK_SAVE and len(survivors) < len(entry.ids)
         divergences.append(Divergence(
-            "O8", history.seed, f"error-answered write survived: {_describe(entry)} on {schema.db}|{entry.coll}, yet"
-                                f" {len(survivors)} of {len(entry.ids)} of its writes are there after a restart:"
+            "O8", history.seed, f"error-answered write survived: {_describe(entry)} on {schema.project}|{entry.coll},"
+                                f" yet {len(survivors)} of {len(entry.ids)} of its writes are there after a restart:"
                                 f" {survivors[:10]}", SEVERITY_OBSERVE if partial_bulk else SEVERITY_FAIL))
     return divergences

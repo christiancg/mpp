@@ -40,22 +40,22 @@ public class TransactionFenceRedriveTest {
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
-    private final String collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private final String collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private UUID clientId;
 
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         DeferredWrites.install();
-        final var seed = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var seed = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         seed.setObject(document("seed"));
         seed.set_id("seed");
         assertEquals(OperationStatus.OK, processor.processMessage(seed).getStatus());
         clientId = clientTracker.registerForwardedClient("redriver");
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("fenced-doc"));
         request.set_id("fenced-doc");
         TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
@@ -81,7 +81,7 @@ public class TransactionFenceRedriveTest {
     }
 
     private static void writablePages(boolean writable) {
-        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.DB + "/" + TestGlobals.COLL)
+        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.PROJECT + "/" + TestGlobals.COLL)
                 .listFiles((_, name) -> name.endsWith(".dat"));
         for (final var page : files == null ? new File[0] : files) {
             assertTrue(page.setWritable(writable));
@@ -89,7 +89,7 @@ public class TransactionFenceRedriveTest {
     }
 
     private boolean fencedDocumentExists() throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of("fenced-doc")).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of("fenced-doc")).isEmpty();
     }
 
     @Test

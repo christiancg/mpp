@@ -17,12 +17,12 @@ import org.ccg.mpp.config.ServerVersion;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ejson.elements.JsonString;
 import org.ccg.mpp.ioc.IocContainer;
-import org.ccg.mpp.ops.DatabaseStatsHelper;
 import org.ccg.mpp.ops.MetricsExposition;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
+import org.ccg.mpp.ops.ProjectStatsHelper;
 import org.ccg.mpp.ops.req.SaveRequest;
-import org.ccg.mpp.ops.resp.GetDatabaseStatsResponse;
+import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -36,14 +36,14 @@ public class MetricsExpositionTest {
             "heap_used_bytes", "heap_max_bytes", "gc_collections_total", "gc_seconds_total", "background_queued",
             "triggers_total", "trigger_queue", "schedules_total", "schedule_queue", "scripts_running",
             "scripts_rejected_total", "in_doubt_transactions", "fsync_total", "fsync_failures_total",
-            "fsync_duration_seconds", "databases", "collections", "documents", "live_bytes");
+            "fsync_duration_seconds", "projects", "collections", "documents", "live_bytes");
     private static final String ADMIN = "metrics_exposition_admin";
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
 
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         for (final var id : List.of("a", "b", "c")) {
             save(id);
@@ -57,7 +57,7 @@ public class MetricsExpositionTest {
     }
 
     private void save(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.addProperty("payload", "metrics " + id);
@@ -108,13 +108,13 @@ public class MetricsExpositionTest {
     }
 
     @Test
-    public void test_the_stored_totals_match_get_database_stats() {
-        final var totals = assertInstanceOf(GetDatabaseStatsResponse.class,
-                DatabaseStatsHelper.processGetDatabaseStats(ADMIN)).getStats().get("totals").asJsonObject();
+    public void test_the_stored_totals_match_get_project_stats() {
+        final var totals = assertInstanceOf(GetProjectStatsResponse.class,
+                ProjectStatsHelper.processGetProjectStats(ADMIN)).getStats().get("totals").asJsonObject();
 
         final var text = MetricsExposition.render();
 
-        assertEquals(totals.get("databaseCount").asJsonNumber().getValue().doubleValue(), gauge(text, "databases"));
+        assertEquals(totals.get("projectCount").asJsonNumber().getValue().doubleValue(), gauge(text, "projects"));
         assertEquals(totals.get("collectionCount").asJsonNumber().getValue().doubleValue(), gauge(text, "collections"));
         assertEquals(totals.get("entryCount").asJsonNumber().getValue().doubleValue(), gauge(text, "documents"));
         assertEquals(totals.get("sizeBytes").asJsonNumber().getValue().doubleValue(), gauge(text, "live_bytes"));
@@ -132,7 +132,7 @@ public class MetricsExpositionTest {
     @Test
     public void test_renders_while_another_thread_holds_the_collection_write_lock() throws Exception {
         final var locking = IocContainer.get(ResourceLocking.class);
-        final var collection = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        final var collection = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
         final var locked = new CountDownLatch(1);
         final var release = new CountDownLatch(1);
         final var holder = Thread.ofPlatform().start(() -> {

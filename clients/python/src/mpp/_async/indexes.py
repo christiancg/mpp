@@ -15,32 +15,32 @@ def _result(reply: JsonObject) -> ReindexResult:
 
 
 class AsyncIndexes:
-    def __init__(self, context: ClientContext, database: str, collection: str) -> None:
+    def __init__(self, context: ClientContext, project: str, collection: str) -> None:
         self._context = context
-        self._database = database
+        self._project = project
         self._collection = collection
 
     async def create(self, field: str, *more_fields: str) -> None:
         await self._context.channel.send(
             "CREATE_INDEX",
-            self._context.encoder.create_index(self._database, self._collection, (field, *more_fields)),
+            self._context.encoder.create_index(self._project, self._collection, (field, *more_fields)),
         )
 
     async def drop(self, field: str) -> None:
         await self._context.channel.send(
-            "DROP_INDEX", self._context.encoder.drop_index(self._database, self._collection, field)
+            "DROP_INDEX", self._context.encoder.drop_index(self._project, self._collection, field)
         )
 
     async def reindex(self, *fields: str) -> ReindexResult:
         return _result(
             await self._context.channel.send(
-                "REINDEX", self._context.encoder.reindex(self._database, self._collection, fields)
+                "REINDEX", self._context.encoder.reindex(self._project, self._collection, fields)
             )
         )
 
     async def reindex_primary_key(self) -> ReindexResult:
         return _result(
             await self._context.channel.send(
-                "REINDEX", self._context.encoder.reindex_primary_key(self._database, self._collection)
+                "REINDEX", self._context.encoder.reindex_primary_key(self._project, self._collection)
             )
         )

@@ -17,18 +17,18 @@ public class AdminCollEntry extends DbEntry {
     private long incarnation;
 
     private AdminCollEntry() {
-        super.setDatabaseName(Globals.ADMIN_DB_NAME);
+        super.setProjectName(Globals.ADMIN_PROJECT_NAME);
         super.setCollectionName(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
     }
 
-    public AdminCollEntry(String dbName, String collName) {
-        this(dbName, collName, new HashSet<>());
+    public AdminCollEntry(String projectName, String collName) {
+        this(projectName, collName, new HashSet<>());
     }
 
-    public AdminCollEntry(String dbName, String collName, Set<String> indexes) {
-        super.setDatabaseName(Globals.ADMIN_DB_NAME);
+    public AdminCollEntry(String projectName, String collName, Set<String> indexes) {
+        super.setProjectName(Globals.ADMIN_PROJECT_NAME);
         super.setCollectionName(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
-        this.set_id(Cache.getCollectionIdentifier(dbName, collName));
+        this.set_id(Cache.getCollectionIdentifier(projectName, collName));
         this.indexes = indexes;
         final var json = new JsonObject();
         final var arr = new JsonArray();
@@ -62,7 +62,7 @@ public class AdminCollEntry extends DbEntry {
         result.incarnation = object.has(INCARNATION_FIELD_NAME)
                 ? Long.parseLong(object.get(INCARNATION_FIELD_NAME).asJsonString().getValue())
                 : 0L;
-        result.setDatabaseName(Globals.ADMIN_DB_NAME);
+        result.setProjectName(Globals.ADMIN_PROJECT_NAME);
         result.setCollectionName(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
         return result;
     }

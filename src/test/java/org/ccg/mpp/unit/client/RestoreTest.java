@@ -22,10 +22,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class RestoreTest {
-    private static final String CREATE_SHOP = "{\"type\":\"CREATE_DATABASE\",\"databaseName\":\"shop\"}";
-    private static final String CREATE_ORDERS = "{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"shop\","
+    private static final String CREATE_SHOP = "{\"type\":\"CREATE_PROJECT\",\"projectName\":\"shop\"}";
+    private static final String CREATE_ORDERS = "{\"type\":\"CREATE_COLLECTION\",\"projectName\":\"shop\","
             + "\"collectionName\":\"orders\"}";
-    private static final String SAVE_ORDERS = "{\"type\":\"BULK_SAVE\",\"databaseName\":\"shop\","
+    private static final String SAVE_ORDERS = "{\"type\":\"BULK_SAVE\",\"projectName\":\"shop\","
             + "\"collectionName\":\"orders\",\"objects\":[{\"_id\":\"o1\"}]}";
     private FakeLineServer server;
     private final ByteArrayOutputStream errors = new ByteArrayOutputStream();
@@ -64,13 +64,13 @@ public class RestoreTest {
 
     private List<String> replayedTypes() {
         final var types = server.types();
-        assertEquals("LIST_DATABASES", types.getFirst());
+        assertEquals("LIST_PROJECTS", types.getFirst());
         return types.subList(1, types.size());
     }
 
-    private void serveExistingDatabases(String... names) {
-        server.reply("LIST_DATABASES",
-                FakeLineServer.ok("LIST_DATABASES", "\"databases\":[\"" + String.join("\",\"", names) + "\"]"));
+    private void serveExistingProjects(String... names) {
+        server.reply("LIST_PROJECTS",
+                FakeLineServer.ok("LIST_PROJECTS", "\"projects\":[\"" + String.join("\",\"", names) + "\"]"));
     }
 
     @Test
@@ -85,7 +85,7 @@ public class RestoreTest {
     public void test_gzip_input_detected() throws IOException {
         assertEquals(ClientException.OK, restore(new ByteArrayInputStream(gzip(CREATE_SHOP + "\n" + CREATE_ORDERS))));
 
-        assertEquals(List.of("CREATE_DATABASE", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
+        assertEquals(List.of("CREATE_PROJECT", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
     }
 
     @Test
@@ -100,7 +100,7 @@ public class RestoreTest {
     public void test_blank_lines_skipped() throws IOException {
         assertEquals(ClientException.OK, restore(plain("\n" + CREATE_SHOP + "\n\n  \n" + CREATE_ORDERS + "\n\n")));
 
-        assertEquals(List.of("CREATE_DATABASE", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
+        assertEquals(List.of("CREATE_PROJECT", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
     }
 
     @Test
@@ -109,7 +109,7 @@ public class RestoreTest {
 
         assertEquals(ClientException.FAILED, restore(plain(CREATE_SHOP + "\n\n" + CREATE_ORDERS + "\n" + SAVE_ORDERS)));
 
-        assertEquals(List.of("CREATE_DATABASE", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
+        assertEquals(List.of("CREATE_PROJECT", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
         assertTrue(stderr().contains("line 3: "), stderr());
         assertTrue(stderr().contains("restored 1 requests"), stderr());
     }
@@ -131,16 +131,16 @@ public class RestoreTest {
     }
 
     @Test
-    public void test_existing_database_is_accepted_and_restore_continues() throws IOException {
-        server.reply("CREATE_DATABASE", FakeLineServer.error("CREATE_DATABASE", "ERROR", "409-2"));
+    public void test_existing_project_is_accepted_and_restore_continues() throws IOException {
+        server.reply("CREATE_PROJECT", FakeLineServer.error("CREATE_PROJECT", "ERROR", "409-2"));
 
         assertEquals(ClientException.OK, restore(plain(CREATE_SHOP + "\n" + CREATE_ORDERS)));
 
-        assertEquals(List.of("CREATE_DATABASE", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
+        assertEquals(List.of("CREATE_PROJECT", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
     }
 
     @Test
-    public void test_409_2_on_a_request_other_than_create_database_still_stops() throws IOException {
+    public void test_409_2_on_a_request_other_than_create_project_still_stops() throws IOException {
         server.reply("CREATE_COLLECTION", FakeLineServer.error("CREATE_COLLECTION", "ERROR", "409-2"));
 
         assertEquals(ClientException.FAILED, restore(plain(CREATE_ORDERS + "\n" + SAVE_ORDERS)));
@@ -149,53 +149,53 @@ public class RestoreTest {
     }
 
     @Test
-    public void test_create_database_for_an_existing_database_is_skipped() throws IOException {
-        serveExistingDatabases("crm", "shop");
+    public void test_create_project_for_an_existing_project_is_skipped() throws IOException {
+        serveExistingProjects("crm", "shop");
 
         assertEquals(ClientException.OK, restore(plain(CREATE_SHOP + "\n" + CREATE_ORDERS)));
 
         assertEquals(List.of("CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
-        assertTrue(stderr().contains("restored 1 requests, skipped 1 existing databases"), stderr());
+        assertTrue(stderr().contains("restored 1 requests, skipped 1 existing projects"), stderr());
     }
 
     @Test
-    public void test_create_database_for_a_new_database_is_sent() throws IOException {
-        serveExistingDatabases("crm");
+    public void test_create_project_for_a_new_project_is_sent() throws IOException {
+        serveExistingProjects("crm");
 
         assertEquals(ClientException.OK, restore(plain(CREATE_SHOP + "\n" + CREATE_ORDERS)));
 
-        assertEquals(List.of("CREATE_DATABASE", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
+        assertEquals(List.of("CREATE_PROJECT", "CREATE_COLLECTION", "CLOSE_CONNECTION"), replayedTypes());
         assertFalse(stderr().contains("skipped"), stderr());
     }
 
     @Test
     public void test_skipped_line_keeps_the_line_numbers() throws IOException {
-        serveExistingDatabases("shop");
+        serveExistingProjects("shop");
         server.reply("BULK_SAVE", FakeLineServer.error("BULK_SAVE", "ERROR", "400-7"));
 
         assertEquals(ClientException.FAILED, restore(plain(CREATE_SHOP + "\n" + CREATE_ORDERS + "\n" + SAVE_ORDERS)));
 
         assertTrue(stderr().contains("line 3: "), stderr());
-        assertTrue(stderr().contains("restored 1 requests, skipped 1 existing databases"), stderr());
+        assertTrue(stderr().contains("restored 1 requests, skipped 1 existing projects"), stderr());
     }
 
     @Test
-    public void test_a_create_database_line_that_is_not_json_is_sent_as_is() throws IOException {
-        serveExistingDatabases("shop");
+    public void test_a_create_project_line_that_is_not_json_is_sent_as_is() throws IOException {
+        serveExistingProjects("shop");
 
-        assertEquals(ClientException.FAILED, restore(plain("{\"type\":\"CREATE_DATABASE\",broken")));
+        assertEquals(ClientException.FAILED, restore(plain("{\"type\":\"CREATE_PROJECT\",broken")));
 
-        assertTrue(server.lines().contains("{\"type\":\"CREATE_DATABASE\",broken"));
+        assertTrue(server.lines().contains("{\"type\":\"CREATE_PROJECT\",broken"));
     }
 
     @Test
-    public void test_a_refused_database_listing_fails_the_restore() {
-        server.reply("LIST_DATABASES", FakeLineServer.error("LIST_DATABASES", "ERROR", "500-1"));
+    public void test_a_refused_project_listing_fails_the_restore() {
+        server.reply("LIST_PROJECTS", FakeLineServer.error("LIST_PROJECTS", "ERROR", "500-1"));
 
         final var error = assertThrows(ClientException.class, () -> restore(plain(CREATE_SHOP)));
 
         assertEquals(ClientException.FAILED, error.exitCode());
-        assertEquals(List.of("LIST_DATABASES", "CLOSE_CONNECTION"), server.types());
+        assertEquals(List.of("LIST_PROJECTS", "CLOSE_CONNECTION"), server.types());
     }
 
     @Test

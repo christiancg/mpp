@@ -29,7 +29,7 @@ public class MessageProcessorRunScriptTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var configuration = Configuration.getInstance();
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptInstructionBudget", 10_000_000L);
@@ -40,9 +40,9 @@ public class MessageProcessorRunScriptTest {
         TestUtils.setPrivateField(configuration, "scriptMaxLogLineChars", 4_096);
         createUser(ADMIN, true, new HashMap<>(), new HashMap<>());
         final var readOnly = new HashMap<String, PermissionLevel>();
-        readOnly.put(TestGlobals.DB, PermissionLevel.READ);
+        readOnly.put(TestGlobals.PROJECT, PermissionLevel.READ);
         final var scriptGrant = new HashMap<String, ScriptPermissionLevel>();
-        scriptGrant.put(TestGlobals.DB, ScriptPermissionLevel.RUN);
+        scriptGrant.put(TestGlobals.PROJECT, ScriptPermissionLevel.RUN);
         createUser(READER, false, readOnly, scriptGrant);
         createUser(NOBODY, false, new HashMap<>(), new HashMap<>());
     }
@@ -54,14 +54,14 @@ public class MessageProcessorRunScriptTest {
         TestUtils.standardTearDown();
     }
 
-    private static void createUser(String username, boolean admin, HashMap<String, PermissionLevel> databasePermissions,
+    private static void createUser(String username, boolean admin, HashMap<String, PermissionLevel> projectPermissions,
             HashMap<String, ScriptPermissionLevel> scriptPermissions) {
         final var request = new CreateUserRequest();
         request.setUsername(username);
         request.setPassword(PASSWORD);
         request.setAdmin(admin);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(databasePermissions);
+        request.setProjectPermissions(projectPermissions);
         request.setCollectionPermissions(new HashMap<>());
         request.setScriptPermissions(scriptPermissions);
         UserOperationHelper.processCreateUser(request);
@@ -83,7 +83,8 @@ public class MessageProcessorRunScriptTest {
     }
 
     private static String runScript(String script) {
-        return "{\"type\":\"RUN_SCRIPT\",\"databaseName\":\"" + TestGlobals.DB + "\",\"script\":\"" + script + "\"}";
+        return "{\"type\":\"RUN_SCRIPT\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"script\":\"" + script
+                + "\"}";
     }
 
     @Test

@@ -44,12 +44,12 @@ public class TransactionRecoveryCompletenessTest {
     private static final int LAST_RECORD = 3;
     private final Cache cache = IocContainer.get(Cache.class);
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
-    private final String collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private final String collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
 
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -74,7 +74,7 @@ public class TransactionRecoveryCompletenessTest {
     private static Transaction bufferSlice(String... ids) throws Exception {
         final var transaction = new Transaction(UUID.randomUUID(), UUID.randomUUID());
         for (final var id : ids) {
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(document(id));
             request.set_id(id);
             TransactionOperationHelper.bufferSave(request, transaction);
@@ -84,7 +84,7 @@ public class TransactionRecoveryCompletenessTest {
     }
 
     private boolean documentExists(String id) throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of(id)).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of(id)).isEmpty();
     }
 
     private static List<AdminTransactionEntry> largeOps(String txId) {
@@ -94,8 +94,8 @@ public class TransactionRecoveryCompletenessTest {
             final var payload = new JsonObject();
             payload.addProperty(Globals.PK_FIELD, "large-" + seq);
             payload.addProperty("filler", filler);
-            ops.add(new AdminTransactionEntry(txId, "client", seq, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
-                    TestGlobals.COLL, payload));
+            ops.add(new AdminTransactionEntry(txId, "client", seq, AdminTransactionEntry.OP_TYPE_SAVE,
+                    TestGlobals.PROJECT, TestGlobals.COLL, payload));
         }
         return ops;
     }
@@ -115,7 +115,7 @@ public class TransactionRecoveryCompletenessTest {
                         new IOException("No space left on device")));
             }
             return invocation.callRealMethod();
-        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_DB_NAME),
+        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_PROJECT_NAME),
                 ArgumentMatchers.eq(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME), ArgumentMatchers.any());
         useCache(spy);
         try {

@@ -21,15 +21,15 @@ Scope collection; allowed inside a transaction.
 
 Scope collection; allowed inside a transaction.
 
-## CREATE_DATABASE
+## CREATE_PROJECT
 
-Scope database.
+Scope project.
 
-## DROP_DATABASE
+## DROP_PROJECT
 
-Scope database.
+Scope project.
 
-## LIST_DATABASES
+## LIST_PROJECTS
 
 Scope none.
 
@@ -43,7 +43,7 @@ Scope collection.
 
 ## LIST_COLLECTIONS
 
-Scope database.
+Scope project.
 
 ## CREATE_INDEX
 
@@ -93,9 +93,9 @@ Scope none; admin only.
 
 Scope none; admin only.
 
-## SET_DATABASE_OWNERS
+## SET_PROJECT_OWNERS
 
-Scope database; admin only.
+Scope project; admin only.
 
 ## LIST_USERS
 
@@ -105,9 +105,9 @@ Scope none; admin only.
 
 Scope none.
 
-## GET_DATABASE_STATS
+## GET_PROJECT_STATS
 
-Scope database.
+Scope project.
 
 ## LISTEN
 
@@ -139,23 +139,23 @@ Scope none; admin only.
 
 ## RUN_SCRIPT
 
-Scope database.
+Scope project.
 
 ## SAVE_PROCEDURE
 
-Scope database.
+Scope project.
 
 ## DELETE_PROCEDURE
 
-Scope database.
+Scope project.
 
 ## LIST_PROCEDURES
 
-Scope database.
+Scope project.
 
 ## CALL_PROCEDURE
 
-Scope database.
+Scope project.
 
 ## SAVE_TRIGGER
 
@@ -171,15 +171,15 @@ Scope optional collection.
 
 ## SAVE_SCHEDULE
 
-Scope database.
+Scope project.
 
 ## DELETE_SCHEDULE
 
-Scope database.
+Scope project.
 
 ## LIST_SCHEDULES
 
-Scope database.
+Scope project.
 
 ## LIST_SCRIPTS
 

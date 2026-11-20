@@ -43,15 +43,15 @@ public class ProcedureReferenceRaceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 100);
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerProject", 100);
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", BUDGET_MS);
         registry.clear();
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, PROCEDURE, "return 1;"), ACTOR).getStatus());
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, PROCEDURE, "return 1;"), ACTOR).getStatus());
     }
 
     @AfterEach
@@ -69,7 +69,7 @@ public class ProcedureReferenceRaceTest {
         holdProceduresLock();
         final var result = new AtomicReference<OperationResponse>();
         final var saver = startParked(() -> TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE),
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE),
                 ACTOR), result);
 
         deleteProcedureWhileHoldingTheLock();
@@ -77,14 +77,14 @@ public class ProcedureReferenceRaceTest {
         saver.join(BUDGET_MS);
 
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), result.get().getErrorCode());
-        assertTrue(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     @Test
     public void test_a_schedule_save_waiting_on_a_procedure_delete_refuses_the_dangling_reference() throws Exception {
         holdProceduresLock();
         final var result = new AtomicReference<OperationResponse>();
-        final var request = new SaveScheduleRequest(TestGlobals.DB, "nightly", PROCEDURE);
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, "nightly", PROCEDURE);
         request.setIntervalMs(2000L);
         final var saver = startParked(() -> ScheduleOperationHelper.executeSave(request, ACTOR), result);
 
@@ -93,18 +93,18 @@ public class ProcedureReferenceRaceTest {
         saver.join(BUDGET_MS);
 
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), result.get().getErrorCode());
-        assertNull(cache.getSchedule(TestGlobals.DB, "nightly"));
-        assertTrue(fs.metadataFiles().listScheduleNames(TestGlobals.DB).isEmpty());
+        assertNull(cache.getSchedule(TestGlobals.PROJECT, "nightly"));
+        assertTrue(fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT).isEmpty());
     }
 
     @Test
     public void test_a_procedure_delete_after_a_trigger_save_is_refused_as_referenced() throws Exception {
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE), ACTOR)
-                .getStatus());
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE),
+                ACTOR).getStatus());
 
         final var deleted = ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, PROCEDURE), ACTOR);
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, PROCEDURE), ACTOR);
 
         assertEquals(ErrorCode.INVALID_TRIGGER.getCode(), deleted.getErrorCode());
     }
@@ -112,35 +112,36 @@ public class ProcedureReferenceRaceTest {
     @Test
     public void test_a_case_variant_delete_keeps_a_referenced_procedure() throws Exception {
         assertEquals(OperationStatus.OK, TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE), ACTOR)
-                .getStatus());
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), PROCEDURE),
+                ACTOR).getStatus());
 
-        ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest(TestGlobals.DB, "Recalc"), ACTOR);
+        ProcedureOperationHelper.executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, "Recalc"), ACTOR);
 
-        assertNotNull(fs.metadataFiles().readProcedure(TestGlobals.DB, PROCEDURE),
+        assertNotNull(fs.metadataFiles().readProcedure(TestGlobals.PROJECT, PROCEDURE),
                 "the referenced procedure's file is kept");
-        assertNotNull(cache.getProcedure(TestGlobals.DB, PROCEDURE));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, PROCEDURE));
     }
 
     @Test
     public void test_a_trigger_cannot_name_a_case_variant_of_a_procedure() throws Exception {
         final var saved = TriggerOperationHelper.executeSave(
-                new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"), "Recalc"), ACTOR);
+                new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"), "Recalc"),
+                ACTOR);
 
         assertNotEquals(OperationStatus.OK, saved.getStatus());
-        assertNull(cache.getProcedure(TestGlobals.DB, "Recalc"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "Recalc"));
     }
 
     private void deleteProcedureWhileHoldingTheLock() throws Exception {
         final var deleted = holder.run(() -> ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, PROCEDURE), ACTOR));
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, PROCEDURE), ACTOR));
         assertEquals(OperationStatus.OK, deleted.getStatus());
     }
 
     private void holdProceduresLock() throws Exception {
         holder.hold(() -> {
-            locks.lock(TestGlobals.DB, Globals.PROCEDURES_FOLDER);
+            locks.lock(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER);
             return true;
-        }, () -> locks.release(TestGlobals.DB, Globals.PROCEDURES_FOLDER));
+        }, () -> locks.release(TestGlobals.PROJECT, Globals.PROCEDURES_FOLDER));
     }
 }

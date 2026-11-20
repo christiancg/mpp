@@ -34,7 +34,7 @@ public class AdminResidentRowsTest {
     }
 
     private static PkIndexEntry row(String collName, String id) {
-        return new PkIndexEntry(Globals.ADMIN_DB_NAME, collName, id, 0, 10, 0);
+        return new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, collName, id, 0, 10, 0);
     }
 
     private static List<PkIndexEntry> residentRows(String collName) {
@@ -78,7 +78,7 @@ public class AdminResidentRowsTest {
             AdminOperationHelper.saveTriggerRun(run("run-" + index, 0));
         }
         final var pageReads = new AtomicInteger();
-        final var sentinel = new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME,
+        final var sentinel = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME,
                 "zzz|0", 0, 10, 0) {
             @Override
             public long getPage() {

@@ -36,18 +36,18 @@ public class IndexCoverageUnknownTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var entries = new ArrayList<DbEntry>();
         for (var i = 0; i < 20; i++) {
             final var data = new JsonObject();
             data.addProperty("_id", "d" + i);
             data.addProperty(FIELD, i % 5);
-            entries.add(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data));
+            entries.add(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data));
         }
-        IocContainer.get(FileSystem.class).bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(FileSystem.class).bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @AfterEach
@@ -57,17 +57,18 @@ public class IndexCoverageUnknownTest {
     }
 
     private static void forgetTheLiveRowCount() throws Exception {
-        final var pkIndex = Path.of(TestGlobals.PATH, TestGlobals.DB, TestGlobals.COLL, TestGlobals.COLL + "-pk.idx");
+        final var pkIndex = Path.of(TestGlobals.PATH, TestGlobals.PROJECT, TestGlobals.COLL,
+                TestGlobals.COLL + "-pk.idx");
         Files.setLastModifiedTime(pkIndex, FileTime.fromMillis(0L));
         OutsideWrites.madeTo(pkIndex.toFile());
     }
 
     @Test
     public void aLockFreeReaderWithAKnownCountUsesTheIndex() throws Exception {
-        assertEquals(20, cache.pkCountForCoverage(TestGlobals.DB, TestGlobals.COLL));
-        assertNotNull(IndexEntryReader.sortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD, ASCENDING, 100,
+        assertEquals(20, cache.pkCountForCoverage(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNotNull(IndexEntryReader.sortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ASCENDING, 100,
                 ReadObserver.NONE));
-        final var distinct = IndexEntryReader.distinctValuesForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        final var distinct = IndexEntryReader.distinctValuesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 ReadObserver.NONE);
         assertNotNull(distinct);
         assertEquals(5, distinct.size());
@@ -77,11 +78,12 @@ public class IndexCoverageUnknownTest {
     public void anUnknownCountDeclinesTheSortAndTheDistinct() throws Exception {
         forgetTheLiveRowCount();
 
-        assertEquals(-1, cache.pkCountForCoverage(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(IndexEntryReader.sortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD, ASCENDING, 100,
+        assertEquals(-1, cache.pkCountForCoverage(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(IndexEntryReader.sortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ASCENDING, 100,
                 ReadObserver.NONE), "a count that is not known never lets an index answer");
-        assertNull(IndexEntryReader.distinctValuesForField(TestGlobals.DB, TestGlobals.COLL, FIELD, ReadObserver.NONE));
-        assertNull(
-                IndexEntryReader.getIndexEntriesForField(TestGlobals.DB, TestGlobals.COLL, FIELD, ReadObserver.NONE));
+        assertNull(IndexEntryReader.distinctValuesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                ReadObserver.NONE));
+        assertNull(IndexEntryReader.getIndexEntriesForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
+                ReadObserver.NONE));
     }
 }

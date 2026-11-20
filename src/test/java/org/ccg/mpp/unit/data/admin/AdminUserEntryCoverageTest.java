@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 public class AdminUserEntryCoverageTest {
 
     private static AdminUserEntry user(String name) {
-        final Map<String, PermissionLevel> dbPerms = new HashMap<>();
-        dbPerms.put("db1", PermissionLevel.READ_WRITE);
-        return new AdminUserEntry(name, "h", false, Set.of(GlobalPermissionType.CREATE_DATABASE), dbPerms,
+        final Map<String, PermissionLevel> projectPerms = new HashMap<>();
+        projectPerms.put("project1", PermissionLevel.READ_WRITE);
+        return new AdminUserEntry(name, "h", false, Set.of(GlobalPermissionType.CREATE_PROJECT), projectPerms,
                 new HashMap<>());
     }
 
@@ -36,22 +36,23 @@ public class AdminUserEntryCoverageTest {
     }
 
     @Test
-    public void test_to_response_json_includes_permissions_and_owned_dbs() {
-        final var json = user("bob").toResponseJson(List.of("db1", "db2"));
+    public void test_to_response_json_includes_permissions_and_owned_projects() {
+        final var json = user("bob").toResponseJson(List.of("project1", "project2"));
         assertEquals("bob", json.get("_id").asJsonString().getValue());
         assertEquals(1, json.get("globalPermissions").asJsonArray().asList().size());
-        assertEquals("READ_WRITE", json.get("databasePermissions").asJsonObject().get("db1").asJsonString().getValue());
-        assertEquals(2, json.get("ownedDatabases").asJsonArray().asList().size());
+        assertEquals("READ_WRITE",
+                json.get("projectPermissions").asJsonObject().get("project1").asJsonString().getValue());
+        assertEquals(2, json.get("ownedProjects").asJsonArray().asList().size());
     }
 
     @Test
     public void test_setters_rebuild_data_and_getters() {
         final var user = user("bob");
         user.setAdmin(true);
-        user.setGlobalPermissions(Set.of(GlobalPermissionType.DROP_DATABASE));
+        user.setGlobalPermissions(Set.of(GlobalPermissionType.DROP_PROJECT));
         assertTrue(user.isAdmin());
-        assertEquals(Set.of(GlobalPermissionType.DROP_DATABASE), user.getGlobalPermissions());
-        assertEquals(PermissionLevel.READ_WRITE, user.getDatabasePermissions().get("db1"));
+        assertEquals(Set.of(GlobalPermissionType.DROP_PROJECT), user.getGlobalPermissions());
+        assertEquals(PermissionLevel.READ_WRITE, user.getProjectPermissions().get("project1"));
         assertEquals("h", user.getPasswordHash());
         assertTrue(user.toString().contains("bob"));
     }

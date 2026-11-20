@@ -25,7 +25,7 @@ public class UserOperationHelperLastAdminTest {
         req.setPassword("password123");
         req.setAdmin(true);
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(req);
     }
@@ -50,7 +50,7 @@ public class UserOperationHelperLastAdminTest {
         req.setUsername("sole_admin");
         req.setAdmin(false);
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
         final var resp = UserOperationHelper.processChangePermissions(req, new RestampedRecords());
         assertEquals(OperationStatus.ERROR, resp.getStatus());

@@ -7,13 +7,13 @@ import java.util.List;
 import java.util.Locale;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ioc.IocContainer;
 
 public final class OnDiskNameRegistry {
     private static final Cache cache = IocContainer.get(Cache.class);
-    private static final List<String> RESERVED_DATABASE_NAMES = List.of(Globals.ADMIN_DB_NAME,
-            Globals.ADMIN_PAGES_DB_NAME, Globals.CLUSTER_FOLDER);
+    private static final List<String> RESERVED_PROJECT_NAMES = List.of(Globals.ADMIN_PROJECT_NAME,
+            Globals.ADMIN_PAGES_PROJECT_NAME, Globals.CLUSTER_FOLDER);
 
     private OnDiskNameRegistry() {
     }
@@ -22,16 +22,16 @@ public final class OnDiskNameRegistry {
         return name.toLowerCase(Locale.ROOT);
     }
 
-    public static String collidingDatabase(String dbName) {
-        return firstColliding(allDatabaseNames(), dbName);
+    public static String collidingProject(String projectName) {
+        return firstColliding(allProjectNames(), projectName);
     }
 
-    public static String collidingCollection(String dbName, String collName) {
-        return firstColliding(collectionNamesOf(dbName), collName);
+    public static String collidingCollection(String projectName, String collName) {
+        return firstColliding(collectionNamesOf(projectName), collName);
     }
 
-    public static String collidingIndexField(String dbName, String collName, String fieldName) {
-        return firstColliding(cache.getIndexesForCollection(dbName, collName), fieldName);
+    public static String collidingIndexField(String projectName, String collName, String fieldName) {
+        return firstColliding(cache.getIndexesForCollection(projectName, collName), fieldName);
     }
 
     public static String collidingDefinition(Collection<String> existing, String name) {
@@ -40,16 +40,16 @@ public final class OnDiskNameRegistry {
 
     public static List<List<String>> groupedByOnDiskKey() {
         final var groups = new ArrayList<List<String>>();
-        addGroupsOf(groups, allDatabaseNames());
-        for (final var dbName : allDatabaseNames()) {
-            addGroupsOf(groups, collectionNamesOf(dbName));
+        addGroupsOf(groups, allProjectNames());
+        for (final var projectName : allProjectNames()) {
+            addGroupsOf(groups, collectionNamesOf(projectName));
         }
         return groups;
     }
 
-    public static List<String> registeredDatabasesInTheClusterFolder() {
+    public static List<String> registeredProjectsInTheClusterFolder() {
         final var names = new ArrayList<String>();
-        for (final var entry : cache.getAllAdminDbEntries()) {
+        for (final var entry : cache.getAllAdminProjectEntries()) {
             final var name = entry.get_id();
             if (name != null && onDiskKey(name).equals(Globals.CLUSTER_FOLDER)) {
                 names.add(name);
@@ -83,9 +83,9 @@ public final class OnDiskNameRegistry {
         return null;
     }
 
-    private static List<String> allDatabaseNames() {
-        final var names = new ArrayList<>(RESERVED_DATABASE_NAMES);
-        for (final var entry : cache.getAllAdminDbEntries()) {
+    private static List<String> allProjectNames() {
+        final var names = new ArrayList<>(RESERVED_PROJECT_NAMES);
+        for (final var entry : cache.getAllAdminProjectEntries()) {
             final var name = entry.get_id();
             if (name != null && !names.contains(name)) {
                 names.add(name);
@@ -94,12 +94,12 @@ public final class OnDiskNameRegistry {
         return names;
     }
 
-    private static List<String> collectionNamesOf(String dbName) {
-        final var entry = cache.getAdminDbEntry(dbName);
+    private static List<String> collectionNamesOf(String projectName) {
+        final var entry = cache.getAdminProjectEntry(projectName);
         return entry == null ? List.of() : collectionsOf(entry);
     }
 
-    private static List<String> collectionsOf(AdminDbEntry entry) {
+    private static List<String> collectionsOf(AdminProjectEntry entry) {
         final var collections = entry.getCollections();
         return collections == null ? List.of() : collections;
     }

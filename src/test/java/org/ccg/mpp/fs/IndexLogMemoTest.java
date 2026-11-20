@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class IndexLogMemoTest {
-    private static final String DB = "memodb";
+    private static final String PROJECT = "memodb";
     private static final String COLL = "docs";
     private static final String FIELD = "tag";
     private static final String US = Globals.ID_SEPARATOR;
@@ -45,9 +45,9 @@ public class IndexLogMemoTest {
         TestUtils.standardInitialSetup();
         final var paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(new File(tmp, DB + File.separator + COLL).mkdirs());
+        assertTrue(new File(tmp, PROJECT + File.separator + COLL).mkdirs());
         store = new FieldIndexStore(paths);
-        base = java.util.Objects.requireNonNull(paths.indexFile(DB, COLL, FIELD, "String"));
+        base = java.util.Objects.requireNonNull(paths.indexFile(PROJECT, COLL, FIELD, "String"));
         log = FilePaths.logFileOf(base);
         memo = new IndexLogMemo(Globals.INDEX_LOG_MEMO_MAX_BYTES);
     }
@@ -79,7 +79,7 @@ public class IndexLogMemoTest {
     }
 
     private static FieldIndexEntry<String> entry(String value, String... ids) {
-        return new FieldIndexEntry<>(DB, COLL, value, new HashSet<>(Set.of(ids)));
+        return new FieldIndexEntry<>(PROJECT, COLL, value, new HashSet<>(Set.of(ids)));
     }
 
     @Test
@@ -117,7 +117,7 @@ public class IndexLogMemoTest {
 
     @Test
     public void aRollbackInvalidates() throws IOException {
-        store.appendIndexLog(DB, COLL, FIELD, "String", List.of(change("kept", List.of("k"), List.of())),
+        store.appendIndexLog(PROJECT, COLL, FIELD, "String", List.of(change("kept", List.of("k"), List.of())),
                 List.of(entry("kept", "k")), 1);
         write(log, PADDING, StandardOpenOption.APPEND);
         assertEquals(Set.of("k"), answer().get("kept"));
@@ -126,7 +126,7 @@ public class IndexLogMemoTest {
         Files.delete(log.toPath());
         assertTrue(log.mkdir());
 
-        assertThrows(IOException.class, () -> store.appendIndexLog(DB, COLL, FIELD, "String",
+        assertThrows(IOException.class, () -> store.appendIndexLog(PROJECT, COLL, FIELD, "String",
                 List.of(change("lost", List.of("l"), List.of())), List.of(entry("kept", "k"), entry("lost", "l")), 1));
 
         assertTrue(FieldIndexLog.generationOf(log) > generation);
@@ -141,11 +141,11 @@ public class IndexLogMemoTest {
         write(log, added("alpha", "a1") + PADDING);
         assertEquals(Set.of("a1"), answer().get("alpha"));
 
-        assertTrue(store.dropIndex(DB, COLL, FIELD));
+        assertTrue(store.dropIndex(PROJECT, COLL, FIELD));
         write(log, added("alphA", "a2") + PADDING);
         assertEquals(Set.of("a2"), answer().get("alphA"), "a dropped log is never extended from its old length");
 
-        store.writeIndexFile(DB, COLL, FIELD, Map.of(String.class, List.of(entry("fresh", "f"))));
+        store.writeIndexFile(PROJECT, COLL, FIELD, Map.of(String.class, List.of(entry("fresh", "f"))));
         assertFalse(log.exists());
         write(log, added("Alpha", "a3") + PADDING);
         assertEquals(Set.of("a3"), answer().get("Alpha"), "a rebuilt index's log is parsed again");

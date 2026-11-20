@@ -43,7 +43,7 @@ public class AggregationGroupingStepTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -54,7 +54,7 @@ public class AggregationGroupingStepTest {
 
     @Test
     public void test_process_group_by_operation_with_valid_field() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         GroupByAggregationStep groupByStep = new GroupByAggregationStep("groupField");
         request.setAggregationSteps(List.of(groupByStep));
 
@@ -75,10 +75,10 @@ public class AggregationGroupingStepTest {
             obj.addProperty("type", s);
         else if (fieldValue instanceof Number n)
             obj.addProperty("type", n);
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     @Test
@@ -88,7 +88,7 @@ public class AggregationGroupingStepTest {
         insertEntry(cache, "g2", "B");
         insertEntry(cache, "g3", "A");
 
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new GroupByAggregationStep("type")));
 
         List<JsonObject> result = AggregationOperationHelper.processAggregation(request);
@@ -100,14 +100,14 @@ public class AggregationGroupingStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex(Cache cache, String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(field));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(field));
     }
 
     @Test
@@ -117,7 +117,7 @@ public class AggregationGroupingStepTest {
         addDoc(cache, "g2", "type", new JsonString("B"));
         addDoc(cache, "g3", "type", new JsonString("A"));
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("type")));
         final var scan = AggregationOperationHelper.processAggregation(req);
 
@@ -149,7 +149,7 @@ public class AggregationGroupingStepTest {
         for (final var id : List.of("doc-06", "doc-01", "doc-05", "doc-02", "doc-04", "doc-03")) {
             addDoc(cache, id, "type", new JsonString("A"));
         }
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("type")));
 
         final var scanned = idsOfTheOnlyGroup(AggregationOperationHelper.processAggregation(req));
@@ -170,7 +170,7 @@ public class AggregationGroupingStepTest {
         addDoc(cache, "g3", "type", new JsonString("A"));
         enableIndex(cache, "type");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(
                 new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "type", new JsonString("A"))),
                 new GroupByAggregationStep("type")));
@@ -192,7 +192,7 @@ public class AggregationGroupingStepTest {
         addDoc(cache, "o1", "meta", obj);
         enableIndex(cache, "meta");
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("meta")));
         final var result = AggregationOperationHelper.processAggregation(req);
 
@@ -212,11 +212,11 @@ public class AggregationGroupingStepTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add("kind", value);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         request.setObject(obj);
         IocContainer.get(OperationProcessor.class).processMessage(request);
-        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.DB, TestGlobals.COLL, id, 0L);
+        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.PROJECT, TestGlobals.COLL, id, 0L);
     }
 
     @Test
@@ -224,7 +224,7 @@ public class AggregationGroupingStepTest {
         saveDoc("n1", new JsonString("x"));
         saveDoc("n2", JsonNull.INSTANCE);
 
-        final var req = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of(new GroupByAggregationStep("kind")));
         final var scan = AggregationOperationHelper.processAggregation(req);
 
@@ -244,7 +244,7 @@ public class AggregationGroupingStepTest {
 
     @Test
     public void test_a_filter_with_an_and_conjunction_after_group_by() throws IOException {
-        AggregateRequest request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        AggregateRequest request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new GroupByAggregationStep("category"),
                 new FilterAggregationStep(new ConjunctionOperator(ConjunctionOperatorType.AND, List.of(
                         new FieldOperator(FieldOperatorType.EQUALS, "category", new JsonString("books")),
@@ -303,9 +303,9 @@ public class AggregationGroupingStepTest {
         }
         final var processor = IocContainer.get(OperationProcessor.class);
         processor.processMessage(
-                RequestParser.parseRequest("{\"type\":\"BULK_SAVE\",\"databaseName\":\"" + TestGlobals.DB
+                RequestParser.parseRequest("{\"type\":\"BULK_SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                         + "\",\"collectionName\":\"" + TestGlobals.JOIN_COLL + "\",\"objects\":[" + remote + "]}"));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new JoinAggregationStep(TestGlobals.JOIN_COLL, "k", "k", "joined")));
         final var left = categorised("left", "books");
         left.addProperty("k", "v1");

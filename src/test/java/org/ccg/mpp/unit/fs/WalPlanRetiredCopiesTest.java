@@ -29,17 +29,17 @@ public class WalPlanRetiredCopiesTest extends FileSystemTestBase {
         private final List<String> retired = new ArrayList<>();
         private final List<String> oldLines = new ArrayList<>();
         private final List<String> born = new ArrayList<>();
-        private String watched = TestGlobals.DB;
+        private String watched = TestGlobals.PROJECT;
         private final List<String> mislabelledReads = new ArrayList<>();
         private boolean probeMislabelled;
 
         @Override
-        public boolean watches(String dbName) {
-            return dbName.equals(watched);
+        public boolean watches(String projectName) {
+            return projectName.equals(watched);
         }
 
         @Override
-        public void retiring(String dbName, String collName, List<RetiredCopy> copies, List<String> bornIds,
+        public void retiring(String projectName, String collName, List<RetiredCopy> copies, List<String> bornIds,
                 OldLines lines) {
             for (final var copy : copies) {
                 if (probeMislabelled) {
@@ -76,7 +76,7 @@ public class WalPlanRetiredCopiesTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty(Globals.PK_FIELD, id);
         data.addProperty("v", value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.setPage(0);
         return entry;
     }
@@ -130,7 +130,7 @@ public class WalPlanRetiredCopiesTest extends FileSystemTestBase {
         final var first = fs.insertIntoCollection(entry("a", "one"));
         final var second = fs.insertIntoCollection(entry("b", "one"));
 
-        fs.bulkUpdateFromCollection(TestGlobals.DB, TestGlobals.COLL,
+        fs.bulkUpdateFromCollection(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(updateEntry(first, "a", "two"), updateEntry(second, "b", "two")));
 
         assertEquals(List.of("a", "b"), recorder.retired);
@@ -142,7 +142,7 @@ public class WalPlanRetiredCopiesTest extends FileSystemTestBase {
         final var doomed = fs.insertIntoCollection(entry("old", "one"));
         recorder.born.clear();
 
-        fs.writeBatch(TestGlobals.DB, TestGlobals.COLL, List.of(entry("new", "one")), DbEntry::getPage,
+        fs.writeBatch(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entry("new", "one")), DbEntry::getPage,
                 DbEntry::encodeLine, List.of(doomed));
 
         assertEquals(List.of("old"), recorder.retired);
@@ -163,21 +163,21 @@ public class WalPlanRetiredCopiesTest extends FileSystemTestBase {
         final var reported = recorder.retired.size();
         final var resident = new ArrayList<>(List.of(survivor));
 
-        fs.vacuumPagesAfterDelete(TestGlobals.DB, TestGlobals.COLL, List.of(0L), resident,
+        fs.vacuumPagesAfterDelete(TestGlobals.PROJECT, TestGlobals.COLL, List.of(0L), resident,
                 _ -> new PageOccupancy(survivor.getLength(), 1));
 
-        final var moved = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).getFirst();
+        final var moved = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).getFirst();
         assertTrue(moved.getPosition() < survivor.getPosition(), "the vacuum moved the survivor");
         assertEquals(reported, recorder.retired.size());
     }
 
     @Test
-    public void test_an_unwatched_database_is_never_reported() throws IOException {
+    public void test_an_unwatched_project_is_never_reported() throws IOException {
         recorder.watched = "elsewhere";
         final var row = fs.insertIntoCollection(entry("a", "one"));
 
         fs.updateFromCollection(entry("a", "two"), row);
-        fs.deleteFromCollection(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).getFirst());
+        fs.deleteFromCollection(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).getFirst());
 
         assertTrue(recorder.retired.isEmpty());
         assertTrue(recorder.born.isEmpty());

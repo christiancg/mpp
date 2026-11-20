@@ -11,8 +11,8 @@ public class ScriptRunRegistry {
     private final AtomicInteger active = new AtomicInteger();
     private final AtomicLong cancelled = new AtomicLong();
 
-    public ScriptRun register(ScriptRunKind kind, String database, String name, String username, UUID clientId) {
-        final var run = new ScriptRun(kind, database, name, username, clientId);
+    public ScriptRun register(ScriptRunKind kind, String project, String name, String username, UUID clientId) {
+        final var run = new ScriptRun(kind, project, name, username, clientId);
         runs.put(run.runId(), run);
         active.incrementAndGet();
         return run;

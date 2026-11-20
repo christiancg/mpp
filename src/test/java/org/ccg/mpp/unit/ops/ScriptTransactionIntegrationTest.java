@@ -23,7 +23,7 @@ public class ScriptTransactionIntegrationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         final var configuration = Configuration.getInstance();
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
@@ -38,7 +38,7 @@ public class ScriptTransactionIntegrationTest {
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -51,8 +51,8 @@ public class ScriptTransactionIntegrationTest {
     }
 
     private static RunScriptResponse run(String script) {
-        return (RunScriptResponse) ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB, script, null),
-                ADMIN, null);
+        return (RunScriptResponse) ScriptOperationHelper
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, script, null), ADMIN, null);
     }
 
     @Test

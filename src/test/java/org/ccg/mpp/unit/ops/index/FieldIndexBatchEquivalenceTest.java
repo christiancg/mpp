@@ -27,7 +27,7 @@ public class FieldIndexBatchEquivalenceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -70,15 +70,15 @@ public class FieldIndexBatchEquivalenceTest {
         for (var i = 0; i < ID_POOL; i++) {
             final var document = support.documentOf("id" + i, BUILT_FIELD);
             if (document != null) {
-                TestUtils.cacheEntry(cache, FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, document);
+                TestUtils.cacheEntry(cache, FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, document);
             }
         }
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lock(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
+        locks.lock(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
         try {
-            IndexBuild.buildAll(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, List.of(BUILT_FIELD));
+            IndexBuild.buildAll(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, List.of(BUILT_FIELD));
         } finally {
-            locks.release(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
+            locks.release(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
         }
 
         assertEquals(FieldIndexBatchSupport.snapshot(BATCH_FIELD), FieldIndexBatchSupport.snapshot(BUILT_FIELD),
@@ -93,8 +93,8 @@ public class FieldIndexBatchEquivalenceTest {
             throws Exception {
         final var random = new Random(seed);
         final var support = new FieldIndexBatchSupport();
-        final var legacy = new LegacyIndexMaintenance(IocContainer.get(FileSystem.class), FieldIndexBatchSupport.DB,
-                FieldIndexBatchSupport.COLL, LEGACY_FIELD);
+        final var legacy = new LegacyIndexMaintenance(IocContainer.get(FileSystem.class),
+                FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, LEGACY_FIELD);
         var operations = 0;
         var batches = 0;
         while (operations < OPERATIONS) {

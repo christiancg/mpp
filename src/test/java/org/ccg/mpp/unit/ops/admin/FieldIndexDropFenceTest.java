@@ -34,7 +34,7 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.index.DeferredFold;
 import org.ccg.mpp.ops.index.FieldIndexFolds;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -58,8 +58,8 @@ public class FieldIndexDropFenceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(new HashSet<>(Set.of(FIELD)));
+        TestUtils.createTestProjectAndCollection();
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(new HashSet<>(Set.of(FIELD)));
         savedLockTimeout = TestUtils.getPrivateField(configuration, "transactionLockTimeoutMs", Long.class);
     }
 
@@ -71,7 +71,7 @@ public class FieldIndexDropFenceTest {
     }
 
     private static File collectionFolder() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + TestGlobals.COLL);
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + TestGlobals.COLL);
     }
 
     private static List<IndexLogChange> loggedKeys() {
@@ -83,12 +83,12 @@ public class FieldIndexDropFenceTest {
     }
 
     private static List<FieldIndexEntry<?>> folded() {
-        return List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "z" + KEY_PADDING,
+        return List.of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "z" + KEY_PADDING,
                 new HashSet<>(Set.of("n0"))));
     }
 
     private PendingFold pendingFold(IndexTypeReader source) throws Exception {
-        final var pending = fs.appendIndexLogOnly(TestGlobals.DB, TestGlobals.COLL, FIELD, "String", loggedKeys(),
+        final var pending = fs.appendIndexLogOnly(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, "String", loggedKeys(),
                 source);
         assertNotNull(pending, "the log outgrew its fold threshold");
         return pending;
@@ -127,18 +127,19 @@ public class FieldIndexDropFenceTest {
 
     @Test
     public void aCollectionDropWaitsForAnInFlightFold() throws Exception {
-        assertEquals(OperationStatus.OK, dropRacingAFold(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)));
+        assertEquals(OperationStatus.OK,
+                dropRacingAFold(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         assertFalse(collectionFolder().exists(), "the fold landed first, then the sweep removed everything");
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
-    public void aDatabaseDropWaitsForAnInFlightFold() throws Exception {
-        assertEquals(OperationStatus.OK, dropRacingAFold(new DropDatabaseRequest(TestGlobals.DB)));
+    public void aProjectDropWaitsForAnInFlightFold() throws Exception {
+        assertEquals(OperationStatus.OK, dropRacingAFold(new DropProjectRequest(TestGlobals.PROJECT)));
 
         assertFalse(collectionFolder().getParentFile().exists());
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
     }
 
     @Test
@@ -150,7 +151,7 @@ public class FieldIndexDropFenceTest {
         });
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
         fold(pending);
 
         assertFalse(sourceRead.get(), "a fold planned before the drop never reads its source");
@@ -164,12 +165,12 @@ public class FieldIndexDropFenceTest {
         final var release = new CountDownLatch(1);
         final var holder = CompletableFuture.runAsync(() -> {
             try {
-                locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 try {
                     held.countDown();
                     assertTrue(release.await(10, TimeUnit.SECONDS));
                 } finally {
-                    locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+                    locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -178,9 +179,9 @@ public class FieldIndexDropFenceTest {
         assertTrue(held.await(5, TimeUnit.SECONDS));
         try {
             assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), processor
-                    .processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getErrorCode());
+                    .processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getErrorCode());
             assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(),
-                    processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getErrorCode());
+                    processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getErrorCode());
         } finally {
             release.countDown();
             holder.get(5, TimeUnit.SECONDS);
@@ -188,7 +189,7 @@ public class FieldIndexDropFenceTest {
 
         assertTrue(new File(collectionFolder(), TestGlobals.COLL + "-0" + Globals.DB_FILE_EXTENSION).exists(),
                 "nothing was deleted");
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
-        assertFalse(locks.holdsIndexLock(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertFalse(locks.holdsIndexLock(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
     }
 }

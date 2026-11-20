@@ -43,7 +43,7 @@ public class ListenGroupingTest {
     @BeforeAll
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
         saveReader(PermissionLevel.READ);
@@ -67,12 +67,12 @@ public class ListenGroupingTest {
     }
 
     private static void saveReader(PermissionLevel level) throws Exception {
-        final var databasePermissions = new HashMap<String, PermissionLevel>();
+        final var projectPermissions = new HashMap<String, PermissionLevel>();
         if (level != null) {
-            databasePermissions.put(TestGlobals.DB, level);
+            projectPermissions.put(TestGlobals.PROJECT, level);
         }
         AdminOperationHelper.saveUserEntry(
-                new AdminUserEntry(READER, "unused", false, new HashSet<>(), databasePermissions, new HashMap<>()));
+                new AdminUserEntry(READER, "unused", false, new HashSet<>(), projectPermissions, new HashMap<>()));
     }
 
     private UUID client(String username) {
@@ -89,7 +89,7 @@ public class ListenGroupingTest {
     }
 
     private static AggregateRequest request() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         return request;
@@ -135,7 +135,7 @@ public class ListenGroupingTest {
         queue().clear();
         manager.dequeued(manager.getRegistration(first).groupId());
 
-        manager.markDirty(TestGlobals.DB, TestGlobals.COLL);
+        manager.markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(manager.getRegistration(first).groupId(), manager.getRegistration(second).groupId());
         assertEquals(List.of(manager.getRegistration(first).groupId()), List.copyOf(queue()));
@@ -150,7 +150,7 @@ public class ListenGroupingTest {
         final var otherSteps = manager.register(clientId, LISTENER, limited, STALE_HASH, 0);
         final var otherUser = manager.register(clientId, READER, request(), STALE_HASH, 0);
 
-        manager.markDirty(TestGlobals.DB, TestGlobals.COLL);
+        manager.markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(3, manager.groupCount());
         assertEquals(3, queue().size());

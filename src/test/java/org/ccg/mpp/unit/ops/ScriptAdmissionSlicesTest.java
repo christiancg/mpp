@@ -11,39 +11,40 @@ import org.junit.jupiter.api.Test;
 
 public class ScriptAdmissionSlicesTest {
 
-    private static ScriptAdmission admission(int nodeWide, long waitMs, int perUser, int perDatabase) {
+    private static ScriptAdmission admission(int nodeWide, long waitMs, int perUser, int perProject) {
         final var admission = new ScriptAdmission(nodeWide, waitMs);
-        admission.reconfigure(nodeWide, waitMs, perUser, perDatabase);
+        admission.reconfigure(nodeWide, waitMs, perUser, perProject);
         return admission;
     }
 
     @Test
     public void test_the_shipped_slices_are_not_unlimited() {
         assertEquals("4", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER.defaultValue());
-        assertEquals("8", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_DATABASE.defaultValue());
+        assertEquals("8", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT.defaultValue());
     }
 
     @Test
     public void test_one_user_cannot_hold_every_script_slot() {
         final var admission = admission(10, 0L, 2, 0);
-        assertAdmitted(admission.acquire("alice", "db1", false));
-        assertAdmitted(admission.acquire("alice", "db2", false));
+        assertAdmitted(admission.acquire("alice", "project1", false));
+        assertAdmitted(admission.acquire("alice", "project2", false));
 
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_USER), admission.acquire("alice", "db3", false));
-        assertAdmitted(admission.acquire("bob", "db1", false), "another user still gets a node-wide permit");
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_USER),
+                admission.acquire("alice", "project3", false));
+        assertAdmitted(admission.acquire("bob", "project1", false), "another user still gets a node-wide permit");
         assertEquals(1, admission.getRejectedPerUser());
     }
 
     @Test
-    public void test_per_database_cap_is_enforced() {
+    public void test_per_project_cap_is_enforced() {
         final var admission = admission(10, 0L, 0, 3);
         assertAdmitted(admission.acquire("alice", "shared", false));
         assertAdmitted(admission.acquire("bob", "shared", false));
 
-        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_DATABASE),
+        assertEquals(new ScriptAdmission.Refusal(ScriptAdmission.SCOPE_PROJECT),
                 admission.acquire("carol", "shared", false));
         assertAdmitted(admission.acquire("carol", "other", false));
-        assertEquals(1, admission.getRejectedPerDatabase());
+        assertEquals(1, admission.getRejectedPerProject());
     }
 
     @Test

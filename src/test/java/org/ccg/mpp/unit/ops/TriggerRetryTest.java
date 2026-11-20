@@ -33,7 +33,7 @@ public class TriggerRetryTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -66,11 +66,11 @@ public class TriggerRetryTest {
         final var data = new JsonObject();
         data.add("_id", new JsonString("doc1"));
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id("doc1");
         entry.setData(data);
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL,
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
                 triggerName, "proc", eventType, false, "alice", 0, System.currentTimeMillis(), List.of(entry)));
     }
 

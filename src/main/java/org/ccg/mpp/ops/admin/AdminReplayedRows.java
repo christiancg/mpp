@@ -13,7 +13,7 @@ import org.ccg.mpp.conn.ClientTracker;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.fs.FileSystem;
@@ -30,8 +30,8 @@ final class AdminReplayedRows {
     private AdminReplayedRows() {
     }
 
-    static void publish(String dbName, String collName, List<PkIndexEntry> rows) {
-        if (!Globals.ADMIN_DB_NAME.equals(dbName) || rows.isEmpty()) {
+    static void publish(String projectName, String collName, List<PkIndexEntry> rows) {
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName) || rows.isEmpty()) {
             return;
         }
         final var finalRows = lastRowPerId(rows);
@@ -42,13 +42,13 @@ final class AdminReplayedRows {
                 publish(finalRows, cache::putPkIndexCollectionUsage, cache::removePkIndexCollectionUsage);
             case Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME ->
                 publish(finalRows, cache::putPkIndexTriggerRun, cache::removePkIndexTriggerRun);
-            case Globals.ADMIN_DATABASES_COLLECTION_NAME -> publishEntries(finalRows, AdminDbEntry::fromJsonObject,
-                    cache::putAdminDbEntry, cache::removeAdminDbEntry);
+            case Globals.ADMIN_PROJECTS_COLLECTION_NAME -> publishEntries(finalRows, AdminProjectEntry::fromJsonObject,
+                    cache::putAdminProjectEntry, cache::removeAdminProjectEntry);
             case Globals.ADMIN_COLLECTIONS_COLLECTION_NAME -> publishEntries(finalRows, AdminCollEntry::fromJsonObject,
                     cache::putAdminCollectionEntry, cache::removeAdminCollEntry);
             case Globals.ADMIN_USERS_COLLECTION_NAME -> publishEntries(finalRows, AdminUserEntry::fromJsonObject,
                     AdminReplayedRows::putUser, AdminReplayedRows::removeUser);
-            default -> logger.warning("Applied " + rows.size() + " logged write(s) of " + dbName
+            default -> logger.warning("Applied " + rows.size() + " logged write(s) of " + projectName
                     + Globals.COLL_IDENTIFIER_SEPARATOR + collName + " that an earlier write could not; the cached"
                     + " records of that collection catch up at the next startup");
         }

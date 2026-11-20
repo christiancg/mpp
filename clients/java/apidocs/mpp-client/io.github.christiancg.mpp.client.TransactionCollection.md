@@ -2,9 +2,9 @@ A collection seen from inside a transaction.
 
 @param <T> the type documents are decoded to
 
-## databaseName()
+## projectName()
 
-@return the database the collection belongs to
+@return the project the collection belongs to
 
 ## name()
 

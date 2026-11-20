@@ -60,7 +60,7 @@ public class ConditionalSaveClusterTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalEnabled = config.isClusterEnabled();
         originalExpected = config.getClusterExpectedSize();
         originalReplicator = TestUtils.getPrivateField(coordinator, "replicator", Replicator.class);
@@ -75,7 +75,7 @@ public class ConditionalSaveClusterTest {
         ownership.setSelfNodeId(self.getNodeId());
         ownership.onMembershipChanged(membershipService.membershipView());
         when(replicator.broadcast(any())).thenReturn(ReplicationOutcome.QUORUM_MET);
-        final var seed = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var seed = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < 6; i++) {
             final var document = new JsonObject();
@@ -102,7 +102,7 @@ public class ConditionalSaveClusterTest {
     }
 
     private OperationResponse saveWhereNBelowThree() {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.SMALLER_THAN, "n", new JsonNumber(3)));
         final var patch = new JsonObject();
         patch.add("status", new JsonString("replicated"));
@@ -136,7 +136,7 @@ public class ConditionalSaveClusterTest {
 
     @Test
     public void test_a_conditional_save_matching_nothing_replicates_nothing() {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setCondition(new FieldOperator(FieldOperatorType.SMALLER_THAN, "n", new JsonNumber(-1)));
         final var patch = new JsonObject();
         patch.add("status", new JsonString("never"));
@@ -145,6 +145,6 @@ public class ConditionalSaveClusterTest {
         assertEquals(0L,
                 assertInstanceOf(SaveWhereResponse.class, processor.processMessage(request)).getUpdatedCount());
         verify(replicator, never()).broadcast(any());
-        assertEquals(6, cache.getWholeCollection(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(6, cache.getWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 }

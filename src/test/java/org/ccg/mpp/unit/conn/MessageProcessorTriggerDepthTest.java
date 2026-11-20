@@ -33,11 +33,11 @@ public class MessageProcessorTriggerDepthTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(Configuration.getInstance(), "triggersEnabled", true);
         TestUtils.createAdmin(ADMIN);
         // allowCascade is on, so a depth > 0 would fire - which is what makes the zeroing observable.
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit",
                         new LinkedHashSet<>(Set.of(EventType.CREATED, EventType.UPDATED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, true, true, "owner", 1L, 1L, 1L, "owner")));
@@ -85,7 +85,7 @@ public class MessageProcessorTriggerDepthTest {
     public void test_client_supplied_trigger_depth_is_zeroed() throws Exception {
         final var responses = exchange(
                 "{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN + "\",\"password\":\"" + PASSWORD + "\"}",
-                "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                         + TestGlobals.COLL + "\",\"triggerDepth\":99,\"object\":{\"_id\":\"spoofed\",\"v\":1}}");
         assertTrue(responses.get(1).contains("\"status\":\"OK\""), responses.get(1));
         final var events = settle();
@@ -96,7 +96,7 @@ public class MessageProcessorTriggerDepthTest {
     @Test
     public void test_an_ordinary_write_is_depth_zero() throws Exception {
         exchange("{\"type\":\"AUTHENTICATE\",\"username\":\"" + ADMIN + "\",\"password\":\"" + PASSWORD + "\"}",
-                "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                         + TestGlobals.COLL + "\",\"object\":{\"_id\":\"plain\",\"v\":1}}");
         assertEquals(0, settle().getFirst().getDepth());
     }

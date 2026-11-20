@@ -46,12 +46,12 @@ public final class ReduceOperatorHelper {
     }
 
     public static Stream<JsonObject> processReduceStep(ReduceAggregationStep step, Stream<JsonObject> resultStream,
-            String dbName, String collName, PipelineContext context) throws IOException {
+            String projectName, String collName, PipelineContext context) throws IOException {
         final var callable = context.callableFor(step.getScript());
         var accumulator = step.getInitialValue() == null ? JsonNull.INSTANCE : step.getInitialValue();
         try (var stream = resultStream != null
                 ? resultStream
-                : context.scan(cache.streamCollectionInScanOrder(dbName, collName)).map(DbEntry::getData)) {
+                : context.scan(cache.streamCollectionInScanOrder(projectName, collName)).map(DbEntry::getData)) {
             final var analyze = context.analyze();
             for (final var document : (Iterable<JsonObject>) stream::iterator) {
                 final var start = analyze == null ? 0 : System.nanoTime();

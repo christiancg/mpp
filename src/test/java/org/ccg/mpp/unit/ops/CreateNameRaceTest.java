@@ -26,10 +26,10 @@ import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.admin.CollectionOperationHelper;
-import org.ccg.mpp.ops.admin.DatabaseOperationHelper;
+import org.ccg.mpp.ops.admin.ProjectOperationHelper;
 import org.ccg.mpp.ops.admin.RestampedRecords;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.test.LockHolder;
@@ -53,7 +53,7 @@ public class CreateNameRaceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", LONG_BUDGET_MS);
     }
 
@@ -66,15 +66,16 @@ public class CreateNameRaceTest {
         TestUtils.standardTearDown();
     }
 
-    private void holdNameLock(String dbName, String lockName) throws Exception {
-        holder.hold(() -> locks.tryLockWrite(dbName, lockName, LONG_BUDGET_MS), () -> locks.release(dbName, lockName));
+    private void holdNameLock(String projectName, String lockName) throws Exception {
+        holder.hold(() -> locks.tryLockWrite(projectName, lockName, LONG_BUDGET_MS),
+                () -> locks.release(projectName, lockName));
     }
 
     private boolean namesLockFreeElsewhere() throws Exception {
         return holder.run(() -> {
-            final var acquired = locks.tryLockWrite(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK, 0);
+            final var acquired = locks.tryLockWrite(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK, 0);
             if (acquired) {
-                locks.release(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+                locks.release(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
             }
             return acquired;
         });
@@ -82,21 +83,21 @@ public class CreateNameRaceTest {
 
     private static OperationResponse dropCollection() {
         return CollectionOperationHelper.processDropCollectionOperation(
-                new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL), new RestampedRecords());
+                new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL), new RestampedRecords());
     }
 
     private static OperationResponse createCollection(String collName) {
         return CollectionOperationHelper
-                .processCreateCollectionOperation(new CreateCollectionRequest(TestGlobals.DB, collName));
+                .processCreateCollectionOperation(new CreateCollectionRequest(TestGlobals.PROJECT, collName));
     }
 
-    private static OperationResponse createDatabase(String dbName) {
-        return DatabaseOperationHelper.processCreateDatabaseOperation(new CreateDatabaseRequest(dbName), null);
+    private static OperationResponse createProject(String projectName) {
+        return ProjectOperationHelper.processCreateProjectOperation(new CreateProjectRequest(projectName), null);
     }
 
     @Test
     public void test_a_collection_case_variant_created_concurrently_is_refused() throws Exception {
-        holdNameLock(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+        holdNameLock(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
         final var raced = new AtomicReference<OperationResponse>();
         final var racer = startParked(() -> createCollection("racedocs"), raced);
 
@@ -106,48 +107,48 @@ public class CreateNameRaceTest {
 
         assertEquals(ErrorCode.NAME_COLLIDES_ON_DISK.getCode(), raced.get().getErrorCode(),
                 "the create that waited must see the variant registered while it waited");
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "RaceDocs"));
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "racedocs"));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "RaceDocs"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "racedocs"));
     }
 
     @Test
     public void test_a_collection_registration_lock_timeout_answers_409_5() throws Exception {
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", SHORT_BUDGET_MS);
-        holdNameLock(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+        holdNameLock(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
 
         final var response = createCollection("timedout");
 
         assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), response.getErrorCode());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "timedout"));
-        assertFalse(new File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator + "timedout").exists(),
-                "a create that never got the registration lock must leave no folder behind");
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "timedout"));
+        assertFalse(new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator + "timedout")
+                .exists(), "a create that never got the registration lock must leave no folder behind");
     }
 
     @Test
-    public void test_a_database_case_variant_created_concurrently_is_refused() throws Exception {
-        holdNameLock(Globals.ADMIN_DB_NAME, Globals.DATABASE_NAMES_LOCK);
+    public void test_a_project_case_variant_created_concurrently_is_refused() throws Exception {
+        holdNameLock(Globals.ADMIN_PROJECT_NAME, Globals.PROJECT_NAMES_LOCK);
         final var raced = new AtomicReference<OperationResponse>();
-        final var racer = startParked(() -> createDatabase("raceddb"), raced);
+        final var racer = startParked(() -> createProject("raceddb"), raced);
 
-        assertEquals(OperationStatus.OK, holder.run(() -> createDatabase("RacedDb")).getStatus());
+        assertEquals(OperationStatus.OK, holder.run(() -> createProject("RacedDb")).getStatus());
         holder.release();
         racer.join(LONG_BUDGET_MS);
 
         assertEquals(ErrorCode.NAME_COLLIDES_ON_DISK.getCode(), raced.get().getErrorCode(),
                 "the create that waited must see the variant registered while it waited");
-        assertNotNull(cache.getAdminDbEntry("RacedDb"));
-        assertNull(cache.getAdminDbEntry("raceddb"));
+        assertNotNull(cache.getAdminProjectEntry("RacedDb"));
+        assertNull(cache.getAdminProjectEntry("raceddb"));
     }
 
     @Test
-    public void test_a_database_registration_lock_timeout_answers_409_5() throws Exception {
+    public void test_a_project_registration_lock_timeout_answers_409_5() throws Exception {
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", SHORT_BUDGET_MS);
-        holdNameLock(Globals.ADMIN_DB_NAME, Globals.DATABASE_NAMES_LOCK);
+        holdNameLock(Globals.ADMIN_PROJECT_NAME, Globals.PROJECT_NAMES_LOCK);
 
-        final var response = createDatabase("timeoutdb");
+        final var response = createProject("timeoutdb");
 
         assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), response.getErrorCode());
-        assertNull(cache.getAdminDbEntry("timeoutdb"));
+        assertNull(cache.getAdminProjectEntry("timeoutdb"));
         assertFalse(new File(TestGlobals.PATH + File.separator + "timeoutdb").exists(),
                 "a create that never got the registration lock must leave no folder behind");
     }
@@ -157,7 +158,7 @@ public class CreateNameRaceTest {
         final var createdDuringDrop = new AtomicBoolean();
         final var create = new AtomicReference<CompletableFuture<OperationResponse>>();
         try (var admin = mockStatic(AdminOperationHelper.class, CALLS_REAL_METHODS)) {
-            admin.when(() -> AdminOperationHelper.deletePageCollections(eq(TestGlobals.DB), eq(TestGlobals.COLL)))
+            admin.when(() -> AdminOperationHelper.deletePageCollections(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL)))
                     .thenAnswer(invocation -> {
                         create.set(CompletableFuture.supplyAsync(() -> createCollection(CASE_VARIANT), other));
                         Thread.sleep(300);
@@ -171,21 +172,21 @@ public class CreateNameRaceTest {
         assertFalse(createdDuringDrop.get(),
                 "a case-variant create landing between the unregistration and the page-row drop shares its folder");
         assertEquals(OperationStatus.OK, create.get().get(10, TimeUnit.SECONDS).getStatus());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, CASE_VARIANT));
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, CASE_VARIANT));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_a_drop_that_cannot_take_the_names_lock_answers_409_5_and_deletes_nothing() throws Exception {
         TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", SHORT_BUDGET_MS);
-        holdNameLock(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+        holdNameLock(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
 
         final var response = dropCollection();
         holder.release();
 
         assertEquals(ErrorCode.TRANSACTION_LOCK_TIMEOUT.getCode(), response.getErrorCode());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
-        assertNotNull(cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNotNull(cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -198,7 +199,7 @@ public class CreateNameRaceTest {
     @Test
     public void test_a_drop_of_an_unregistered_collection_releases_the_names_lock() throws Exception {
         final var response = CollectionOperationHelper.processDropCollectionOperation(
-                new DropCollectionRequest(TestGlobals.DB, "neverCreated"), new RestampedRecords());
+                new DropCollectionRequest(TestGlobals.PROJECT, "neverCreated"), new RestampedRecords());
 
         assertEquals(ErrorCode.ERROR_DROPPING_COLLECTION.getCode(), response.getErrorCode());
         assertTrue(namesLockFreeElsewhere());

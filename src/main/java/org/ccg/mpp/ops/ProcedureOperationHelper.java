@@ -50,9 +50,9 @@ public final class ProcedureOperationHelper {
         if (!configuration.isScriptsEnabled()) {
             return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return databaseNotFound(dbName);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return projectNotFound(projectName);
         }
         final var source = request.getScript();
         if (source.getBytes(StandardCharsets.UTF_8).length > configuration.getScriptMaxSourceBytes()) {
@@ -72,35 +72,35 @@ public final class ProcedureOperationHelper {
                     ErrorCode.INVALID_PROCEDURE.getDefaultMessage() + ": " + CompiledScriptCache.NESTING_TOO_DEEP,
                     ErrorCode.INVALID_PROCEDURE);
         }
-        final var missingImport = firstUnresolvableImport(request, dbName, compiled);
+        final var missingImport = firstUnresolvableImport(request, projectName, compiled);
         if (missingImport != null) {
             return new OperationResponse(OperationType.SAVE_PROCEDURE,
                     ErrorCode.PROCEDURE_IMPORT_NOT_FOUND.getDefaultMessage() + ": '" + missingImport + "'",
                     ErrorCode.PROCEDURE_IMPORT_NOT_FOUND);
         }
-        return OperationLocks.withDatabaseShared(dbName, OperationType.SAVE_PROCEDURE, ErrorCode.ERROR_SAVING_PROCEDURE,
-                () -> saveUnderDatabaseBarrier(request, actingUser));
+        return OperationLocks.withProjectShared(projectName, OperationType.SAVE_PROCEDURE,
+                ErrorCode.ERROR_SAVING_PROCEDURE, () -> saveUnderProjectBarrier(request, actingUser));
     }
 
-    private static OperationResponse saveUnderDatabaseBarrier(SaveProcedureRequest request, String actingUser)
+    private static OperationResponse saveUnderProjectBarrier(SaveProcedureRequest request, String actingUser)
             throws IOException, InterruptedException {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return databaseNotFound(dbName);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return projectNotFound(projectName);
         }
-        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        locks.lock(projectName, Globals.PROCEDURES_FOLDER);
         try {
-            final var refusal = ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, dbName, request.getName(),
-                    actingUser);
+            final var refusal = ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, projectName,
+                    request.getName(), actingUser);
             if (refusal != null) {
                 return refusal;
             }
-            final var existing = cache.getProcedure(dbName, request.getName());
+            final var existing = cache.getProcedure(projectName, request.getName());
             if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
                 return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.PROCEDURE_VERSION_CONFLICT);
             }
-            final var procedureNames = fs.metadataFiles().listProcedureNames(dbName);
-            final var maxProcedures = configuration.intValue(ConfigKey.MAX_PROCEDURES_PER_DATABASE);
+            final var procedureNames = fs.metadataFiles().listProcedureNames(projectName);
+            final var maxProcedures = configuration.intValue(ConfigKey.MAX_PROCEDURES_PER_PROJECT);
             if (existing == null && procedureNames.size() >= maxProcedures) {
                 return new OperationResponse(OperationType.SAVE_PROCEDURE,
                         ErrorCode.TOO_MANY_PROCEDURES.getDefaultMessage() + " (" + maxProcedures + ")",
@@ -111,21 +111,21 @@ public final class ProcedureOperationHelper {
                 return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.NAME_COLLIDES_ON_DISK, colliding);
             }
             final var definition = newDefinition(request, existing, actingUser);
-            StoredDefinitions.writeProcedure(dbName, definition.getName(), definition.toJsonObject());
-            cache.putProcedure(dbName, definition);
-            compiledProcedures.invalidateProcedure(dbName, definition.getName());
+            StoredDefinitions.writeProcedure(projectName, definition.getName(), definition.toJsonObject());
+            cache.putProcedure(projectName, definition);
+            compiledProcedures.invalidateProcedure(projectName, definition.getName());
             return new SaveProcedureResponse("Procedure saved successfully", definition.getVersion());
         } finally {
-            locks.release(dbName, Globals.PROCEDURES_FOLDER);
+            locks.release(projectName, Globals.PROCEDURES_FOLDER);
         }
     }
 
-    private static OperationResponse databaseNotFound(String dbName) {
-        return new OperationResponse(OperationType.SAVE_PROCEDURE, "Database '" + dbName + "' not found",
-                ErrorCode.DATABASE_NOT_FOUND);
+    private static OperationResponse projectNotFound(String projectName) {
+        return new OperationResponse(OperationType.SAVE_PROCEDURE, "Project '" + projectName + "' not found",
+                ErrorCode.PROJECT_NOT_FOUND);
     }
 
-    private static String firstUnresolvableImport(SaveProcedureRequest request, String dbName,
+    private static String firstUnresolvableImport(SaveProcedureRequest request, String projectName,
             CompiledScript compiled) {
         for (final var specifier : simpleJs.moduleSpecifiers(compiled)) {
             if (!specifier.startsWith(SPECIFIER_PREFIX)) {
@@ -135,7 +135,7 @@ public final class ProcedureOperationHelper {
             if (name.equals(request.getName())) {
                 continue;
             }
-            final var target = cache.getProcedure(dbName, name);
+            final var target = cache.getProcedure(projectName, name);
             if (target == null || !target.isEnabled()) {
                 return specifier;
             }
@@ -154,38 +154,38 @@ public final class ProcedureOperationHelper {
 
     public static OperationResponse executeDelete(DeleteProcedureRequest request, String actingUser)
             throws IOException, InterruptedException {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.DELETE_PROCEDURE, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.DELETE_PROCEDURE, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
-        locks.lock(dbName, Globals.PROCEDURES_FOLDER);
+        locks.lock(projectName, Globals.PROCEDURES_FOLDER);
         try {
-            final var refusal = ProcedureBindingGuard.refusal(OperationType.DELETE_PROCEDURE, dbName, request.getName(),
-                    actingUser);
+            final var refusal = ProcedureBindingGuard.refusal(OperationType.DELETE_PROCEDURE, projectName,
+                    request.getName(), actingUser);
             if (refusal != null) {
                 return refusal;
             }
-            final var referencing = TriggerOperationHelper.triggerReferencing(dbName, request.getName());
+            final var referencing = TriggerOperationHelper.triggerReferencing(projectName, request.getName());
             if (referencing != null) {
                 return new OperationResponse(OperationType.DELETE_PROCEDURE,
                         "Procedure '" + request.getName() + "' is still referenced by trigger '" + referencing + "'",
                         ErrorCode.INVALID_TRIGGER);
             }
-            final var scheduled = ScheduleOperationHelper.scheduleReferencing(dbName, request.getName());
+            final var scheduled = ScheduleOperationHelper.scheduleReferencing(projectName, request.getName());
             if (scheduled != null) {
                 return new OperationResponse(OperationType.DELETE_PROCEDURE,
                         "Procedure '" + request.getName() + "' is still referenced by schedule '" + scheduled + "'",
                         ErrorCode.INVALID_SCHEDULE);
             }
-            if (fs.metadataFiles().deleteProcedure(dbName, request.getName())) {
-                AdminStamp.tombstone(AdminRecordKey.procedure(dbName, request.getName()));
+            if (fs.metadataFiles().deleteProcedure(projectName, request.getName())) {
+                AdminStamp.tombstone(AdminRecordKey.procedure(projectName, request.getName()));
             }
-            cache.removeProcedure(dbName, request.getName());
-            compiledProcedures.invalidateProcedure(dbName, request.getName());
+            cache.removeProcedure(projectName, request.getName());
+            compiledProcedures.invalidateProcedure(projectName, request.getName());
             return OperationResponse.ok(OperationType.DELETE_PROCEDURE, "Procedure deleted successfully");
         } finally {
-            locks.release(dbName, Globals.PROCEDURES_FOLDER);
+            locks.release(projectName, Globals.PROCEDURES_FOLDER);
         }
     }
 
@@ -196,16 +196,16 @@ public final class ProcedureOperationHelper {
 
     private static OperationResponse listProcedures(ListProceduresRequest request, String actingUser)
             throws IOException {
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.LIST_PROCEDURES, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.LIST_PROCEDURES, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var showSourceHash = actingUser == null
-                || AuthorizationChecker.mayReadProcedureSource(cache.getAdminUserEntry(actingUser), dbName);
+                || AuthorizationChecker.mayReadProcedureSource(cache.getAdminUserEntry(actingUser), projectName);
         final var result = new ArrayList<org.ccg.mpp.ejson.elements.JsonObject>();
-        for (final var name : fs.metadataFiles().listProcedureNames(dbName)) {
-            final var definition = cache.getProcedure(dbName, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(projectName)) {
+            final var definition = cache.getProcedure(projectName, name);
             if (definition != null) {
                 result.add(request.isIncludeSource()
                         ? definition.toJsonObject()

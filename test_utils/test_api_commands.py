@@ -13,15 +13,15 @@ PORT = int(os.environ.get("API_TEST_PORT", "8989"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "api_test_db"
+PROJECT = "api_test_project"
 
 bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
 
-def create_user(c, username, password, admin=False, global_perms=None, db_perms=None, coll_perms=None):
+def create_user(c, username, password, admin=False, global_perms=None, project_perms=None, coll_perms=None):
     return c.send({
         "type": "CREATE_USER", "username": username, "password": password, "admin": admin,
-        "globalPermissions": global_perms or [], "databasePermissions": db_perms or {},
+        "globalPermissions": global_perms or [], "projectPermissions": project_perms or {},
         "collectionPermissions": coll_perms or {},
     })
 
@@ -30,80 +30,80 @@ def delete_user(c, username: str) -> dict:
     return c.send({"type": "DELETE_USER", "username": username})
 
 
-def create_db(c, name=DB) -> dict:
-    return c.send({"type": "CREATE_DATABASE", "databaseName": name})
+def create_project(c, name=PROJECT) -> dict:
+    return c.send({"type": "CREATE_PROJECT", "projectName": name})
 
 
-def drop_db(c, name=DB) -> dict:
-    return c.send({"type": "DROP_DATABASE", "databaseName": name})
+def drop_project(c, name=PROJECT) -> dict:
+    return c.send({"type": "DROP_PROJECT", "projectName": name})
 
 
-def list_databases(c) -> dict:
-    return c.send({"type": "LIST_DATABASES"})
+def list_projects(c) -> dict:
+    return c.send({"type": "LIST_PROJECTS"})
 
 
-def list_collections(c, db=DB) -> dict:
-    return c.send({"type": "LIST_COLLECTIONS", "databaseName": db})
+def list_collections(c, project=PROJECT) -> dict:
+    return c.send({"type": "LIST_COLLECTIONS", "projectName": project})
 
 
-def create_coll(c, coll, db=DB) -> dict:
-    return c.send({"type": "CREATE_COLLECTION", "databaseName": db, "collectionName": coll})
+def create_coll(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "CREATE_COLLECTION", "projectName": project, "collectionName": coll})
 
 
-def drop_coll(c, coll, db=DB) -> dict:
-    return c.send({"type": "DROP_COLLECTION", "databaseName": db, "collectionName": coll})
+def drop_coll(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "DROP_COLLECTION", "projectName": project, "collectionName": coll})
 
 
-def save(c, coll, obj, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": obj})
+def save(c, coll, obj, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": obj})
 
 
-def bulk_save(c, coll, objs, db=DB) -> dict:
-    return c.send({"type": "BULK_SAVE", "databaseName": db, "collectionName": coll, "objects": objs})
+def bulk_save(c, coll, objs, project=PROJECT) -> dict:
+    return c.send({"type": "BULK_SAVE", "projectName": project, "collectionName": coll, "objects": objs})
 
 
-def find_by_id(c, coll, _id, db=DB, dirty=False) -> dict:
-    payload = {"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": _id}
+def find_by_id(c, coll, _id, project=PROJECT, dirty=False) -> dict:
+    payload = {"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": _id}
     if dirty:
         payload["dirtyRead"] = True
     return c.send(payload)
 
 
-def delete(c, coll, _id, db=DB) -> dict:
-    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "_id": _id})
+def delete(c, coll, _id, project=PROJECT) -> dict:
+    return c.send({"type": "DELETE", "projectName": project, "collectionName": coll, "_id": _id})
 
 
-def aggregate(c, coll, steps, db=DB) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+def aggregate(c, coll, steps, project=PROJECT) -> dict:
+    return c.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll,
                        "aggregationSteps": steps})
 
 
-def analyze(c, coll, steps, db=DB) -> dict:
-    return c.send({"type": "AGGREGATE", "databaseName": db, "collectionName": coll,
+def analyze(c, coll, steps, project=PROJECT) -> dict:
+    return c.send({"type": "AGGREGATE", "projectName": project, "collectionName": coll,
                        "aggregationSteps": steps, "analyze": True})
 
 
-def create_index(c, coll, field, db=DB) -> dict:
-    return c.send({"type": "CREATE_INDEX", "databaseName": db, "collectionName": coll, "fieldName": field})
+def create_index(c, coll, field, project=PROJECT) -> dict:
+    return c.send({"type": "CREATE_INDEX", "projectName": project, "collectionName": coll, "fieldName": field})
 
 
-def drop_index(c, coll, field, db=DB) -> dict:
-    return c.send({"type": "DROP_INDEX", "databaseName": db, "collectionName": coll, "fieldName": field})
+def drop_index(c, coll, field, project=PROJECT) -> dict:
+    return c.send({"type": "DROP_INDEX", "projectName": project, "collectionName": coll, "fieldName": field})
 
 
-def reindex(c, coll, fields=None, db=DB) -> dict:
-    payload = {"type": "REINDEX", "databaseName": db, "collectionName": coll}
+def reindex(c, coll, fields=None, project=PROJECT) -> dict:
+    payload = {"type": "REINDEX", "projectName": project, "collectionName": coll}
     if fields is not None:
         payload["fieldNames"] = fields
     return c.send(payload)
 
 
-def wait_for_index(c, coll, field, db=DB, timeout_s=15.0):
+def wait_for_index(c, coll, field, project=PROJECT, timeout_s=15.0):
     def _registered():
-        r = c.send({"type": "GET_DATABASE_STATS"})
-        return any(d.get("name") == db and coll_stats.get("name") == coll
+        r = c.send({"type": "GET_PROJECT_STATS"})
+        return any(d.get("name") == project and coll_stats.get("name") == coll
                    and field in (coll_stats.get("indexes") or [])
-                   for d in r.get("stats", {}).get("databases", [])
+                   for d in r.get("stats", {}).get("projects", [])
                    for coll_stats in d.get("collections", []))
 
     if bu.wait_until(_registered, timeout_s, 0.3):
@@ -137,20 +137,20 @@ TEST_USERS = ("api_reader", "api_join_user")
 
 
 def teardown(c):
-    drop_db(c, DB)
+    drop_project(c, PROJECT)
     for u in TEST_USERS:
         delete_user(c, u)
 
 
 def setup(c):
     teardown(c)
-    create_db(c, DB)
+    create_project(c, PROJECT)
     for coll in (COLL_CRUD, COLL_AGG, COLL_JOIN_LEFT, COLL_JOIN_RIGHT, COLL_TYPES, COLL_FLOWS, COLL_PERM):
         create_coll(c, coll)
 
-    create_user(c, "api_reader", "api_reader1234", db_perms={DB: "READ"})
+    create_user(c, "api_reader", "api_reader1234", project_perms={PROJECT: "READ"})
     create_user(c, "api_join_user", "api_join_user1234",
-                coll_perms={f"{DB}|{COLL_JOIN_LEFT}": "READ"})
+                coll_perms={f"{PROJECT}|{COLL_JOIN_LEFT}": "READ"})
 
     bulk_save(c, COLL_AGG, [
         {"_id": "a1", "name": "alice", "age": 30, "rating": 4.5, "active": True,
@@ -195,52 +195,59 @@ def test_reserved_script_runs_collection(c):
                create_index(c, "script_runs", "outcome"), "NOT_FOUND", "404-11")
 
 
-def test_database_and_collection_ops(c):
-    section("Database & collection operations (DDL + metadata)")
+def test_project_and_collection_ops(c):
+    section("Project & collection operations (DDL + metadata)")
 
-    check_status("LIST_DATABASES (authenticated, OK)", list_databases(c), "OK")
-    check("LIST_DATABASES contains api_test_db",
-               DB in (list_databases(c).get("databases") or []))
+    check_status("LIST_PROJECTS (authenticated, OK)", list_projects(c), "OK")
+    check("LIST_PROJECTS contains api_test_project",
+               PROJECT in (list_projects(c).get("projects") or []))
 
-    check_status("CREATE_DATABASE ddl_db", create_db(c, "ddl_db"), "OK")
-    check_code("CREATE_DATABASE duplicate -> 409-2", create_db(c, "ddl_db"), "ERROR", "409-2")
-    check_code("CREATE_DATABASE invalid name (too short) -> 400-1",
-               create_db(c, "ab"), "ERROR", "400-1")
-    check_code("CREATE_DATABASE reserved name 'admin' -> 400-1",
-               create_db(c, "admin"), "ERROR", "400-1")
-    check_code("CREATE_DATABASE reserved name 'cluster' (the node's cluster state folder) -> 400-1",
-               create_db(c, "cluster"), "ERROR", "400-1")
-    check_code("CREATE_DATABASE Cluster -> 400-1 reserved in any case",
-               create_db(c, "Cluster"), "ERROR", "400-1")
-    check_code("CREATE_COLLECTION in a database that was never created -> 404-4",
-               create_coll(c, "things", db="never_created_db"), "NOT_FOUND", "404-4")
+    check_status("CREATE_PROJECT ddl_project", create_project(c, "ddl_project"), "OK")
+    check_code("CREATE_PROJECT duplicate -> 409-2", create_project(c, "ddl_project"), "ERROR", "409-2")
+    check_code("CREATE_PROJECT invalid name (too short) -> 400-1",
+               create_project(c, "ab"), "ERROR", "400-1")
+    check_code("CREATE_PROJECT reserved name 'admin' -> 400-1",
+               create_project(c, "admin"), "ERROR", "400-1")
+    check_code("CREATE_PROJECT reserved name 'cluster' (the node's cluster state folder) -> 400-1",
+               create_project(c, "cluster"), "ERROR", "400-1")
+    check_code("CREATE_PROJECT Cluster -> 400-1 reserved in any case",
+               create_project(c, "Cluster"), "ERROR", "400-1")
+    check_code("CREATE_DATABASE is no longer an operation -> 400-43",
+               c.send({"type": "CREATE_DATABASE", "databaseName": "old_style"}), "ERROR", "400-43")
+    old_field = c.send({"type": "CREATE_PROJECT", "databaseName": "old_style"})
+    check_code("CREATE_PROJECT naming databaseName instead of projectName -> 400-1", old_field, "ERROR", "400-1")
+    check("its message asks for projectName", old_field.get("message") == "projectName is required", str(old_field))
+    check("neither request created old_style", "old_style" not in (list_projects(c).get("projects") or []))
+    check_code("CREATE_COLLECTION in a project that was never created -> 404-4",
+               create_coll(c, "things", project="never_created_project"), "NOT_FOUND", "404-4")
 
-    check_status("CREATE_COLLECTION ddl_db/things", create_coll(c, "things", db="ddl_db"), "OK")
-    check_status("LIST_COLLECTIONS ddl_db", list_collections(c, "ddl_db"), "OK")
+    check_status("CREATE_COLLECTION ddl_project/things", create_coll(c, "things", project="ddl_project"), "OK")
+    check_status("LIST_COLLECTIONS ddl_project", list_collections(c, "ddl_project"), "OK")
     check("LIST_COLLECTIONS contains 'things'",
-               "things" in (list_collections(c, "ddl_db").get("collections") or []))
-    check_code("LIST_COLLECTIONS missing db -> 404-4",
-               list_collections(c, "no_such_db"), "NOT_FOUND", "404-4")
+               "things" in (list_collections(c, "ddl_project").get("collections") or []))
+    check_code("LIST_COLLECTIONS missing project -> 404-4",
+               list_collections(c, "no_such_project"), "NOT_FOUND", "404-4")
 
-    check_status("DROP_COLLECTION ddl_db/things", drop_coll(c, "things", db="ddl_db"), "OK")
-    check_status("DROP_DATABASE ddl_db", drop_db(c, "ddl_db"), "OK")
+    check_status("DROP_COLLECTION ddl_project/things", drop_coll(c, "things", project="ddl_project"), "OK")
+    check_status("DROP_PROJECT ddl_project", drop_project(c, "ddl_project"), "OK")
 
-    check_status("CREATE_DATABASE ghost_db", create_db(c, "ghost_db"), "OK")
-    check_status("CREATE_COLLECTION ghost_db/items", create_coll(c, "items", db="ghost_db"), "OK")
-    check_status("SAVE a document before the drop", save(c, "items", {"_id": "g1", "v": 1}, db="ghost_db"), "OK")
-    check_status("DROP_DATABASE ghost_db", drop_db(c, "ghost_db"), "OK")
-    check_status("re-CREATE_DATABASE ghost_db", create_db(c, "ghost_db"), "OK")
-    check_status("re-CREATE_COLLECTION ghost_db/items", create_coll(c, "items", db="ghost_db"), "OK")
+    check_status("CREATE_PROJECT ghost_project", create_project(c, "ghost_project"), "OK")
+    check_status("CREATE_COLLECTION ghost_project/items", create_coll(c, "items", project="ghost_project"), "OK")
+    check_status("SAVE a document before the drop", save(c, "items", {"_id": "g1", "v": 1}, project="ghost_project"),
+                 "OK")
+    check_status("DROP_PROJECT ghost_project", drop_project(c, "ghost_project"), "OK")
+    check_status("re-CREATE_PROJECT ghost_project", create_project(c, "ghost_project"), "OK")
+    check_status("re-CREATE_COLLECTION ghost_project/items", create_coll(c, "items", project="ghost_project"), "OK")
     check_code("the re-created collection holds no pre-drop document",
-               find_by_id(c, "items", "g1", db="ghost_db"), "NOT_FOUND", "404-2")
+               find_by_id(c, "items", "g1", project="ghost_project"), "NOT_FOUND", "404-2")
     check_code("a scan of it finds nothing either",
-               aggregate(c, "items", [], db="ghost_db"), "NOT_FOUND", "404-3")
-    check_status("DROP_DATABASE ghost_db again", drop_db(c, "ghost_db"), "OK")
+               aggregate(c, "items", [], project="ghost_project"), "NOT_FOUND", "404-3")
+    check_status("DROP_PROJECT ghost_project again", drop_project(c, "ghost_project"), "OK")
 
-    r = c.send({"type": "GET_DATABASE_STATS"})
-    check_status("GET_DATABASE_STATS (admin, OK)", r, "OK")
-    check("GET_DATABASE_STATS reports at least one database",
-               (bu.dig(r, "stats.totals.databaseCount") or 0) >= 1)
+    r = c.send({"type": "GET_PROJECT_STATS"})
+    check_status("GET_PROJECT_STATS (admin, OK)", r, "OK")
+    check("GET_PROJECT_STATS reports at least one project",
+               (bu.dig(r, "stats.totals.projectCount") or 0) >= 1)
 
 
 def test_crud(c):
@@ -288,8 +295,8 @@ def test_crud(c):
                bulk_save(c, COLL_CRUD, [{"_id": "bad id!", "v": 1}]), "ERROR", "400-1")
 
 
-def delete_where(c, coll, condition, db=DB) -> dict:
-    return c.send({"type": "DELETE", "databaseName": db, "collectionName": coll, "condition": condition})
+def delete_where(c, coll, condition, project=PROJECT) -> dict:
+    return c.send({"type": "DELETE", "projectName": project, "collectionName": coll, "condition": condition})
 
 
 def field_condition(field, operator, value) -> dict:
@@ -324,12 +331,13 @@ def test_delete_by_condition(c):
     check_status("a condition matching nothing is OK", r, "OK")
     check_field("and deletes 0 documents", r, "deletedCount", 0)
 
-    both = c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL_DELETE_WHERE, "_id": "w5",
+    both = c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL_DELETE_WHERE, "_id": "w5",
                    "condition": field_condition("status", "EQUALS", "active")})
     check_code("_id and condition together -> 400-1", both, "ERROR", "400-1")
     check_status("and w5 survives the refused request", find_by_id(c, COLL_DELETE_WHERE, "w5"), "OK")
     check_code("neither _id nor condition -> 400-1",
-               c.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL_DELETE_WHERE}), "ERROR", "400-1")
+               c.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL_DELETE_WHERE}), "ERROR",
+               "400-1")
     check_code("a condition without an operator shape -> 400-43",
                delete_where(c, COLL_DELETE_WHERE, {"field": "status"}), "ERROR", "400-43")
     check_code("an IN past maxFilterOperands -> 400-27",
@@ -348,8 +356,8 @@ def test_delete_by_condition(c):
     check_status("drop the collection", drop_coll(c, COLL_DELETE_WHERE), "OK")
 
 
-def save_where(c, coll, condition, patch, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "condition": condition,
+def save_where(c, coll, condition, patch, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "condition": condition,
                    "object": patch})
 
 
@@ -391,7 +399,7 @@ def test_save_by_condition(c):
     check_status("a condition matching nothing is OK", r, "OK")
     check_field("and updates 0 documents", r, "updatedCount", 0)
 
-    both = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_SAVE_WHERE, "_id": "u5",
+    both = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_SAVE_WHERE, "_id": "u5",
                    "condition": field_condition("status", "EQUALS", "active"), "object": {"status": "x"}})
     check_code("_id and condition together -> 400-1", both, "ERROR", "400-1")
     check_code("_id inside the object beside a condition -> 400-1",
@@ -408,7 +416,7 @@ def test_save_by_condition(c):
                "NOT_FOUND", "404-11")
 
     check_status("attach a schema requiring a string status",
-                 c.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL_SAVE_WHERE,
+                 c.send({"type": "SAVE_SCHEMA", "projectName": PROJECT, "collectionName": COLL_SAVE_WHERE,
                          "schema": {"type": "object", "properties": {"status": {"type": "string"}}}}), "OK")
     check_code("a merge violating the schema -> 400-7",
                save_where(c, COLL_SAVE_WHERE, field_condition("status", "EQUALS", "active"), {"status": 5}),
@@ -417,7 +425,7 @@ def test_save_by_condition(c):
         c, COLL_SAVE_WHERE, [filter_step("status", "EQUALS", "active")])) == sorted(
         d["_id"] for d in docs if d["status"] == "active"))
     check_status("require total and status in the schema",
-                 c.send({"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": COLL_SAVE_WHERE,
+                 c.send({"type": "SAVE_SCHEMA", "projectName": PROJECT, "collectionName": COLL_SAVE_WHERE,
                          "schema": {"type": "object", "required": ["total", "status"],
                                     "properties": {"status": {"type": "string"}}}}), "OK")
     r = save_where(c, COLL_SAVE_WHERE, field_condition("_id", "EQUALS", "u5"), {"reviewed": True})
@@ -432,8 +440,8 @@ def test_save_by_condition(c):
     check_status("drop the collection", drop_coll(c, COLL_SAVE_WHERE), "OK")
 
 
-def insert(c, coll, obj, db=DB) -> dict:
-    return c.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "failOnUpdate": True, "object": obj})
+def insert(c, coll, obj, project=PROJECT) -> dict:
+    return c.send({"type": "SAVE", "projectName": project, "collectionName": coll, "failOnUpdate": True, "object": obj})
 
 
 def test_save_fail_on_update(c):
@@ -451,11 +459,11 @@ def test_save_fail_on_update(c):
     check("the reply names the reason", r.get("message") == "A document with this _id already exists", f"r={r}")
     check_field("the stored document keeps its first body", find_by_id(c, COLL_INSERT, "n1"), "object.status", "first")
 
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": True,
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_INSERT, "failOnUpdate": True,
                 "_id": "n1", "object": {"status": "beside"}})
     check_code("the _id beside the object is checked too -> 409-18", r, "ERROR", "409-18")
 
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": False,
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_INSERT, "failOnUpdate": False,
                 "object": {"_id": "n1", "status": "updated"}})
     check_status("failOnUpdate false still updates", r, "OK")
     check_field("and reports an update", r, "inserted", False)
@@ -464,10 +472,10 @@ def test_save_fail_on_update(c):
     check_status("an insert without an _id", r, "OK")
     check("gets a generated _id", bool(r.get("_id")), f"r={r}")
 
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": True,
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_INSERT, "failOnUpdate": True,
                 "condition": field_condition("status", "EQUALS", "updated"), "object": {"status": "x"}})
     check_code("failOnUpdate beside a condition -> 400-1", r, "ERROR", "400-1")
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_INSERT, "failOnUpdate": "yes",
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_INSERT, "failOnUpdate": "yes",
                 "object": {"_id": "n9", "status": "x"}})
     check_code("a failOnUpdate that is not a boolean -> 400-43", r, "ERROR", "400-43")
 
@@ -485,7 +493,7 @@ def test_top_level_id(c):
     section("SAVE with a top-level _id")
 
     check_status("seed the target document", save(c, COLL_CRUD, {"_id": "tl1", "name": "alpha"}), "OK")
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_CRUD,
                 "_id": "tl1", "object": {"name": "beta"}})
     check_status("SAVE with only a top-level _id", r, "OK")
     check("the response names the same document", r.get("_id") == "tl1", detail=f"got {r.get('_id')!r}")
@@ -494,13 +502,13 @@ def test_top_level_id(c):
     check_status("the target document still exists", found, "OK")
     check_field("and carries the new value", found, "object.name", "beta")
 
-    r = c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+    r = c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_CRUD,
                 "_id": "tl2", "object": {"name": "gamma"}})
     check_status("a top-level _id for a new document inserts under that id", r, "OK")
     check_field("the document is readable under that id", find_by_id(c, COLL_CRUD, "tl2"), "object.name", "gamma")
 
     check_status("a top-level _id alongside an object _id is accepted",
-                 c.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL_CRUD,
+                 c.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_CRUD,
                          "_id": "outside", "object": {"_id": "inside", "name": "x"}}), "OK")
     check_field("the object's _id wins", find_by_id(c, COLL_CRUD, "inside"), "object.name", "x")
     check_code("no document is written under the discarded top-level _id",
@@ -541,7 +549,7 @@ def test_value_types(c):
                 find_by_id(c, COLL_TYPES, "t_datetime"), "object.v", "#datetime(2025-06-26T14:30:45)")
     check_field("Time round-trips", find_by_id(c, COLL_TYPES, "t_time"), "object.v", "#time(14:30:45)")
 
-    c.s.sendall((json.dumps({"type": "FIND_BY_ID", "databaseName": DB,
+    c.s.sendall((json.dumps({"type": "FIND_BY_ID", "projectName": PROJECT,
                              "collectionName": COLL_TYPES, "_id": "t_int"}) + "\n").encode())
     raw = c.f.readline().decode()
     check("Integer is serialized without a trailing .0 on the wire",
@@ -597,23 +605,24 @@ def test_strings_with_every_escape_class_round_trip(c):
     section("A string with every escape class comes back byte for byte")
     create_coll(c, COLL_SHAPES)
     check_status("the escaped document is saved", c.send_raw(
-        '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_SHAPES
+        '{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_SHAPES
         + '","object":{"_id":"escapes","v":"' + ESCAPE_CLASSES_REQUEST_VALUE + '"}}'), "OK")
-    raw = raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "escapes"})
+    raw = raw_reply(c, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL_SHAPES, "_id": "escapes"})
     check("quotes, backslashes and control characters are escaped, DEL, U+2028/2029 and pairs stay raw, and a lone"
           " surrogate is spelled \\uXXXX", ESCAPE_CLASSES_WIRE_VALUE in raw, detail=repr(raw[:300]))
-    again = raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "escapes"})
+    again = raw_reply(c, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL_SHAPES,
+                          "_id": "escapes"})
     check("a second read of the same document writes the same bytes", again == raw, detail=repr(again[:300]))
-    filtered = raw_reply(c, {"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_SHAPES,
+    filtered = raw_reply(c, {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL_SHAPES,
                              "aggregationSteps": [filter_step("_id", "EQUALS", "escapes")]})
     check("an AGGREGATE writes the same escaped value", ESCAPE_CLASSES_WIRE_VALUE in filtered,
           detail=repr(filtered[:300]))
     plain_value = "plain ascii ~ " * PLAIN_ASCII_REPEATS
     check_status("a long plain ASCII document is saved", c.send(
-        {"type": "SAVE", "databaseName": DB, "collectionName": COLL_SHAPES,
+        {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL_SHAPES,
          "object": {"_id": "plain", "v": plain_value}}), "OK")
     plain_wire = b'"v":"' + plain_value.encode() + b'"'
-    reads = [raw_reply(c, {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES, "_id": "plain"})
+    reads = [raw_reply(c, {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL_SHAPES, "_id": "plain"})
              for _ in range(2)]
     check("a long plain ASCII value comes back byte for byte on every read", all(plain_wire in r for r in reads),
           detail=repr(reads[-1][:200]))
@@ -648,18 +657,18 @@ def test_long_ascii_strings_ending_in_escapes_and_non_ascii_round_trip(c):
         for name, request_tail, wire_tail in LONG_ASCII_TAILS:
             doc_id = f"long_{length}_{name.replace(' ', '_').replace('-', '_')}"
             for copy in ("a", "b"):
-                c.send_raw('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_SHAPES
+                c.send_raw('{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_SHAPES
                            + '","object":{"_id":"' + doc_id + copy + '","v":"' + prefix + request_tail + '"}}')
             expected[doc_id] = b'"v":"' + prefix.encode() + wire_tail + b'"'
     mismatched = []
     for doc_id, wire in expected.items():
-        c.s.sendall((json.dumps({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_SHAPES,
+        c.s.sendall((json.dumps({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL_SHAPES,
                                  "_id": doc_id + "a"}) + "\n").encode())
         if wire not in c.f.readline():
             mismatched.append(doc_id)
     check("FIND_BY_ID writes every long prefix and its escaped or raw tail exactly", not mismatched,
           detail=str(mismatched[:5]))
-    c.s.sendall((json.dumps({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_SHAPES,
+    c.s.sendall((json.dumps({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL_SHAPES,
                              "aggregationSteps": []}) + "\n").encode())
     scanned = c.f.readline()
     missing = [doc_id for doc_id, wire in expected.items() if scanned.count(wire) != 2]
@@ -709,7 +718,7 @@ def test_a_malformed_document_is_refused_as_a_client_error(c):
     for label, document in (("a doubled comma in an array", '{"_id":"mal1","v":[1,,2]}'),
                             ("a missing object value", '{"_id":"mal2","v":,"w":1}'),
                             ("a leading comma in an array", '{"_id":"mal3","v":[,1]}')):
-        line = ('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES
+        line = ('{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_TYPES
                 + '","object":' + document + '}')
         check_client_refusal(f"{label} is refused as an invalid command, not a server error", c.send_raw(line))
     for doc_id in ("mal1", "mal2", "mal3"):
@@ -719,7 +728,7 @@ def test_a_malformed_document_is_refused_as_a_client_error(c):
 
 def test_a_line_with_a_second_value_or_a_nan_point_is_refused(c):
     section("A request line with trailing JSON, or a geo point that is not finite, is refused as invalid")
-    save_prefix = '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":'
+    save_prefix = '{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_TYPES + '","object":'
     for label, line, doc_id in (
             ("a second JSON value after the request", save_prefix + '{"_id":"trail1","v":1}}{"_id":"trail2"}',
              "trail1"),
@@ -739,12 +748,12 @@ def test_non_ascii_and_malformed_utf8_requests_round_trip(c):
     found = find_by_id(c, COLL_TYPES, "utf8_doc")
     check_field("a non-ASCII value reads back unchanged", found, "object.clé", "日本語😀")
     check_field("a nested non-ASCII key reads back unchanged", found, "object.ü.ñ", "ç")
-    matched = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_TYPES,
+    matched = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL_TYPES,
                       "aggregationSteps": [{"type": "FILTER", "operator": {
                           "fieldOperatorType": "EQUALS", "field": "clé", "value": "日本語😀"}}]})
     check("a filter on a non-ASCII key and value finds the document",
           [row.get("_id") for row in matched.get("results") or []] == ["utf8_doc"], str(matched))
-    prefix = ('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":').encode()
+    prefix = ('{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_TYPES + '","object":').encode()
     check_status("a string holding a malformed byte is accepted",
                  c.send_bytes(prefix + b'{"_id":"utf8_bad","v":"a\xffb"}}'), "OK")
     check_field("the malformed byte reads back as the replacement character",
@@ -753,7 +762,7 @@ def test_non_ascii_and_malformed_utf8_requests_round_trip(c):
                          c.send_bytes(prefix + b'{"_id":"utf8_bad2","v":\xff}}'))
     check("nothing was stored for utf8_bad2", find_by_id(c, COLL_TYPES, "utf8_bad2").get("status") != "OK")
     check_status("numbers past fifteen digits, negative zero and exponents are accepted",
-                 c.send_raw('{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES
+                 c.send_raw('{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_TYPES
                             + '","object":{"_id":"utf8_nums","a":1234567890123456,"b":-0,"c":2.5e3,"d":7}}'), "OK")
     numbers = find_by_id(c, COLL_TYPES, "utf8_nums")
     check_field("a sixteen-digit integer reads back exactly", numbers, "object.a", 1234567890123456)
@@ -769,7 +778,7 @@ def nested_value(depth: int) -> str:
 
 def test_deep_nesting_is_refused_not_dropped(c):
     section("A request nested past the limit is answered with a refusal and the connection stays open")
-    save_prefix = '{"type":"SAVE","databaseName":"' + DB + '","collectionName":"' + COLL_TYPES + '","object":'
+    save_prefix = '{"type":"SAVE","projectName":"' + PROJECT + '","collectionName":"' + COLL_TYPES + '","object":'
     for depth in (200, 5000):
         check_client_refusal(f"a document {depth} levels deep is refused as an invalid command",
                              c.send_raw(save_prefix + '{"_id":"deep_' + str(depth) + '","n":'
@@ -1033,7 +1042,7 @@ def test_every_aggregate_response_is_strict_json(c):
     }
     for label, operator in shapes.items():
         try:
-            response = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_MATH,
+            response = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL_MATH,
                                "aggregationSteps": [{"type": "MAP", "operators": [
                                    {"fieldName": "r", "operator": operator}]}]}, strict=True)
             ok, detail = not response.get(bu.UNPARSED), json.dumps(response)
@@ -1332,13 +1341,13 @@ def test_index_ops(c):
     drop_coll(c, "idx_coll")
 
 
-def create_indexes(c, coll, fields, db=DB) -> dict:
-    return c.send({"type": "CREATE_INDEX", "databaseName": db, "collectionName": coll, "fieldNames": fields})
+def create_indexes(c, coll, fields, project=PROJECT) -> dict:
+    return c.send({"type": "CREATE_INDEX", "projectName": project, "collectionName": coll, "fieldNames": fields})
 
 
-def registered_indexes(c, coll, db=DB) -> list:
-    stats = c.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("databases", [])
-    return sorted(index for d in stats if d.get("name") == db for coll_stats in d.get("collections", [])
+def registered_indexes(c, coll, project=PROJECT) -> list:
+    stats = c.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("projects", [])
+    return sorted(index for d in stats if d.get("name") == project for coll_stats in d.get("collections", [])
                   if coll_stats.get("name") == coll for index in coll_stats.get("indexes") or [])
 
 
@@ -1477,7 +1486,7 @@ def test_server_info(c):
     check_status("SERVER_INFO (admin, OK)", first, "OK")
     server = first.get("server", {})
     check_field("state is READY", server, "state", "READY")
-    check_field("protocolVersion is 1", server, "protocolVersion", 1)
+    check_field("protocolVersion is 2", server, "protocolVersion", 2)
     check("version is a non-empty string", isinstance(server.get("version"), str) and server.get("version") != "",
           str(server))
     check("startedAtMs is a past epoch", 0 < server.get("startedAtMs", 0) <= time.time() * 1000, str(server))
@@ -1487,7 +1496,7 @@ def test_server_info(c):
     check("syncWrites and tlsEnabled are booleans",
           isinstance(node.get("syncWrites"), bool) and isinstance(node.get("tlsEnabled"), bool), str(node))
     time.sleep(0.05)
-    second = c.send({"type": "SERVER_INFO", "databaseName": "ignored"})
+    second = c.send({"type": "SERVER_INFO", "projectName": "ignored"})
     check_status("SERVER_INFO ignores fields it does not take", second, "OK")
     check("uptimeMs grows between two calls",
           second.get("server", {}).get("uptimeMs", 0) > server.get("uptimeMs", 0), str(second))
@@ -1508,59 +1517,59 @@ def test_arm_fault_fail_on_a_non_failable_point_answers_400_1(c):
 
 def test_name_case_collisions(c):
     section("A name that differs only by case is refused, on every filesystem")
-    check_status("CREATE_DATABASE CaseDb", create_db(c, "CaseDb"), "OK")
-    check_code("CREATE_DATABASE casedb -> 409-11", create_db(c, "casedb"), "ERROR", "409-11")
-    check_code("CREATE_DATABASE CaseDb again is still the duplicate code",
-               create_db(c, "CaseDb"), "ERROR", "409-2")
+    check_status("CREATE_PROJECT CaseDb", create_project(c, "CaseDb"), "OK")
+    check_code("CREATE_PROJECT casedb -> 409-11", create_project(c, "casedb"), "ERROR", "409-11")
+    check_code("CREATE_PROJECT CaseDb again is still the duplicate code",
+               create_project(c, "CaseDb"), "ERROR", "409-2")
 
-    check_status("CREATE_COLLECTION MyColl", create_coll(c, "MyColl", db="CaseDb"), "OK")
+    check_status("CREATE_COLLECTION MyColl", create_coll(c, "MyColl", project="CaseDb"), "OK")
     check_code("CREATE_COLLECTION mycoll -> 409-11",
-               create_coll(c, "mycoll", db="CaseDb"), "ERROR", "409-11")
+               create_coll(c, "mycoll", project="CaseDb"), "ERROR", "409-11")
     check_status("CREATE_COLLECTION MyColl again stays idempotent",
-                 create_coll(c, "MyColl", db="CaseDb"), "OK")
+                 create_coll(c, "MyColl", project="CaseDb"), "OK")
 
-    check_status("CREATE_INDEX Foo", create_index(c, "MyColl", "Foo", db="CaseDb"), "OK")
+    check_status("CREATE_INDEX Foo", create_index(c, "MyColl", "Foo", project="CaseDb"), "OK")
     check_code("CREATE_INDEX foo -> 409-11",
-               create_index(c, "MyColl", "foo", db="CaseDb"), "ERROR", "409-11")
+               create_index(c, "MyColl", "foo", project="CaseDb"), "ERROR", "409-11")
 
-    check_code("CREATE_DATABASE Admin -> 400-1 reserved", create_db(c, "Admin"), "ERROR", "400-1")
-    check_code("CREATE_DATABASE ADMIN -> 400-1 reserved", create_db(c, "ADMIN"), "ERROR", "400-1")
+    check_code("CREATE_PROJECT Admin -> 400-1 reserved", create_project(c, "Admin"), "ERROR", "400-1")
+    check_code("CREATE_PROJECT ADMIN -> 400-1 reserved", create_project(c, "ADMIN"), "ERROR", "400-1")
     check_code("CREATE_COLLECTION inside Admin is refused with it",
-               create_coll(c, "users", db="Admin"), "ERROR", "400-1")
+               create_coll(c, "users", project="Admin"), "ERROR", "400-1")
 
     check_code("CREATE_INDEX with a space in the field name -> 400-1",
-               create_index(c, "MyColl", "a b", db="CaseDb"), "ERROR", "400-1")
+               create_index(c, "MyColl", "a b", project="CaseDb"), "ERROR", "400-1")
     check_status("CREATE_INDEX on a nested path is accepted",
-                 create_index(c, "MyColl", "address.city", db="CaseDb"), "OK")
+                 create_index(c, "MyColl", "address.city", project="CaseDb"), "OK")
     check_status("CREATE_INDEX on a hyphenated field is accepted",
-                 create_index(c, "MyColl", "first-name", db="CaseDb"), "OK")
+                 create_index(c, "MyColl", "first-name", project="CaseDb"), "OK")
 
     check_status("SAVE into MyColl before the case-variant drops",
-                 save(c, "MyColl", {"_id": "keepme", "v": 1}, db="CaseDb"), "OK")
-    check_status("DROP_COLLECTION mycoll is refused", drop_coll(c, "mycoll", db="CaseDb"), "ERROR")
-    check_status("DROP_DATABASE casedb is refused", drop_db(c, "casedb"), "ERROR")
+                 save(c, "MyColl", {"_id": "keepme", "v": 1}, project="CaseDb"), "OK")
+    check_status("DROP_COLLECTION mycoll is refused", drop_coll(c, "mycoll", project="CaseDb"), "ERROR")
+    check_status("DROP_PROJECT casedb is refused", drop_project(c, "casedb"), "ERROR")
     check_status("MyColl still answers after both refusals",
-                 find_by_id(c, "MyColl", "keepme", db="CaseDb"), "OK")
+                 find_by_id(c, "MyColl", "keepme", project="CaseDb"), "OK")
     check_status("DROP_COLLECTION of an unregistered name is refused",
-                 drop_coll(c, "neverCreated", db="CaseDb"), "ERROR")
-    check_status("DROP_COLLECTION MyColl still works", drop_coll(c, "MyColl", db="CaseDb"), "OK")
+                 drop_coll(c, "neverCreated", project="CaseDb"), "ERROR")
+    check_status("DROP_COLLECTION MyColl still works", drop_coll(c, "MyColl", project="CaseDb"), "OK")
     check_status("DROP_COLLECTION MyColl twice is refused",
-                 drop_coll(c, "MyColl", db="CaseDb"), "ERROR")
+                 drop_coll(c, "MyColl", project="CaseDb"), "ERROR")
 
-    check_status("DROP_DATABASE CaseDb still works", drop_db(c, "CaseDb"), "OK")
-    check_status("DROP_DATABASE CaseDb twice is refused", drop_db(c, "CaseDb"), "ERROR")
-
-
-def get_schema(c, coll, db=DB) -> dict:
-    return c.send({"type": "GET_SCHEMA", "databaseName": db, "collectionName": coll})
+    check_status("DROP_PROJECT CaseDb still works", drop_project(c, "CaseDb"), "OK")
+    check_status("DROP_PROJECT CaseDb twice is refused", drop_project(c, "CaseDb"), "ERROR")
 
 
-def list_triggers(c, coll, db=DB) -> dict:
-    return c.send({"type": "LIST_TRIGGERS", "databaseName": db, "collectionName": coll})
+def get_schema(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "GET_SCHEMA", "projectName": project, "collectionName": coll})
+
+
+def list_triggers(c, coll, project=PROJECT) -> dict:
+    return c.send({"type": "LIST_TRIGGERS", "projectName": project, "collectionName": coll})
 
 
 GHOST_ROUNDS = 200
-GHOST_DB = "api_ghost_db_never_created"
+GHOST_PROJECT = "api_ghost_project_never_created"
 
 
 def check_ghost_answers(c, label, coll):
@@ -1569,12 +1578,12 @@ def check_ghost_answers(c, label, coll):
     check(f"{label}: LIST_TRIGGERS -> OK with no triggers",
           trig.get("status") == "OK" and trig.get("triggers") == [], f"got {trig}")
     check_code(f"{label}: SAVE -> 404-11", save(c, coll, {"_id": "a", "v": 1}), "NOT_FOUND", "404-11")
-    check_code(f"{label}: GET_SCHEMA in a missing database -> 404-11",
-               get_schema(c, coll, db=GHOST_DB), "NOT_FOUND", "404-11")
-    check_code(f"{label}: LIST_TRIGGERS in a missing database -> 404-4",
-               list_triggers(c, coll, db=GHOST_DB), "NOT_FOUND", "404-4")
-    check_code(f"{label}: SAVE in a missing database -> 404-11",
-               save(c, coll, {"_id": "a", "v": 1}, db=GHOST_DB), "NOT_FOUND", "404-11")
+    check_code(f"{label}: GET_SCHEMA in a missing project -> 404-11",
+               get_schema(c, coll, project=GHOST_PROJECT), "NOT_FOUND", "404-11")
+    check_code(f"{label}: LIST_TRIGGERS in a missing project -> 404-4",
+               list_triggers(c, coll, project=GHOST_PROJECT), "NOT_FOUND", "404-4")
+    check_code(f"{label}: SAVE in a missing project -> 404-11",
+               save(c, coll, {"_id": "a", "v": 1}, project=GHOST_PROJECT), "NOT_FOUND", "404-11")
 
 
 def test_names_that_do_not_exist_answer_as_before(c):
@@ -1586,9 +1595,10 @@ def test_names_that_do_not_exist_answer_as_before(c):
     for i in range(GHOST_ROUNDS):
         coll = f"ghost_{i}"
         answers = (get_schema(c, coll).get("errorCode"), list_triggers(c, coll).get("status"),
-                   save(c, coll, {"_id": "a"}).get("errorCode"), get_schema(c, coll, db=GHOST_DB).get("errorCode"),
-                   list_triggers(c, coll, db=GHOST_DB).get("errorCode"),
-                   save(c, coll, {"_id": "a"}, db=GHOST_DB).get("errorCode"))
+                   save(c, coll, {"_id": "a"}).get("errorCode"), get_schema(c, coll,
+                                                                            project=GHOST_PROJECT).get("errorCode"),
+                   list_triggers(c, coll, project=GHOST_PROJECT).get("errorCode"),
+                   save(c, coll, {"_id": "a"}, project=GHOST_PROJECT).get("errorCode"))
         if answers != ("404-11", "OK", "404-11", "404-11", "404-4", "404-11"):
             wrong.append((coll, answers))
     check(f"{GHOST_ROUNDS} ghost names each answer exactly as the first", not wrong, f"first wrong: {wrong[:3]}")
@@ -1604,11 +1614,11 @@ def test_names_that_do_not_exist_answer_as_before(c):
 
     with Conn() as jc:
         jc.authenticate("api_join_user", "api_join_user1234")
-        check_code("user without database permission: GET_SCHEMA of a ghost -> 403-1",
+        check_code("user without project permission: GET_SCHEMA of a ghost -> 403-1",
                    get_schema(jc, "ghost_1"), "FORBIDDEN", "403-1")
-        check_code("user without database permission: LIST_TRIGGERS of a ghost -> 403-1",
+        check_code("user without project permission: LIST_TRIGGERS of a ghost -> 403-1",
                    list_triggers(jc, "ghost_1"), "FORBIDDEN", "403-1")
-        check_code("user without database permission: SAVE to a ghost -> 403-1",
+        check_code("user without project permission: SAVE to a ghost -> 403-1",
                    save(jc, "ghost_1", {"_id": "a"}), "FORBIDDEN", "403-1")
 
     reborn = "ghost_2"
@@ -1617,7 +1627,7 @@ def test_names_that_do_not_exist_answer_as_before(c):
     check_status("SAVE into it", save(c, reborn, {"_id": "a", "v": 1}), "OK")
     check_field("FIND_BY_ID reads the saved document", find_by_id(c, reborn, "a"), "object.v", 1)
     schema = {"type": "object", "required": ["_id"]}
-    check_status("SAVE_SCHEMA on it", c.send({"type": "SAVE_SCHEMA", "databaseName": DB,
+    check_status("SAVE_SCHEMA on it", c.send({"type": "SAVE_SCHEMA", "projectName": PROJECT,
                                               "collectionName": reborn, "schema": schema}), "OK")
     check_field("GET_SCHEMA returns the saved schema", get_schema(c, reborn), "schema", schema)
     trig = list_triggers(c, reborn)
@@ -1627,34 +1637,34 @@ def test_names_that_do_not_exist_answer_as_before(c):
     check_ghost_answers(c, "after the drop", reborn)
 
 
-def test_admin_database_reads_follow_admin_writes(c):
-    section("Reads of the admin database follow the admin writes that came after them")
+def test_admin_project_reads_follow_admin_writes(c):
+    section("Reads of the admin project follow the admin writes that came after them")
     first, second = "AdminReadFirst", "AdminReadSecond"
-    check_status(f"CREATE_DATABASE {first}", create_db(c, first), "OK")
-    check_status("FIND_BY_ID admin/databases for it", find_by_id(c, "databases", first, db="admin"), "OK")
-    check_status("AGGREGATE over admin/databases before the next write",
-                 aggregate(c, "databases", [], db="admin"), "OK")
+    check_status(f"CREATE_PROJECT {first}", create_project(c, first), "OK")
+    check_status("FIND_BY_ID admin/projects for it", find_by_id(c, "projects", first, project="admin"), "OK")
+    check_status("AGGREGATE over admin/projects before the next write",
+                 aggregate(c, "projects", [], project="admin"), "OK")
 
-    check_status(f"CREATE_DATABASE {second}", create_db(c, second), "OK")
-    check_status("FIND_BY_ID admin/databases finds the database created after the first read",
-                 find_by_id(c, "databases", second, db="admin"), "OK")
-    listed = set(ids_of(aggregate(c, "databases", [], db="admin")))
-    check("a scan of admin/databases sees both", {first, second} <= listed, f"listed={sorted(listed)}")
+    check_status(f"CREATE_PROJECT {second}", create_project(c, second), "OK")
+    check_status("FIND_BY_ID admin/projects finds the project created after the first read",
+                 find_by_id(c, "projects", second, project="admin"), "OK")
+    listed = set(ids_of(aggregate(c, "projects", [], project="admin")))
+    check("a scan of admin/projects sees both", {first, second} <= listed, f"listed={sorted(listed)}")
 
-    check_status(f"DROP_DATABASE {first}", drop_db(c, first), "OK")
-    check("FIND_BY_ID admin/databases no longer serves the dropped database",
-          find_by_id(c, "databases", first, db="admin").get("status") != "OK")
-    listed = set(ids_of(aggregate(c, "databases", [], db="admin")))
-    check("a scan of admin/databases no longer lists it", first not in listed and second in listed,
+    check_status(f"DROP_PROJECT {first}", drop_project(c, first), "OK")
+    check("FIND_BY_ID admin/projects no longer serves the dropped project",
+          find_by_id(c, "projects", first, project="admin").get("status") != "OK")
+    listed = set(ids_of(aggregate(c, "projects", [], project="admin")))
+    check("a scan of admin/projects no longer lists it", first not in listed and second in listed,
           f"listed={sorted(listed)}")
-    check_status(f"DROP_DATABASE {second}", drop_db(c, second), "OK")
+    check_status(f"DROP_PROJECT {second}", drop_project(c, second), "OK")
 
 
-def usage_rows_of(c, db, coll=None):
-    steps = [filter_step("dbName", "EQUALS", db)]
+def usage_rows_of(c, project, coll=None):
+    steps = [filter_step("projectName", "EQUALS", project)]
     if coll is not None:
         steps.append(filter_step("collName", "EQUALS", coll))
-    response = aggregate(c, "collection_usage", steps, db="admin")
+    response = aggregate(c, "collection_usage", steps, project="admin")
     if response.get("errorCode") == "404-3":
         return []
     if response.get("status") != "OK":
@@ -1663,26 +1673,26 @@ def usage_rows_of(c, db, coll=None):
 
 
 def test_a_dropped_collections_usage_rows_go_with_it(c):
-    section("A drop deletes the dropped collection's or database's admin/collection_usage rows")
-    db, kept, dropped = "UsageDropDb", "usage_kept", "usage_dropped"
-    check_status(f"CREATE_DATABASE {db}", create_db(c, db), "OK")
+    section("A drop deletes the dropped collection's or project's admin/collection_usage rows")
+    project, kept, dropped = "UsageDropProject", "usage_kept", "usage_dropped"
+    check_status(f"CREATE_PROJECT {project}", create_project(c, project), "OK")
     for coll in (kept, dropped):
-        check_status(f"CREATE_COLLECTION {coll}", create_coll(c, coll, db=db), "OK")
-        check_status(f"SAVE into {coll}", save(c, coll, {"_id": "u1", "v": 1}, db=db), "OK")
-        check_status(f"FIND_BY_ID in {coll}", find_by_id(c, coll, "u1", db=db), "OK")
-    flushed = bu.wait_until(lambda: usage_rows_of(c, db, kept) and usage_rows_of(c, db, dropped), 20)
+        check_status(f"CREATE_COLLECTION {coll}", create_coll(c, coll, project=project), "OK")
+        check_status(f"SAVE into {coll}", save(c, coll, {"_id": "u1", "v": 1}, project=project), "OK")
+        check_status(f"FIND_BY_ID in {coll}", find_by_id(c, coll, "u1", project=project), "OK")
+    flushed = bu.wait_until(lambda: usage_rows_of(c, project, kept) and usage_rows_of(c, project, dropped), 20)
     check("the usage flush wrote a row for each collection", bool(flushed))
 
-    check_status(f"DROP_COLLECTION {dropped}", drop_coll(c, dropped, db=db), "OK")
-    check("no usage row of the dropped collection is left", usage_rows_of(c, db, dropped) == [],
-          f"rows={usage_rows_of(c, db, dropped)}")
-    check("the other collection keeps its usage rows", usage_rows_of(c, db, kept) != [])
+    check_status(f"DROP_COLLECTION {dropped}", drop_coll(c, dropped, project=project), "OK")
+    check("no usage row of the dropped collection is left", usage_rows_of(c, project, dropped) == [],
+          f"rows={usage_rows_of(c, project, dropped)}")
+    check("the other collection keeps its usage rows", usage_rows_of(c, project, kept) != [])
 
-    check_status(f"DROP_DATABASE {db}", drop_db(c, db), "OK")
-    check("no usage row of the dropped database is left", usage_rows_of(c, db) == [],
-          f"rows={usage_rows_of(c, db)}")
+    check_status(f"DROP_PROJECT {project}", drop_project(c, project), "OK")
+    check("no usage row of the dropped project is left", usage_rows_of(c, project) == [],
+          f"rows={usage_rows_of(c, project)}")
     check("a later usage flush does not bring them back",
-          bu.holds_throughout(lambda: usage_rows_of(c, db) == [], 6))
+          bu.holds_throughout(lambda: usage_rows_of(c, project) == [], 6))
 
 
 def test_join_then_map_on_a_shared_group_stays_small(c):
@@ -1707,7 +1717,7 @@ def test_join_then_map_on_a_shared_group_stays_small(c):
     check("the mapped row keeps the whole joined group and the new field",
           len(row.get("j") or []) == 50 and row.get("x") == "x", detail=f"keys={sorted(row)}")
 
-    check_status("the server stays healthy afterwards", list_databases(c), "OK")
+    check_status("the server stays healthy afterwards", list_projects(c), "OK")
     drop_coll(c, COLL_SHARED_LEFT)
     drop_coll(c, COLL_SHARED_RIGHT)
 
@@ -1763,7 +1773,7 @@ def test_aggregate_output_over_budget_is_400_36(c):
     check("ten such rows still answer", r.get("status") == "OK" and len(r.get("results") or []) == 10,
           detail=f"status={r.get('status')} code={r.get('errorCode')}")
 
-    check_status("the server stays healthy afterwards", list_databases(c), "OK")
+    check_status("the server stays healthy afterwards", list_projects(c), "OK")
     drop_coll(c, COLL_BUDGET)
 
 
@@ -1798,9 +1808,9 @@ def test_deletes_keep_a_large_collection_consistent(c):
 def test_a_request_pipelined_after_a_large_one_is_not_lost(c):
     section("A request pipelined behind a multi-megabyte line survives the reader dropping its grown buffer")
     check_status("a document to look up is saved", save(c, COLL_CRUD, {"_id": "pipelined", "v": 7}), "OK")
-    large = json.dumps({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL_CRUD,
+    large = json.dumps({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL_CRUD,
                         "aggregationSteps": [filter_step("name", "EQUALS", "x" * (3 << 20))]}).encode()
-    lookup = json.dumps({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL_CRUD,
+    lookup = json.dumps({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL_CRUD,
                          "_id": "pipelined"}).encode()
     half = len(lookup) // 2
     c.s.sendall(large + b"\n" + lookup[:half])
@@ -1955,9 +1965,9 @@ def main():
         setup(c)
 
     groups = [
-        test_database_and_collection_ops,
+        test_project_and_collection_ops,
         test_name_case_collisions,
-        test_admin_database_reads_follow_admin_writes,
+        test_admin_project_reads_follow_admin_writes,
         test_a_dropped_collections_usage_rows_go_with_it,
         test_names_that_do_not_exist_answer_as_before,
         test_reserved_script_runs_collection,

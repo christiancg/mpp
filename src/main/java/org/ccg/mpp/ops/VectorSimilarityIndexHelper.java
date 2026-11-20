@@ -28,40 +28,41 @@ public final class VectorSimilarityIndexHelper {
     private static final int CANDIDATE_MULTIPLIER = 10;
     private static final int MIN_CANDIDATES = 100;
 
-    public static Set<String> candidateIds(CustomOperator operator, String dbName, String collName,
+    public static Set<String> candidateIds(CustomOperator operator, String projectName, String collName,
             ReadObserver observer) throws IOException {
         if (!JsonVector.OPERATOR_NEAREST.equals(operator.getCustomOperatorName()) || isExact(operator)) {
             return null;
         }
-        if (cache.hasNoIndex(dbName, collName, operator.getField())) {
+        if (cache.hasNoIndex(projectName, collName, operator.getField())) {
             return null;
         }
         final var fieldName = operator.getField();
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
         final var query = JsonVector.toVector(operator.getValue());
         final var budget = Math.max(kFor(operator) * CANDIDATE_MULTIPLIER, MIN_CANDIDATES);
         final Set<String> candidates;
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
-            final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, JsonVector.class);
+            final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName,
+                    JsonVector.class);
             if (entries == null || entries.isEmpty()) {
                 return null;
             }
             candidates = collectNeighbourhood(entries, query, budget);
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
-        recordAnalyzeIndexUse(dbName, collName, fieldName, observer);
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        recordAnalyzeIndexUse(projectName, collName, fieldName, observer);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
         // Not-yet-indexed committed writes may be missing from the index; the caller re-scores them exactly.
-        candidates.addAll(PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName));
+        candidates.addAll(PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName));
         return candidates;
     }
 
@@ -111,7 +112,8 @@ public final class VectorSimilarityIndexHelper {
         return operator.getArgs().get("k").asJsonNumber().getValue().intValue();
     }
 
-    private static void recordAnalyzeIndexUse(String dbName, String collName, String fieldName, ReadObserver observer) {
-        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+    private static void recordAnalyzeIndexUse(String projectName, String collName, String fieldName,
+            ReadObserver observer) {
+        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
     }
 }

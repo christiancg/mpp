@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PkIndexRebuildTest {
-    private static final String DB = "rebuildDb";
+    private static final String PROJECT = "rebuildProject";
     private static final String COLL = "rebuildColl";
     private static final String GARBAGE = "garbage\nmore garbage\n";
 
@@ -31,7 +31,7 @@ public class PkIndexRebuildTest {
 
     @BeforeEach
     public void setUp() throws IOException {
-        f = new StorageFixture(tmp, DB, COLL);
+        f = new StorageFixture(tmp, PROJECT, COLL);
     }
 
     private PkRebuild rebuild() throws IOException {
@@ -39,8 +39,8 @@ public class PkIndexRebuildTest {
         for (var page = 0L; f.page(page).exists(); page++) {
             pages.add(page);
         }
-        final var rebuild = PkIndexRebuild.plan(f.paths, f.store, DB, COLL, pages);
-        PkIndexRebuild.apply(f.store, DB, COLL, rebuild);
+        final var rebuild = PkIndexRebuild.plan(f.paths, f.store, PROJECT, COLL, pages);
+        PkIndexRebuild.apply(f.store, PROJECT, COLL, rebuild);
         return rebuild;
     }
 
@@ -50,11 +50,11 @@ public class PkIndexRebuildTest {
     }
 
     private byte[] pkBytes() throws IOException {
-        return Files.readAllBytes(f.paths.pkIndexFile(DB, COLL).toPath());
+        return Files.readAllBytes(f.paths.pkIndexFile(PROJECT, COLL).toPath());
     }
 
     private void writeGarbagePk() throws IOException {
-        Files.writeString(f.paths.pkIndexFile(DB, COLL).toPath(), GARBAGE, StandardCharsets.UTF_8);
+        Files.writeString(f.paths.pkIndexFile(PROJECT, COLL).toPath(), GARBAGE, StandardCharsets.UTF_8);
     }
 
     private List<String> rows() throws IOException {
@@ -87,7 +87,7 @@ public class PkIndexRebuildTest {
     @Test
     public void test_versions_come_from_a_readable_pk_index() throws IOException {
         f.seed(0, "a", "b", "c");
-        f.store.rewriteRows(DB, COLL, current -> {
+        f.store.rewriteRows(PROJECT, COLL, current -> {
             current.forEach(row -> row.setPosition(row.getPosition() + 1));
             return current;
         });
@@ -101,7 +101,7 @@ public class PkIndexRebuildTest {
     @Test
     public void test_an_id_missing_from_the_pk_index_is_adopted_at_version_0() throws IOException {
         f.seed(0, "a", "b", "c");
-        f.store.rewriteRows(DB, COLL,
+        f.store.rewriteRows(PROJECT, COLL,
                 current -> new ArrayList<>(current.stream().filter(row -> !row.getValue().equals("b")).toList()));
 
         final var rebuild = rebuild();
@@ -115,7 +115,8 @@ public class PkIndexRebuildTest {
     @Test
     public void test_an_entry_with_no_record_is_dropped() throws IOException {
         f.seed(0, "a", "b");
-        f.store.appendRows(DB, COLL, List.of(new PkIndexEntry(DB, COLL, "ghost", 0, 5, 0, StorageFixture.OLD_VERSION)));
+        f.store.appendRows(PROJECT, COLL,
+                List.of(new PkIndexEntry(PROJECT, COLL, "ghost", 0, 5, 0, StorageFixture.OLD_VERSION)));
 
         final var rebuild = rebuild();
 
@@ -179,33 +180,33 @@ public class PkIndexRebuildTest {
         final var rebuild = rebuild();
 
         assertEquals(0, rebuild.entries());
-        assertTrue(f.paths.pkIndexFile(DB, COLL).exists());
+        assertTrue(f.paths.pkIndexFile(PROJECT, COLL).exists());
         assertTrue(f.indexedRows().isEmpty());
     }
 
     @Test
     public void test_replace_all_writes_over_a_file_nothing_parsed_in() throws IOException {
         writeGarbagePk();
-        final var entry = new PkIndexEntry(DB, COLL, "only", 0, 10, 0, StorageFixture.OLD_VERSION);
+        final var entry = new PkIndexEntry(PROJECT, COLL, "only", 0, 10, 0, StorageFixture.OLD_VERSION);
 
-        f.store.replaceAll(DB, COLL, List.of(entry));
+        f.store.replaceAll(PROJECT, COLL, List.of(entry));
 
         assertEquals(List.of(entry.toFileEntry()), rows());
     }
 
     private WriteIntentJournal.Intent intentFor(WriteIntent item) throws IOException {
-        return f.journal.begin(DB, COLL, List.of(item));
+        return f.journal.begin(PROJECT, COLL, List.of(item));
     }
 
     @Test
     public void test_a_leftover_vacuum_intent_is_completed_before_the_rebuild() throws IOException {
         f.seed(0, "a", "b", "c");
         intentFor(new WriteIntent.Vacuum(0));
-        final var temp = f.paths.vacuumFile(DB, COLL, 0);
+        final var temp = f.paths.vacuumFile(PROJECT, COLL, 0);
         Files.writeString(temp.toPath(), "partial", StandardCharsets.UTF_8);
         writeGarbagePk();
 
-        assertEquals(1, f.recovery.recoverPagesOf(DB, COLL));
+        assertEquals(1, f.recovery.recoverPagesOf(PROJECT, COLL));
         rebuild();
 
         assertEquals(0, f.openIntents());
@@ -221,21 +222,21 @@ public class PkIndexRebuildTest {
         final var emptied = intentFor(new WriteIntent.Vacuum(0));
         f.journal.end(emptied);
 
-        assertEquals(List.of(kept.label()), f.recovery.replayableIntentsOf(DB, COLL));
+        assertEquals(List.of(kept.label()), f.recovery.replayableIntentsOf(PROJECT, COLL));
     }
 
     @Test
     public void test_a_plan_writes_nothing_until_it_is_applied() throws IOException {
         f.seed(0, "a", "b");
-        f.store.rewriteRows(DB, COLL,
+        f.store.rewriteRows(PROJECT, COLL,
                 current -> new ArrayList<>(current.stream().filter(row -> !row.getValue().equals("b")).toList()));
         final var before = pkBytes();
 
-        final var plan = PkIndexRebuild.plan(f.paths, f.store, DB, COLL, List.of(0L));
+        final var plan = PkIndexRebuild.plan(f.paths, f.store, PROJECT, COLL, List.of(0L));
 
         assertArrayEquals(before, pkBytes());
         assertEquals(2, plan.entries());
-        PkIndexRebuild.apply(f.store, DB, COLL, plan);
+        PkIndexRebuild.apply(f.store, PROJECT, COLL, plan);
         assertEquals(List.of("a", "b"), f.indexedRows().stream().map(PkIndexEntry::getValue).toList());
     }
 
@@ -246,7 +247,7 @@ public class PkIndexRebuildTest {
         final var intent = intentFor(new WriteIntent.Vacuum(0));
         Files.writeString(intent.log().toPath(), "torn", StandardCharsets.UTF_8);
 
-        assertEquals(0, f.recovery.recoverPagesOf(DB, COLL));
+        assertEquals(0, f.recovery.recoverPagesOf(PROJECT, COLL));
 
         assertEquals(0, f.openIntents());
         assertEquals(page, f.firstPageText());

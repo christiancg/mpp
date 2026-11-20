@@ -30,7 +30,7 @@ public class ScheduleHandoffTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalEnabled = Configuration.getInstance().isClusterEnabled();
         TestUtils.setPrivateField(Configuration.getInstance(), "clusterEnabled", true);
     }
@@ -39,7 +39,7 @@ public class ScheduleHandoffTest {
     public void tearDown() throws Exception {
         TestUtils.setPrivateField(Configuration.getInstance(), "clusterEnabled", originalEnabled);
         ownership.onMembershipChanged(new MembershipView(List.of()));
-        registry.removeDatabase(TestGlobals.DB);
+        registry.removeProject(TestGlobals.PROJECT);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -56,12 +56,12 @@ public class ScheduleHandoffTest {
     private ScheduleRegistry.Entry registerSchedule(String name) throws Exception {
         final var definition = new ScheduleDefinition(name, "proc", null, 1_000L, null, 0L, true, "owner", null, 1L, 1L,
                 1L, "owner");
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, name, eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, name);
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, name, eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, name);
         registry.loadAll();
         return registry.entries().stream()
-                .filter(entry -> entry.getName().equals(name) && entry.getDbName().equals(TestGlobals.DB)).findFirst()
-                .orElseThrow();
+                .filter(entry -> entry.getName().equals(name) && entry.getProjectName().equals(TestGlobals.PROJECT))
+                .findFirst().orElseThrow();
     }
 
     @Test

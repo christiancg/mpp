@@ -32,13 +32,13 @@ public class StartupWarningsCacheFitTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(config, "maxMemoryBytes", Long.class);
         savedMetadataCacheMaxBytes = TestUtils.getPrivateField(config, "metadataCacheMaxBytes", Long.class);
         savedScriptsEnabled = TestUtils.getPrivateField(config, "scriptsEnabled", Boolean.class);
-        final var page = new AdminPageEntry(TestGlobals.DB, TestGlobals.COLL, 0L);
+        final var page = new AdminPageEntry(TestGlobals.PROJECT, TestGlobals.COLL, 0L);
         page.setEntryCount(DOCUMENTS);
-        IocContainer.get(Cache.class).addAdminPageEntries(TestGlobals.DB, TestGlobals.COLL, page);
+        IocContainer.get(Cache.class).addAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL, page);
     }
 
     @AfterEach
@@ -63,7 +63,7 @@ public class StartupWarningsCacheFitTest {
         TestUtils.setPrivateField(config, "maxMemoryBytes", DOCUMENTS * CacheSizeEstimator.minimumPkEntryBytes() - 1);
         try (var logWriter = mockStatic(LogWriter.class)) {
             StartupWarnings.warnIfCollectionsOutgrowMaxMemory();
-            assertLogged(logWriter, "The primary-key index of " + TestGlobals.DB + "|" + TestGlobals.COLL);
+            assertLogged(logWriter, "The primary-key index of " + TestGlobals.PROJECT + "|" + TestGlobals.COLL);
             assertLogged(logWriter, "Raise maxMemory above");
         }
     }

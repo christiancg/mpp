@@ -8,9 +8,9 @@ import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.UserOperationHelper;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -32,13 +32,13 @@ public class OperationProcessorOwnershipTest {
     }
 
     @Test
-    public void test_create_database_sets_authenticated_user_as_owner() throws Exception {
+    public void test_create_project_sets_authenticated_user_as_owner() throws Exception {
         final var createReq = new CreateUserRequest();
-        createReq.setUsername("db_creator");
+        createReq.setUsername("project_creator");
         createReq.setPassword("password123");
         createReq.setAdmin(false);
         createReq.setGlobalPermissions(new java.util.HashSet<>());
-        createReq.setDatabasePermissions(new java.util.HashMap<>());
+        createReq.setProjectPermissions(new java.util.HashMap<>());
         createReq.setCollectionPermissions(new java.util.HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -49,42 +49,42 @@ public class OperationProcessorOwnershipTest {
         org.mockito.Mockito.when(fakeAddr.getHostAddress()).thenReturn("127.0.0.1");
         TestUtils.setPrivateField(org.ccg.mpp.config.Configuration.getInstance(), "maxConnections", 100);
         final var clientId = clientTracker.addClient(fakeSocket);
-        clientTracker.setAuthenticatedUser(clientId, "db_creator");
+        clientTracker.setAuthenticatedUser(clientId, "project_creator");
 
-        final var req = new CreateDatabaseRequest("owner_test-db");
+        final var req = new CreateProjectRequest("owner_test-db");
         final var resp = processor.processMessage(req, clientId);
         assertEquals(OperationStatus.OK, resp.getStatus());
 
-        final var dbEntry = cache.getAdminDbEntry("owner_test-db");
+        final var dbEntry = cache.getAdminProjectEntry("owner_test-db");
         assertNotNull(dbEntry);
-        assertTrue(dbEntry.isOwner("db_creator"), "Creator should be set as owner");
+        assertTrue(dbEntry.isOwner("project_creator"), "Creator should be set as owner");
 
         clientTracker.removeById(clientId);
     }
 
     @Test
-    public void test_set_database_owners_success() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+    public void test_set_project_owners_success() throws Exception {
+        TestUtils.createTestProjectAndCollection();
         final var alice = new CreateUserRequest();
         alice.setUsername("Alice");
         alice.setPassword("password123");
         alice.setAdmin(false);
         alice.setGlobalPermissions(new java.util.HashSet<>());
-        alice.setDatabasePermissions(new java.util.HashMap<>());
+        alice.setProjectPermissions(new java.util.HashMap<>());
         alice.setCollectionPermissions(new java.util.HashMap<>());
         UserOperationHelper.processCreateUser(alice);
 
-        final var req = new SetDatabaseOwnersRequest(TestGlobals.DB);
+        final var req = new SetProjectOwnersRequest(TestGlobals.PROJECT);
         req.setOwners(List.of("Alice"));
 
         final var resp = processor.processMessage(req, null);
         assertEquals(OperationStatus.OK, resp.getStatus());
-        assertTrue(cache.getAdminDbEntry(TestGlobals.DB).isOwner("Alice"));
+        assertTrue(cache.getAdminProjectEntry(TestGlobals.PROJECT).isOwner("Alice"));
     }
 
     @Test
-    public void test_set_database_owners_not_found() {
-        final var req = new SetDatabaseOwnersRequest("nonexistent_db");
+    public void test_set_project_owners_not_found() {
+        final var req = new SetProjectOwnersRequest("nonexistent_project");
         final var resp = processor.processMessage(req, null);
         assertEquals(OperationStatus.NOT_FOUND, resp.getStatus());
     }

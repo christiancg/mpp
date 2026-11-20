@@ -5,29 +5,29 @@ import type { ScheduleDefinition, ScheduleInfo } from "./definitions.js";
 
 export class Schedules {
     readonly #context: ClientContext;
-    readonly #database: string;
+    readonly #project: string;
 
-    constructor(context: ClientContext, database: string) {
+    constructor(context: ClientContext, project: string) {
         this.#context = context;
-        this.#database = database;
+        this.#project = project;
     }
 
     async save(definition: ScheduleDefinition): Promise<number> {
         const reply = await this.#context.channel.send(
             "SAVE_SCHEDULE",
-            this.#context.scripts.saveSchedule(this.#database, definition),
+            this.#context.scripts.saveSchedule(this.#project, definition),
         );
         return numberOf(reply.version) ?? 0;
     }
 
     async delete(name: string): Promise<void> {
-        await this.#context.channel.send("DELETE_SCHEDULE", this.#context.scripts.deleteSchedule(this.#database, name));
+        await this.#context.channel.send("DELETE_SCHEDULE", this.#context.scripts.deleteSchedule(this.#project, name));
     }
 
     async list(includeArgs?: boolean): Promise<ScheduleInfo[]> {
         const reply = await this.#context.channel.send(
             "LIST_SCHEDULES",
-            this.#context.scripts.listSchedules(this.#database, includeArgs),
+            this.#context.scripts.listSchedules(this.#project, includeArgs),
         );
         return documents(reply, "schedules").map(schedule);
     }

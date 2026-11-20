@@ -9,9 +9,9 @@ import org.junit.jupiter.api.Test;
 public class DeleteSchemaRequestTest {
     @Test
     public void test_constructor_and_getters() {
-        final var request = new DeleteSchemaRequest("testDb", "testColl");
+        final var request = new DeleteSchemaRequest("testProject", "testColl");
         assertEquals(OperationType.DELETE_SCHEMA, request.getType());
-        assertEquals("testDb", request.getDatabaseName());
+        assertEquals("testProject", request.getProjectName());
         assertEquals("testColl", request.getCollectionName());
     }
 }

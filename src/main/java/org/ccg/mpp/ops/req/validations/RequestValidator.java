@@ -34,8 +34,8 @@ import org.ccg.mpp.ops.req.SaveRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveSchemaRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
-import org.ccg.mpp.ops.req.SetDatabaseOwnersRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
+import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
 import org.ccg.mpp.ops.req.StartSnapshotRequest;
 import org.ccg.mpp.ops.req.StopListenRequest;
 import org.ccg.mpp.ops.req.TestTriggerRequest;
@@ -43,7 +43,7 @@ import org.ccg.mpp.ops.req.TestTriggerRequest;
 public class RequestValidator {
 
     public static ValidationResult validateSystemHistory(OperationRequest request) {
-        return NameValidations.validateDbAndColl(request, true, false);
+        return NameValidations.validateProjectAndColl(request, true, false);
     }
 
     public static ValidationResult validate(OperationRequest request) {
@@ -53,11 +53,11 @@ public class RequestValidator {
             case FIND_BY_ID -> DataRequestValidator.validateFindById((FindByIdRequest) request);
             case DELETE -> DataRequestValidator.validateDelete((DeleteRequest) request);
             case AGGREGATE -> DataRequestValidator.validateAggregate((AggregateRequest) request);
-            case CREATE_DATABASE, DROP_DATABASE -> NameValidations.validateDbOnly(request, true);
-            case LIST_DATABASES, CLOSE_CONNECTION, GET_DATABASE_STATS, SERVER_INFO -> ValidationResult.ok();
+            case CREATE_PROJECT, DROP_PROJECT -> NameValidations.validateProjectOnly(request, true);
+            case LIST_PROJECTS, CLOSE_CONNECTION, GET_PROJECT_STATS, SERVER_INFO -> ValidationResult.ok();
             case CREATE_COLLECTION, DROP_COLLECTION, DELETE_SCHEMA, GET_SCHEMA ->
-                NameValidations.validateDbAndColl(request, true, true);
-            case LIST_COLLECTIONS -> NameValidations.validateDbOnly(request, false);
+                NameValidations.validateProjectAndColl(request, true, true);
+            case LIST_COLLECTIONS -> NameValidations.validateProjectOnly(request, false);
             case CREATE_INDEX -> DataRequestValidator.validateCreateIndex((CreateIndexRequest) request);
             case DROP_INDEX -> DataRequestValidator.validateDropIndex((DropIndexRequest) request);
             case REINDEX -> DataRequestValidator.validateReindex((ReindexRequest) request);
@@ -67,8 +67,7 @@ public class RequestValidator {
             case DELETE_USER -> UserRequestValidator.validateDeleteUser((DeleteUserRequest) request);
             case CHANGE_PERMISSIONS ->
                 UserRequestValidator.validateChangePermissions((ChangePermissionsRequest) request);
-            case SET_DATABASE_OWNERS ->
-                UserRequestValidator.validateSetDatabaseOwners((SetDatabaseOwnersRequest) request);
+            case SET_PROJECT_OWNERS -> UserRequestValidator.validateSetProjectOwners((SetProjectOwnersRequest) request);
             case LIST_USERS -> UserRequestValidator.validateListUsers((ListUsersRequest) request);
             case SET_PASSWORD -> UserRequestValidator.validateSetPassword((SetPasswordRequest) request);
             case LISTEN -> ControlRequestValidator.validateListen((ListenRequest) request);
@@ -82,7 +81,7 @@ public class RequestValidator {
             case RUN_SCRIPT -> ScriptRequestValidator.validateRunScript((RunScriptRequest) request);
             case SAVE_PROCEDURE -> ScriptRequestValidator.validateSaveProcedure((SaveProcedureRequest) request);
             case DELETE_PROCEDURE -> ScriptRequestValidator.validateDeleteProcedure((DeleteProcedureRequest) request);
-            case LIST_PROCEDURES, LIST_SCHEDULES -> NameValidations.validateDbNameOnly(request.getDatabaseName());
+            case LIST_PROCEDURES, LIST_SCHEDULES -> NameValidations.validateProjectNameOnly(request.getProjectName());
             case CALL_PROCEDURE -> ScriptRequestValidator.validateCallProcedure((CallProcedureRequest) request);
             case SAVE_TRIGGER -> ScriptRequestValidator.validateSaveTrigger((SaveTriggerRequest) request);
             case DELETE_TRIGGER -> ScriptRequestValidator.validateDeleteTrigger((DeleteTriggerRequest) request);

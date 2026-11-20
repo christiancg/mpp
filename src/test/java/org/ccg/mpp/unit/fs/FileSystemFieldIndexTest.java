@@ -28,16 +28,16 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_getById_data_contains_id_field() throws Exception {
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         String id = "abc123";
         JsonObject data = new JsonObject();
         data.addProperty("value", "hello");
         data.addProperty(Globals.PK_FIELD, id);
         DbEntry dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.setData(data);
         dbEntry.set_id(id);
@@ -56,19 +56,19 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         JsonObject data = new JsonObject();
         data.addProperty("name", "test");
 
-        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        DbEntry entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
 
         PkIndexEntry result = fs.insertIntoCollection(entry);
 
         assertNotNull(result);
         assertEquals(entry.get_id(), result.getValue());
-        assertEquals(TestGlobals.DB, result.getDatabaseName());
+        assertEquals(TestGlobals.PROJECT, result.getProjectName());
         assertEquals(TestGlobals.COLL, result.getCollectionName());
         assertTrue(result.getPosition() >= 0);
         assertTrue(result.getLength() > 0);
 
         final var filePath = TestUtils.getDbPath(fs);
-        File collFile = new File(filePath + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        File collFile = new File(filePath + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + "0.dat");
         assertTrue(collFile.exists());
     }
@@ -78,12 +78,13 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         String fieldName = "testField";
         Map<Class<?>, List<FieldIndexEntry<?>>> indexEntryMap = new HashMap<>();
         List<FieldIndexEntry<?>> stringEntries = List.of(
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "value1", Set.of("id1", "id2")),
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "value2", Set.of("id3")));
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "value1", Set.of("id1", "id2")),
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "value2", Set.of("id3")));
         indexEntryMap.put(String.class, stringEntries);
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, indexEntryMap);
-        File indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-" + fieldName + "-String.idx");
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, indexEntryMap);
+        File indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-"
+                + fieldName + "-String.idx");
         String fileContent = Files.readString(indexFile.toPath());
         assertTrue(fileContent.contains("value1" + Globals.ID_SEPARATOR + "id2" + Globals.ID_SEPARATOR + "id1")
                 || fileContent.contains("value1" + Globals.ID_SEPARATOR + "id1" + Globals.ID_SEPARATOR + "id2"));
@@ -94,13 +95,14 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_an_index_log_append_that_empties_the_type_deletes_the_file() throws IOException {
         String fieldName = "testField";
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, Map.of(Double.class,
-                List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, 123.0, new HashSet<>(Set.of("a"))))));
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, Map.of(Double.class, List
+                .of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, 123.0, new HashSet<>(Set.of("a"))))));
 
-        fs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, fieldName, "Number", List.of(), List.of(), false);
+        fs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, "Number", List.of(), List.of(), false);
 
-        File indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-" + fieldName + "-Number.idx");
+        File indexFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-"
+                + fieldName + "-Number.idx");
         assertFalse(indexFile.exists(),
                 "an index left with no entries is deleted, not kept as an empty file another type's lookup"
                         + " would still count");
@@ -111,8 +113,8 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
 
         String fieldName = "testField";
 
-        File mockCollFolder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        File mockCollFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
 
         File indexFile1 = new File(mockCollFolder, TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR + fieldName
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.INDEX_TYPE_NUMBER + Globals.INDEX_FILE_EXTENSION);
@@ -122,7 +124,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         assertTrue(indexFile1.createNewFile());
         assertTrue(indexFile2.createNewFile());
 
-        boolean result = fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, fieldName);
+        boolean result = fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, fieldName);
 
         assertTrue(result);
         assertFalse(indexFile1.exists());
@@ -132,8 +134,8 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_drop_index_spares_a_field_whose_name_extends_the_dropped_one() throws IOException {
 
-        File collFolder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        File collFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
 
         File dropped = new File(collFolder, TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR + "first"
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.INDEX_TYPE_STRING + Globals.INDEX_FILE_EXTENSION);
@@ -146,7 +148,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         assertTrue(sibling.createNewFile());
         assertTrue(siblingNumber.createNewFile());
 
-        assertTrue(fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, "first"));
+        assertTrue(fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, "first"));
 
         assertFalse(dropped.exists(), "the targeted field's index must go");
         assertTrue(sibling.exists(),
@@ -158,8 +160,8 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_drop_index_removes_every_type_of_the_targeted_field() throws IOException {
 
-        File collFolder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        File collFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
 
         File asString = new File(collFolder, TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR + "mixed"
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.INDEX_TYPE_STRING + Globals.INDEX_FILE_EXTENSION);
@@ -172,7 +174,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         assertTrue(asNumber.createNewFile());
         assertTrue(asObject.createNewFile());
 
-        assertTrue(fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, "mixed"));
+        assertTrue(fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, "mixed"));
 
         assertFalse(asString.exists());
         assertFalse(asNumber.exists());
@@ -182,8 +184,8 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_drop_index_does_not_delete_the_pk_index_or_tombstones() throws IOException {
 
-        File mockCollFolder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        File mockCollFolder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
 
         File pkIndex = new File(mockCollFolder, TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.PK_FIELD
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.INDEX_TYPE_STRING + Globals.INDEX_FILE_EXTENSION);
@@ -196,7 +198,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         assertTrue(tombstones.createNewFile());
         assertTrue(target.createNewFile());
 
-        assertTrue(fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, "score"));
+        assertTrue(fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, "score"));
 
         assertFalse(target.exists());
         assertTrue(pkIndex.exists());
@@ -208,7 +210,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
 
         String collName = "user-data";
         File collFolder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + collName);
+                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR + collName);
         assertTrue(collFolder.mkdirs());
 
         File pkIndex = new File(collFolder, collName + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.PK_FIELD
@@ -222,7 +224,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         assertTrue(tombstones.createNewFile());
         assertTrue(target.createNewFile());
 
-        assertTrue(fs.dropIndex(TestGlobals.DB, collName, "data"));
+        assertTrue(fs.dropIndex(TestGlobals.PROJECT, collName, "data"));
 
         assertFalse(target.exists());
         assertTrue(pkIndex.exists());
@@ -235,13 +237,13 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
         String fieldName = "testField";
         Map<Class<?>, List<FieldIndexEntry<?>>> indexEntryMap = new HashMap<>();
         List<FieldIndexEntry<?>> stringEntries = List.of(
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "value1", Set.of("id1", "id2")),
-                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "value2", Set.of("id3")));
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "value1", Set.of("id1", "id2")),
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "value2", Set.of("id3")));
         indexEntryMap.put(String.class, stringEntries);
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, indexEntryMap);
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, indexEntryMap);
 
-        List<FieldIndexEntry<String>> entries = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, fieldName,
-                String.class);
+        List<FieldIndexEntry<String>> entries = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL,
+                fieldName, String.class);
 
         assertNotNull(entries);
         assertEquals(2, entries.size());
@@ -254,7 +256,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
 
         File mockIndexFile = mock(File.class);
         when(mockIndexFile.exists()).thenReturn(true);
-        Path path = Path.of(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        Path path = Path.of(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-pk.idx");
         when(mockIndexFile.toPath()).thenReturn(path);
 
@@ -267,7 +269,7 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
                         + Globals.ID_SEPARATOR + "0");
         Files.write(path, fileLines);
 
-        List<PkIndexEntry> result = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
+        List<PkIndexEntry> result = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(3, result.size());
         assertEquals("value1", result.get(0).getValue());
@@ -285,27 +287,27 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_get_by_index_entries_reads_requested_across_pages() throws IOException {
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var entries = new ArrayList<DbEntry>();
         for (int i = 0; i < 3; i++) {
             JsonObject d = new JsonObject();
             d.addProperty("v", i);
-            DbEntry e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d);
+            DbEntry e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d);
             e.set_id("p0-" + i);
             e.setPage(0);
             entries.add(e);
         }
         JsonObject d3 = new JsonObject();
         d3.addProperty("v", 99);
-        DbEntry e3 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d3);
+        DbEntry e3 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d3);
         e3.set_id("p1-0");
         e3.setPage(1);
         entries.add(e3);
 
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
         final var byId = new HashMap<String, PkIndexEntry>();
         for (var ix : indexed) {
             byId.put(ix.get_id(), ix.getIndex());
@@ -325,19 +327,19 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     @Test
     public void test_get_by_index_entries_single_page_multiple() throws IOException {
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        fs.createDatabaseFolder(TestGlobals.DB);
-        fs.createCollectionFile(TestGlobals.DB, TestGlobals.COLL);
+        fs.createAdminProject();
+        fs.createProjectFolder(TestGlobals.PROJECT);
+        fs.createCollectionFile(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var entries = new ArrayList<DbEntry>();
         for (int i = 0; i < 3; i++) {
             JsonObject d = new JsonObject();
             d.addProperty("name", "n" + i);
-            DbEntry e = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d);
+            DbEntry e = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d);
             e.set_id("id-" + i);
             entries.add(e);
         }
-        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, entries);
+        final var indexed = fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, entries);
         final var pkEntries = indexed.stream().map(IndexedDbEntry::getIndex)
                 .collect(java.util.stream.Collectors.toList());
 
@@ -351,14 +353,14 @@ public class FileSystemFieldIndexTest extends FileSystemTestBase {
     public void test_update_returns_the_appended_index_entry() throws IOException {
         final var data = new JsonObject();
         data.addProperty("name", "test");
-        final var entry1 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry1 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry1.set_id("1");
-        final var entry2 = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry2 = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry2.set_id("2");
         final var pk1 = fs.insertIntoCollection(entry1);
         fs.insertIntoCollection(entry2);
         data.addProperty("name", "updated");
-        final var updatedEntry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var updatedEntry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         updatedEntry.set_id("1");
 
         final var result = fs.updateFromCollection(updatedEntry, pk1);

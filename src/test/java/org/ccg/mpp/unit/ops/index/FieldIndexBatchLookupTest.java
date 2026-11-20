@@ -47,7 +47,7 @@ public class FieldIndexBatchLookupTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         support = new FieldIndexBatchSupport();
     }
 
@@ -59,7 +59,7 @@ public class FieldIndexBatchLookupTest {
     }
 
     private Object lookup() {
-        return cache.fieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        return cache.fieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
     }
 
     private void seedTwoBatches() throws Exception {
@@ -105,19 +105,19 @@ public class FieldIndexBatchLookupTest {
         final var object = new JsonObject();
         object.addProperty("_id", "a");
         object.addProperty(FIELD, "w");
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
-                DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object));
         registerIndex();
 
         assertThrows(IOException.class,
-                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.DB, TestGlobals.COLL, List.of("a")));
+                () -> IndexHelper.bulkUpdateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, List.of("a")));
 
         assertNull(lookup());
         assertNull(support.resident(FIELD, String.class));
     }
 
     private void registerIndex() {
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(FIELD);
         entry.setIndexes(indexes);
@@ -128,7 +128,7 @@ public class FieldIndexBatchLookupTest {
         seedTwoBatches();
         assertNotNull(lookup());
 
-        cache.evictFieldIndex(TestGlobals.DB, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, Number.class));
+        cache.evictFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, Number.class));
 
         assertNull(lookup());
         assertNotNull(support.resident(FIELD, String.class));
@@ -138,7 +138,7 @@ public class FieldIndexBatchLookupTest {
     public void evictingTheLookupResourceKeepsTheLists() throws Exception {
         seedTwoBatches();
 
-        cache.evictFieldIndex(TestGlobals.DB, TestGlobals.COLL, Cache.getFieldLookupIdentifier(FIELD));
+        cache.evictFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, Cache.getFieldLookupIdentifier(FIELD));
 
         assertNull(lookup());
         assertNotNull(support.resident(FIELD, String.class));
@@ -148,18 +148,18 @@ public class FieldIndexBatchLookupTest {
     @Test
     public void evictingEveryTypeOrTheCollectionEvictsTheLookup() throws Exception {
         seedTwoBatches();
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         assertNull(lookup());
 
         seedTwoBatches();
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNull(lookup());
     }
 
     @Test
     public void aRebuiltLookupAfterEvictionIsCachedOneBatchLaterAndMatchesTheFiles() throws Exception {
         seedTwoBatches();
-        cache.evictFieldIndex(TestGlobals.DB, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, String.class));
+        cache.evictFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, String.class));
         support.put("c", JsonBoolean.of(true));
         support.put("a", new JsonNumber(3));
 
@@ -176,10 +176,10 @@ public class FieldIndexBatchLookupTest {
 
     private FieldIndexLookup openBatchLookup(List<String> ids) throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
-        locks.lockIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
+        locks.lockIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         try {
-            final var batch = FieldIndexBatch.open(TestGlobals.DB, TestGlobals.COLL, FIELD, ids);
+            final var batch = FieldIndexBatch.open(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, ids);
             for (final var id : ids) {
                 final var doc = support.documentOf(id, FIELD);
                 batch.apply(id, doc == null ? null : doc.getData().get(FIELD));
@@ -188,8 +188,8 @@ public class FieldIndexBatchLookupTest {
             batch.flush();
             return built;
         } finally {
-            locks.releaseIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -207,7 +207,7 @@ public class FieldIndexBatchLookupTest {
     public void test_a_batch_over_a_non_resident_type_resolves_only_its_ids() throws Exception {
         seedManyIds();
         assertNotNull(lookup());
-        cache.evictFieldIndex(TestGlobals.DB, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, Number.class));
+        cache.evictFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, Cache.getIndexIdentifier(FIELD, Number.class));
         support.put("id1", new JsonString("moved"));
         support.put("id2", new JsonNumber(42));
 
@@ -243,7 +243,7 @@ public class FieldIndexBatchLookupTest {
         support.put("id3", new JsonString("v3"));
         TestUtils.setPrivateField(config, "maxMemoryBytes", 1L);
         try {
-            cache.evictFieldIndexLookup(TestGlobals.DB, TestGlobals.COLL, FIELD);
+            cache.evictFieldIndexLookup(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
             final var built = openBatchLookup(List.of("id3"));
 
             assertEquals(1, built.size(), "a lookup that cannot be admitted holds only the batch's ids");
@@ -257,7 +257,7 @@ public class FieldIndexBatchLookupTest {
     @Test
     public void test_the_next_batch_after_admission_builds_the_full_lookup() throws Exception {
         seedManyIds();
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
         support.put("id5", new JsonString("v5"));
 
         final var scoped = openBatchLookup(List.of("id5"));

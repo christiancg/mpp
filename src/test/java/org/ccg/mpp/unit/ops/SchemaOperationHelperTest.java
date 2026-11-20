@@ -48,26 +48,26 @@ public class SchemaOperationHelperTest {
 
     @BeforeEach
     void reset() {
-        processor.processMessage(new DeleteSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        processor.processMessage(new DeleteSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_get_schema_returns_saved_schema() {
         final var saved = eJson.fromJson(SCHEMA, JsonObject.class);
-        processor.processMessage(new SaveSchemaRequest(TestGlobals.DB, TestGlobals.COLL, saved));
+        processor.processMessage(new SaveSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL, saved));
 
-        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
 
         final var schema = assertInstanceOf(GetSchemaResponse.class, response).getSchema();
         assertEquals(OperationType.GET_SCHEMA, response.getType());
         assertEquals(OperationStatus.OK, response.getStatus());
         assertEquals(saved, schema);
-        assertNotSame(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL), schema);
+        assertNotSame(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL), schema);
     }
 
     @Test
     public void test_get_schema_without_one_is_404_12() {
-        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(OperationStatus.NOT_FOUND, response.getStatus());
         assertEquals(ErrorCode.SCHEMA_NOT_FOUND.getCode(), response.getErrorCode());
@@ -75,7 +75,7 @@ public class SchemaOperationHelperTest {
 
     @Test
     public void test_get_schema_unknown_collection_is_404_11() {
-        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.DB, "missingColl"));
+        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.PROJECT, "missingColl"));
 
         assertEquals(ErrorCode.COLLECTION_NOT_FOUND.getCode(), response.getErrorCode());
     }
@@ -84,28 +84,28 @@ public class SchemaOperationHelperTest {
     public void test_get_schema_of_an_unknown_collection_leaves_no_collection_lock() throws Exception {
         final var ghost = "ghostSchemaColl";
 
-        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.DB, ghost));
+        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.PROJECT, ghost));
 
         assertEquals(ErrorCode.COLLECTION_NOT_FOUND.getCode(), response.getErrorCode());
         final Map<?, ?> locks = TestUtils.getPrivateStaticField(ResourceLocking.class, "locks", Map.class);
-        assertFalse(locks.containsKey(Cache.getCollectionIdentifier(TestGlobals.DB, ghost)),
+        assertFalse(locks.containsKey(Cache.getCollectionIdentifier(TestGlobals.PROJECT, ghost)),
                 "a name nobody registered must not keep a collection lock after the read hold is released");
     }
 
     @Test
     public void test_unreadable_schema_is_503_11() throws Exception {
         processor.processMessage(
-                new SaveSchemaRequest(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson(SCHEMA, JsonObject.class)));
+                new SaveSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL, eJson.fromJson(SCHEMA, JsonObject.class)));
         Files.writeString(schemaFile(), "{not json", StandardCharsets.UTF_8);
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = processor.processMessage(new GetSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(ErrorCode.SCHEMA_UNAVAILABLE.getCode(), response.getErrorCode());
     }
 
     private static Path schemaFile() {
-        return Path.of(TestGlobals.PATH, TestGlobals.DB, TestGlobals.COLL, TestGlobals.COLL
+        return Path.of(TestGlobals.PATH, TestGlobals.PROJECT, TestGlobals.COLL, TestGlobals.COLL
                 + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.SCHEMA_FILE_NAME + Globals.SCHEMA_FILE_EXTENSION);
     }
 }

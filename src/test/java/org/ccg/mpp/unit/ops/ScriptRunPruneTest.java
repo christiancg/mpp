@@ -51,10 +51,10 @@ public class ScriptRunPruneTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptRunHistoryEnabled", true);
         ScriptRunHistory.write(new ScriptRunRecord("creates-the-collection", ScriptRunKind.CALL_PROCEDURE,
-                TestGlobals.DB, "job", "proc", null, null, "u1", "u1", CUTOFF + 10_000_000L, 1L, 1,
+                TestGlobals.PROJECT, "job", "proc", null, null, "u1", "u1", CUTOFF + 10_000_000L, 1L, 1,
                 ScriptRunRecord.OUTCOME_OK, null, null, null, null, null, false));
     }
 
@@ -77,18 +77,18 @@ public class ScriptRunPruneTest {
             document.addProperty("filler", "x".repeat(200));
             documents.add(document);
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, RUNS);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, RUNS);
         request.setObjects(documents);
-        locks.lock(TestGlobals.DB, RUNS);
+        locks.lock(TestGlobals.PROJECT, RUNS);
         try {
             assertEquals(OperationStatus.OK, SaveOperationHelper.executeBulkSave(request).getStatus());
         } finally {
-            locks.release(TestGlobals.DB, RUNS);
+            locks.release(TestGlobals.PROJECT, RUNS);
         }
     }
 
     private Set<String> remainingIds() {
-        return new HashSet<>(cache.getWholeCollection(TestGlobals.DB, RUNS).keySet());
+        return new HashSet<>(cache.getWholeCollection(TestGlobals.PROJECT, RUNS).keySet());
     }
 
     @Test
@@ -99,14 +99,16 @@ public class ScriptRunPruneTest {
         final long forces;
         final int deleted;
         try (var recorder = RecordingForcer.install(true)) {
-            deleted = ScriptRunPrune.prune(TestGlobals.DB, CUTOFF, 0L);
+            deleted = ScriptRunPrune.prune(TestGlobals.PROJECT, CUTOFF, 0L);
             forces = recorder.forcedNames().stream().filter((RUNS + Globals.WAL_EXTENSION)::equals).count();
         }
 
         assertEquals(1500, deleted);
         assertEquals(11, remainingIds().size());
         assertTrue(remainingIds().stream().noneMatch(id -> id.startsWith("stale")));
-        assertTrue(forces <= STALE_CHUNKS + STALE_CHUNKS * 2L * cache.getAdminPageEntries(TestGlobals.DB, RUNS).size(),
+        assertTrue(
+                forces <= STALE_CHUNKS
+                        + STALE_CHUNKS * 2L * cache.getAdminPageEntries(TestGlobals.PROJECT, RUNS).size(),
                 "two chunks of deletes, each vacuuming a page at most once, forced the log " + forces + " times");
     }
 
@@ -114,7 +116,7 @@ public class ScriptRunPruneTest {
     public void test_the_size_cap_keeps_the_newest_rows() throws Exception {
         seed("run", 40, CUTOFF + 1L);
 
-        final var deleted = ScriptRunPrune.prune(TestGlobals.DB, CUTOFF, 15L);
+        final var deleted = ScriptRunPrune.prune(TestGlobals.PROJECT, CUTOFF, 15L);
 
         assertEquals(26, deleted, "41 rows, capped at 15");
         final var remaining = remainingIds();
@@ -133,7 +135,7 @@ public class ScriptRunPruneTest {
                 .thenReturn(new ClusterCoordinator.DeleteReservation(true, null));
         TestUtils.setPrivateStaticField(ScriptRunPrune.class, "clusterCoordinator", coordinator);
 
-        assertEquals(0, ScriptRunPrune.prune(TestGlobals.DB, CUTOFF, 0L));
+        assertEquals(0, ScriptRunPrune.prune(TestGlobals.PROJECT, CUTOFF, 0L));
 
         assertEquals(21, remainingIds().size());
         verify(coordinator, never()).replicateDelete(anyString(), anyString(), anyList(), any());
@@ -148,15 +150,15 @@ public class ScriptRunPruneTest {
                 .thenReturn(new ClusterCoordinator.DeleteReservation(false, 7L));
         TestUtils.setPrivateStaticField(ScriptRunPrune.class, "clusterCoordinator", coordinator);
 
-        assertEquals(20, ScriptRunPrune.prune(TestGlobals.DB, CUTOFF, 0L));
+        assertEquals(20, ScriptRunPrune.prune(TestGlobals.PROJECT, CUTOFF, 0L));
 
         final ArgumentCaptor<List<String>> replicated = ArgumentCaptor.forClass(List.class);
-        verify(coordinator).replicateDelete(eq(TestGlobals.DB), eq(RUNS), replicated.capture(), eq(7L));
+        verify(coordinator).replicateDelete(eq(TestGlobals.PROJECT), eq(RUNS), replicated.capture(), eq(7L));
         assertEquals(20, replicated.getValue().size());
     }
 
     @Test
-    public void test_a_database_without_history_prunes_nothing() throws Exception {
-        assertEquals(0, ScriptRunPrune.prune("noHistoryDb", CUTOFF, 1L));
+    public void test_a_project_without_history_prunes_nothing() throws Exception {
+        assertEquals(0, ScriptRunPrune.prune("noHistoryProject", CUTOFF, 1L));
     }
 }

@@ -21,7 +21,7 @@ public class PkIndexEntryBytesTest {
         assertEquals(20L, parsed.getLength());
         assertEquals(3L, parsed.getPage());
         assertEquals(40L, parsed.getVersion());
-        assertEquals("db", parsed.getDatabaseName());
+        assertEquals("db", parsed.getProjectName());
         assertEquals("coll", parsed.getCollectionName());
     }
 

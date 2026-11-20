@@ -52,7 +52,7 @@ public class TransactionOperationHelperTest {
 
     private Thread startWriteLockHolder(CountDownLatch acquired, CountDownLatch release) {
         final var holder = new Thread(() -> {
-            if (locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL)) {
+            if (locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 acquired.countDown();
                 try {
                     if (!release.await(30, TimeUnit.SECONDS)) {
@@ -61,7 +61,7 @@ public class TransactionOperationHelperTest {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
-                    locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+                    locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
                 }
             }
         });
@@ -72,12 +72,12 @@ public class TransactionOperationHelperTest {
     @Test
     public void test_held_locks_survive_a_failed_cross_thread_release() throws Exception {
         final var coll = "cross_thread_coll";
-        processor.processMessage(new org.ccg.mpp.ops.req.CreateCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new org.ccg.mpp.ops.req.CreateCollectionRequest(TestGlobals.PROJECT, coll));
         final var clientId = clientTracker.registerForwardedClient("cross");
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         final var holder = new Thread(() -> {
             TransactionOperationHelper.start(clientId);
-            final var request = new SaveRequest(TestGlobals.DB, coll);
+            final var request = new SaveRequest(TestGlobals.PROJECT, coll);
             final var object = new JsonObject();
             object.add("_id", new JsonString("stranded"));
             request.setObject(object);
@@ -100,14 +100,14 @@ public class TransactionOperationHelperTest {
         final var clientId = clientTracker.registerForwardedClient("unreleasable");
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString("commit-stranded"));
         request.setObject(object);
         request.set_id("commit-stranded");
         TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var notHeldHere = TestGlobals.DB + "|never_locked_coll";
+        final var notHeldHere = TestGlobals.PROJECT + "|never_locked_coll";
         transaction.getHeldLocks().add(notHeldHere);
 
         final var response = TransactionOperationHelper.commit(clientId);
@@ -123,7 +123,7 @@ public class TransactionOperationHelperTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -146,7 +146,7 @@ public class TransactionOperationHelperTest {
     }
 
     private SaveRequest saveRequest(String id) {
-        final var req = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         req.setObject(obj);
@@ -163,7 +163,7 @@ public class TransactionOperationHelperTest {
             assertTrue(TransactionOperationHelper.isAllowedDuringTransaction(allowed), allowed + " should be allowed");
         }
         for (final var blocked : new OperationType[]{OperationType.CREATE_COLLECTION, OperationType.DROP_COLLECTION,
-                OperationType.CREATE_INDEX, OperationType.LISTEN, OperationType.CREATE_DATABASE}) {
+                OperationType.CREATE_INDEX, OperationType.LISTEN, OperationType.CREATE_PROJECT}) {
             assertFalse(TransactionOperationHelper.isAllowedDuringTransaction(blocked), blocked + " should be blocked");
         }
     }
@@ -229,8 +229,8 @@ public class TransactionOperationHelperTest {
         TransactionOperationHelper.cleanupOnDisconnect(clientId);
 
         assertNull(clientTracker.getActiveTransaction(clientId));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -280,8 +280,8 @@ public class TransactionOperationHelperTest {
             assertEquals("500-24", response.getErrorCode());
         }
         assertNull(clientTracker.getActiveTransaction(clientId));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         deleteAllBufferedOps();
     }
 
@@ -309,8 +309,8 @@ public class TransactionOperationHelperTest {
             TransactionOperationHelper.cleanupOnDisconnect(clientId);
         }
         assertNull(clientTracker.getActiveTransaction(clientId));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         deleteAllBufferedOps();
     }
 
@@ -332,7 +332,7 @@ public class TransactionOperationHelperTest {
     public void test_buffer_bulk_save_error_returns_500_24() throws Exception {
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var objects = new ArrayList<JsonObject>();
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("txn-bulk-err"));
@@ -356,7 +356,7 @@ public class TransactionOperationHelperTest {
         processor.processMessage(new CommitTransactionRequest(), clientId);
 
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("txn-deleteme");
         try (var mocked = mockStatic(TransactionWrites.class, CALLS_REAL_METHODS)) {
             mocked.when(() -> TransactionWrites.documentForDeletedTrigger(any(), any(), any(), any(), any()))
@@ -387,7 +387,7 @@ public class TransactionOperationHelperTest {
                     clientTracker.getActiveTransaction(clientId));
 
             final var mockCoordinator = mock(ClusterCoordinator.class);
-            when(mockCoordinator.stillOwns(TestGlobals.DB, TestGlobals.COLL)).thenReturn(false);
+            when(mockCoordinator.stillOwns(TestGlobals.PROJECT, TestGlobals.COLL)).thenReturn(false);
             final var original = swapCoordinator(mockCoordinator);
             try {
                 final var response = TransactionOperationHelper.commit(clientId);
@@ -397,8 +397,8 @@ public class TransactionOperationHelperTest {
             }
 
             assertNull(clientTracker.getActiveTransaction(clientId));
-            assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+            locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
             deleteAllBufferedOps();
         } finally {
             clientTracker.removeTxSession(sessionId);
@@ -417,7 +417,7 @@ public class TransactionOperationHelperTest {
                     clientTracker.getActiveTransaction(clientId));
 
             final var mockCoordinator = mock(ClusterCoordinator.class);
-            when(mockCoordinator.stillOwns(TestGlobals.DB, TestGlobals.COLL)).thenReturn(true);
+            when(mockCoordinator.stillOwns(TestGlobals.PROJECT, TestGlobals.COLL)).thenReturn(true);
             final var original = swapCoordinator(mockCoordinator);
             try {
                 final var response = TransactionOperationHelper.commit(clientId);
@@ -428,8 +428,8 @@ public class TransactionOperationHelperTest {
             }
 
             assertNull(clientTracker.getActiveTransaction(clientId));
-            assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+            locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         } finally {
             clientTracker.removeTxSession(sessionId);
         }

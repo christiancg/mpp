@@ -38,14 +38,14 @@ public class IndexIdCountsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         world = new RefusedTypeWorld(FIELD, POOL);
     }
 
     @AfterEach
     public void tearDown() throws Exception {
-        idCounts.forgetDatabase(FieldIndexBatchSupport.DB);
+        idCounts.forgetProject(FieldIndexBatchSupport.PROJECT);
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", savedMaxMemory);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -69,8 +69,8 @@ public class IndexIdCountsTest {
     }
 
     private long fullLoadCount(Class<?> type) throws Exception {
-        final var loaded = fs.readWholeFieldIndexFiles(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, FIELD,
-                type);
+        final var loaded = fs.readWholeFieldIndexFiles(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL,
+                FIELD, type);
         if (loaded == null) {
             return IndexIdCounts.UNKNOWN;
         }
@@ -82,8 +82,8 @@ public class IndexIdCountsTest {
     }
 
     private long counted(Class<?> type) throws Exception {
-        return idCounts.count(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(type),
-                () -> fs.indexFiles().idCount(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, FIELD, type));
+        return idCounts.count(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, identifier(type), () -> fs
+                .indexFiles().idCount(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, FIELD, type));
     }
 
     private static String identifier(Class<?> type) {
@@ -91,7 +91,7 @@ public class IndexIdCountsTest {
     }
 
     private long known(Class<?> type) {
-        return idCounts.known(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(type));
+        return idCounts.known(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, identifier(type));
     }
 
     private void mutate(Random random, boolean withPriors) throws Exception {
@@ -111,12 +111,12 @@ public class IndexIdCountsTest {
             mutate(random, false);
         }
         for (final var type : TYPES) {
-            assertTrue(fs.indexTypeFileExists(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, FIELD,
+            assertTrue(fs.indexTypeFileExists(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, FIELD,
                     IndexKind.fileLabel(type)));
             assertEquals(fullLoadCount(type), counted(type), type.getSimpleName());
             assertEquals(fullLoadCount(type), known(type));
         }
-        assertEquals(IndexFileLookup.DECLINED, fs.indexFiles().idCount(FieldIndexBatchSupport.DB,
+        assertEquals(IndexFileLookup.DECLINED, fs.indexFiles().idCount(FieldIndexBatchSupport.PROJECT,
                 FieldIndexBatchSupport.COLL, "missing", Number.class));
     }
 
@@ -148,33 +148,34 @@ public class IndexIdCountsTest {
     public void forgottenOnEvict() throws Exception {
         seed(new Random(3));
         counted(Number.class);
-        cache.evictFieldIndex(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(Number.class));
+        cache.evictFieldIndex(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, identifier(Number.class));
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));
         counted(Number.class);
         counted(String.class);
-        cache.evictFieldIndexAllTypes(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, FIELD);
+        cache.evictFieldIndexAllTypes(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, FIELD);
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));
         assertEquals(IndexIdCounts.UNKNOWN, known(String.class));
         counted(Number.class);
-        cache.evictCollection(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
+        cache.evictCollection(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));
         counted(Number.class);
-        cache.evictDatabase(FieldIndexBatchSupport.DB);
+        cache.evictProject(FieldIndexBatchSupport.PROJECT);
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));
     }
 
     @Test
     public void aForgetDuringACountKeepsItUnknown() throws Exception {
         seed(new Random(5));
-        final var count = idCounts.count(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL,
+        final var count = idCounts.count(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL,
                 identifier(Number.class), () -> {
-                    idCounts.forget(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(Number.class));
+                    idCounts.forget(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL,
+                            identifier(Number.class));
                     return 42L;
                 });
         assertEquals(42L, count);
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));
-        idCounts.count(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(Number.class), () -> 3L);
-        idCounts.adjust(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, identifier(Number.class), 1, 5);
+        idCounts.count(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, identifier(Number.class), () -> 3L);
+        idCounts.adjust(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, identifier(Number.class), 1, 5);
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class), "a count that would go negative is dropped");
     }
 }

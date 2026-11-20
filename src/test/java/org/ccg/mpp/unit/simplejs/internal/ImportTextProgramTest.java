@@ -11,7 +11,7 @@ import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 import org.ccg.mpp.simplejs.host.SimpleHostBindings;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -36,8 +36,8 @@ public class ImportTextProgramTest {
         return engine.run(source, new SimpleHostBindings(new JsonObject(), null, null, limits));
     }
 
-    private ScriptResult runWithDb(String source, FakeDatabaseAccess database) {
-        return engine.run(source, new SimpleHostBindings(new JsonObject(), database, null, enabled()));
+    private ScriptResult runWithProject(String source, FakeProjectAccess project) {
+        return engine.run(source, new SimpleHostBindings(new JsonObject(), project, null, enabled()));
     }
 
     private static String text(ScriptResult result) {
@@ -160,33 +160,33 @@ public class ImportTextProgramTest {
 
     @Test
     public void test_import_text_inside_transaction() {
-        final var database = new FakeDatabaseAccess();
-        final var result = runWithDb("""
+        final var project = new FakeProjectAccess();
+        final var result = runWithProject("""
                 import script from 'script';
                 import db from 'db';
                 db.transaction(() => {
                     script.importText("import db from 'db'; db.save('d', 'c', { _id: 'x' });");
                 });
                 return 'ok';
-                """, database);
+                """, project);
         assertFalse(result.isError(), () -> result.getErrorName() + ": " + result.getErrorMessage());
         assertEquals("ok", text(result));
-        assertTrue(database.calls.contains("save:d/c"));
-        assertTrue(database.calls.contains("commitTransaction"));
+        assertTrue(project.calls.contains("save:d/c"));
+        assertTrue(project.calls.contains("commitTransaction"));
     }
 
     @Test
     public void test_import_text_evaluated_once() {
-        final var database = new FakeDatabaseAccess();
-        final var result = runWithDb("""
+        final var project = new FakeProjectAccess();
+        final var result = runWithProject("""
                 import script from 'script';
                 const src = "import db from 'db'; db.delete('d', 'c', 'once'); export default 1;";
                 const first = script.importText(src);
                 const second = script.importText(src);
                 return first === second;
-                """, database);
+                """, project);
         assertTrue(result.getValue().asJsonBoolean().getValue());
-        assertEquals(1, database.calls.stream().filter(call -> call.equals("delete:d/c/once")).count());
+        assertEquals(1, project.calls.stream().filter(call -> call.equals("delete:d/c/once")).count());
     }
 
     @Test
@@ -202,8 +202,8 @@ public class ImportTextProgramTest {
 
     @Test
     public void test_import_text_failure_is_sticky() {
-        final var database = new FakeDatabaseAccess();
-        final var result = runWithDb("""
+        final var project = new FakeProjectAccess();
+        final var result = runWithProject("""
                 import script from 'script';
                 const src = "import db from 'db'; db.delete('d', 'c', 'boom'); throw new Error('once');";
                 const messages = [];
@@ -211,9 +211,9 @@ public class ImportTextProgramTest {
                     try { script.importText(src, 'failing'); } catch (e) { messages.push(e.message); }
                 }
                 return messages.join(',');
-                """, database);
+                """, project);
         assertEquals("once,once", text(result));
-        assertEquals(1, database.calls.stream().filter(call -> call.equals("delete:d/c/boom")).count());
+        assertEquals(1, project.calls.stream().filter(call -> call.equals("delete:d/c/boom")).count());
     }
 
     @Test
@@ -267,9 +267,9 @@ public class ImportTextProgramTest {
 
     @Test
     public void test_import_text_sees_shared_args_and_db() {
-        final var database = new FakeDatabaseAccess();
-        database.nextFindResult = new JsonObject();
-        database.nextFindResult.add("name", new JsonString("found"));
+        final var project = new FakeProjectAccess();
+        project.nextFindResult = new JsonObject();
+        project.nextFindResult.add("name", new JsonString("found"));
         final var args = new JsonObject();
         args.add("who", new JsonString("caller"));
         final var result = engine.run("""
@@ -278,9 +278,9 @@ public class ImportTextProgramTest {
                     "import args from 'args'; import db from 'db';"
                     + "export default args.who + ':' + db.findById('d', 'c', '1').name;");
                 return m.default;
-                """, new SimpleHostBindings(args, database, null, enabled()));
+                """, new SimpleHostBindings(args, project, null, enabled()));
         assertEquals("caller:found", text(result));
-        assertTrue(database.calls.contains("findById:d/c/1"));
+        assertTrue(project.calls.contains("findById:d/c/1"));
     }
 
     @Test
@@ -408,8 +408,8 @@ public class ImportTextProgramTest {
 
     @Test
     public void test_import_text_diamond_evaluates_shared_module_once() {
-        final var database = new FakeDatabaseAccess();
-        final var result = runWithDb("""
+        final var project = new FakeProjectAccess();
+        final var result = runWithProject("""
                 import script from 'script';
                 globalThis.__leaf = "import db from 'db'; db.delete('d', 'c', 'leaf'); export default {};";
                 const branch = "import script from 'script';"
@@ -420,9 +420,9 @@ public class ImportTextProgramTest {
                 const right = script.importText("import script from 'script';"
                     + "export default script.importText(globalThis.__branch, 'b').default;", 'right');
                 return left.default === right.default;
-                """, database);
+                """, project);
         assertTrue(result.getValue().asJsonBoolean().getValue());
-        assertEquals(1, database.calls.stream().filter(call -> call.equals("delete:d/c/leaf")).count());
+        assertEquals(1, project.calls.stream().filter(call -> call.equals("delete:d/c/leaf")).count());
     }
 
     @Test

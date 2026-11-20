@@ -10,7 +10,7 @@ public final class PendingFold {
         SKIPPED, FOLDED, EMPTIED
     }
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String fieldName;
     private final String typeLabel;
@@ -22,9 +22,9 @@ public final class PendingFold {
     private final IndexTypeReader source;
     private final boolean pastResidentCeiling;
 
-    private PendingFold(String dbName, String collName, String fieldName, String typeLabel, File indexFile,
+    private PendingFold(String projectName, String collName, String fieldName, String typeLabel, File indexFile,
             List<? extends FieldIndexEntry<?>> survivors, IndexTypeReader source, boolean pastResidentCeiling) {
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.fieldName = fieldName;
         this.typeLabel = typeLabel;
@@ -37,22 +37,23 @@ public final class PendingFold {
         this.pastResidentCeiling = pastResidentCeiling;
     }
 
-    static PendingFold ofSurvivors(String dbName, String collName, String fieldName, String typeLabel, File indexFile,
-            List<? extends FieldIndexEntry<?>> survivors, boolean pastResidentCeiling) {
-        return new PendingFold(dbName, collName, fieldName, typeLabel, indexFile, survivors, null, pastResidentCeiling);
+    static PendingFold ofSurvivors(String projectName, String collName, String fieldName, String typeLabel,
+            File indexFile, List<? extends FieldIndexEntry<?>> survivors, boolean pastResidentCeiling) {
+        return new PendingFold(projectName, collName, fieldName, typeLabel, indexFile, survivors, null,
+                pastResidentCeiling);
     }
 
-    static PendingFold ofSource(String dbName, String collName, String fieldName, String typeLabel, File indexFile,
+    static PendingFold ofSource(String projectName, String collName, String fieldName, String typeLabel, File indexFile,
             IndexTypeReader source) {
-        return new PendingFold(dbName, collName, fieldName, typeLabel, indexFile, null, source, true);
+        return new PendingFold(projectName, collName, fieldName, typeLabel, indexFile, null, source, true);
     }
 
     public boolean pastResidentCeiling() {
         return pastResidentCeiling;
     }
 
-    public String dbName() {
-        return dbName;
+    public String projectName() {
+        return projectName;
     }
 
     public String collName() {
@@ -85,7 +86,7 @@ public final class PendingFold {
         }
         final var folded = source.read();
         if (folded == null) {
-            throw new IOException("The " + typeLabel + " index of " + dbName + "|" + collName + "." + fieldName
+            throw new IOException("The " + typeLabel + " index of " + projectName + "|" + collName + "." + fieldName
                     + " could not be read to fold its log, so its changes stay logged;"
                     + " run REINDEX on the collection to rebuild it");
         }

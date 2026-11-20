@@ -5,7 +5,7 @@ types. A property named `id` is stored as `_id` unless the type also declares `_
 
 ## JacksonCodec(Class, Json)
 
-Internal: use `Database.collection(name, Class)`.
+Internal: use `Project.collection(name, Class)`.
 
 @param type the mapped class
 @param json the client's JSON configuration

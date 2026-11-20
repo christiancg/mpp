@@ -14,8 +14,8 @@ def _check(value: object, pattern: re.Pattern[str], what: str, rule: str) -> str
     return value
 
 
-def database_name(name: object) -> str:
-    return _check(name, _NAME, "database name", _NAME_RULE)
+def project_name(name: object) -> str:
+    return _check(name, _NAME, "project name", _NAME_RULE)
 
 
 def collection_name(name: object) -> str:

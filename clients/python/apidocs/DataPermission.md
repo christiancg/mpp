@@ -1,3 +1,3 @@
 # DataPermission
 
-A grant on a database or collection: `READ` or `READ_WRITE`.
+A grant on a project or collection: `READ` or `READ_WRITE`.

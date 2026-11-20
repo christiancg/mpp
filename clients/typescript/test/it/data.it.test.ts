@@ -6,9 +6,9 @@ const it = serverIt();
 let orders: Collection<Document, Stored<Document>>;
 
 beforeAll(async () => {
-    const database = it.client.database("data_it");
-    await database.create();
-    orders = database.collection("orders");
+    const project = it.client.project("data_it");
+    await project.create();
+    orders = project.collection("orders");
     await orders.create();
 });
 
@@ -112,7 +112,7 @@ describe("documents", () => {
     });
 
     test("a write to a missing collection is refused with 404-11", async () => {
-        await expect(it.client.database("data_it").collection("missing").save({ _id: "x" })).rejects.toMatchObject({
+        await expect(it.client.project("data_it").collection("missing").save({ _id: "x" })).rejects.toMatchObject({
             rawCode: "404-11",
         });
     });

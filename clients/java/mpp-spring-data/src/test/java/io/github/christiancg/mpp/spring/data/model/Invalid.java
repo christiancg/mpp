@@ -13,10 +13,10 @@ public interface Invalid {
     record NoId(String name) {
     }
 
-    @MppEntity(collection = "x", database = "shop")
+    @MppEntity(collection = "x", project = "shop")
     record ShortCollection(String id) {
     }
 
-    record NoDatabase(String id) {
+    record NoProject(String id) {
     }
 }

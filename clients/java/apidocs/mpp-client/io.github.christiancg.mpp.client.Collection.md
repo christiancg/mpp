@@ -1,12 +1,12 @@
-One collection of a database, typed by the codec that maps its documents.
+One collection of a project, typed by the codec that maps its documents.
 
-Obtained from `Database.collection(...)`. Every call borrows a pooled connection for the length of one request.
+Obtained from `Project.collection(...)`. Every call borrows a pooled connection for the length of one request.
 
 @param <T> the type documents are decoded to
 
-## databaseName()
+## projectName()
 
-@return the database the collection belongs to
+@return the project the collection belongs to
 
 ## name()
 

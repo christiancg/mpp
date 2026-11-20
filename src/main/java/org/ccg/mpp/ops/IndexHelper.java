@@ -35,24 +35,24 @@ public class IndexHelper {
     private static final ResourceLocking rl = IocContainer.get(ResourceLocking.class);
     private static final Configuration configuration = Configuration.getInstance();
 
-    public static List<String> getSortedIdsForField(String dbName, String collName, String fieldName,
+    public static List<String> getSortedIdsForField(String projectName, String collName, String fieldName,
             java.util.Comparator<FieldIndexEntry<?>> order, long maxIds, ReadObserver observer) throws IOException {
-        return IndexEntryReader.sortedIdsForField(dbName, collName, fieldName, order, maxIds, observer);
+        return IndexEntryReader.sortedIdsForField(projectName, collName, fieldName, order, maxIds, observer);
     }
 
-    public static List<FieldIndexEntry<?>> getIndexEntriesForField(String dbName, String collName, String fieldName,
+    public static List<FieldIndexEntry<?>> getIndexEntriesForField(String projectName, String collName,
+            String fieldName, ReadObserver observer) throws IOException {
+        return IndexEntryReader.getIndexEntriesForField(projectName, collName, fieldName, observer);
+    }
+
+    public static List<Object> getDistinctIndexValues(String projectName, String collName, String fieldName,
             ReadObserver observer) throws IOException {
-        return IndexEntryReader.getIndexEntriesForField(dbName, collName, fieldName, observer);
+        return IndexEntryReader.distinctValuesForField(projectName, collName, fieldName, observer);
     }
 
-    public static List<Object> getDistinctIndexValues(String dbName, String collName, String fieldName,
-            ReadObserver observer) throws IOException {
-        return IndexEntryReader.distinctValuesForField(dbName, collName, fieldName, observer);
-    }
-
-    public static Set<String> getMatchingIdsForJoin(String dbName, String collName, String fieldName,
+    public static Set<String> getMatchingIdsForJoin(String projectName, String collName, String fieldName,
             Set<JsonBaseElement> localValues, ReadObserver observer) throws IOException {
-        return IndexEntryReader.getMatchingIdsForJoin(dbName, collName, fieldName, localValues, observer);
+        return IndexEntryReader.getMatchingIdsForJoin(projectName, collName, fieldName, localValues, observer);
     }
 
     public static List<String> idsInOrder(List<FieldIndexEntry<?>> sortedEntries,
@@ -68,73 +68,73 @@ public class IndexHelper {
         return IndexValueCodec.elementToLookupValue(element);
     }
 
-    public static void createIndex(String dbName, String collName, String fieldName) throws InterruptedException {
-        createIndexes(dbName, collName, List.of(fieldName));
+    public static void createIndex(String projectName, String collName, String fieldName) throws InterruptedException {
+        createIndexes(projectName, collName, List.of(fieldName));
     }
 
-    public static void createIndexes(String dbName, String collName, List<String> fieldNames)
+    public static void createIndexes(String projectName, String collName, List<String> fieldNames)
             throws InterruptedException {
         try {
-            IndexBuild.buildAll(dbName, collName, fieldNames);
+            IndexBuild.buildAll(projectName, collName, fieldNames);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    public static boolean dropIndex(String dbName, String collName, String fieldName) throws InterruptedException {
-        rl.lockIndex(dbName, collName, fieldName);
+    public static boolean dropIndex(String projectName, String collName, String fieldName) throws InterruptedException {
+        rl.lockIndex(projectName, collName, fieldName);
         try {
-            return fs.dropIndex(dbName, collName, fieldName);
+            return fs.dropIndex(projectName, collName, fieldName);
         } finally {
-            cache.evictFieldIndexAllTypes(dbName, collName, fieldName);
-            rl.releaseIndex(dbName, collName, fieldName);
+            cache.evictFieldIndexAllTypes(projectName, collName, fieldName);
+            rl.releaseIndex(projectName, collName, fieldName);
         }
     }
 
-    private static void lockCollectionForMaintenance(String dbName, String collName, long budget)
+    private static void lockCollectionForMaintenance(String projectName, String collName, long budget)
             throws InterruptedException {
-        if (!rl.tryLockRead(dbName, collName, budget)) {
-            throw new CollectionBusyException(Cache.getCollectionIdentifier(dbName, collName), budget);
+        if (!rl.tryLockRead(projectName, collName, budget)) {
+            throw new CollectionBusyException(Cache.getCollectionIdentifier(projectName, collName), budget);
         }
     }
 
-    public static void bulkUpdateIndexes(String dbName, String collName, List<String> ids)
+    public static void bulkUpdateIndexes(String projectName, String collName, List<String> ids)
             throws IOException, InterruptedException {
-        bulkUpdateIndexes(dbName, collName, ids, configuration.getTransactionLockTimeoutMs());
+        bulkUpdateIndexes(projectName, collName, ids, configuration.getTransactionLockTimeoutMs());
     }
 
-    public static void bulkUpdateIndexes(String dbName, String collName, List<String> ids, long lockBudgetMs)
+    public static void bulkUpdateIndexes(String projectName, String collName, List<String> ids, long lockBudgetMs)
             throws IOException, InterruptedException {
-        bulkUpdateIndexes(dbName, collName, ids, lockBudgetMs, IndexPriors.NONE);
+        bulkUpdateIndexes(projectName, collName, ids, lockBudgetMs, IndexPriors.NONE);
     }
 
-    public static void bulkUpdateIndexes(String dbName, String collName, List<String> ids, long lockBudgetMs,
+    public static void bulkUpdateIndexes(String projectName, String collName, List<String> ids, long lockBudgetMs,
             IndexPriors priors) throws IOException, InterruptedException {
-        if (ids.isEmpty() || MaintainedIndexes.none(dbName, collName)) {
+        if (ids.isEmpty() || MaintainedIndexes.none(projectName, collName)) {
             return;
         }
         final var folds = new ArrayList<DeferredFold>(0);
         IndexLockBusyException indexBusy = null;
-        lockCollectionForMaintenance(dbName, collName, lockBudgetMs);
+        lockCollectionForMaintenance(projectName, collName, lockBudgetMs);
         try {
-            final var existingIndexes = MaintainedIndexes.of(dbName, collName);
+            final var existingIndexes = MaintainedIndexes.of(projectName, collName);
             if (existingIndexes.isEmpty()) {
                 return;
             }
             final var byId = new HashMap<String, DbEntry>();
-            for (var doc : cache.getEntriesByIds(dbName, collName,
+            for (var doc : cache.getEntriesByIds(projectName, collName,
                     ids.size() == 1 ? Set.of(ids.getFirst()) : new HashSet<>(ids))) {
                 byId.put(doc.get_id(), doc);
             }
-            final var canonicalIds = new CanonicalIds(dbName, collName);
+            final var canonicalIds = new CanonicalIds(projectName, collName);
             for (var fieldName : existingIndexes) {
-                folds.addAll(FieldMaintenance.maintain(dbName, collName, fieldName, ids, byId,
+                folds.addAll(FieldMaintenance.maintain(projectName, collName, fieldName, ids, byId,
                         priors.forField(fieldName), canonicalIds));
             }
         } catch (IndexLockBusyException busy) {
             indexBusy = busy;
         } finally {
-            rl.releaseRead(dbName, collName);
+            rl.releaseRead(projectName, collName);
         }
         FieldIndexFolds.runAfterUnlock(folds);
         if (indexBusy != null) {
@@ -142,8 +142,8 @@ public class IndexHelper {
         }
     }
 
-    public static void updateIndexes(String dbName, String collName, String id)
+    public static void updateIndexes(String projectName, String collName, String id)
             throws IOException, InterruptedException {
-        bulkUpdateIndexes(dbName, collName, Collections.singletonList(id));
+        bulkUpdateIndexes(projectName, collName, Collections.singletonList(id));
     }
 }

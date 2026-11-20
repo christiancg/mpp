@@ -31,7 +31,7 @@ public class DeleteValidationTest {
     }
 
     private static DeleteRequest delete(String id, BaseOperator condition) {
-        final var request = new DeleteRequest("testDb", "testColl");
+        final var request = new DeleteRequest("testProject", "testColl");
         request.set_id(id);
         request.setCondition(condition);
         return request;

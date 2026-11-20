@@ -51,7 +51,7 @@ public final class AggregationOperationHelper {
     }
 
     public static List<JsonObject> processAggregation(AggregateRequest request, long timeoutMs) throws IOException {
-        return applySteps(request.getAggregationSteps(), null, request.getDatabaseName(), request.getCollectionName(),
+        return applySteps(request.getAggregationSteps(), null, request.getProjectName(), request.getCollectionName(),
                 null, timeoutMs);
     }
 
@@ -62,19 +62,19 @@ public final class AggregationOperationHelper {
 
     public static List<JsonObject> processAggregation(AggregateRequest request, Stream<JsonObject> source,
             Transaction transaction) throws IOException {
-        return applySteps(request.getAggregationSteps(), source, request.getDatabaseName(), request.getCollectionName(),
+        return applySteps(request.getAggregationSteps(), source, request.getProjectName(), request.getCollectionName(),
                 transaction, aggregateTimeoutMs());
     }
 
     public static List<JsonObject> processAggregation(AggregateRequest request, Stream<JsonObject> source,
             Transaction transaction, PipelineContext context) throws IOException {
-        return applySteps(request.getAggregationSteps(), source, 0, request.getDatabaseName(),
+        return applySteps(request.getAggregationSteps(), source, 0, request.getProjectName(),
                 request.getCollectionName(), context, transaction);
     }
 
     public static List<JsonObject> processAggregation(AggregateRequest request, Stream<JsonObject> source,
             int firstStep, Transaction transaction, PipelineContext context) throws IOException {
-        return applySteps(request.getAggregationSteps(), source, firstStep, request.getDatabaseName(),
+        return applySteps(request.getAggregationSteps(), source, firstStep, request.getProjectName(),
                 request.getCollectionName(), context, transaction);
     }
 
@@ -83,9 +83,9 @@ public final class AggregationOperationHelper {
     }
 
     public static List<String> aggregateLockSet(AggregateRequest request) {
-        final var dbName = request.getDatabaseName();
-        return aggregateCollections(request).stream().map(collName -> Cache.getCollectionIdentifier(dbName, collName))
-                .toList();
+        final var projectName = request.getProjectName();
+        return aggregateCollections(request).stream()
+                .map(collName -> Cache.getCollectionIdentifier(projectName, collName)).toList();
     }
 
     public static List<String> aggregateCollections(AggregateRequest request) {
@@ -103,19 +103,19 @@ public final class AggregationOperationHelper {
 
     // A Stream is lazy, so a SCRIPT callable runs during toList(): the context must wrap the terminal op too.
     private static List<JsonObject> applySteps(List<BaseAggregationStep> steps, Stream<JsonObject> initialStream,
-            String dbName, String collName, Transaction transaction, long timeoutMs) throws IOException {
+            String projectName, String collName, Transaction transaction, long timeoutMs) throws IOException {
         try (var context = PipelineContext.of(timeoutMs, PipelineContext.configuredMaxResultBytes(), null)) {
-            return applySteps(steps, initialStream, 0, dbName, collName, context, transaction);
+            return applySteps(steps, initialStream, 0, projectName, collName, context, transaction);
         }
     }
 
     private static List<JsonObject> applySteps(List<BaseAggregationStep> steps, Stream<JsonObject> initialStream,
-            int firstStep, String dbName, String collName, PipelineContext context, Transaction transaction)
+            int firstStep, String projectName, String collName, PipelineContext context, Transaction transaction)
             throws IOException {
         Stream<JsonObject> resultStream = context.watch(initialStream);
         var startIndex = firstStep;
         if (resultStream == null) {
-            final var fast = IndexedSource.of(steps, dbName, collName, sortBound(steps, 1), context);
+            final var fast = IndexedSource.of(steps, projectName, collName, sortBound(steps, 1), context);
             if (fast != null) {
                 resultStream = fast.stream();
                 startIndex = fast.nextStepIndex();
@@ -126,18 +126,18 @@ public final class AggregationOperationHelper {
             final var step = steps.get(i);
             resultStream = switch (step.getType()) {
                 case FILTER ->
-                    processFilterStep(step, resultStream, dbName, collName, context, boundAfterRowWise(steps, i));
-                case MAP -> processMapStep(step, resultStream, dbName, collName, context);
+                    processFilterStep(step, resultStream, projectName, collName, context, boundAfterRowWise(steps, i));
+                case MAP -> processMapStep(step, resultStream, projectName, collName, context);
                 case GROUP_BY -> GroupByOperatorHelper.processGroupByStep((GroupByAggregationStep) step, resultStream,
-                        dbName, collName, GroupByOperatorHelper.demandOf(stepAt(steps, i + 1)), context);
-                case JOIN -> processJoinStep(step, resultStream, dbName, collName, transaction, context);
-                case COUNT -> processCountStep(resultStream, dbName, collName);
-                case DISTINCT -> processDistinctStep(step, resultStream, dbName, collName, context);
-                case LIMIT -> processLimitStep(step, resultStream, dbName, collName, context);
-                case SKIP -> processSkipStep(step, resultStream, dbName, collName, context, i == skippedBySort);
+                        projectName, collName, GroupByOperatorHelper.demandOf(stepAt(steps, i + 1)), context);
+                case JOIN -> processJoinStep(step, resultStream, projectName, collName, transaction, context);
+                case COUNT -> processCountStep(resultStream, projectName, collName);
+                case DISTINCT -> processDistinctStep(step, resultStream, projectName, collName, context);
+                case LIMIT -> processLimitStep(step, resultStream, projectName, collName, context);
+                case SKIP -> processSkipStep(step, resultStream, projectName, collName, context, i == skippedBySort);
                 case SORT -> {
                     final var sorted = SortOperatorHelper.processSortStep((SortAggregationStep) step, resultStream,
-                            dbName, collName, sortBound(steps, i), skipAfter(steps, i), context);
+                            projectName, collName, sortBound(steps, i), skipAfter(steps, i), context);
                     skippedBySort = sorted.skipApplied() ? i + 1 : -1;
                     yield sorted.rows();
                 }
@@ -145,7 +145,7 @@ public final class AggregationOperationHelper {
                         resultStream != null && needsFoldOrder(steps, i)
                                 ? ReduceOperatorHelper.inFoldOrder(resultStream)
                                 : resultStream,
-                        dbName, collName, context);
+                        projectName, collName, context);
             };
             resultStream = context.watch(resultStream);
         }
@@ -154,7 +154,7 @@ public final class AggregationOperationHelper {
                 if (collName == null || collName.isEmpty()) {
                     return new ArrayList<>();
                 }
-                resultStream = context.source(null, dbName, collName);
+                resultStream = context.source(null, projectName, collName);
             }
             try (var stream = resultStream) {
                 return materialise(stream, context);
@@ -206,23 +206,23 @@ public final class AggregationOperationHelper {
         return index < steps.size() ? steps.get(index) : null;
     }
 
-    private static Stream<JsonObject> processCountStep(Stream<JsonObject> resultStream, String dbName,
+    private static Stream<JsonObject> processCountStep(Stream<JsonObject> resultStream, String projectName,
             String collName) {
-        return CountOperatorHelper.processCountStep(resultStream, dbName, collName);
+        return CountOperatorHelper.processCountStep(resultStream, projectName, collName);
     }
 
     private static Stream<JsonObject> processFilterStep(BaseAggregationStep baseFilterStep,
-            Stream<JsonObject> resultStream, String dbName, String collName, PipelineContext context, long sourceBound)
-            throws IOException {
+            Stream<JsonObject> resultStream, String projectName, String collName, PipelineContext context,
+            long sourceBound) throws IOException {
         final var filterStep = (FilterAggregationStep) baseFilterStep;
         final var filterOperator = filterStep.getOperator();
-        return FilterOperatorHelper.processOperator(filterOperator, resultStream, dbName, collName, context,
+        return FilterOperatorHelper.processOperator(filterOperator, resultStream, projectName, collName, context,
                 sourceBound);
     }
 
     private static Stream<JsonObject> processMapStep(BaseAggregationStep baseMapStep, Stream<JsonObject> resultStream,
-            String dbName, String collName, PipelineContext context) throws IOException {
-        resultStream = context.source(resultStream, dbName, collName);
+            String projectName, String collName, PipelineContext context) throws IOException {
+        resultStream = context.source(resultStream, projectName, collName);
         final var operators = ((MapAggregationStep) baseMapStep).getOperators();
         final var writes = JsonUtils.writeTreeOf(operators.stream().map(MapOperator::getFieldName).toList());
         final var writtenRoots = writes.roots();
@@ -243,14 +243,14 @@ public final class AggregationOperationHelper {
     }
 
     private static Stream<JsonObject> processReduceStep(BaseAggregationStep baseReduceStep,
-            Stream<JsonObject> resultStream, String dbName, String collName, PipelineContext context)
+            Stream<JsonObject> resultStream, String projectName, String collName, PipelineContext context)
             throws IOException {
-        return ReduceOperatorHelper.processReduceStep((ReduceAggregationStep) baseReduceStep, resultStream, dbName,
+        return ReduceOperatorHelper.processReduceStep((ReduceAggregationStep) baseReduceStep, resultStream, projectName,
                 collName, context);
     }
 
     private static Stream<JsonObject> processJoinStep(BaseAggregationStep baseJoinStep, Stream<JsonObject> resultStream,
-            String dbName, String collName, Transaction transaction, PipelineContext context) throws IOException {
+            String projectName, String collName, Transaction transaction, PipelineContext context) throws IOException {
         final var joinStep = (JoinAggregationStep) baseJoinStep;
         final var joinCollectionName = joinStep.getJoinCollection();
         final var joinCollectionLocalField = joinStep.getLocalField();
@@ -258,10 +258,10 @@ public final class AggregationOperationHelper {
         final var as = joinStep.getAsField();
         final List<JsonObject> leftEntries;
         final var heldLeft = new HeldRows(context);
-        try (var documents = context.source(resultStream, dbName, collName)) {
+        try (var documents = context.source(resultStream, projectName, collName)) {
             leftEntries = context.watch(documents).peek(heldLeft::hold).toList();
         }
-        final var joinedCollection = JoinLookup.build(dbName, joinCollectionName, joinCollectionRemoteField,
+        final var joinedCollection = JoinLookup.build(projectName, joinCollectionName, joinCollectionRemoteField,
                 leftEntries, joinCollectionLocalField, transaction, context);
         final var joinedBytes = new HashMap<SaltedKey, Long>();
         final var asWrites = JsonUtils.writeTreeOf(List.of(as));
@@ -295,12 +295,12 @@ public final class AggregationOperationHelper {
     }
 
     private static Stream<JsonObject> processDistinctStep(BaseAggregationStep baseDistinctStep,
-            Stream<JsonObject> resultStream, String dbName, String collName, PipelineContext context)
+            Stream<JsonObject> resultStream, String projectName, String collName, PipelineContext context)
             throws IOException {
         final var distinctStep = (DistinctAggregationStep) baseDistinctStep;
         final var fieldName = distinctStep.getFieldName();
         if (resultStream == null && fieldName != null && !fieldName.isBlank()) {
-            final var indexValues = IndexHelper.getDistinctIndexValues(dbName, collName, fieldName, context);
+            final var indexValues = IndexHelper.getDistinctIndexValues(projectName, collName, fieldName, context);
             if (indexValues != null) {
                 final var path = FieldPath.of(fieldName);
                 return distinctRows(indexValues.stream().map(indexValue -> {
@@ -310,7 +310,7 @@ public final class AggregationOperationHelper {
                 }), context);
             }
         }
-        resultStream = context.source(resultStream, dbName, collName);
+        resultStream = context.source(resultStream, projectName, collName);
         if (fieldName == null || fieldName.isBlank()) {
             final var seen = new HashSet<RowWithoutId>();
             final var held = new HeldRows(context);
@@ -337,21 +337,21 @@ public final class AggregationOperationHelper {
     }
 
     private static Stream<JsonObject> processLimitStep(BaseAggregationStep baseLimitStep,
-            Stream<JsonObject> resultStream, String dbName, String collName, PipelineContext context)
+            Stream<JsonObject> resultStream, String projectName, String collName, PipelineContext context)
             throws IOException {
-        resultStream = context.source(resultStream, dbName, collName);
+        resultStream = context.source(resultStream, projectName, collName);
         final var limitStep = (LimitAggregationStep) baseLimitStep;
         return resultStream.limit(limitStep.getLimit());
     }
 
     private static Stream<JsonObject> processSkipStep(BaseAggregationStep baseSkipStep, Stream<JsonObject> resultStream,
-            String dbName, String collName, PipelineContext context, boolean appliedBySort) throws IOException {
+            String projectName, String collName, PipelineContext context, boolean appliedBySort) throws IOException {
         if (appliedBySort) {
             return resultStream;
         }
         final var skip = ((SkipAggregationStep) baseSkipStep).getSkip();
         if (resultStream == null) {
-            return context.scan(cache.streamCollectionSkipping(dbName, collName, skip)).map(DbEntry::getData);
+            return context.scan(cache.streamCollectionSkipping(projectName, collName, skip)).map(DbEntry::getData);
         }
         return resultStream.skip(skip);
     }

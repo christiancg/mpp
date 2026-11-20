@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WriteAheadLogTest {
-    private static final String DB = "walDb";
+    private static final String PROJECT = "walProject";
     private static final String COLL = "walColl";
     private static final long SHIPPED_CHECKPOINT_BYTES = 8L * 1024 * 1024;
 
@@ -32,7 +32,7 @@ public class WriteAheadLogTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
@@ -42,7 +42,7 @@ public class WriteAheadLogTest {
     }
 
     private File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private WalCodec.Decoded decoded() throws IOException {
@@ -53,7 +53,7 @@ public class WriteAheadLogTest {
     public void test_the_first_write_starts_the_log_with_a_checkpoint() throws Exception {
         final var decoded = decoded();
 
-        assertEquals(DB, decoded.checkpoint().dbName());
+        assertEquals(PROJECT, decoded.checkpoint().projectName());
         assertEquals(COLL, decoded.checkpoint().collName());
         assertEquals(3, decoded.records().size(), "one record per seeded row");
     }
@@ -66,7 +66,7 @@ public class WriteAheadLogTest {
 
         assertEquals(List.of(), decoded().records());
         assertEquals(rf.fx.page(0).length(), decoded().checkpoint().pageLengths().get(0L));
-        assertEquals(rf.fx.paths.pkIndexFile(DB, COLL).length(), decoded().checkpoint().pkIndexLength());
+        assertEquals(rf.fx.paths.pkIndexFile(PROJECT, COLL).length(), decoded().checkpoint().pkIndexLength());
     }
 
     @Test
@@ -98,10 +98,10 @@ public class WriteAheadLogTest {
 
     @Test
     public void test_a_dropped_collection_is_not_checkpointed_back_into_existence() throws Exception {
-        final var folder = rf.fx.paths.collectionFolder(DB, COLL);
+        final var folder = rf.fx.paths.collectionFolder(PROJECT, COLL);
         assertTrue(FileTreeDeleter.delete(folder));
 
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
 
         assertFalse(folder.exists());
     }
@@ -125,20 +125,20 @@ public class WriteAheadLogTest {
         final var persisted = new AtomicInteger();
         WriteAheadLog.guardWith(new CheckpointGuard() {
             @Override
-            public boolean holdsIndexWork(String dbName, String collName) {
+            public boolean holdsIndexWork(String projectName, String collName) {
                 return true;
             }
 
             @Override
-            public Collection<String> pendingIds(String dbName, String collName) {
+            public Collection<String> pendingIds(String projectName, String collName) {
                 persisted.incrementAndGet();
                 return List.of("waiting");
             }
         });
         try {
             final var log = new WriteAheadLog(rf.fx.paths);
-            log.checkpoint(DB, COLL);
-            log.checkpoint(DB, COLL);
+            log.checkpoint(PROJECT, COLL);
+            log.checkpoint(PROJECT, COLL);
 
             assertEquals(1, persisted.get(), "the second checkpoint drops nothing, so it has nothing to protect");
             assertEquals(List.of("waiting"), decoded().pendingIds());
@@ -159,21 +159,21 @@ public class WriteAheadLogTest {
     public void test_a_group_forces_its_records_once_after_one_base_per_checkpoint() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            final var pkBefore = rf.fx.paths.pkIndexFile(DB, COLL).length();
-            wal.openGroup(DB, COLL);
+            final var pkBefore = rf.fx.paths.pkIndexFile(PROJECT, COLL).length();
+            wal.openGroup(PROJECT, COLL);
             rf.replace("a", "new-a", 0, PagePlacement.APPEND);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             rf.replacer.delete(rf.fx.indexed("c"));
 
             assertEquals(1L, wals(recorder), "only the group base is forced before the group settles");
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
             assertEquals(2L, wals(recorder));
             assertEquals(pkBefore, decoded().groupBase());
             assertEquals(6, decoded().records().size(), "three seeded rows and three grouped writes");
 
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("a", "newer-a", 0, PagePlacement.APPEND);
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
             assertEquals(3L, wals(recorder), "a later group in the same interval reuses the base");
         }
     }
@@ -183,12 +183,12 @@ public class WriteAheadLogTest {
         try (var ignored = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
 
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
 
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.readAt(old), "the old copy waits for the force");
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
             assertTrue(blanked(rf.fx.readAt(old)));
             assertEquals(StorageFixture.record("b", "new-b"), rf.fx.readAt(rf.fx.indexed("b")));
         }
@@ -200,16 +200,16 @@ public class WriteAheadLogTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
 
-            wal.checkpoint(DB, COLL);
+            wal.checkpoint(PROJECT, COLL);
 
             assertEquals(2L, wals(recorder), "the base, then the settle");
             assertTrue(blanked(rf.fx.readAt(old)));
             assertEquals(List.of(), decoded().records());
             assertEquals(WalCodec.NO_GROUP_BASE, decoded().groupBase());
-            assertTrue(wal.closeGroup(DB, COLL), "nothing is left to settle");
+            assertTrue(wal.closeGroup(PROJECT, COLL), "nothing is left to settle");
             assertEquals(2L, wals(recorder));
         }
     }
@@ -219,15 +219,15 @@ public class WriteAheadLogTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
-            wal.markUnapplied(DB, COLL);
+            wal.markUnapplied(PROJECT, COLL);
 
-            wal.requireApplied(DB, COLL);
+            wal.requireApplied(PROJECT, COLL);
 
             assertTrue(wals(recorder) >= 1L, "the replay runs only over a forced log");
             assertTrue(blanked(rf.fx.readAt(old)));
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
         }
     }
 
@@ -236,17 +236,17 @@ public class WriteAheadLogTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var page = rf.fx.page(0);
-            final var pk = rf.fx.paths.pkIndexFile(DB, COLL);
+            final var pk = rf.fx.paths.pkIndexFile(PROJECT, COLL);
             final var pageBefore = page.length();
             final var pkBefore = pk.length();
             final var recordsBefore = decoded().records().size();
             final var old = rf.fx.indexed("b");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             rf.replacer.delete(rf.fx.indexed("c"));
             recorder.failingFor(COLL + ".wal");
 
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
 
             assertEquals(pageBefore, page.length());
             assertEquals(pkBefore, pk.length());
@@ -262,14 +262,14 @@ public class WriteAheadLogTest {
     public void test_a_write_after_a_failed_settle_in_the_same_group_is_refused() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("a", "new-a", 0, PagePlacement.APPEND);
             recorder.failingFor(COLL + ".wal");
             TestUtils.setPrivateField(Configuration.getInstance(), "walCheckpointBytes", 1L);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
 
             assertThrows(IOException.class, () -> rf.replace("c", "new-c", 0, PagePlacement.APPEND));
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
             assertEquals(StorageFixture.record("a", "old-a"), rf.fx.readAt(rf.fx.indexed("a")));
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.readAt(rf.fx.indexed("b")));
         }
@@ -281,12 +281,12 @@ public class WriteAheadLogTest {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
             final var created = rf.fx.page(1);
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 1, PagePlacement.APPEND);
             assertTrue(created.exists());
             recorder.failingFor(COLL + ".wal");
 
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
 
             assertFalse(created.exists(), "a page the taken-back group created is removed, not left empty");
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.readAt(rf.fx.indexed("b")));
@@ -300,12 +300,12 @@ public class WriteAheadLogTest {
         final var old = rf.fx.indexed("b");
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             recorder.failingFor(COLL + ".wal");
             assertTrue(page.setWritable(false));
             try {
-                assertFalse(wal.closeGroup(DB, COLL));
+                assertFalse(wal.closeGroup(PROJECT, COLL));
             } finally {
                 assertTrue(page.setWritable(true));
             }
@@ -324,7 +324,7 @@ public class WriteAheadLogTest {
     @Test
     @RequiresDirectorySync
     public void test_a_checkpoint_forces_the_unforced_index_logs_with_the_pages() throws Exception {
-        final var idxlog = new File(rf.fx.paths.collectionFolder(DB, COLL), COLL + "-tag-String.idxlog");
+        final var idxlog = new File(rf.fx.paths.collectionFolder(PROJECT, COLL), COLL + "-tag-String.idxlog");
         try (var recorder = RecordingForcer.install(true)) {
             FieldIndexLog.append(new File(idxlog.getParentFile(), COLL + "-tag-String.idx"), idxlog,
                     List.of(new IndexLogChange("alpha", List.of("a"), List.of())));
@@ -332,13 +332,13 @@ public class WriteAheadLogTest {
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             recorder.clear();
 
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
 
             assertTrue(recorder.forcedNames().containsAll(List.of(idxlog.getName(), rf.fx.page(0).getName())),
                     recorder.forcedNames().toString());
             recorder.clear();
             rf.replace("a", "new-a", 0, PagePlacement.APPEND);
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
             assertFalse(recorder.forcedNames().contains(idxlog.getName()), "a forced log is forgotten");
         }
     }
@@ -348,16 +348,16 @@ public class WriteAheadLogTest {
     public void test_a_checkpoint_drops_a_group_base_even_with_no_record_after_it() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
             final var wal = new WriteAheadLog(rf.fx.paths);
-            wal.checkpoint(DB, COLL);
-            wal.openGroup(DB, COLL);
+            wal.checkpoint(PROJECT, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             recorder.failingFor(COLL + ".wal");
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
             recorder.failingFor(null);
             assertEquals(0, decoded().framesSinceCheckpoint());
             assertNotEquals(WalCodec.NO_GROUP_BASE, decoded().groupBase());
 
-            wal.checkpoint(DB, COLL);
+            wal.checkpoint(PROJECT, COLL);
 
             assertEquals(WalCodec.NO_GROUP_BASE, decoded().groupBase(),
                     "a pk.idx rewrite after this checkpoint must not leave a stale base behind");
@@ -368,10 +368,10 @@ public class WriteAheadLogTest {
     @RequiresDirectorySync
     public void test_a_pk_index_rewrite_on_a_quiet_log_forces_nothing_in_the_log() throws Exception {
         try (var recorder = RecordingForcer.install(true)) {
-            new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+            new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
             recorder.clear();
 
-            assertTrue(rf.fx.store.rewriteRows(DB, COLL, rows -> rows));
+            assertTrue(rf.fx.store.rewriteRows(PROJECT, COLL, rows -> rows));
 
             assertTrue(recorder.forcedNames().stream().noneMatch(name -> name.startsWith(COLL + ".wal")),
                     recorder.forcedNames().toString());
@@ -401,7 +401,7 @@ public class WriteAheadLogTest {
         rf.replace("a", "new-a", 0, PagePlacement.APPEND);
 
         final var decoded = decoded();
-        assertEquals(DB, decoded.checkpoint().dbName(), "a log that is gone starts over with a checkpoint");
+        assertEquals(PROJECT, decoded.checkpoint().projectName(), "a log that is gone starts over with a checkpoint");
         assertEquals(1, decoded.records().size());
     }
 }

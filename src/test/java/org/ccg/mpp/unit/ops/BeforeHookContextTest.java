@@ -38,7 +38,7 @@ public class BeforeHookContextTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -55,22 +55,22 @@ public class BeforeHookContextTest {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "beforeHookInstructionBudget", 200_000L);
         TestUtils.setPrivateField(configuration, "beforeHookTimeoutMs", 2_000L);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     private void installHook(String name, String procedure, String source, EventType... events) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, procedure, source), ACTOR);
-        final var existing = new java.util.ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, procedure, source), ACTOR);
+        final var existing = new java.util.ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         existing.add(new TriggerDefinition(name, new LinkedHashSet<>(Set.of(events)), procedure,
                 TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, ACTOR, 1L, 1L, 1L,
                 ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, existing);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, existing);
     }
 
     private static JsonObject document(String id) {
@@ -82,7 +82,7 @@ public class BeforeHookContextTest {
     }
 
     private org.ccg.mpp.ops.BeforeHookOutcome run(JsonObject document, EventType event) {
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, event, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, event, ACTOR)) {
             return hooks.apply(document, document.has("_id") ? document.get("_id").asJsonString().getValue() : null,
                     OperationType.SAVE);
         }
@@ -238,8 +238,8 @@ public class BeforeHookContextTest {
     @Test
     public void test_rejects_when_the_procedure_no_longer_exists() throws Exception {
         installHook("v", "gone", "export default function (doc) { };", EventType.CREATED);
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, "gone");
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "gone");
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         final var outcome = run(document("a"), EventType.CREATED);
         assertTrue(outcome.isRejected());
         assertEquals(ErrorCode.BEFORE_HOOK_REJECTED.getCode(), outcome.rejection().getErrorCode());
@@ -247,9 +247,9 @@ public class BeforeHookContextTest {
 
     @Test
     public void test_rejects_when_the_hook_cannot_be_parsed() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "ok", "export default (d) => d;"),
-                ACTOR);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        ProcedureOperationHelper
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "ok", "export default (d) => d;"), ACTOR);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("v", new LinkedHashSet<>(Set.of(EventType.CREATED)), "ok",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true, ACTOR, 1L, 1L,
                         1L, ACTOR)));
@@ -299,7 +299,7 @@ public class BeforeHookContextTest {
         installHook("v", "counter",
                 "let opened = 0; opened++; export default function (doc) { return { ...doc, opened: opened }; };",
                 EventType.CREATED);
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             final var first = hooks.apply(document("a"), "a", OperationType.SAVE);
             final var second = hooks.apply(document("b"), "b", OperationType.SAVE);
             assertEquals(1.0, first.document().get("opened").asJsonNumber().getValue().doubleValue());
@@ -312,7 +312,7 @@ public class BeforeHookContextTest {
         TestUtils.setPrivateField(configuration, "beforeHookInstructionBudget", 20_000L);
         installHook("v", "loop", "export default function (doc) { for (let i = 0; i < 2000; i++) { } return; };",
                 EventType.CREATED);
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             var rejectedAt = -1;
             for (var i = 0; i < 100; i++) {
                 if (hooks.apply(document("d" + i), "d" + i, OperationType.SAVE).isRejected()) {
@@ -326,36 +326,37 @@ public class BeforeHookContextTest {
 
     @Test
     public void test_has_hooks_for_is_false_without_before_rows() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "after", "return 1;"), ACTOR);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "after", "return 1;"),
+                ACTOR);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "after",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_AFTER, false, true, ACTOR, 1L, 1L, 1L,
                         ACTOR)));
-        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED));
+        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED));
     }
 
     @Test
     public void test_has_hooks_for_is_false_for_a_disabled_row() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "off", "return 1;"), ACTOR);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "off", "return 1;"), ACTOR);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("v", new LinkedHashSet<>(Set.of(EventType.CREATED)), "off",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, false, ACTOR, 1L, 1L,
                         1L, ACTOR)));
-        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED));
+        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED));
     }
 
     @Test
     public void test_has_hooks_for_is_false_for_another_event() throws Exception {
         installHook("v", "noop", "export default function (doc) { };", EventType.CREATED);
-        assertTrue(BeforeHookContext.hasHooksFor(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED));
-        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.DB, TestGlobals.COLL, EventType.DELETED));
+        assertTrue(BeforeHookContext.hasHooksFor(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED));
+        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.PROJECT, TestGlobals.COLL, EventType.DELETED));
     }
 
     @Test
     public void test_triggers_disabled_runs_no_hook() throws Exception {
         installHook("v", "boom", "export default function (doc) { throw new Error('no'); };", EventType.CREATED);
         TestUtils.setPrivateField(configuration, "triggersEnabled", false);
-        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED));
+        assertFalse(BeforeHookContext.hasHooksFor(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED));
         assertFalse(run(document("a"), EventType.CREATED).isRejected());
     }
 
@@ -363,8 +364,9 @@ public class BeforeHookContextTest {
     @Test
     public void test_a_missing_definer_does_not_disable_a_before_hook() throws Exception {
         ProcedureOperationHelper.executeSave(
-                new SaveProcedureRequest(TestGlobals.DB, "calc", "export default (d) => ({ ...d, ok: true });"), ACTOR);
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+                new SaveProcedureRequest(TestGlobals.PROJECT, "calc", "export default (d) => ({ ...d, ok: true });"),
+                ACTOR);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("v", new LinkedHashSet<>(Set.of(EventType.CREATED)), "calc",
                         TriggerDefinition.MODE_DOCUMENT, TriggerDefinition.TIMING_BEFORE, false, true,
                         "user-who-is-gone", 1L, 1L, 1L, ACTOR)));
@@ -379,13 +381,13 @@ public class BeforeHookContextTest {
                 EventType.CREATED);
         final var outcome = run(document("a"), EventType.CREATED);
         assertTrue(outcome.isRejected());
-        assertTrue(outcome.rejection().getMessage().contains("Database access is not available"),
+        assertTrue(outcome.rejection().getMessage().contains("Project access is not available"),
                 outcome.rejection().getMessage());
     }
 
     @Test
     public void test_a_hook_may_import_a_sibling_procedure() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "lib",
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "lib",
                 "export function tag(d) { return { ...d, via: 'lib' }; }"), ACTOR);
         installHook("v", "uses",
                 "import { tag } from 'procedures/lib'; export default function (doc) { return tag(doc); };",
@@ -409,7 +411,7 @@ public class BeforeHookContextTest {
     @Test
     public void test_close_is_idempotent() throws Exception {
         installHook("v", "noop", "export default function (doc) { };", EventType.CREATED);
-        final var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR);
+        final var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR);
         hooks.apply(document("a"), "a", OperationType.SAVE);
         hooks.close();
         hooks.close();
@@ -417,11 +419,11 @@ public class BeforeHookContextTest {
 
     @Test
     public void test_is_empty_reports_no_hooks() throws Exception {
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             assertTrue(hooks.isEmpty());
         }
         installHook("v", "noop", "export default function (doc) { };", EventType.CREATED);
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             assertFalse(hooks.isEmpty());
         }
     }
@@ -431,7 +433,7 @@ public class BeforeHookContextTest {
         installHook("v", "noop", "export default function (doc) { };", EventType.CREATED);
         final var registry = IocContainer.get(ScriptRunRegistry.class);
         final var before = registry.size();
-        try (var opened = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var opened = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             assertFalse(opened.isEmpty());
             assertEquals(before + 1, registry.size());
             assertTrue(registry.list().stream().anyMatch(run -> run.kind() == ScriptRunKind.BEFORE_HOOK));
@@ -443,7 +445,7 @@ public class BeforeHookContextTest {
     public void test_an_empty_context_registers_nothing() {
         final var registry = IocContainer.get(ScriptRunRegistry.class);
         final var before = registry.size();
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED, ACTOR)) {
             assertTrue(hooks.isEmpty());
             assertEquals(before, registry.size());
         }

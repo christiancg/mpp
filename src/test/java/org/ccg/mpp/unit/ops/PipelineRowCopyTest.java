@@ -46,7 +46,7 @@ public class PipelineRowCopyTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
     }
 
@@ -56,17 +56,17 @@ public class PipelineRowCopyTest {
     }
 
     private void cacheDoc(String collName, JsonObject doc) throws IOException {
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, collName, doc);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, collName, doc);
         entry.set_id(doc.get(Globals.PK_FIELD).asJsonString().getValue());
-        TestUtils.cacheEntry(cache, TestGlobals.DB, collName, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, collName, entry);
     }
 
     private JsonObject cachedDoc(String collName, String id) {
-        return cache.getWholeCollection(TestGlobals.DB, collName).get(id).getData();
+        return cache.getWholeCollection(TestGlobals.PROJECT, collName).get(id).getData();
     }
 
     private static List<JsonObject> run(List<BaseAggregationStep> steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         return AggregationOperationHelper.processAggregation(request);
     }

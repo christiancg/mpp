@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 public class GroupCommitThrowableTest {
     private static final int CONCURRENT_SAVES = 48;
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
-    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    private static final String SUBJECT = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
     private IntConsumer originalHalt;
     private RecordingForcer recorder;
@@ -37,7 +37,7 @@ public class GroupCommitThrowableTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalHalt = TestUtils.getPrivateField(faultInjector, "halt", IntConsumer.class);
         recorder = RecordingForcer.install(true);
         fixture = new GroupCommitFixture(recorder);
@@ -59,7 +59,7 @@ public class GroupCommitThrowableTest {
     }
 
     private static CompletableFuture<OperationResponse> queued(GroupCommit.GroupedWrite write) {
-        return CompletableFuture.supplyAsync(() -> GroupCommit.run(TestGlobals.DB, TestGlobals.COLL, write),
+        return CompletableFuture.supplyAsync(() -> GroupCommit.run(TestGlobals.PROJECT, TestGlobals.COLL, write),
                 command -> Thread.ofVirtual().start(command));
     }
 
@@ -68,7 +68,7 @@ public class GroupCommitThrowableTest {
     public void aThrowingBatchFailsItsWritesAndElectsNoLooper() throws Exception {
         final CompletableFuture<OperationResponse> throwing;
         final CompletableFuture<OperationResponse> other;
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             throwing = queued(write("bad", _ -> {
                 throw new AssertionError("a batch member that throws an Error");
@@ -78,7 +78,7 @@ public class GroupCommitThrowableTest {
                     _ -> GroupCommit.answered(new OperationResponse(OperationType.SAVE, OperationStatus.OK, "saved"))));
             GroupCommitFixture.awaitQueued(2);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         for (final var response : List.of(throwing, other)) {
@@ -92,7 +92,7 @@ public class GroupCommitThrowableTest {
     @RequiresDirectorySync
     public void aBatchThrowingAfterACommitAnswersTheSettledWriteAsDurable() throws Exception {
         final var responses = fixture.runQueued(List.of(() -> fixture.save("kept", "v"),
-                () -> GroupCommit.run(TestGlobals.DB, TestGlobals.COLL, write("bad", _ -> () -> {
+                () -> GroupCommit.run(TestGlobals.PROJECT, TestGlobals.COLL, write("bad", _ -> () -> {
                     throw new AssertionError("a commit that throws an Error");
                 }))));
 

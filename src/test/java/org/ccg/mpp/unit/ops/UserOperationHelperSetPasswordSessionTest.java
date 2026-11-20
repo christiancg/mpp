@@ -37,7 +37,7 @@ public class UserOperationHelperSetPasswordSessionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(config, "maxConnections", 0);
         createUser("pat", false);
         createUser("quinn", false);
@@ -58,7 +58,7 @@ public class UserOperationHelperSetPasswordSessionTest {
         request.setPassword(PASSWORD);
         request.setAdmin(admin);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -149,8 +149,9 @@ public class UserOperationHelperSetPasswordSessionTest {
                     .apply("{\"type\":\"AUTHENTICATE\",\"username\":\"tx_holder\",\"password\":\"" + PASSWORD + "\"}")
                     .contains("\"OK\""));
             assertTrue(send.apply("{\"type\":\"START_TRANSACTION\"}").contains("\"OK\""));
-            assertTrue(send.apply("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                    + TestGlobals.COLL + "\",\"object\":{\"_id\":\"held\"}}").contains("\"OK\""));
+            assertTrue(send.apply("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
+                    + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{\"_id\":\"held\"}}")
+                    .contains("\"OK\""));
 
             final var admin = connectAs("root_admin");
             assertEquals(OperationStatus.OK, UserOperationHelper
@@ -158,7 +159,7 @@ public class UserOperationHelperSetPasswordSessionTest {
 
             final var rollback = send.apply("{\"type\":\"ROLLBACK_TRANSACTION\"}");
             assertTrue(rollback.contains("\"OK\""), rollback);
-            assertTrue(send.apply("{\"type\":\"LIST_DATABASES\"}").contains("401-1"));
+            assertTrue(send.apply("{\"type\":\"LIST_PROJECTS\"}").contains("401-1"));
         } finally {
             connection.join(10_000);
         }

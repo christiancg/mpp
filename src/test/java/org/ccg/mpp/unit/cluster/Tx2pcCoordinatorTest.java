@@ -66,7 +66,7 @@ public class Tx2pcCoordinatorTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         origAckTimeoutMs = config.getReplicationAckTimeoutMs();
         origPool = TestUtils.getPrivateField(coordinator, "pool", PeerConnectionPool.class);
@@ -85,7 +85,7 @@ public class Tx2pcCoordinatorTest {
     private UUID clientWithLocalAndRemoteSlice(String id) {
         final var clientId = clientTracker.addClient(TestUtils.clientSocket());
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var req = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         req.setObject(obj);
@@ -119,7 +119,7 @@ public class Tx2pcCoordinatorTest {
         final var transaction = clientTracker.getActiveTransaction(clientId);
         final var txId = transaction.getTransactionId().toString();
         final var corrupt = new org.ccg.mpp.data.admin.AdminTransactionEntry(txId, "client", 99,
-                org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, TestGlobals.COLL,
+                org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, TestGlobals.COLL,
                 new JsonObject());
         org.ccg.mpp.ops.AdminOperationHelper.saveTransactionOp(corrupt);
         transaction.getBufferedOpIds().add(corrupt.get_id());
@@ -296,10 +296,10 @@ public class Tx2pcCoordinatorTest {
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         org.ccg.mpp.ops.AdminOperationHelper.saveTransactionOp(new org.ccg.mpp.data.admin.AdminTransactionEntry(dtxId,
-                "client", 0, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
+                "client", 0, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT,
                 TestGlobals.COLL, obj));
         org.ccg.mpp.ops.Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:5000", List.of("127.0.0.1:5000"),
-                List.of(org.ccg.mpp.cache.Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(org.ccg.mpp.cache.Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         return dtxId;
     }
 
@@ -318,10 +318,10 @@ public class Tx2pcCoordinatorTest {
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("force-missing"));
         org.ccg.mpp.ops.AdminOperationHelper.saveTransactionOp(new org.ccg.mpp.data.admin.AdminTransactionEntry(dtxId,
-                "client", 0, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, "missing-coll",
-                obj));
+                "client", 0, org.ccg.mpp.data.admin.AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT,
+                "missing-coll", obj));
         org.ccg.mpp.ops.Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:5000", List.of("127.0.0.1:5000"),
-                List.of(org.ccg.mpp.cache.Cache.getCollectionIdentifier(TestGlobals.DB, "missing-coll")));
+                List.of(org.ccg.mpp.cache.Cache.getCollectionIdentifier(TestGlobals.PROJECT, "missing-coll")));
 
         final var response = coordinator.forceResolve(dtxId, true);
 
@@ -345,10 +345,10 @@ public class Tx2pcCoordinatorTest {
         final var releasedOnSignal = new java.util.concurrent.atomic.AtomicBoolean();
         final var holder = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
                 holding.countDown();
                 releasedOnSignal.set(release.await(5, TimeUnit.SECONDS));
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -373,9 +373,9 @@ public class Tx2pcCoordinatorTest {
     @Test
     public void test_force_resolve_broadcasts_to_remote_members() throws Exception {
         final var self = ClusterTestHarness.node("self", 5000);
-        final var other = ClusterTestHarness.node("other", 59998);
+        final var other = ClusterTestHarness.node("peer", 59998);
         TestUtils.setPrivateField(membershipService, "members",
-                new ConcurrentHashMap<>(java.util.Map.of("self", self, "other", other)));
+                new ConcurrentHashMap<>(java.util.Map.of("self", self, "peer", other)));
         TestUtils.setPrivateField(membershipService, "self", self);
         ownership.onMembershipChanged(membershipService.membershipView());
         final var pool = mock(PeerConnectionPool.class);
@@ -394,9 +394,9 @@ public class Tx2pcCoordinatorTest {
     @Test
     public void test_force_resolve_records_the_real_participants() throws Exception {
         final var self = ClusterTestHarness.node("self", 5000);
-        final var other = ClusterTestHarness.node("other", 59998);
+        final var other = ClusterTestHarness.node("peer", 59998);
         TestUtils.setPrivateField(membershipService, "members",
-                new ConcurrentHashMap<>(java.util.Map.of("self", self, "other", other)));
+                new ConcurrentHashMap<>(java.util.Map.of("self", self, "peer", other)));
         TestUtils.setPrivateField(membershipService, "self", self);
         ownership.onMembershipChanged(membershipService.membershipView());
         final var pool = mock(PeerConnectionPool.class);

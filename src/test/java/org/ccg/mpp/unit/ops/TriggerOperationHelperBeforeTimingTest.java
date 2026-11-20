@@ -30,7 +30,7 @@ public class TriggerOperationHelperBeforeTimingTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -43,18 +43,19 @@ public class TriggerOperationHelperBeforeTimingTest {
     @BeforeEach
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "recalc", "return 1;"), ACTOR);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "recalc", "return 1;"),
+                ACTOR);
     }
 
     private static SaveTriggerRequest before() {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "validate", List.of("CREATED"),
-                "recalc");
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "validate",
+                List.of("CREATED"), "recalc");
         request.setTiming(TriggerDefinition.TIMING_BEFORE);
         return request;
     }
@@ -63,17 +64,17 @@ public class TriggerOperationHelperBeforeTimingTest {
     public void test_saves_a_before_trigger() throws Exception {
         final var response = TriggerOperationHelper.executeSave(before(), ACTOR);
         assertInstanceOf(SaveTriggerResponse.class, response, response.getMessage());
-        final var stored = cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL);
+        final var stored = cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, stored.size());
         assertTrue(stored.getFirst().isBefore());
     }
 
     @Test
     public void test_defaults_to_after_when_timing_omitted() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"),
                 "recalc");
         assertInstanceOf(SaveTriggerResponse.class, TriggerOperationHelper.executeSave(request, ACTOR));
-        assertFalse(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL).getFirst().isBefore());
+        assertFalse(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL).getFirst().isBefore());
     }
 
     @Test
@@ -105,7 +106,7 @@ public class TriggerOperationHelperBeforeTimingTest {
 
     @Test
     public void test_allows_batch_mode_on_an_after_trigger() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "audit", List.of("CREATED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "audit", List.of("CREATED"),
                 "recalc");
         request.setMode(TriggerDefinition.MODE_BATCH);
         assertInstanceOf(SaveTriggerResponse.class, TriggerOperationHelper.executeSave(request, ACTOR));
@@ -113,8 +114,8 @@ public class TriggerOperationHelperBeforeTimingTest {
 
     @Test
     public void test_rejects_a_before_trigger_naming_a_missing_procedure() throws Exception {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "validate", List.of("CREATED"),
-                "nonexistent");
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "validate",
+                List.of("CREATED"), "nonexistent");
         request.setTiming(TriggerDefinition.TIMING_BEFORE);
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(),
                 TriggerOperationHelper.executeSave(request, ACTOR).getErrorCode());

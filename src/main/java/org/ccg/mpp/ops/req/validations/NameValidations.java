@@ -30,23 +30,24 @@ public final class NameValidations {
         return isName(name);
     }
 
-    static ValidationResult validateDbNameOnly(String databaseName) {
-        return validateDbName(databaseName, true);
+    static ValidationResult validateProjectNameOnly(String projectName) {
+        return validateProjectName(projectName, true);
     }
 
-    static ValidationResult validateDbOnly(OperationRequest request, boolean rejectAdmin) {
-        return validateDbName(request.getDatabaseName(), rejectAdmin);
+    static ValidationResult validateProjectOnly(OperationRequest request, boolean rejectAdmin) {
+        return validateProjectName(request.getProjectName(), rejectAdmin);
     }
 
-    static ValidationResult validateDbAndColl(OperationRequest request, boolean rejectAdmin) {
-        return validateDbAndColl(request, rejectAdmin, false);
+    static ValidationResult validateProjectAndColl(OperationRequest request, boolean rejectAdmin) {
+        return validateProjectAndColl(request, rejectAdmin, false);
     }
 
     // Reads are deliberately not refused: the history collection exists to be queried.
-    static ValidationResult validateDbAndColl(OperationRequest request, boolean rejectAdmin, boolean rejectReserved) {
-        final var dbResult = validateDbName(request.getDatabaseName(), rejectAdmin);
-        if (!dbResult.isValid()) {
-            return dbResult;
+    static ValidationResult validateProjectAndColl(OperationRequest request, boolean rejectAdmin,
+            boolean rejectReserved) {
+        final var projectResult = validateProjectName(request.getProjectName(), rejectAdmin);
+        if (!projectResult.isValid()) {
+            return projectResult;
         }
         final var collResult = validateCollectionName(request.getCollectionName());
         if (!collResult.isValid()) {
@@ -63,9 +64,10 @@ public final class NameValidations {
         return Globals.SCRIPT_RUNS_COLLECTION_NAME.equalsIgnoreCase(collName);
     }
 
-    public static boolean isReservedDbName(String dbName) {
-        return Globals.ADMIN_DB_NAME.equalsIgnoreCase(dbName) || Globals.ADMIN_PAGES_DB_NAME.equalsIgnoreCase(dbName)
-                || Globals.CLUSTER_FOLDER.equalsIgnoreCase(dbName);
+    public static boolean isReservedProjectName(String projectName) {
+        return Globals.ADMIN_PROJECT_NAME.equalsIgnoreCase(projectName)
+                || Globals.ADMIN_PAGES_PROJECT_NAME.equalsIgnoreCase(projectName)
+                || Globals.CLUSTER_FOLDER.equalsIgnoreCase(projectName);
     }
 
     public static boolean isName(String value) {
@@ -106,15 +108,15 @@ public final class NameValidations {
         return ValidationResult.fail("fieldName must be 1-64 characters from A-Z a-z 0-9 _ . -");
     }
 
-    static ValidationResult validateDbName(String dbName, boolean rejectAdmin) {
-        if (dbName == null || dbName.isBlank()) {
-            return ValidationResult.fail("databaseName is required");
+    static ValidationResult validateProjectName(String projectName, boolean rejectAdmin) {
+        if (projectName == null || projectName.isBlank()) {
+            return ValidationResult.fail("projectName is required");
         }
-        if (!isName(dbName)) {
-            return ValidationResult.fail("databaseName must be 3-64 alphanumeric characters, underscores, or hyphens");
+        if (!isName(projectName)) {
+            return ValidationResult.fail("projectName must be 3-64 alphanumeric characters, underscores, or hyphens");
         }
-        if (rejectAdmin && isReservedDbName(dbName)) {
-            return ValidationResult.fail("databaseName '" + dbName + "' is reserved");
+        if (rejectAdmin && isReservedProjectName(projectName)) {
+            return ValidationResult.fail("projectName '" + projectName + "' is reserved");
         }
         return ValidationResult.ok();
     }

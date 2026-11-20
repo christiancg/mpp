@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class PkPointScanTest {
-    private static final String DB = "pointDb";
+    private static final String PROJECT = "pointProject";
     private static final String COLL = "pointColl";
 
     @TempDir
@@ -34,25 +34,25 @@ public class PkPointScanTest {
     public void setUp() {
         paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(paths.collectionFolder(DB, COLL).mkdirs());
+        assertTrue(paths.collectionFolder(PROJECT, COLL).mkdirs());
         store = new PkIndexStore(paths);
     }
 
     private static String row(String id, long position, long version) {
-        return new PkIndexEntry(DB, COLL, id, position, 10L, 0L, version).toFileEntry();
+        return new PkIndexEntry(PROJECT, COLL, id, position, 10L, 0L, version).toFileEntry();
     }
 
     private void write(CharSequence text) throws IOException {
-        Files.writeString(paths.pkIndexFile(DB, COLL).toPath(), text, StandardCharsets.UTF_8);
+        Files.writeString(paths.pkIndexFile(PROJECT, COLL).toPath(), text, StandardCharsets.UTF_8);
     }
 
     private void append(String text) throws IOException {
-        Files.writeString(paths.pkIndexFile(DB, COLL).toPath(), text, StandardCharsets.UTF_8, StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND);
+        Files.writeString(paths.pkIndexFile(PROJECT, COLL).toPath(), text, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
     private Map<String, PkIndexEntry> scan(String... ids) throws IOException {
-        return store.rowsFor(DB, COLL, List.of(ids));
+        return store.rowsFor(PROJECT, COLL, List.of(ids));
     }
 
     @Test
@@ -108,7 +108,7 @@ public class PkPointScanTest {
     @Test
     public void test_a_missing_file_answers_nothing() throws IOException {
         assertTrue(scan("a").isEmpty());
-        assertTrue(store.rowsFor(DB, COLL, List.of()).isEmpty());
+        assertTrue(store.rowsFor(PROJECT, COLL, List.of()).isEmpty());
     }
 
     @Test
@@ -140,9 +140,9 @@ public class PkPointScanTest {
             }
         }
         write(text);
-        assertTrue(paths.pkIndexFile(DB, COLL).length() > PkPointScan.MAX_CHUNK);
+        assertTrue(paths.pkIndexFile(PROJECT, COLL).length() > PkPointScan.MAX_CHUNK);
 
-        final var found = store.rowsFor(DB, COLL, wanted);
+        final var found = store.rowsFor(PROJECT, COLL, wanted);
 
         assertEquals(wanted.size(), found.size());
         for (final var id : wanted) {
@@ -170,9 +170,9 @@ public class PkPointScanTest {
             if (random.nextBoolean()) {
                 append(row(pool.getFirst(), 999, 99));
             }
-            final var scanned = store.rowsFor(DB, COLL, pool);
+            final var scanned = store.rowsFor(PROJECT, COLL, pool);
             final var folded = new HashMap<String, String>();
-            for (final var live : store.readWholePkIndexFile(DB, COLL)) {
+            for (final var live : store.readWholePkIndexFile(PROJECT, COLL)) {
                 if (pool.contains(live.getValue())) {
                     folded.put(live.getValue(), live.toFileEntry());
                 }

@@ -27,95 +27,97 @@ import org.junit.jupiter.api.Test;
 public class AdminRecordAppliersTest extends AdminRecordTestBase {
 
     @Test
-    public void test_a_database_record_installs_its_owners_and_keeps_the_local_collections() {
-        AdminRecordMerge.apply(List.of(database(TestGlobals.DB, clock.next(), "alice")), true);
+    public void test_a_project_record_installs_its_owners_and_keeps_the_local_collections() {
+        AdminRecordMerge.apply(List.of(project(TestGlobals.PROJECT, clock.next(), "alice")), true);
 
-        final var installed = cache.getAdminDbEntry(TestGlobals.DB);
+        final var installed = cache.getAdminProjectEntry(TestGlobals.PROJECT);
         assertTrue(installed.isOwner("alice"));
-        assertTrue(cache.getCollectionNamesForDatabase(TestGlobals.DB).contains(TestGlobals.COLL));
+        assertTrue(cache.getCollectionNamesForProject(TestGlobals.PROJECT).contains(TestGlobals.COLL));
     }
 
     @Test
-    public void test_a_newer_case_variant_database_replaces_the_local_one() throws Exception {
+    public void test_a_newer_case_variant_project_replaces_the_local_one() throws Exception {
         final var version = clock.next();
 
-        final var result = AdminRecordMerge.apply(List.of(database("MYDB", version)), true);
+        final var result = AdminRecordMerge.apply(List.of(project("MYPROJECT", version)), true);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
-        assertNotNull(cache.getAdminDbEntry("MYDB"));
-        assertEquals(version, tombstones().get(AdminRecordKey.database(TestGlobals.DB).id()).longValue());
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
+        assertNotNull(cache.getAdminProjectEntry("MYPROJECT"));
+        assertEquals(version, tombstones().get(AdminRecordKey.project(TestGlobals.PROJECT).id()).longValue());
     }
 
     @Test
-    public void test_an_older_case_variant_database_is_buried_under_the_local_one() throws Exception {
-        final var local = liveVersion(AdminRecordKey.database(TestGlobals.DB));
+    public void test_an_older_case_variant_project_is_buried_under_the_local_one() throws Exception {
+        final var local = liveVersion(AdminRecordKey.project(TestGlobals.PROJECT));
 
-        final var result = AdminRecordMerge.apply(List.of(database("MYDB", 2L)), true);
+        final var result = AdminRecordMerge.apply(List.of(project("MYPROJECT", 2L)), true);
 
         assertTrue(result.complete());
-        assertNotNull(cache.getAdminDbEntry(TestGlobals.DB));
-        assertNull(cache.getAdminDbEntry("MYDB"));
-        assertEquals(local, tombstones().get(AdminRecordKey.database("MYDB").id()).longValue());
+        assertNotNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
+        assertNull(cache.getAdminProjectEntry("MYPROJECT"));
+        assertEquals(local, tombstones().get(AdminRecordKey.project("MYPROJECT").id()).longValue());
     }
 
     private static void recordPendingRun(String runId) throws Exception {
         AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(runId, 0L, TriggerRunLog.currentNodeId(),
-                TestGlobals.DB, TestGlobals.COLL, "audit", "mark", EventType.CREATED, false, "admin", 0,
+                TestGlobals.PROJECT, TestGlobals.COLL, "audit", "mark", EventType.CREATED, false, "admin", 0,
                 System.currentTimeMillis(), List.of("watched"), List.of()));
     }
 
     @Test
-    public void test_a_database_tombstone_from_anti_entropy_quarantines_it() throws Exception {
+    public void test_a_project_tombstone_from_anti_entropy_quarantines_it() throws Exception {
         recordPendingRun("quarantined-db-run");
         final var result = AdminRecordMerge
-                .apply(List.of(tombstone(AdminRecordKey.database(TestGlobals.DB), clock.next())), false);
+                .apply(List.of(tombstone(AdminRecordKey.project(TestGlobals.PROJECT), clock.next())), false);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         assertTrue(TriggerRunLog.recordIdsFor("quarantined-db-run").isEmpty(),
-                "a quarantined database keeps no trigger run that could fire into a re-created one");
+                "a quarantined project keeps no trigger run that could fire into a re-created one");
     }
 
     @Test
-    public void test_a_live_database_tombstone_drops_it() {
+    public void test_a_live_project_tombstone_drops_it() {
         final var result = AdminRecordMerge
-                .apply(List.of(tombstone(AdminRecordKey.database(TestGlobals.DB), clock.next())), true);
+                .apply(List.of(tombstone(AdminRecordKey.project(TestGlobals.PROJECT), clock.next())), true);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
     }
 
     @Test
     public void test_a_collection_tombstone_from_anti_entropy_quarantines_it() throws Exception {
         recordPendingRun("quarantined-coll-run");
         final var result = AdminRecordMerge.apply(
-                List.of(tombstone(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL), clock.next())), false);
+                List.of(tombstone(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL), clock.next())),
+                false);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
         assertTrue(TriggerRunLog.recordIdsFor("quarantined-coll-run").isEmpty(),
                 "a quarantined collection keeps no trigger run that could fire into a re-created one");
     }
 
     @Test
     public void test_a_collection_record_builds_and_drops_indexes_to_match() throws Exception {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL, Set.of("old")));
+        AdminOperationHelper
+                .saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL, Set.of("old")));
 
-        AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, TestGlobals.COLL, clock.next(), "added")), true);
+        AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, TestGlobals.COLL, clock.next(), "added")), true);
 
-        assertEquals(Set.of("added"), cache.getIndexesForCollection(TestGlobals.DB, TestGlobals.COLL));
-        assertFalse(fs.indexMarkers().isMarked(TestGlobals.DB, TestGlobals.COLL, "added"));
+        assertEquals(Set.of("added"), cache.getIndexesForCollection(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertFalse(fs.indexMarkers().isMarked(TestGlobals.PROJECT, TestGlobals.COLL, "added"));
     }
 
     @Test
     public void test_a_collection_record_carries_its_incarnation_and_the_clock_observes_it() {
         final var incarnation = clock.next() + 1_000_000L;
 
-        AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "incarnated", clock.next(), incarnation)), true);
+        AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "incarnated", clock.next(), incarnation)), true);
 
-        assertEquals(incarnation, cache.getAdminCollectionEntry(TestGlobals.DB, "incarnated").getIncarnation());
+        assertEquals(incarnation, cache.getAdminCollectionEntry(TestGlobals.PROJECT, "incarnated").getIncarnation());
         assertTrue(clock.current() >= incarnation);
     }
 
@@ -123,35 +125,36 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
     public void test_a_newer_case_variant_collection_replaces_the_local_one() throws Exception {
         final var version = clock.next();
 
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "MYCOLLECTION", version)), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "MYCOLLECTION", version)),
+                true);
 
         assertTrue(result.complete());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "MYCOLLECTION"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "MYCOLLECTION"));
         assertEquals(version,
-                tombstones().get(AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL).id()).longValue());
+                tombstones().get(AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL).id()).longValue());
     }
 
     @Test
     public void test_an_older_case_variant_collection_is_buried_under_the_local_one() throws Exception {
-        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.DB, "MYCOLLECTION", 2L)), true);
+        final var result = AdminRecordMerge.apply(List.of(collection(TestGlobals.PROJECT, "MYCOLLECTION", 2L)), true);
 
         assertTrue(result.complete());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "MYCOLLECTION"));
-        assertTrue(tombstones().containsKey(AdminRecordKey.collection(TestGlobals.DB, "MYCOLLECTION").id()));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "MYCOLLECTION"));
+        assertTrue(tombstones().containsKey(AdminRecordKey.collection(TestGlobals.PROJECT, "MYCOLLECTION").id()));
     }
 
     @Test
     public void test_a_procedure_record_installs_and_its_tombstone_removes_it() throws Exception {
         final var version = clock.next();
 
-        AdminRecordMerge.apply(List.of(procedure(TestGlobals.DB, "proc", version)), true);
-        assertEquals(version, liveVersion(AdminRecordKey.procedure(TestGlobals.DB, "proc")));
+        AdminRecordMerge.apply(List.of(procedure(TestGlobals.PROJECT, "proc", version)), true);
+        assertEquals(version, liveVersion(AdminRecordKey.procedure(TestGlobals.PROJECT, "proc")));
 
-        AdminRecordMerge.apply(List.of(tombstone(AdminRecordKey.procedure(TestGlobals.DB, "proc"), clock.next())),
+        AdminRecordMerge.apply(List.of(tombstone(AdminRecordKey.procedure(TestGlobals.PROJECT, "proc"), clock.next())),
                 true);
-        assertNull(StoredDefinitions.procedure(TestGlobals.DB, "proc"));
+        assertNull(StoredDefinitions.procedure(TestGlobals.PROJECT, "proc"));
     }
 
     @Test
@@ -159,17 +162,17 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
         final var version = clock.next();
 
         AdminRecordMerge.apply(List.of(schema(TestGlobals.COLL, version)), true);
-        assertEquals(version, liveVersion(AdminRecordKey.schema(TestGlobals.DB, TestGlobals.COLL)));
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(version, liveVersion(AdminRecordKey.schema(TestGlobals.PROJECT, TestGlobals.COLL)));
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        AdminRecordMerge
-                .apply(List.of(tombstone(AdminRecordKey.schema(TestGlobals.DB, TestGlobals.COLL), clock.next())), true);
-        assertNull(StoredDefinitions.schema(TestGlobals.DB, TestGlobals.COLL));
+        AdminRecordMerge.apply(
+                List.of(tombstone(AdminRecordKey.schema(TestGlobals.PROJECT, TestGlobals.COLL), clock.next())), true);
+        assertNull(StoredDefinitions.schema(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
     public void test_triggers_and_schedule_records_install_and_remove() throws Exception {
-        final var triggers = AdminRecords.live(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL));
+        final var triggers = AdminRecords.live(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL));
         assertNull(triggers);
         final var triggersBody = new JsonObject();
         triggersBody.add("triggers", new JsonArray());
@@ -179,18 +182,20 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
         scheduleBody.addProperty("intervalMs", 60_000);
 
         final var result = AdminRecordMerge.apply(List.of(
-                new AdminRecord(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL), clock.next(), triggersBody),
-                new AdminRecord(AdminRecordKey.schedule(TestGlobals.DB, "nightly"), clock.next(), scheduleBody)), true);
+                new AdminRecord(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL), clock.next(),
+                        triggersBody),
+                new AdminRecord(AdminRecordKey.schedule(TestGlobals.PROJECT, "nightly"), clock.next(), scheduleBody)),
+                true);
 
         assertTrue(result.complete());
-        assertNotNull(StoredDefinitions.triggers(TestGlobals.DB, TestGlobals.COLL));
-        assertNotNull(StoredDefinitions.schedule(TestGlobals.DB, "nightly"));
+        assertNotNull(StoredDefinitions.triggers(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNotNull(StoredDefinitions.schedule(TestGlobals.PROJECT, "nightly"));
 
         AdminRecordMerge
-                .apply(List.of(tombstone(AdminRecordKey.triggers(TestGlobals.DB, TestGlobals.COLL), clock.next()),
-                        tombstone(AdminRecordKey.schedule(TestGlobals.DB, "nightly"), clock.next())), true);
-        assertNull(StoredDefinitions.triggers(TestGlobals.DB, TestGlobals.COLL));
-        assertNull(StoredDefinitions.schedule(TestGlobals.DB, "nightly"));
+                .apply(List.of(tombstone(AdminRecordKey.triggers(TestGlobals.PROJECT, TestGlobals.COLL), clock.next()),
+                        tombstone(AdminRecordKey.schedule(TestGlobals.PROJECT, "nightly"), clock.next())), true);
+        assertNull(StoredDefinitions.triggers(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertNull(StoredDefinitions.schedule(TestGlobals.PROJECT, "nightly"));
     }
 
     @Test
@@ -198,7 +203,7 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
         final var locks = IocContainer.get(ResourceLocking.class);
         final var holder = Thread.ofVirtual().start(() -> {
             try {
-                locks.lock(TestGlobals.DB, TestGlobals.COLL);
+                locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -210,7 +215,7 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
             final var result = AdminRecordMerge.apply(List.of(schema(TestGlobals.COLL, clock.next())), true);
 
             assertFalse(result.complete());
-            assertNull(StoredDefinitions.schema(TestGlobals.DB, TestGlobals.COLL));
+            assertNull(StoredDefinitions.schema(TestGlobals.PROJECT, TestGlobals.COLL));
         } finally {
             TestUtils.setPrivateField(config, "replicationAckTimeoutMs", origTimeout);
         }
@@ -221,12 +226,12 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
         final var locks = IocContainer.get(ResourceLocking.class);
         Thread.ofVirtual().start(() -> {
             try {
-                locks.lock(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+                locks.lock(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }).join();
-        final var key = AdminRecordKey.collection(TestGlobals.DB, TestGlobals.COLL);
+        final var key = AdminRecordKey.collection(TestGlobals.PROJECT, TestGlobals.COLL);
         final var version = clock.next();
         final var origTimeout = config.getReplicationAckTimeoutMs();
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 50L);
@@ -237,13 +242,13 @@ public class AdminRecordAppliersTest extends AdminRecordTestBase {
         }
 
         assertEquals(version, tombstones().get(key.id()).longValue());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
-    public void test_a_removed_database_that_is_not_there_is_already_removed() throws Exception {
-        assertTrue(DatabaseRecordApplier.remove(tombstone(AdminRecordKey.database("absent"), clock.next()), true));
+    public void test_a_removed_project_that_is_not_there_is_already_removed() throws Exception {
+        assertTrue(ProjectRecordApplier.remove(tombstone(AdminRecordKey.project("absent"), clock.next()), true));
         assertTrue(CollectionRecordApplier
-                .remove(tombstone(AdminRecordKey.collection(TestGlobals.DB, "absent"), clock.next()), false));
+                .remove(tombstone(AdminRecordKey.collection(TestGlobals.PROJECT, "absent"), clock.next()), false));
     }
 }

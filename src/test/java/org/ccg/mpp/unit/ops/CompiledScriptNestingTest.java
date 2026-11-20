@@ -26,7 +26,7 @@ public class CompiledScriptNestingTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -45,7 +45,7 @@ public class CompiledScriptNestingTest {
     public void test_a_procedure_nested_past_the_stack_is_refused_as_invalid() throws Exception {
         TestUtils.setPrivateField(Configuration.getInstance(), "scriptMaxSourceBytes", "1Mb");
         final var response = ProcedureOperationHelper
-                .executeSave(new SaveProcedureRequest(TestGlobals.DB, "tooDeep", deeplyNestedSource()), "admin");
+                .executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "tooDeep", deeplyNestedSource()), "admin");
         assertEquals(ErrorCode.INVALID_PROCEDURE.getCode(), response.getErrorCode());
     }
 

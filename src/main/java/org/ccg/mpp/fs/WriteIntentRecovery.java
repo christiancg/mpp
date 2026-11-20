@@ -32,33 +32,33 @@ final class WriteIntentRecovery {
         }
     }
 
-    boolean recoverBehindAVacuum(String dbName, String collName) throws IOException {
-        if (!pkIndexStore.clearBehindAVacuum(dbName, collName)) {
+    boolean recoverBehindAVacuum(String projectName, String collName) throws IOException {
+        if (!pkIndexStore.clearBehindAVacuum(projectName, collName)) {
             return false;
         }
         var recovered = true;
         try {
-            for (final var intent : journal.openIntents(dbName, collName)) {
+            for (final var intent : journal.openIntents(projectName, collName)) {
                 recovered &= recoverIntent(intent);
             }
         } catch (IOException | RuntimeException e) {
-            stayBehind(dbName, collName);
+            stayBehind(projectName, collName);
             throw e;
         }
         if (!recovered) {
-            stayBehind(dbName, collName);
+            stayBehind(projectName, collName);
         }
         return true;
     }
 
-    private void stayBehind(String dbName, String collName) {
-        pkIndexStore.markBehindAVacuum(dbName, collName);
-        DeferredApplies.flag(dbName, collName);
+    private void stayBehind(String projectName, String collName) {
+        pkIndexStore.markBehindAVacuum(projectName, collName);
+        DeferredApplies.flag(projectName, collName);
     }
 
     private boolean recoverIntent(WriteIntentJournal.Intent intent) throws IOException {
-        final var label = intent.dbName() + Globals.COLL_IDENTIFIER_SEPARATOR + intent.collName();
-        final var rows = pkIndexStore.readRecognisedPkIndex(intent.dbName(), intent.collName());
+        final var label = intent.projectName() + Globals.COLL_IDENTIFIER_SEPARATOR + intent.collName();
+        final var rows = pkIndexStore.readRecognisedPkIndex(intent.projectName(), intent.collName());
         if (rows.isEmpty()) {
             logger.error("Leaving the interrupted vacuum " + intent.label() + " of " + label + " unrecovered: no line"
                     + " of its pk index could be read. Run REINDEX with \"primaryKey\": true on the collection, which"
@@ -72,7 +72,7 @@ final class WriteIntentRecovery {
             switch (item) {
                 case WriteIntent.Vacuum vacuum -> {
                     deleteTemp(intent, vacuum);
-                    final var rederived = rederive(intent.dbName(), intent.collName(), vacuum.page(), byId);
+                    final var rederived = rederive(intent.projectName(), intent.collName(), vacuum.page(), byId);
                     if (rederived == null) {
                         logger.error("Leaving the interrupted vacuum " + intent.label() + " of " + label
                                 + " unrecovered: a page it rewrote holds one _id twice. Repair the page, then restart"
@@ -83,23 +83,23 @@ final class WriteIntentRecovery {
                 }
             }
         }
-        pkIndexStore.appendReplacements(intent.dbName(), intent.collName(), corrections);
+        pkIndexStore.appendReplacements(intent.projectName(), intent.collName(), corrections);
         journal.end(intent);
         logger.warning("Recovered the interrupted vacuum " + intent.label() + " of " + label + ": the pk index now"
                 + " names where its records are");
         return true;
     }
 
-    int recoverPagesOf(String dbName, String collName) throws IOException {
+    int recoverPagesOf(String projectName, String collName) throws IOException {
         var recovered = 0;
-        for (final var intent : journal.openIntents(dbName, collName)) {
+        for (final var intent : journal.openIntents(projectName, collName)) {
             for (final var item : intent.items()) {
                 switch (item) {
                     case WriteIntent.Vacuum vacuum -> deleteTemp(intent, vacuum);
                 }
             }
             journal.end(intent);
-            logger.warning("Recovered the pages of the interrupted vacuum " + intent.label() + " of " + dbName
+            logger.warning("Recovered the pages of the interrupted vacuum " + intent.label() + " of " + projectName
                     + Globals.COLL_IDENTIFIER_SEPARATOR + collName + " ahead of a PK index rebuild");
             recovered++;
         }
@@ -107,16 +107,16 @@ final class WriteIntentRecovery {
     }
 
     private void deleteTemp(WriteIntentJournal.Intent intent, WriteIntent.Vacuum vacuum) throws IOException {
-        Files.deleteIfExists(paths.vacuumFile(intent.dbName(), intent.collName(), vacuum.page()).toPath());
+        Files.deleteIfExists(paths.vacuumFile(intent.projectName(), intent.collName(), vacuum.page()).toPath());
     }
 
-    List<String> replayableIntentsOf(String dbName, String collName) throws IOException {
-        return journal.openIntents(dbName, collName).stream().map(WriteIntentJournal.Intent::label).toList();
+    List<String> replayableIntentsOf(String projectName, String collName) throws IOException {
+        return journal.openIntents(projectName, collName).stream().map(WriteIntentJournal.Intent::label).toList();
     }
 
-    private List<PkIndexEntry> rederive(String dbName, String collName, long pageNumber, Map<String, PkIndexEntry> byId)
-            throws IOException {
-        final var page = paths.collectionPage(dbName, collName, pageNumber);
+    private List<PkIndexEntry> rederive(String projectName, String collName, long pageNumber,
+            Map<String, PkIndexEntry> byId) throws IOException {
+        final var page = paths.collectionPage(projectName, collName, pageNumber);
         final List<PageLines.Line> lines;
         final var lock = FileLocks.lockRead(page);
         try {
@@ -136,7 +136,7 @@ final class WriteIntentRecovery {
             final var effective = byId.get(line.id());
             if (effective != null && effective.getPage() == pageNumber
                     && (effective.getPosition() != line.position() || effective.getLength() != line.length())) {
-                corrections.add(new PkIndexEntry(dbName, collName, line.id(), line.position(), line.length(),
+                corrections.add(new PkIndexEntry(projectName, collName, line.id(), line.position(), line.length(),
                         pageNumber, effective.getVersion()));
             }
         }

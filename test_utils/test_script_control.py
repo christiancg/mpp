@@ -13,7 +13,7 @@ PORT = int(os.environ.get("SCRIPT_CONTROL_TEST_PORT", "8998"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "script_control_db"
+PROJECT = "script_control_project"
 COLL = "docs"
 OUT_COLL = "sideeffects"
 
@@ -29,14 +29,14 @@ TICK_MS = 200
 
 
 class Conn(bu.Conn):
-    def run(self, script: str, args=None, db=DB) -> dict:
-        payload = {"type": "RUN_SCRIPT", "databaseName": db, "script": script}
+    def run(self, script: str, args=None, project=PROJECT) -> dict:
+        payload = {"type": "RUN_SCRIPT", "projectName": project, "script": script}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
 
-    def call(self, name: str, args=None, db=DB) -> dict:
-        payload = {"type": "CALL_PROCEDURE", "databaseName": db, "procedureName": name}
+    def call(self, name: str, args=None, project=PROJECT) -> dict:
+        payload = {"type": "CALL_PROCEDURE", "projectName": project, "procedureName": name}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
@@ -50,17 +50,17 @@ class Conn(bu.Conn):
             payload["runId"] = run_id
         return self.send(payload)
 
-    def save_procedure(self, name: str, script: str, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+    def save_procedure(self, name: str, script: str, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "projectName": project, "name": name, "script": script}
         payload.update(extra)
         return self.send(payload)
 
     def stats(self) -> dict:
-        response = self.send({"type": "GET_DATABASE_STATS"})
+        response = self.send({"type": "GET_PROJECT_STATS"})
         return (response.get("stats") or {}).get("scripts") or {}
 
     def trigger_stats(self) -> dict:
-        response = self.send({"type": "GET_DATABASE_STATS"})
+        response = self.send({"type": "GET_PROJECT_STATS"})
         return (response.get("stats") or {}).get("triggers") or {}
 
 def admin_conn(timeout=60) -> Conn:
@@ -111,7 +111,7 @@ def check_row_shape(label: str, row: Optional[dict], kind: str, name: Optional[s
         check(label, False, "no run was listed")
         return
     ok = (isinstance(row.get("runId"), str) and row.get("kind") == kind
-          and row.get("database") == DB and row.get("name") == name
+          and row.get("project") == PROJECT and row.get("name") == name
           and row.get("username") == username and isinstance(row.get("ageMs"), int)
           and row.get("ageMs") >= 0 and isinstance(row.get("node"), str))
     check(label, ok, f"got {row!r}")
@@ -132,10 +132,10 @@ def write_config(work_dir: str):
 
 def setup_data(conn: Conn):
     section("Setup")
-    check_status("CREATE_DATABASE", conn.send({"type": "CREATE_DATABASE", "databaseName": DB}), "OK")
+    check_status("CREATE_PROJECT", conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT}), "OK")
     for coll in (COLL, OUT_COLL):
         check_status(f"CREATE_COLLECTION {coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("SAVE_PROCEDURE for a slow procedure", conn.save_procedure("slow", SLOW_SCRIPT), "OK")
 
 
@@ -154,7 +154,7 @@ def test_cancels_a_running_script(conn: Conn):
     cancelled_before = conn.stats().get("cancelled", 0)
     background = BackgroundRun(lambda c: c.run(SLOW_SCRIPT))
     row = await_one_run(conn)
-    check_row_shape("the run is listed with its kind, database and user", row, "RUN_SCRIPT", None)
+    check_row_shape("the run is listed with its kind, project and user", row, "RUN_SCRIPT", None)
     check("the run is counted as running", conn.stats().get("running") == 1,
           f"running={conn.stats().get('running')!r}")
 
@@ -194,11 +194,11 @@ def test_cancels_a_procedure_call(conn: Conn):
 def test_cancels_a_trigger_run(conn: Conn):
     section("CANCEL_SCRIPT — a trigger run")
     check_status("SAVE_TRIGGER on the slow procedure",
-                 conn.send({"type": "SAVE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "SAVE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                             "name": "slowTrigger", "events": ["CREATED", "UPDATED"],
                             "procedureName": "slow"}), "OK")
     check_status("SAVE fires the trigger",
-                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL,
                             "object": {"_id": "fires-trigger", "v": 1}}), "OK")
 
     row = await_one_run(conn)
@@ -211,20 +211,20 @@ def test_cancels_a_trigger_run(conn: Conn):
           f"triggers={conn.trigger_stats()!r}")
 
     check_status("DELETE_TRIGGER so nothing else fires it",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT,
                             "collectionName": COLL, "name": "slowTrigger"}), "OK")
 
 
 def test_cancels_a_scheduled_run(conn: Conn):
     section("CANCEL_SCRIPT — a scheduled run")
     check_status("SAVE_SCHEDULE on the slow procedure",
-                 conn.send({"type": "SAVE_SCHEDULE", "databaseName": DB, "name": "slowJob",
+                 conn.send({"type": "SAVE_SCHEDULE", "projectName": PROJECT, "name": "slowJob",
                             "procedureName": "slow", "intervalMs": 500}), "OK")
     row = await_one_run(conn)
     check_row_shape("the scheduled run is listed with its schedule name", row, "SCHEDULE", "slowJob")
 
     check_status("DELETE_SCHEDULE stops it recurring",
-                 conn.send({"type": "DELETE_SCHEDULE", "databaseName": DB, "name": "slowJob"}), "OK")
+                 conn.send({"type": "DELETE_SCHEDULE", "projectName": PROJECT, "name": "slowJob"}), "OK")
     check("CANCEL_SCRIPT reports the scheduled run as cancelled",
           conn.cancel(row["runId"]).get("cancelled") is True if row else False)
     check("the scheduled run leaves the listing", await_empty_listing(conn))
@@ -251,7 +251,7 @@ def test_cancellation_is_not_catchable(conn: Conn):
     check_code("the script's own catch did not intercept it", response, "ERROR", "408-2")
     check("the result is not the caught value", response.get("result") is None,
           f"result={response.get('result')!r}")
-    found = conn.send({"type": "FIND_BY_ID", "databaseName": DB,
+    found = conn.send({"type": "FIND_BY_ID", "projectName": PROJECT,
                        "collectionName": OUT_COLL, "_id": "finally-ran"})
     check("the finally block did not run", found.get("status") != "OK",
           f"the finalizer's write is present: {found!r}")
@@ -306,11 +306,11 @@ def test_cancelling_a_transactional_script(conn: Conn):
     check("the run returns to its caller", background.join(60.0))
     check_code("the caller receives 408-2", background.response or {}, "ERROR", "408-2")
 
-    found = conn.send({"type": "FIND_BY_ID", "databaseName": DB,
+    found = conn.send({"type": "FIND_BY_ID", "projectName": PROJECT,
                        "collectionName": OUT_COLL, "_id": "tx-cancelled"})
     check("the buffered write was rolled back", found.get("status") != "OK", f"got {found!r}")
     check_status("the collection is writable again",
-                 conn.send({"type": "SAVE", "databaseName": DB, "collectionName": OUT_COLL,
+                 conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": OUT_COLL,
                             "object": {"_id": "after-rollback", "ok": True}}), "OK")
 
 
@@ -372,13 +372,13 @@ def test_request_validation(conn: Conn):
 
 def test_permissions(conn: Conn):
     section("Both operations are admin-only")
-    check_status("CREATE_USER for a database owner with a script grant",
+    check_status("CREATE_USER for a project owner with a script grant",
                  conn.send({"type": "CREATE_USER", "username": "script_owner",
                             "password": "script_owner1234", "admin": False,
-                            "globalPermissions": [], "databasePermissions": {DB: "READ_WRITE"},
-                            "collectionPermissions": {}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
-    check_status("SET_DATABASE_OWNERS makes them the owner",
-                 conn.send({"type": "SET_DATABASE_OWNERS", "databaseName": DB,
+                            "globalPermissions": [], "projectPermissions": {PROJECT: "READ_WRITE"},
+                            "collectionPermissions": {}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
+    check_status("SET_PROJECT_OWNERS makes them the owner",
+                 conn.send({"type": "SET_PROJECT_OWNERS", "projectName": PROJECT,
                             "owners": ["script_owner"]}), "OK")
 
     with Conn() as owner:
@@ -423,7 +423,7 @@ def test_cancelled_trigger_run_is_not_replayed(conn: Conn):
 
 def cleanup(conn: Conn):
     section("Cleanup")
-    check_status("DROP_DATABASE", conn.send({"type": "DROP_DATABASE", "databaseName": DB}), "OK")
+    check_status("DROP_PROJECT", conn.send({"type": "DROP_PROJECT", "projectName": PROJECT}), "OK")
     check_status("DELETE_USER", conn.send({"type": "DELETE_USER", "username": "script_owner"}), "OK")
 
 

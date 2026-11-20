@@ -9,13 +9,13 @@ from base_utils import Conn, check, check_status, section
 HOST = "127.0.0.1"
 REFUSED_PORT = int(os.environ.get("MEMORY_TEST_REFUSED_PORT", "9451"))
 REFUSED_MAX_MEMORY = "1mb"
-REFUSED_DB = "refused_db"
+REFUSED_PROJECT = "refused_project"
 REFUSED_COLL = "refused_coll"
 REFUSED_DOCS = int(os.environ.get("MEMORY_TEST_REFUSED_DOCS", "40000"))
 BULK = 1000
 CONVERGE_S = 90.0
-PK_REFUSED_WARNING = f"The primary-key index of {REFUSED_DB}|{REFUSED_COLL} needs about"
-FIELD_REFUSED_WARNING = f"of {REFUSED_DB}|{REFUSED_COLL} needs about"
+PK_REFUSED_WARNING = f"The primary-key index of {REFUSED_PROJECT}|{REFUSED_COLL} needs about"
+FIELD_REFUSED_WARNING = f"of {REFUSED_PROJECT}|{REFUSED_COLL} needs about"
 
 
 def doc_id(i: int) -> str:
@@ -27,7 +27,7 @@ def document(i: int, n, s) -> dict:
 
 
 def send(c: Conn, request: dict) -> dict:
-    request.setdefault("databaseName", REFUSED_DB)
+    request.setdefault("projectName", REFUSED_PROJECT)
     request.setdefault("collectionName", REFUSED_COLL)
     return c.send(request, timeout=300)
 
@@ -50,7 +50,7 @@ def mismatched(c: Conn) -> list:
 
 
 def load(c: Conn) -> bool:
-    check_status("create the refused database", c.send({"type": "CREATE_DATABASE", "databaseName": REFUSED_DB}), "OK")
+    check_status("create the refused project", c.send({"type": "CREATE_PROJECT", "projectName": REFUSED_PROJECT}), "OK")
     check_status("create the refused collection", send(c, {"type": "CREATE_COLLECTION"}), "OK")
     for start in range(0, REFUSED_DOCS, BULK):
         r = send(c, {"type": "BULK_SAVE", "objects": [document(i, i % 50, f"s{i % 40}")
@@ -137,7 +137,7 @@ LOG_ROUND_DOCS = 1000
 
 
 def u_log_bytes(work_dir: str) -> int:
-    path = os.path.join(work_dir, "db", REFUSED_DB, REFUSED_COLL, f"{REFUSED_COLL}-u-Number.idxlog")
+    path = os.path.join(work_dir, "db", REFUSED_PROJECT, REFUSED_COLL, f"{REFUSED_COLL}-u-Number.idxlog")
     return os.path.getsize(path) if os.path.exists(path) else 0
 
 

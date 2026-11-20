@@ -66,7 +66,7 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
     }
 
     private String bufferRemoteSave(String id) {
-        final var save = new SaveRequest(TestGlobals.DB, coll);
+        final var save = new SaveRequest(TestGlobals.PROJECT, coll);
         save.setObject(document(id));
         save.set_id(id);
         return route(save);
@@ -77,7 +77,7 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
     }
 
     private OperationResponse findLostRemotely() {
-        final var find = new FindByIdRequest(TestGlobals.DB, coll);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, coll);
         find.set_id("lost");
         return routed(find);
     }
@@ -108,7 +108,7 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
                 "the edge must keep the transaction so a re-sent COMMIT reaches the owner holding the slice");
         assertFalse(clientTracker.txSessionsSnapshot().isEmpty(), "the owner keeps the fenced session");
 
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
         final var resent = route(new CommitTransactionRequest());
 
         assertNull(errorCodeOf(resent), "the re-sent COMMIT must finish the slice, got: " + resent);
@@ -122,7 +122,7 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
     public void a_resent_commit_finishes_a_fenced_slice_even_when_the_owner_no_longer_knows_the_user()
             throws Exception {
         fenceTheRemoteCommit("ghosted");
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
         final var commit = new CommitTransactionRequest();
 
         final var resent = router.forward(commit, eJson.toJson(commit), true, "ghost_user", clientId);
@@ -141,7 +141,7 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
         assertFalse(TransactionOperationHelper.isReapable(clientId),
                 "the idle reaper must not roll back a slice the owner still holds");
 
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
         route(new CommitTransactionRequest());
 
         assertFalse(clientTracker.hasFencedRemoteSlice(clientId), "finishing the slice clears the fence");
@@ -254,12 +254,12 @@ public class ClusterRouterForwardedTxTest extends RemoteOwnerTxTestBase {
     private OperationResponse commitThatOutlivesTheOwnersWait() throws Exception {
         makeTheOwnerTheOnlyNode();
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", SHORT_WAIT_MS);
-        locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+        locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         final OperationResponse first;
         try {
             first = routed(new CommitTransactionRequest());
         } finally {
-            locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+            locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         }
         awaitTheOwnersLateFinish();
         TestUtils.setPrivateField(config, "replicationAckTimeoutMs", 10_000L);

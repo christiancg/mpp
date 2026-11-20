@@ -1,13 +1,13 @@
 # Collection
 
-One collection of a database, typed by how it maps documents.
+One collection of a project, typed by how it maps documents.
 
-Obtained from `Database.collection(...)`. Every call borrows a pooled connection for the length of one request. A
+Obtained from `Project.collection(...)`. Every call borrows a pooled connection for the length of one request. A
 collection must exist before its first write: a save into a missing one is refused with `404-11`.
 
-## databaseName
+## projectName
 
-The database the collection belongs to.
+The project the collection belongs to.
 
 ## name
 

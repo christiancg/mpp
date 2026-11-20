@@ -28,7 +28,7 @@ final class IntentLogCodec {
     static byte[] encode(WriteIntentJournal.Intent intent) {
         final var text = new StringBuilder(LINE_BYTES_HINT * (intent.items().size() + 2)).append(HEADER);
         field(text, intent.seq());
-        field(text, token(intent.dbName()));
+        field(text, token(intent.projectName()));
         field(text, token(intent.collName()));
         field(text, intent.items().size()).append(LINE_END);
         for (final var item : intent.items()) {

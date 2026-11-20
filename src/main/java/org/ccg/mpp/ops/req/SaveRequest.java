@@ -11,8 +11,8 @@ public class SaveRequest extends OperationRequest {
     public boolean failOnUpdate;
     private transient boolean backgroundFollowOn;
 
-    public SaveRequest(String databaseName, String collectionName) {
-        super(OperationType.SAVE, databaseName, collectionName);
+    public SaveRequest(String projectName, String collectionName) {
+        super(OperationType.SAVE, projectName, collectionName);
     }
 
     public String get_id() {

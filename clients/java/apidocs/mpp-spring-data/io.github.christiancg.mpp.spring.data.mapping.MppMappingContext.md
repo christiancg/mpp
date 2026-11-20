@@ -1,10 +1,10 @@
-Spring Data's metadata about MPP entities: their id property, collection, database and field
+Spring Data's metadata about MPP entities: their id property, collection, project and field
 names. Conversion itself goes through the client's Jackson codec.
 
 ## MppMappingContext(String)
 
-@param defaultDatabase the database of entities that name none, or `null`
+@param defaultProject the project of entities that name none, or `null`
 
-## defaultDatabase()
+## defaultProject()
 
-@return the database of entities that name none
+@return the project of entities that name none

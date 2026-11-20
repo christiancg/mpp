@@ -21,10 +21,10 @@ const it = serverIt();
 let orders: Collection<Document, Stored<Document>>;
 
 beforeAll(async () => {
-    const database = it.client.database("query_it");
-    await database.create();
-    orders = database.collection("orders");
-    const customers = database.collection("customers");
+    const project = it.client.project("query_it");
+    await project.create();
+    orders = project.collection("orders");
+    const customers = project.collection("customers");
     await orders.create();
     await customers.create();
     await orders.saveAll(

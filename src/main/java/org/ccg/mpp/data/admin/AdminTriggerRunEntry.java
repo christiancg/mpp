@@ -17,7 +17,7 @@ import org.ccg.mpp.ejson.elements.JsonString;
 public class AdminTriggerRunEntry extends DbEntry {
     private static final String RUN_ID_FIELD = "runId";
     private static final String NODE_ID_FIELD = "nodeId";
-    private static final String DB_NAME_FIELD = "dbName";
+    private static final String PROJECT_NAME_FIELD = "projectName";
     private static final String COLL_NAME_FIELD = "collName";
     private static final String TRIGGER_NAME_FIELD = "triggerName";
     private static final String PROCEDURE_NAME_FIELD = "procedureName";
@@ -40,7 +40,7 @@ public class AdminTriggerRunEntry extends DbEntry {
 
     private String runId;
     private String nodeId;
-    private String dbName;
+    private String targetProject;
     private String collName;
     private String triggerName;
     private String procedureName;
@@ -60,21 +60,21 @@ public class AdminTriggerRunEntry extends DbEntry {
     private String txId;
 
     private AdminTriggerRunEntry() {
-        setDatabaseName(Globals.ADMIN_DB_NAME);
+        setProjectName(Globals.ADMIN_PROJECT_NAME);
         setCollectionName(Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME);
         setData(new JsonObject());
         this.ids = new ArrayList<>();
         this.documents = new ArrayList<>();
     }
 
-    public AdminTriggerRunEntry(String runId, long chunkSeq, String nodeId, String dbName, String collName,
+    public AdminTriggerRunEntry(String runId, long chunkSeq, String nodeId, String projectName, String collName,
             String triggerName, String procedureName, EventType eventType, boolean batchMode, String actingUser,
             int depth, long firedAt, List<String> ids, List<JsonObject> documents) {
-        setDatabaseName(Globals.ADMIN_DB_NAME);
+        setProjectName(Globals.ADMIN_PROJECT_NAME);
         setCollectionName(Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME);
         this.runId = runId;
         this.nodeId = nodeId;
-        this.dbName = dbName;
+        this.targetProject = projectName;
         this.collName = collName;
         this.triggerName = triggerName;
         this.procedureName = procedureName;
@@ -105,7 +105,7 @@ public class AdminTriggerRunEntry extends DbEntry {
         result.set_id(object.get(Globals.PK_FIELD).asJsonString().getValue());
         result.runId = readString(object, RUN_ID_FIELD);
         result.nodeId = readString(object, NODE_ID_FIELD);
-        result.dbName = readString(object, DB_NAME_FIELD);
+        result.targetProject = readString(object, PROJECT_NAME_FIELD);
         result.collName = readString(object, COLL_NAME_FIELD);
         result.triggerName = readString(object, TRIGGER_NAME_FIELD);
         result.procedureName = readString(object, PROCEDURE_NAME_FIELD);
@@ -182,7 +182,7 @@ public class AdminTriggerRunEntry extends DbEntry {
         }
         data.addProperty(RUN_ID_FIELD, runId);
         data.addProperty(NODE_ID_FIELD, nodeId);
-        data.addProperty(DB_NAME_FIELD, dbName);
+        data.addProperty(PROJECT_NAME_FIELD, targetProject);
         data.addProperty(COLL_NAME_FIELD, collName);
         data.addProperty(TRIGGER_NAME_FIELD, triggerName);
         data.addProperty(PROCEDURE_NAME_FIELD, procedureName);
@@ -315,8 +315,8 @@ public class AdminTriggerRunEntry extends DbEntry {
         return nodeId;
     }
 
-    public String getDbName() {
-        return dbName;
+    public String getTargetProject() {
+        return targetProject;
     }
 
     public String getCollName() {
@@ -369,7 +369,7 @@ public class AdminTriggerRunEntry extends DbEntry {
             return false;
         return batchMode == that.batchMode && depth == that.depth && firedAt == that.firedAt
                 && Objects.equals(runId, that.runId) && Objects.equals(nodeId, that.nodeId)
-                && Objects.equals(dbName, that.dbName) && Objects.equals(collName, that.collName)
+                && Objects.equals(targetProject, that.targetProject) && Objects.equals(collName, that.collName)
                 && Objects.equals(triggerName, that.triggerName) && Objects.equals(procedureName, that.procedureName)
                 && eventType == that.eventType && Objects.equals(actingUser, that.actingUser)
                 && Objects.equals(ids, that.ids) && Objects.equals(documents, that.documents);
@@ -377,15 +377,15 @@ public class AdminTriggerRunEntry extends DbEntry {
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), runId, nodeId, dbName, collName, triggerName, procedureName, eventType,
-                batchMode, actingUser, depth, firedAt, ids, documents);
+        return Objects.hash(super.hashCode(), runId, nodeId, targetProject, collName, triggerName, procedureName,
+                eventType, batchMode, actingUser, depth, firedAt, ids, documents);
     }
 
     @Override
     public String toString() {
         return "AdminTriggerRunEntry(super=" + super.toString() + ", runId=" + runId + ", nodeId=" + nodeId
-                + ", dbName=" + dbName + ", collName=" + collName + ", triggerName=" + triggerName + ", eventType="
-                + eventType + ", batchMode=" + batchMode + ", ids=" + ids.size() + ", documents=" + documents.size()
-                + ")";
+                + ", targetProject=" + targetProject + ", collName=" + collName + ", triggerName=" + triggerName
+                + ", eventType=" + eventType + ", batchMode=" + batchMode + ", ids=" + ids.size() + ", documents="
+                + documents.size() + ")";
     }
 }

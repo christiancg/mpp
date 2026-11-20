@@ -19,10 +19,10 @@ import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.admin.CollectionOperationHelper;
-import org.ccg.mpp.ops.admin.DatabaseOperationHelper;
 import org.ccg.mpp.ops.admin.LeftoverFolders;
+import org.ccg.mpp.ops.admin.ProjectOperationHelper;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -33,7 +33,7 @@ import org.mockito.Mockito;
 
 public class LeftoverFolderAdoptionTest {
     private static final String COLLECTION = "leftover_coll";
-    private static final String DATABASE = "leftover_db";
+    private static final String PROJECT = "leftover_project";
     private final Cache cache = IocContainer.get(Cache.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
@@ -41,7 +41,7 @@ public class LeftoverFolderAdoptionTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -56,8 +56,8 @@ public class LeftoverFolderAdoptionTest {
         return found;
     }
 
-    private static File testDatabaseFolder() {
-        return new File(TestGlobals.PATH + File.separator + TestGlobals.DB);
+    private static File testProjectFolder() {
+        return new File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT);
     }
 
     private void createCollection(String db) {
@@ -67,7 +67,7 @@ public class LeftoverFolderAdoptionTest {
     }
 
     private void save(String id) {
-        final var save = new SaveRequest(TestGlobals.DB, COLLECTION);
+        final var save = new SaveRequest(TestGlobals.PROJECT, COLLECTION);
         final var doc = new JsonObject();
         doc.add(Globals.PK_FIELD, new JsonString(id));
         save.setObject(doc);
@@ -76,32 +76,32 @@ public class LeftoverFolderAdoptionTest {
     }
 
     private void leaveAPopulatedUnregisteredCollection() throws Exception {
-        createCollection(TestGlobals.DB);
+        createCollection(TestGlobals.PROJECT);
         save("predrop");
-        cache.evictCollection(TestGlobals.DB, COLLECTION);
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, COLLECTION);
-        AdminOperationHelper.deletePageCollections(TestGlobals.DB, COLLECTION);
+        cache.evictCollection(TestGlobals.PROJECT, COLLECTION);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, COLLECTION);
+        AdminOperationHelper.deletePageCollections(TestGlobals.PROJECT, COLLECTION);
     }
 
     @Test
     public void test_a_schema_loaded_just_before_a_leftover_move_does_not_outlive_it() throws Exception {
         leaveAPopulatedUnregisteredCollection();
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, COLLECTION,
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, COLLECTION,
                 "{\"type\":\"object\",\"required\":[\"legacy\"]}");
         final var original = fs.folderQuarantine();
         final var loadingFirst = Mockito.spy(original);
         Mockito.doAnswer(invocation -> {
-            cache.getCollectionSchema(TestGlobals.DB, COLLECTION);
+            cache.getCollectionSchema(TestGlobals.PROJECT, COLLECTION);
             return invocation.callRealMethod();
-        }).when(loadingFirst).moveCollectionAside(TestGlobals.DB, COLLECTION, 0L);
+        }).when(loadingFirst).moveCollectionAside(TestGlobals.PROJECT, COLLECTION, 0L);
         TestUtils.setPrivateField(fs, "folderQuarantine", loadingFirst);
         try {
-            assertTrue(LeftoverFolders.moveAsideUnregisteredCollection(TestGlobals.DB, COLLECTION));
+            assertTrue(LeftoverFolders.moveAsideUnregisteredCollection(TestGlobals.PROJECT, COLLECTION));
         } finally {
             TestUtils.setPrivateField(fs, "folderQuarantine", original);
         }
 
-        assertNull(cache.getCollectionSchema(TestGlobals.DB, COLLECTION),
+        assertNull(cache.getCollectionSchema(TestGlobals.PROJECT, COLLECTION),
                 "the leftover folder's schema is gone, so the next incarnation must not be validated against it");
     }
 
@@ -109,43 +109,43 @@ public class LeftoverFolderAdoptionTest {
     public void test_create_collection_moves_aside_a_populated_unregistered_folder() throws Exception {
         leaveAPopulatedUnregisteredCollection();
 
-        createCollection(TestGlobals.DB);
+        createCollection(TestGlobals.PROJECT);
 
-        assertTrue(cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, COLLECTION).isEmpty(),
+        assertTrue(cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, COLLECTION).isEmpty(),
                 "a re-created collection must not serve the documents of the incarnation it replaces");
-        assertEquals(1, quarantinedIn(testDatabaseFolder(), COLLECTION).length);
+        assertEquals(1, quarantinedIn(testProjectFolder(), COLLECTION).length);
     }
 
     @Test
     public void test_create_collection_adopts_an_empty_unregistered_folder() throws Exception {
-        fs.createCollectionFile(TestGlobals.DB, COLLECTION);
+        fs.createCollectionFile(TestGlobals.PROJECT, COLLECTION);
 
-        createCollection(TestGlobals.DB);
+        createCollection(TestGlobals.PROJECT);
 
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, COLLECTION));
-        assertEquals(0, quarantinedIn(testDatabaseFolder(), COLLECTION).length);
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, COLLECTION));
+        assertEquals(0, quarantinedIn(testProjectFolder(), COLLECTION).length);
     }
 
     @Test
     public void test_create_collection_on_a_registered_name_keeps_its_documents() throws Exception {
-        createCollection(TestGlobals.DB);
+        createCollection(TestGlobals.PROJECT);
         save("kept");
 
-        createCollection(TestGlobals.DB);
+        createCollection(TestGlobals.PROJECT);
 
-        assertEquals(1, cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, COLLECTION).size());
-        assertEquals(0, quarantinedIn(testDatabaseFolder(), COLLECTION).length);
+        assertEquals(1, cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, COLLECTION).size());
+        assertEquals(0, quarantinedIn(testProjectFolder(), COLLECTION).length);
     }
 
     @Test
     public void test_create_collection_refuses_a_leftover_it_cannot_move() throws Exception {
         assumeTrue(OwnerOnlyFiles.supported(), "only a POSIX file system has permission bits that deny its owner");
         leaveAPopulatedUnregisteredCollection();
-        final var dbDir = testDatabaseFolder();
+        final var dbDir = testProjectFolder();
         assertTrue(dbDir.setWritable(false));
         try {
             final var response = CollectionOperationHelper
-                    .processCreateCollectionOperation(new CreateCollectionRequest(TestGlobals.DB, COLLECTION));
+                    .processCreateCollectionOperation(new CreateCollectionRequest(TestGlobals.PROJECT, COLLECTION));
 
             assertEquals(ErrorCode.ERROR_CREATING_COLLECTION.getCode(), response.getErrorCode());
         } finally {
@@ -154,36 +154,36 @@ public class LeftoverFolderAdoptionTest {
     }
 
     @Test
-    public void test_create_database_moves_aside_a_populated_unregistered_folder() throws Exception {
-        assertEquals(OperationStatus.OK, DatabaseOperationHelper
-                .processCreateDatabaseOperation(new CreateDatabaseRequest(DATABASE), null).getStatus());
-        createCollection(DATABASE);
-        fs.metadataFiles().writeProcedure(DATABASE, "oldproc", "{\"name\":\"oldproc\"}");
-        cache.evictDatabase(DATABASE);
-        AdminOperationHelper.deleteDatabaseEntry(DATABASE);
+    public void test_create_project_moves_aside_a_populated_unregistered_folder() throws Exception {
+        assertEquals(OperationStatus.OK, ProjectOperationHelper
+                .processCreateProjectOperation(new CreateProjectRequest(PROJECT), null).getStatus());
+        createCollection(PROJECT);
+        fs.metadataFiles().writeProcedure(PROJECT, "oldproc", "{\"name\":\"oldproc\"}");
+        cache.evictProject(PROJECT);
+        AdminOperationHelper.deleteProjectEntry(PROJECT);
 
-        final var response = DatabaseOperationHelper.processCreateDatabaseOperation(new CreateDatabaseRequest(DATABASE),
+        final var response = ProjectOperationHelper.processCreateProjectOperation(new CreateProjectRequest(PROJECT),
                 null);
 
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertTrue(fs.metadataFiles().listProcedureNames(DATABASE).isEmpty(),
-                "a dropped database's procedures must not come back");
-        assertTrue(cache.getCollectionNamesForDatabase(DATABASE).isEmpty());
-        assertEquals(1, quarantinedIn(new File(TestGlobals.PATH), DATABASE).length);
+        assertTrue(fs.metadataFiles().listProcedureNames(PROJECT).isEmpty(),
+                "a dropped project's procedures must not come back");
+        assertTrue(cache.getCollectionNamesForProject(PROJECT).isEmpty());
+        assertEquals(1, quarantinedIn(new File(TestGlobals.PATH), PROJECT).length);
     }
 
     @Test
-    public void test_create_database_refuses_a_leftover_it_cannot_move() throws Exception {
+    public void test_create_project_refuses_a_leftover_it_cannot_move() throws Exception {
         assumeTrue(OwnerOnlyFiles.supported(), "only a POSIX file system has permission bits that deny its owner");
-        assertTrue(fs.createDatabaseFolder(DATABASE));
-        fs.metadataFiles().writeProcedure(DATABASE, "oldproc", "{\"name\":\"oldproc\"}");
+        assertTrue(fs.createProjectFolder(PROJECT));
+        fs.metadataFiles().writeProcedure(PROJECT, "oldproc", "{\"name\":\"oldproc\"}");
         final var root = new File(TestGlobals.PATH);
         assertTrue(root.setWritable(false));
         try {
-            final var response = DatabaseOperationHelper
-                    .processCreateDatabaseOperation(new CreateDatabaseRequest(DATABASE), null);
+            final var response = ProjectOperationHelper.processCreateProjectOperation(new CreateProjectRequest(PROJECT),
+                    null);
 
-            assertEquals(ErrorCode.ERROR_CREATING_DATABASE.getCode(), response.getErrorCode());
+            assertEquals(ErrorCode.ERROR_CREATING_PROJECT.getCode(), response.getErrorCode());
         } finally {
             assertTrue(root.setWritable(true));
         }

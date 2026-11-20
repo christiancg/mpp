@@ -10,8 +10,8 @@ function check(value: unknown, pattern: RegExp, label: string, rule: string): st
     return value;
 }
 
-export function databaseName(name: unknown): string {
-    return check(name, NAME, "database name", NAME_RULE);
+export function projectName(name: unknown): string {
+    return check(name, NAME, "project name", NAME_RULE);
 }
 
 export function collectionName(name: unknown): string {

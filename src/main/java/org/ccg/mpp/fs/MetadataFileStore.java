@@ -56,14 +56,14 @@ final class MetadataFileStore {
         return false;
     }
 
-    static void ensureFolder(File folder, String label, String dbName) throws IOException {
+    static void ensureFolder(File folder, String label, String projectName) throws IOException {
         if (folder.exists()) {
             return;
         }
         try {
             OwnerOnly.createDirectories(folder.toPath());
         } catch (IOException e) {
-            throw new IOException("Could not create the " + label + " folder for database " + dbName, e);
+            throw new IOException("Could not create the " + label + " folder for project " + projectName, e);
         }
     }
 

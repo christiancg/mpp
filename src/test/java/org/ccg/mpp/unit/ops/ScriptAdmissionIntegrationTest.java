@@ -43,13 +43,13 @@ public class ScriptAdmissionIntegrationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var request = new CreateUserRequest();
         request.setUsername(ADMIN);
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -85,8 +85,8 @@ public class ScriptAdmissionIntegrationTest {
             Thread.ofVirtual().start(() -> {
                 try {
                     start.await();
-                    responses.add(ScriptOperationHelper.execute(new RunScriptRequest(TestGlobals.DB, SLOW_SCRIPT, null),
-                            ADMIN, null));
+                    responses.add(ScriptOperationHelper
+                            .execute(new RunScriptRequest(TestGlobals.PROJECT, SLOW_SCRIPT, null), ADMIN, null));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {

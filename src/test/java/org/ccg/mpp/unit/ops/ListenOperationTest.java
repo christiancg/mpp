@@ -13,9 +13,9 @@ import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.req.CreateCollectionRequest;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.ops.req.ListenRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
 import org.ccg.mpp.ops.req.StopListenRequest;
@@ -36,7 +36,7 @@ public class ListenOperationTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -59,7 +59,7 @@ public class ListenOperationTest {
     }
 
     private String registerListener(UUID clientId) {
-        final var request = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         return ((ListenResponse) processor.processMessage(request, clientId)).getListenId();
     }
@@ -105,7 +105,7 @@ public class ListenOperationTest {
 
     @Test
     public void processListen_existingCollection_returnsListenResponse() {
-        final var req = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of());
 
         final var resp = processor.processMessage(req, client());
@@ -120,13 +120,13 @@ public class ListenOperationTest {
 
     @Test
     public void processListen_withExistingDocument_returnsItInResults() {
-        final var saveReq = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var saveReq = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("listen-doc-1"));
         saveReq.setObject(obj);
         processor.processMessage(saveReq);
 
-        final var req = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var req = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         req.setAggregationSteps(List.of());
 
         final var resp = (ListenResponse) processor.processMessage(req, client());
@@ -138,7 +138,7 @@ public class ListenOperationTest {
     @Test
     public void processStopListen_validId_returnsStopListenResponse() {
         final var clientId = client();
-        final var listenReq = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var listenReq = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         listenReq.setAggregationSteps(List.of());
         final var listenResp = (ListenResponse) processor.processMessage(listenReq, clientId);
 
@@ -165,7 +165,7 @@ public class ListenOperationTest {
     @Test
     public void processStopListen_alreadyUnregistered_returns404() {
         final var clientId = client();
-        final var listenReq = new ListenRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var listenReq = new ListenRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         listenReq.setAggregationSteps(List.of());
         final var listenResp = (ListenResponse) processor.processMessage(listenReq, clientId);
 
@@ -180,15 +180,15 @@ public class ListenOperationTest {
     @Test
     public void dropCollection_dropsActiveListeners() {
         final var dropColl = "listenDropColl";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, dropColl));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, dropColl));
 
         final var clientId = client();
-        final var listenReq = new ListenRequest(TestGlobals.DB, dropColl);
+        final var listenReq = new ListenRequest(TestGlobals.PROJECT, dropColl);
         listenReq.setAggregationSteps(List.of());
         final var listenResp = (ListenResponse) processor.processMessage(listenReq, clientId);
         final var listenId = listenResp.getListenId();
 
-        processor.processMessage(new DropCollectionRequest(TestGlobals.DB, dropColl));
+        processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, dropColl));
 
         final var stopReq = new StopListenRequest();
         stopReq.setListenId(listenId);
@@ -198,22 +198,22 @@ public class ListenOperationTest {
     }
 
     @Test
-    public void dropDatabase_dropsActiveListeners() {
-        final var dropDb = "listenDropDb";
-        processor.processMessage(new CreateDatabaseRequest(dropDb));
-        processor.processMessage(new CreateCollectionRequest(dropDb, "coll1"));
-        processor.processMessage(new CreateCollectionRequest(dropDb, "coll2"));
+    public void dropProject_dropsActiveListeners() {
+        final var dropProject = "listenDropProject";
+        processor.processMessage(new CreateProjectRequest(dropProject));
+        processor.processMessage(new CreateCollectionRequest(dropProject, "coll1"));
+        processor.processMessage(new CreateCollectionRequest(dropProject, "coll2"));
 
         final var clientId = client();
-        final var listenReq1 = new ListenRequest(dropDb, "coll1");
+        final var listenReq1 = new ListenRequest(dropProject, "coll1");
         listenReq1.setAggregationSteps(List.of());
         final var listenId1 = ((ListenResponse) processor.processMessage(listenReq1, clientId)).getListenId();
 
-        final var listenReq2 = new ListenRequest(dropDb, "coll2");
+        final var listenReq2 = new ListenRequest(dropProject, "coll2");
         listenReq2.setAggregationSteps(List.of());
         final var listenId2 = ((ListenResponse) processor.processMessage(listenReq2, clientId)).getListenId();
 
-        processor.processMessage(new DropDatabaseRequest(dropDb));
+        processor.processMessage(new DropProjectRequest(dropProject));
 
         final var stopReq1 = new StopListenRequest();
         stopReq1.setListenId(listenId1);

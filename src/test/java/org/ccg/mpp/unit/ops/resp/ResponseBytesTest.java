@@ -32,11 +32,11 @@ import org.ccg.mpp.ops.resp.CloseConnectionResponse;
 import org.ccg.mpp.ops.resp.DeleteManyResponse;
 import org.ccg.mpp.ops.resp.DeleteResponse;
 import org.ccg.mpp.ops.resp.FindByIdResponse;
-import org.ccg.mpp.ops.resp.GetDatabaseStatsResponse;
+import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.GetSchemaResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
-import org.ccg.mpp.ops.resp.ListDatabasesResponse;
 import org.ccg.mpp.ops.resp.ListProceduresResponse;
+import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.ListSchedulesResponse;
 import org.ccg.mpp.ops.resp.ListScriptsResponse;
 import org.ccg.mpp.ops.resp.ListTransactionsResponse;
@@ -97,8 +97,8 @@ public class ResponseBytesTest {
         final var doc = document("doc-1");
         final var rows = List.of(doc, document("doc-2"), new JsonObject());
         final var logs = List.of("log 界", "😀");
-        return List.of(new OperationResponse(OperationType.LIST_DATABASES, ErrorCode.ERROR_RETRIEVING),
-                OperationResponse.ok(OperationType.CREATE_DATABASE, "créé 界"),
+        return List.of(new OperationResponse(OperationType.LIST_PROJECTS, ErrorCode.ERROR_RETRIEVING),
+                OperationResponse.ok(OperationType.CREATE_PROJECT, "créé 界"),
                 new OperationResponse(OperationType.SAVE, ErrorCode.ERROR_RETRIEVING, "détail \uD800"),
                 new AggregateResponse("ok", rows), new AggregateResponse("ok", List.of()),
                 new AggregateAnalyzeResponse("ok", rows, analyzeResult()),
@@ -107,9 +107,9 @@ public class ResponseBytesTest {
                 new CallProcedureResponse("failed", ErrorCode.ERROR_RETRIEVING, logs, true, "run-2", List.of("at x")),
                 new CancelScriptResponse("ok", true), new CloseConnectionResponse(), new DeleteResponse("ok"),
                 new DeleteManyResponse(42L), new SaveWhereResponse(42L), new FindByIdResponse("ok", doc),
-                new FindByIdResponse("ok", null), new GetDatabaseStatsResponse("ok", doc),
+                new FindByIdResponse("ok", null), new GetProjectStatsResponse("ok", doc),
                 new GetSchemaResponse("ok", doc), new ListCollectionsResponse("ok", List.of("c1", "c2")),
-                new ListDatabasesResponse("ok", List.of("db1")), new ListProceduresResponse("ok", rows),
+                new ListProjectsResponse("ok", List.of("project1")), new ListProceduresResponse("ok", rows),
                 new ListSchedulesResponse("ok", rows), new ListScriptsResponse("ok", rows),
                 new ListTransactionsResponse("ok", rows), new ListTriggerRunsResponse("ok", rows),
                 new ListTriggersResponse("ok", rows), new ListUsersResponse("ok", rows),

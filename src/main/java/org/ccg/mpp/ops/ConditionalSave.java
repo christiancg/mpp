@@ -28,9 +28,9 @@ final class ConditionalSave {
     }
 
     static ConditionalSave prepare(SaveRequest request, String actingUser) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
-        final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, dbName, collName);
+        final var ownershipError = ClusterWriteHelper.refusalUnderLock(OperationType.SAVE, projectName, collName);
         if (ownershipError != null) {
             return answered(ownershipError);
         }
@@ -59,14 +59,14 @@ final class ConditionalSave {
     }
 
     private static List<JsonObject> mergedMatches(SaveRequest request) throws IOException {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var collName = request.getCollectionName();
         final var documents = new ArrayList<JsonObject>();
         try (var context = PipelineContext.fromConfiguration(null)) {
             final var held = new HeldRows(context);
             final var limit = configuration.intValue(ConfigKey.UPDATE_MAX_MATCHES);
-            try (var matches = context.watch(
-                    FilterOperatorHelper.processOperator(request.getCondition(), null, dbName, collName, context))) {
+            try (var matches = context.watch(FilterOperatorHelper.processOperator(request.getCondition(), null,
+                    projectName, collName, context))) {
                 final var iterator = matches.iterator();
                 while (iterator.hasNext()) {
                     final var document = iterator.next();

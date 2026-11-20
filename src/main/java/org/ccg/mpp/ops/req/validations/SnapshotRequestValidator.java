@@ -12,9 +12,9 @@ final class SnapshotRequestValidator {
     }
 
     static ValidationResult validateStart(StartSnapshotRequest request) {
-        final var database = NameValidations.validateDbOnly(request, true);
-        if (!database.isValid() || request.getCollectionNames() == null) {
-            return database;
+        final var project = NameValidations.validateProjectOnly(request, true);
+        if (!project.isValid() || request.getCollectionNames() == null) {
+            return project;
         }
         if (request.getCollectionNames().isEmpty()) {
             return ValidationResult.fail("START_SNAPSHOT collectionNames must name at least one collection");
@@ -33,7 +33,7 @@ final class SnapshotRequestValidator {
     }
 
     static ValidationResult validateRead(ReadSnapshotRequest request) {
-        final var names = NameValidations.validateDbAndColl(request, true);
+        final var names = NameValidations.validateProjectAndColl(request, true);
         if (!names.isValid()) {
             return names;
         }
@@ -52,8 +52,8 @@ final class SnapshotRequestValidator {
     }
 
     static ValidationResult validateRelease(ReleaseSnapshotRequest request) {
-        final var database = NameValidations.validateDbOnly(request, true);
-        return database.isValid() ? validateSnapshotId("RELEASE_SNAPSHOT", request.getSnapshotId()) : database;
+        final var project = NameValidations.validateProjectOnly(request, true);
+        return project.isValid() ? validateSnapshotId("RELEASE_SNAPSHOT", request.getSnapshotId()) : project;
     }
 
     private static ValidationResult validateSnapshotId(String operation, String snapshotId) {

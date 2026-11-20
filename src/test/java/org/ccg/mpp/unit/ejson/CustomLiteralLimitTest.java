@@ -58,7 +58,7 @@ public class CustomLiteralLimitTest {
     }
 
     private static String save(String vectorComponents) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"db1\",\"collectionName\":\"c1\",\"object\":{\"_id\":\"a\","
+        return "{\"type\":\"SAVE\",\"projectName\":\"project1\",\"collectionName\":\"c1\",\"object\":{\"_id\":\"a\","
                 + "\"v\":\"#vector(" + vectorComponents + ")\"}}";
     }
 

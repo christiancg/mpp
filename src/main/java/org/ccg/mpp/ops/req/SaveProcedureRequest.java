@@ -11,8 +11,8 @@ public class SaveProcedureRequest extends VersionedDefinitionRequest {
         super(OperationType.SAVE_PROCEDURE, null, null);
     }
 
-    public SaveProcedureRequest(String databaseName, String name, String script) {
-        super(OperationType.SAVE_PROCEDURE, databaseName, null);
+    public SaveProcedureRequest(String projectName, String name, String script) {
+        super(OperationType.SAVE_PROCEDURE, projectName, null);
         this.name = name;
         this.script = script;
     }

@@ -22,77 +22,77 @@ public class AdminCollectionRegistrationTest {
     private static final String NEW_COLL = "freshCollection";
 
     private Cache cache;
-    private File[] databasePages;
+    private File[] projectPages;
 
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
         final var fs = IocContainer.get(FileSystem.class);
         final var folder = new File(TestUtils.getDbPath(fs),
-                Globals.ADMIN_DB_NAME + File.separator + Globals.ADMIN_DATABASES_COLLECTION_NAME);
-        databasePages = folder.listFiles((_, name) -> name.endsWith(".dat"));
-        Assumptions.assumeTrue(databasePages != null && databasePages.length > 0);
+                Globals.ADMIN_PROJECT_NAME + File.separator + Globals.ADMIN_PROJECTS_COLLECTION_NAME);
+        projectPages = folder.listFiles((_, name) -> name.endsWith(".dat"));
+        Assumptions.assumeTrue(projectPages != null && projectPages.length > 0);
     }
 
     @AfterEach
     public void tearDown() throws Exception {
-        for (final var page : databasePages) {
+        for (final var page : projectPages) {
             assertTrue(page.setWritable(true));
         }
         TestUtils.standardTearDown();
     }
 
-    private void blockDatabaseRowWrites() {
-        for (final var page : databasePages) {
+    private void blockProjectRowWrites() {
+        for (final var page : projectPages) {
             assertTrue(page.setWritable(false));
         }
-        Assumptions.assumeFalse(databasePages[0].canWrite());
+        Assumptions.assumeFalse(projectPages[0].canWrite());
     }
 
     @Test
-    public void test_a_failed_database_row_write_leaves_a_new_collection_unregistered_and_unlisted() {
-        final var listedBefore = new ArrayList<>(cache.getAdminDbEntry(TestGlobals.DB).getCollections());
-        blockDatabaseRowWrites();
+    public void test_a_failed_project_row_write_leaves_a_new_collection_unregistered_and_unlisted() {
+        final var listedBefore = new ArrayList<>(cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections());
+        blockProjectRowWrites();
 
         assertThrows(Exception.class,
-                () -> AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, NEW_COLL)));
+                () -> AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, NEW_COLL)));
 
-        assertEquals(listedBefore, cache.getAdminDbEntry(TestGlobals.DB).getCollections());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, NEW_COLL));
-        assertNull(cache.getPkIndexAdminCollEntry(Cache.getCollectionIdentifier(TestGlobals.DB, NEW_COLL)));
+        assertEquals(listedBefore, cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections());
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, NEW_COLL));
+        assertNull(cache.getPkIndexAdminCollEntry(Cache.getCollectionIdentifier(TestGlobals.PROJECT, NEW_COLL)));
     }
 
     @Test
-    public void test_a_failed_database_row_write_keeps_a_dropped_collection_listed_in_memory() {
-        blockDatabaseRowWrites();
+    public void test_a_failed_project_row_write_keeps_a_dropped_collection_listed_in_memory() {
+        blockProjectRowWrites();
 
         assertThrows(Exception.class,
-                () -> AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+                () -> AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        assertTrue(cache.getAdminDbEntry(TestGlobals.DB).getCollections().contains(TestGlobals.COLL));
+        assertTrue(cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections().contains(TestGlobals.COLL));
     }
 
     @Test
     public void test_a_successful_registration_lists_the_collection_on_a_fresh_entry() throws Exception {
-        final var before = cache.getAdminDbEntry(TestGlobals.DB);
+        final var before = cache.getAdminProjectEntry(TestGlobals.PROJECT);
         final var listedBefore = new ArrayList<>(before.getCollections());
 
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, NEW_COLL));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, NEW_COLL));
 
         assertEquals(listedBefore, before.getCollections());
         final var expected = new ArrayList<>(listedBefore);
         expected.add(NEW_COLL);
-        assertEquals(expected, cache.getAdminDbEntry(TestGlobals.DB).getCollections());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, NEW_COLL));
+        assertEquals(expected, cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections());
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, NEW_COLL));
     }
 
     @Test
     public void test_a_successful_drop_unlists_the_collection() throws Exception {
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertEquals(List.of(), cache.getAdminDbEntry(TestGlobals.DB).getCollections());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertEquals(List.of(), cache.getAdminProjectEntry(TestGlobals.PROJECT).getCollections());
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 }

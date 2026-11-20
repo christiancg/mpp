@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WriteIntentJournalTest {
-    private static final String DB = "intentDb";
+    private static final String PROJECT = "intentProject";
     private static final String COLL = "intent-coll";
 
     @TempDir
@@ -35,7 +35,7 @@ public class WriteIntentJournalTest {
     public void setUp() {
         paths = new FilePaths();
         paths.useDbPath(tmp.getAbsolutePath());
-        assertTrue(paths.collectionFolder(DB, COLL).mkdirs());
+        assertTrue(paths.collectionFolder(PROJECT, COLL).mkdirs());
         journal = new WriteIntentJournal(paths);
     }
 
@@ -44,7 +44,7 @@ public class WriteIntentJournalTest {
     }
 
     private File log() {
-        return paths.intentLog(DB, COLL);
+        return paths.intentLog(PROJECT, COLL);
     }
 
     private IntentLogCodec.Parsed parsed(byte[] bytes) {
@@ -52,25 +52,25 @@ public class WriteIntentJournalTest {
     }
 
     private List<Long> openSeqs() throws IOException {
-        return journal.openIntents(DB, COLL).stream().map(WriteIntentJournal.Intent::seq).toList();
+        return journal.openIntents(PROJECT, COLL).stream().map(WriteIntentJournal.Intent::seq).toList();
     }
 
     @Test
     public void anIntentRoundTripsEveryPage() throws IOException {
-        final var intent = journal.begin(DB, COLL, everyKind());
+        final var intent = journal.begin(PROJECT, COLL, everyKind());
 
-        final var open = journal.openIntents(DB, COLL);
+        final var open = journal.openIntents(PROJECT, COLL);
 
         assertEquals(1, open.size());
         assertEquals(intent, open.getFirst());
-        assertEquals(DB, open.getFirst().dbName());
+        assertEquals(PROJECT, open.getFirst().projectName());
         assertEquals(COLL, open.getFirst().collName());
         assertEquals(everyKind(), open.getFirst().items());
     }
 
     @Test
     public void aLogCutAnywhereInsideItsOnlyBlockHasNoOpenIntent() throws IOException {
-        journal.begin(DB, COLL, everyKind());
+        journal.begin(PROJECT, COLL, everyKind());
         final var bytes = Files.readAllBytes(log().toPath());
 
         for (var cut = 0; cut < bytes.length; cut++) {
@@ -83,7 +83,7 @@ public class WriteIntentJournalTest {
 
     @Test
     public void aCountThatDisagreesWithTheItemsIsTorn() {
-        final var text = String.join(Globals.ID_SEPARATOR, "INTENT", "1", DB, COLL, "2") + "\n"
+        final var text = String.join(Globals.ID_SEPARATOR, "INTENT", "1", PROJECT, COLL, "2") + "\n"
                 + String.join(Globals.ID_SEPARATOR, "VACUUM", "1") + "\nEND\n";
 
         assertTrue(parsed(text.getBytes(StandardCharsets.UTF_8)).open().isEmpty());
@@ -93,14 +93,15 @@ public class WriteIntentJournalTest {
     public void anUnknownItemOrAMangledFieldIsTorn() {
         for (final var item : List.of("MOVE" + Globals.ID_SEPARATOR + "1", "VACUUM" + Globals.ID_SEPARATOR + "x",
                 "DELETE" + Globals.ID_SEPARATOR + "id")) {
-            final var text = String.join(Globals.ID_SEPARATOR, "INTENT", "1", DB, COLL, "1") + "\n" + item + "\nEND\n";
+            final var text = String.join(Globals.ID_SEPARATOR, "INTENT", "1", PROJECT, COLL, "1") + "\n" + item
+                    + "\nEND\n";
             assertTrue(parsed(text.getBytes(StandardCharsets.UTF_8)).open().isEmpty(), item);
         }
     }
 
     @Test
     public void test_begin_end_truncates_when_idle() throws IOException {
-        final var intent = journal.begin(DB, COLL, everyKind());
+        final var intent = journal.begin(PROJECT, COLL, everyKind());
         assertTrue(log().length() > 0);
 
         journal.end(intent);
@@ -111,8 +112,8 @@ public class WriteIntentJournalTest {
 
     @Test
     public void test_open_intent_is_recovered() throws IOException {
-        final var first = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
-        final var second = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(2)));
+        final var first = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var second = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(2)));
 
         journal.end(first);
 
@@ -122,9 +123,9 @@ public class WriteIntentJournalTest {
 
     @Test
     public void test_torn_last_block_is_discarded() throws IOException {
-        final var kept = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var kept = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
         final var keptLength = log().length();
-        journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(2)));
+        journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(2)));
         final var bytes = Files.readAllBytes(log().toPath());
         Files.write(log().toPath(), Arrays.copyOf(bytes, bytes.length - 2));
 
@@ -134,20 +135,20 @@ public class WriteIntentJournalTest {
 
     @Test
     public void test_lost_done_is_settled_again() throws IOException {
-        final var intent = journal.begin(DB, COLL, everyKind());
+        final var intent = journal.begin(PROJECT, COLL, everyKind());
         final var withoutDone = Files.readAllBytes(log().toPath());
         journal.end(intent);
         Files.write(log().toPath(), withoutDone);
 
         assertEquals(List.of(intent.seq()), openSeqs());
-        journal.end(journal.openIntents(DB, COLL).getFirst());
+        journal.end(journal.openIntents(PROJECT, COLL).getFirst());
         assertEquals(0L, log().length());
     }
 
     @Test
     public void test_two_open_intents_recover_in_order() throws IOException {
-        final var first = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(9)));
-        final var second = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var first = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(9)));
+        final var second = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
 
         assertEquals(List.of(first.seq(), second.seq()), openSeqs());
         assertTrue(first.seq() < second.seq());
@@ -156,8 +157,8 @@ public class WriteIntentJournalTest {
 
     @Test
     public void anIntentOpenedByAnotherJournalSurvivesTheFirstJournalGoingIdle() throws IOException {
-        final var mine = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
-        final var theirs = new WriteIntentJournal(paths).begin(DB, COLL, List.of(new WriteIntent.Vacuum(2)));
+        final var mine = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var theirs = new WriteIntentJournal(paths).begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(2)));
 
         journal.end(mine);
 
@@ -166,8 +167,9 @@ public class WriteIntentJournalTest {
 
     @Test
     public void anIntentAppendedBehindTheJournalsBackSurvivesItGoingIdle() throws IOException {
-        final var mine = journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
-        final var planted = new WriteIntentJournal.Intent(log(), 99L, DB, COLL, List.of(new WriteIntent.Vacuum(2)));
+        final var mine = journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
+        final var planted = new WriteIntentJournal.Intent(log(), 99L, PROJECT, COLL,
+                List.of(new WriteIntent.Vacuum(2)));
         Files.write(log().toPath(), IntentLogCodec.encode(planted), StandardOpenOption.APPEND);
 
         journal.end(mine);
@@ -177,11 +179,11 @@ public class WriteIntentJournalTest {
 
     @Test
     public void aStuckIntentIsKeptWhenTheLogIsCompacted() throws IOException {
-        final var stuck = journal.begin(DB, COLL, everyKind());
+        final var stuck = journal.begin(PROJECT, COLL, everyKind());
         var longest = log().length();
         while (log().length() >= longest) {
             longest = log().length();
-            journal.end(journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(4))));
+            journal.end(journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(4))));
         }
 
         assertTrue(longest > WriteIntentJournal.COMPACTION_BYTES / 2, "the log grew until it was compacted");
@@ -191,7 +193,7 @@ public class WriteIntentJournalTest {
 
     @Test
     public void anEndThatCannotWriteLeavesTheIntentOpen() throws IOException {
-        final var intent = journal.begin(DB, COLL, everyKind());
+        final var intent = journal.begin(PROJECT, COLL, everyKind());
         assertTrue(log().setWritable(false));
         try {
             assertDoesNotThrow(() -> journal.end(intent));
@@ -204,21 +206,21 @@ public class WriteIntentJournalTest {
 
     @Test
     public void aDroppedCollectionsBookkeepingIsForgotten() throws IOException {
-        journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(1)));
-        journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(2)));
-        final var collection = paths.collectionFolder(DB, COLL);
+        journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(1)));
+        journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(2)));
+        final var collection = paths.collectionFolder(PROJECT, COLL);
 
         assertTrue(FileTreeDeleter.delete(collection));
         assertTrue(collection.mkdirs());
 
-        assertEquals(1L, journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(3))).seq(),
+        assertEquals(1L, journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(3))).seq(),
                 "a recreated collection starts a fresh log, not the dropped one's sequence");
     }
 
     @Test
     public void theLogIsCreatedOwnerOnly() throws IOException {
         assumeTrue(OwnerOnlyFiles.supported(), "only a POSIX file system has owner-only permission bits");
-        journal.begin(DB, COLL, everyKind());
+        journal.begin(PROJECT, COLL, everyKind());
 
         assertEquals(Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
                 Files.getPosixFilePermissions(log().toPath()));
@@ -229,7 +231,7 @@ public class WriteIntentJournalTest {
         paths.useDbPath(new File(tmp, "absent").getAbsolutePath());
 
         assertTrue(journal.findLogs().isEmpty());
-        assertTrue(journal.openIntents(DB, COLL).isEmpty());
+        assertTrue(journal.openIntents(PROJECT, COLL).isEmpty());
         assertFalse(log().exists());
     }
 }

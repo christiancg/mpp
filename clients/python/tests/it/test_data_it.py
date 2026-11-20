@@ -31,7 +31,7 @@ class Invoice:
 
 
 async def test_save_find_and_delete(client: AsyncMppClient) -> None:
-    shop = client.database("data_it")
+    shop = client.project("data_it")
     await shop.create()
     orders = shop.collection("orders")
     await orders.create()
@@ -62,7 +62,7 @@ async def test_save_find_and_delete(client: AsyncMppClient) -> None:
 
 
 async def test_update_where_merges_the_patch_into_every_match(client: AsyncMppClient) -> None:
-    shop = client.database("data_update")
+    shop = client.project("data_update")
     await shop.create()
     orders = shop.collection("orders")
     await orders.create()
@@ -92,7 +92,7 @@ async def test_update_where_merges_the_patch_into_every_match(client: AsyncMppCl
 
 
 async def test_insert_refuses_an_id_that_is_already_stored(client: AsyncMppClient) -> None:
-    shop = client.database("data_insert")
+    shop = client.project("data_insert")
     await shop.create()
     orders = shop.collection("orders")
     await orders.create()
@@ -116,7 +116,7 @@ async def test_insert_refuses_an_id_that_is_already_stored(client: AsyncMppClien
 
 
 async def test_save_all_reports_inserted_and_updated_ids(client: AsyncMppClient) -> None:
-    shop = client.database("data_bulk")
+    shop = client.project("data_bulk")
     await shop.create()
     orders = shop.collection("orders")
     await orders.create()
@@ -129,11 +129,11 @@ async def test_save_all_reports_inserted_and_updated_ids(client: AsyncMppClient)
         await orders.save_all([{"_id": "d"}, {"_id": "d"}])
     assert duplicate.value.raw_code == "400-3"
     with pytest.raises(ConflictError):
-        await client.database("data_bulk").create()
+        await client.project("data_bulk").create()
 
 
 def test_a_dataclass_collection_round_trips_through_the_sync_client(sync_client: MppClient) -> None:
-    shop = sync_client.database("data_typed")
+    shop = sync_client.project("data_typed")
     shop.create()
     shop.collection("invoices").create()
     invoices = shop.collection("invoices", Invoice)

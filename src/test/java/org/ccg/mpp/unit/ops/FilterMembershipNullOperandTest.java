@@ -40,7 +40,7 @@ public class FilterMembershipNullOperandTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         seed("a", JsonNull.INSTANCE);
         seed("b", new JsonNumber(1));
         seed("c", null);
@@ -53,7 +53,7 @@ public class FilterMembershipNullOperandTest {
     }
 
     private void seed(String id, JsonBaseElement value) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(documentWith(id, value));
         processor.processMessage(request);
     }
@@ -81,7 +81,7 @@ public class FilterMembershipNullOperandTest {
     }
 
     private Set<String> idsOf(List<BaseAggregationStep> steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         final var answer = processor.processMessage(request);
         if (!(answer instanceof AggregateResponse response)) {
@@ -142,7 +142,7 @@ public class FilterMembershipNullOperandTest {
 
     @Test
     public void index_declines_a_list_starting_with_null() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, FIELD));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, FIELD));
         for (final var operation : List.of(FieldOperatorType.IN, FieldOperatorType.NOT_IN)) {
             for (final var operand : List.of(arrayOf(JsonNull.INSTANCE), arrayOf(JsonNull.INSTANCE, new JsonNumber(1)),
                     arrayOf(new JsonNumber(1), JsonNull.INSTANCE))) {

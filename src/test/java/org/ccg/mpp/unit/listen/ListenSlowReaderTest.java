@@ -45,7 +45,7 @@ public class ListenSlowReaderTest {
     @BeforeAll
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
     }
@@ -89,7 +89,7 @@ public class ListenSlowReaderTest {
     }
 
     private static AggregateRequest dirtyRequest() {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         return request;

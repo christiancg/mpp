@@ -31,7 +31,7 @@ public class SchemaValidationHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -42,18 +42,18 @@ public class SchemaValidationHelperTest {
 
     @BeforeEach
     void reset() throws Exception {
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private void installSchema() {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson(
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, eJson.fromJson(
                 "{\"type\":\"object\",\"required\":[\"name\"]," + "\"properties\":{\"name\":{\"type\":\"string\"}}}",
                 JsonObject.class));
     }
 
     private SaveRequest save(JsonObject object) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         return request;
     }
@@ -96,7 +96,7 @@ public class SchemaValidationHelperTest {
     @Test
     public void test_bulk_all_compliant() {
         installSchema();
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(doc("Alice"), doc("Bob")));
         assertNull(SchemaValidationHelper.check(request));
     }
@@ -106,7 +106,7 @@ public class SchemaValidationHelperTest {
         installSchema();
         final var bad = doc(null);
         bad.add("_id", new JsonString("bad-1"));
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(doc("Alice"), bad));
         final var response = SchemaValidationHelper.check(request);
         assertNotNull(response);
@@ -116,12 +116,12 @@ public class SchemaValidationHelperTest {
 
     @Test
     public void test_other_operation_ignored() {
-        assertNull(SchemaValidationHelper.check(new CreateCollectionRequest(TestGlobals.DB, TestGlobals.COLL)));
+        assertNull(SchemaValidationHelper.check(new CreateCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
     public void test_reserved_id_is_excluded_from_validation() {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                 eJson.fromJson(
                         "{\"type\":\"object\",\"required\":[\"name\"],"
                                 + "\"properties\":{\"name\":{\"type\":\"string\"}},\"additionalProperties\":false}",
@@ -138,7 +138,7 @@ public class SchemaValidationHelperTest {
 
     @Test
     public void test_a_failed_schema_read_refuses_the_write() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL, "{\"type\": \"obj");
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL, "{\"type\": \"obj");
 
         final var response = SchemaValidationHelper.check(save(doc("Alice")));
 
@@ -148,7 +148,8 @@ public class SchemaValidationHelperTest {
 
     @Test
     public void test_an_unparseable_schema_refuses_the_write() {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL, eJson.fromJson("{\"type\":123}", JsonObject.class));
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
+                eJson.fromJson("{\"type\":123}", JsonObject.class));
 
         final var response = SchemaValidationHelper.check(save(doc("Alice")));
 
@@ -160,7 +161,7 @@ public class SchemaValidationHelperTest {
     public void test_an_unexpected_failure_refuses_the_write() {
         installSchema();
 
-        final var response = SchemaValidationHelper.check(new SaveRequest(TestGlobals.DB, TestGlobals.COLL));
+        final var response = SchemaValidationHelper.check(new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertNotNull(response, "failing open would let an unvalidated document reach the collection");
         assertEquals("503-11", response.getErrorCode());
@@ -171,7 +172,7 @@ public class SchemaValidationHelperTest {
         installSchema();
         final var bad = new JsonObject();
         bad.add("_id", new JsonNumber(7));
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(bad));
 
         final var response = SchemaValidationHelper.check(request);
@@ -186,7 +187,7 @@ public class SchemaValidationHelperTest {
         installSchema();
         assertNull(SchemaValidationHelper.check(save(doc("Alice"))));
 
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                 eJson.fromJson("{\"type\":\"object\",\"required\":[\"age\"]}", JsonObject.class));
 
         assertNotNull(SchemaValidationHelper.check(save(doc("Alice"))),
@@ -204,7 +205,7 @@ public class SchemaValidationHelperTest {
     }
 
     private void installRedosSchema() {
-        cache.putCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+        cache.putCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                 eJson.fromJson(DiamondSchemas.redosPatternSchema(), JsonObject.class));
     }
 
@@ -223,7 +224,7 @@ public class SchemaValidationHelperTest {
     @Test
     public void test_bulk_save_budget_refusal_names_400_23() {
         installRedosSchema();
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(doc("xxy"), doc(DiamondSchemas.hostileName())));
 
         final var response = SchemaValidationHelper.check(request);
@@ -234,11 +235,11 @@ public class SchemaValidationHelperTest {
 
     @Test
     public void test_stored_over_limit_schema_still_loads_and_cheap_documents_pass() throws Exception {
-        fs.metadataFiles().writeCollectionSchema(TestGlobals.DB, TestGlobals.COLL,
+        fs.metadataFiles().writeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL,
                 DiamondSchemas.behindProperty("deep", 28));
-        cache.removeCollectionSchema(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL);
 
-        assertNotNull(cache.getCollectionSchema(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getCollectionSchema(TestGlobals.PROJECT, TestGlobals.COLL));
         assertNull(SchemaValidationHelper.check(save(doc("cheap"))));
         final var expensive = doc("expensive");
         expensive.add("deep", new JsonObject());
@@ -270,7 +271,7 @@ public class SchemaValidationHelperTest {
         request.setObject(doc(null));
         assertNotNull(SchemaValidationHelper.check(request), "a before hook's replacement is a new document");
 
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var documents = new ArrayList<>(List.of(doc("Alice")));
         bulk.setObjects(documents);
         assertNull(SchemaValidationHelper.check(bulk));
@@ -296,7 +297,7 @@ public class SchemaValidationHelperTest {
     @Test
     public void aClientSuppliedSchemaCheckIsIgnored() {
         installSchema();
-        final var parsed = eJson.fromJson("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB
+        final var parsed = eJson.fromJson("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"object\":{},"
                 + "\"schemaCheck\":{\"payload\":{},\"schema\":{},\"budget\":null}}", SaveRequest.class);
 

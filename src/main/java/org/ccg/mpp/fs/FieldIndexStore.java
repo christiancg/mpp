@@ -20,26 +20,26 @@ final class FieldIndexStore {
         this.paths = paths;
     }
 
-    void writeIndexFile(String dbName, String collName, String fieldName,
+    void writeIndexFile(String projectName, String collName, String fieldName,
             Map<Class<?>, List<FieldIndexEntry<?>>> indexEntryMap) {
         for (var indexTypeList : indexEntryMap.entrySet()) {
             final var type = IndexKind.fileLabel(indexTypeList.getKey());
-            writeEntries(paths.indexFile(dbName, collName, fieldName, type), indexTypeList.getValue());
+            writeEntries(paths.indexFile(projectName, collName, fieldName, type), indexTypeList.getValue());
         }
     }
 
-    void writeHashIndexFile(String dbName, String collName, String fieldName, IndexKind kind,
+    void writeHashIndexFile(String projectName, String collName, String fieldName, IndexKind kind,
             List<FieldIndexEntry<String>> entries) {
         if (entries.isEmpty()) {
             return;
         }
-        writeEntries(paths.indexFile(dbName, collName, fieldName, kind.label()), entries);
+        writeEntries(paths.indexFile(projectName, collName, fieldName, kind.label()), entries);
     }
 
-    PendingFold appendIndexLog(String dbName, String collName, String fieldName, String typeLabel,
+    PendingFold appendIndexLog(String projectName, String collName, String fieldName, String typeLabel,
             List<IndexLogChange> changes, List<? extends FieldIndexEntry<?>> survivors, int foldDivisor)
             throws IOException {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, typeLabel);
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, typeLabel);
         if (indexFile == null) {
             return null;
         }
@@ -54,16 +54,16 @@ final class FieldIndexStore {
             if (!outcome.due()) {
                 return null;
             }
-            return PendingFold.ofSurvivors(dbName, collName, fieldName, typeLabel, indexFile, survivors,
+            return PendingFold.ofSurvivors(projectName, collName, fieldName, typeLabel, indexFile, survivors,
                     outcome.pastResidentCeiling());
         } finally {
             lock.unlock();
         }
     }
 
-    PendingFold appendIndexLogOnly(String dbName, String collName, String fieldName, String typeLabel,
+    PendingFold appendIndexLogOnly(String projectName, String collName, String fieldName, String typeLabel,
             List<IndexLogChange> changes, IndexTypeReader foldSource) throws IOException {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, typeLabel);
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, typeLabel);
         if (indexFile == null) {
             return null;
         }
@@ -74,7 +74,7 @@ final class FieldIndexStore {
                     .due()) {
                 return null;
             }
-            return PendingFold.ofSource(dbName, collName, fieldName, typeLabel, indexFile, foldSource);
+            return PendingFold.ofSource(projectName, collName, fieldName, typeLabel, indexFile, foldSource);
         } finally {
             lock.unlock();
         }
@@ -94,8 +94,8 @@ final class FieldIndexStore {
         }
     }
 
-    long stampOf(String dbName, String collName, String fieldName, String typeLabel) {
-        final var indexFile = paths.indexFile(dbName, collName, fieldName, typeLabel);
+    long stampOf(String projectName, String collName, String fieldName, String typeLabel) {
+        final var indexFile = paths.indexFile(projectName, collName, fieldName, typeLabel);
         return indexFile == null ? 0L : FieldIndexLog.stampOf(indexFile);
     }
 
@@ -124,8 +124,8 @@ final class FieldIndexStore {
         }
     }
 
-    boolean dropIndex(String dbName, String collName, String fieldName) {
-        final var collFolder = paths.collectionFolder(dbName, collName);
+    boolean dropIndex(String projectName, String collName, String fieldName) {
+        final var collFolder = paths.collectionFolder(projectName, collName);
         if (collFolder.exists()) {
             final var prefix = collName + Globals.INDEX_FILE_NAME_SEPARATOR + fieldName
                     + Globals.INDEX_FILE_NAME_SEPARATOR;

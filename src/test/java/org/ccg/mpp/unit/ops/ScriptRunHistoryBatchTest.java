@@ -14,7 +14,7 @@ import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.ConfigKey;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.fs.RecordingForcer;
 import org.ccg.mpp.ioc.IocContainer;
@@ -30,7 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ScriptRunHistoryBatchTest {
-    private static final String OTHER_DB = "historyBatchDb";
+    private static final String OTHER_PROJECT = "historyBatchProject";
     private static final String RUNS_LOG = Globals.SCRIPT_RUNS_COLLECTION_NAME + Globals.WAL_EXTENSION;
 
     private final Configuration configuration = Configuration.getInstance();
@@ -40,14 +40,14 @@ public class ScriptRunHistoryBatchTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(OTHER_DB));
-        IocContainer.get(FileSystem.class).createDatabaseFolder(OTHER_DB);
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(OTHER_PROJECT));
+        IocContainer.get(FileSystem.class).createProjectFolder(OTHER_PROJECT);
         TestUtils.setPrivateField(configuration, "scriptRunHistoryEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptRunHistoryKinds",
                 ConfigKey.SCRIPT_RUN_HISTORY_KINDS.defaultValue());
-        ScriptRunHistory.write(row("warm-a", TestGlobals.DB, null));
-        ScriptRunHistory.write(row("warm-b", OTHER_DB, null));
+        ScriptRunHistory.write(row("warm-a", TestGlobals.PROJECT, null));
+        ScriptRunHistory.write(row("warm-b", OTHER_PROJECT, null));
         ScriptRunHistory.reset();
     }
 
@@ -64,20 +64,22 @@ public class ScriptRunHistoryBatchTest {
         TestUtils.standardTearDown();
     }
 
-    private static ScriptRunRecord row(String runId, String dbName, List<String> logs) {
-        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, dbName, "job", "proc", null, null, "u1", "u1",
-                System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, logs, false);
+    private static ScriptRunRecord row(String runId, String projectName, List<String> logs) {
+        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, projectName, "job", "proc", null, null, "u1",
+                "u1", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, logs,
+                false);
     }
 
-    private int historyRows(String dbName) {
-        return cache.getWholeCollection(dbName, Globals.SCRIPT_RUNS_COLLECTION_NAME).size();
+    private int historyRows(String projectName) {
+        return cache.getWholeCollection(projectName, Globals.SCRIPT_RUNS_COLLECTION_NAME).size();
     }
 
     @Test
-    public void test_runs_of_two_databases_are_two_bulk_writes() throws Exception {
+    public void test_runs_of_two_projects_are_two_bulk_writes() throws Exception {
         final var batch = new ArrayList<Event>();
         for (var i = 0; i < 300; i++) {
-            batch.add(new ScriptRunHistoryEvent(row("batch-" + i, i % 2 == 0 ? TestGlobals.DB : OTHER_DB, null)));
+            batch.add(new ScriptRunHistoryEvent(
+                    row("batch-" + i, i % 2 == 0 ? TestGlobals.PROJECT : OTHER_PROJECT, null)));
         }
         try (var recorder = RecordingForcer.install(true)) {
             EventProcessorHelper.processBatch(batch);
@@ -87,18 +89,18 @@ public class ScriptRunHistoryBatchTest {
 
         assertEquals(300L, ScriptRunHistory.getRecorded());
         assertEquals(0L, ScriptRunHistory.getDropped());
-        assertEquals(151, historyRows(TestGlobals.DB));
-        assertEquals(151, historyRows(OTHER_DB));
+        assertEquals(151, historyRows(TestGlobals.PROJECT));
+        assertEquals(151, historyRows(OTHER_PROJECT));
     }
 
     @Test
     public void test_a_run_queued_twice_is_written_once() {
-        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("twice", TestGlobals.DB, null)),
-                new ScriptRunHistoryEvent(row("once", TestGlobals.DB, null)),
-                new ScriptRunHistoryEvent(row("twice", TestGlobals.DB, null), 1)));
+        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("twice", TestGlobals.PROJECT, null)),
+                new ScriptRunHistoryEvent(row("once", TestGlobals.PROJECT, null)),
+                new ScriptRunHistoryEvent(row("twice", TestGlobals.PROJECT, null), 1)));
 
         assertEquals(2L, ScriptRunHistory.getRecorded());
-        assertEquals(3, historyRows(TestGlobals.DB));
+        assertEquals(3, historyRows(TestGlobals.PROJECT));
     }
 
     @Test
@@ -106,21 +108,21 @@ public class ScriptRunHistoryBatchTest {
         TestUtils.setPrivateField(configuration, "scriptRunHistoryIncludeLogs", true);
         final var huge = List.of("x".repeat((int) configuration.getMaxEntrySize() + 1));
 
-        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("small-1", TestGlobals.DB, null)),
-                new ScriptRunHistoryEvent(row("huge", TestGlobals.DB, huge)),
-                new ScriptRunHistoryEvent(row("small-2", TestGlobals.DB, null))));
+        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("small-1", TestGlobals.PROJECT, null)),
+                new ScriptRunHistoryEvent(row("huge", TestGlobals.PROJECT, huge)),
+                new ScriptRunHistoryEvent(row("small-2", TestGlobals.PROJECT, null))));
 
         assertEquals(2L, ScriptRunHistory.getRecorded());
         assertEquals(1L, ScriptRunHistory.getDropped());
-        final var rows = cache.getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        final var rows = cache.getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         assertNotNull(rows.get("small-2"));
         assertNull(rows.get("huge"));
     }
 
     @Test
-    public void test_a_batch_for_a_vanished_database_is_dropped() {
-        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("gone-1", "vanishedDb", null)),
-                new ScriptRunHistoryEvent(row("gone-2", "vanishedDb", null)), new ScriptRunHistoryEvent(null)));
+    public void test_a_batch_for_a_vanished_project_is_dropped() {
+        ScriptRunHistory.writeAll(List.of(new ScriptRunHistoryEvent(row("gone-1", "vanishedProject", null)),
+                new ScriptRunHistoryEvent(row("gone-2", "vanishedProject", null)), new ScriptRunHistoryEvent(null)));
 
         assertEquals(0L, ScriptRunHistory.getRecorded());
         assertEquals(2L, ScriptRunHistory.getDropped());
@@ -133,13 +135,13 @@ public class ScriptRunHistoryBatchTest {
         TestUtils.setPrivateField(configuration, "scriptRunHistoryMaxQueued", 5);
 
         for (var i = 0; i < 10; i++) {
-            ScriptRunHistory.record(row("capped-" + i, TestGlobals.DB, null));
+            ScriptRunHistory.record(row("capped-" + i, TestGlobals.PROJECT, null));
         }
 
         assertEquals(5, manager.queuedHistory());
         assertEquals(5L, ScriptRunHistory.getDropped());
         manager.stopBackgroundWorkers();
-        ScriptRunHistory.record(row("after-drain", TestGlobals.DB, null));
+        ScriptRunHistory.record(row("after-drain", TestGlobals.PROJECT, null));
         assertEquals(1, manager.queuedHistory());
         manager.stopBackgroundWorkers();
     }

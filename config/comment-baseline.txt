@@ -153,7 +153,7 @@ src/test/java/org/ccg/mpp/unit/ops/BeforeHookContextTest.java 3
 src/test/java/org/ccg/mpp/unit/ops/BulkSavePartialFailureTest.java 1
 src/test/java/org/ccg/mpp/unit/ops/CompiledProcedureCacheTest.java 1
 src/test/java/org/ccg/mpp/unit/ops/CompiledScriptCacheTest.java 1
-src/test/java/org/ccg/mpp/unit/ops/DropRecreateDatabaseTest.java 2
+src/test/java/org/ccg/mpp/unit/ops/DropRecreateProjectTest.java 2
 src/test/java/org/ccg/mpp/unit/ops/FilterConjunctionOperatorTest.java 4
 src/test/java/org/ccg/mpp/unit/ops/FilterCountFastPathAgreementTest.java 1
 src/test/java/org/ccg/mpp/unit/ops/FilterNullOperandTest.java 1
@@ -203,7 +203,7 @@ src/test/java/org/ccg/mpp/unit/ops/auth/AuthorizationCheckerProcedureTest.java 4
 src/test/java/org/ccg/mpp/unit/ops/req/RequestParserAggregationTest.java 1
 src/test/java/org/ccg/mpp/unit/ops/req/RequestParserScriptOperatorTest.java 2
 src/test/java/org/ccg/mpp/unit/ops/req/validations/AggregationOperatorValidatorTest.java 1
-src/test/java/org/ccg/mpp/unit/ops/req/validations/DatabaseRequestValidatorTest.java 1
+src/test/java/org/ccg/mpp/unit/ops/req/validations/ProjectRequestValidatorTest.java 1
 src/test/java/org/ccg/mpp/unit/ops/req/validations/RequestValidatorScriptOperatorTest.java 2
 src/test/java/org/ccg/mpp/unit/ops/req/validations/UserRequestValidationTest.java 3
 src/test/java/org/ccg/mpp/unit/ops/resp/OperationResponseTest.java 2
@@ -253,9 +253,9 @@ src/test/java/org/ccg/mpp/unit/simplejs/builtins/TemporalZonedDateTimeArithmetic
 src/test/java/org/ccg/mpp/unit/simplejs/builtins/TemporalZonedDateTimeBuiltinsTest.java 5
 src/test/java/org/ccg/mpp/unit/simplejs/builtins/TypedArrayAccessBuiltinsTest.java 4
 src/test/java/org/ccg/mpp/unit/simplejs/builtins/TypedArrayBuiltinsTest.java 3
-src/test/java/org/ccg/mpp/unit/simplejs/host/DatabaseHostBindingsTest.java 4
-src/test/java/org/ccg/mpp/unit/simplejs/host/EnforcingDatabaseAccessIntegrationTest.java 4
-src/test/java/org/ccg/mpp/unit/simplejs/host/EnforcingDatabaseAccessScopeTest.java 1
+src/test/java/org/ccg/mpp/unit/simplejs/host/ProjectHostBindingsTest.java 4
+src/test/java/org/ccg/mpp/unit/simplejs/host/EnforcingProjectAccessIntegrationTest.java 4
+src/test/java/org/ccg/mpp/unit/simplejs/host/EnforcingProjectAccessScopeTest.java 1
 src/test/java/org/ccg/mpp/unit/simplejs/host/HostAllowlistTest.java 1
 src/test/java/org/ccg/mpp/unit/simplejs/host/HostBindingsLocaleTest.java 2
 src/test/java/org/ccg/mpp/unit/simplejs/host/ResourceLimitsTest.java 2

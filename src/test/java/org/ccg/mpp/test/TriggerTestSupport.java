@@ -23,7 +23,7 @@ public final class TriggerTestSupport {
     }
 
     public static void createDefiner(String username) throws Exception {
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(username));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(username));
         createUser(username);
     }
 
@@ -33,7 +33,7 @@ public final class TriggerTestSupport {
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -41,12 +41,12 @@ public final class TriggerTestSupport {
     public static void clearTriggersAndProcedures() throws Exception {
         final var cache = IocContainer.get(Cache.class);
         final var fs = IocContainer.get(FileSystem.class);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     public static void consumeAllPendingRuns() throws Exception {
@@ -84,7 +84,7 @@ public final class TriggerTestSupport {
 
     private static DbEntry entryOf(String id, JsonObject data) {
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id(id);
         dbEntry.setData(data);

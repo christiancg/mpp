@@ -22,7 +22,7 @@ def _permissions(granted: Permissions) -> JsonObject:
     return {
         "admin": granted.admin,
         "globalPermissions": global_permissions,
-        "databasePermissions": _grants(granted.databases),
+        "projectPermissions": _grants(granted.projects),
         "collectionPermissions": _grants(granted.collections),
         "scriptPermissions": _grants(granted.scripts),
     }
@@ -38,32 +38,32 @@ class ScriptRequestEncoder:
     def __init__(self, encoder: RequestEncoder) -> None:
         self._encoder = encoder
 
-    def run_script(self, database: str, script: str, args: object) -> JsonObject:
-        return {**request("RUN_SCRIPT", database), "script": script, **self._args(args)}
+    def run_script(self, project: str, script: str, args: object) -> JsonObject:
+        return {**request("RUN_SCRIPT", project), "script": script, **self._args(args)}
 
-    def save_procedure(self, database: str, procedure: ProcedureDefinition) -> JsonObject:
+    def save_procedure(self, project: str, procedure: ProcedureDefinition) -> JsonObject:
         return {
-            **request("SAVE_PROCEDURE", database),
+            **request("SAVE_PROCEDURE", project),
             "name": procedure.name,
             "script": procedure.script,
             **_optional(description=procedure.description, enabled=procedure.enabled, ifVersion=procedure.if_version),
         }
 
-    def delete_procedure(self, database: str, name: str) -> JsonObject:
-        return {**request("DELETE_PROCEDURE", database), "name": name}
+    def delete_procedure(self, project: str, name: str) -> JsonObject:
+        return {**request("DELETE_PROCEDURE", project), "name": name}
 
-    def list_procedures(self, database: str, include_source: bool | None) -> JsonObject:
-        return {**request("LIST_PROCEDURES", database), **_optional(includeSource=include_source)}
+    def list_procedures(self, project: str, include_source: bool | None) -> JsonObject:
+        return {**request("LIST_PROCEDURES", project), **_optional(includeSource=include_source)}
 
-    def call_procedure(self, database: str, name: str, args: object) -> JsonObject:
-        return {**request("CALL_PROCEDURE", database), "procedureName": name, **self._args(args)}
+    def call_procedure(self, project: str, name: str, args: object) -> JsonObject:
+        return {**request("CALL_PROCEDURE", project), "procedureName": name, **self._args(args)}
 
-    def save_trigger(self, database: str, collection: str, trigger: TriggerDefinition) -> JsonObject:
+    def save_trigger(self, project: str, collection: str, trigger: TriggerDefinition) -> JsonObject:
         if not trigger.events:
             raise ValueError("a trigger needs at least one event")
         events: list[Json] = [str(event) for event in trigger.events]
         return {
-            **request("SAVE_TRIGGER", database, collection),
+            **request("SAVE_TRIGGER", project, collection),
             "name": trigger.name,
             "events": events,
             "procedureName": trigger.procedure_name,
@@ -76,32 +76,32 @@ class ScriptRequestEncoder:
             ),
         }
 
-    def delete_trigger(self, database: str, collection: str, name: str) -> JsonObject:
-        return {**request("DELETE_TRIGGER", database, collection), "name": name}
+    def delete_trigger(self, project: str, collection: str, name: str) -> JsonObject:
+        return {**request("DELETE_TRIGGER", project, collection), "name": name}
 
-    def list_triggers(self, database: str, collection: str | None) -> JsonObject:
-        return request("LIST_TRIGGERS", database, collection)
+    def list_triggers(self, project: str, collection: str | None) -> JsonObject:
+        return request("LIST_TRIGGERS", project, collection)
 
     def test_trigger(
         self,
-        database: str,
+        project: str,
         collection: str,
         name: str,
         event: TriggerEvent,
         document: object,
     ) -> JsonObject:
         return {
-            **request("TEST_TRIGGER", database, collection),
+            **request("TEST_TRIGGER", project, collection),
             "name": name,
             "event": str(event),
             "document": self._encoder.document(document),
         }
 
-    def save_schedule(self, database: str, schedule: ScheduleDefinition) -> JsonObject:
+    def save_schedule(self, project: str, schedule: ScheduleDefinition) -> JsonObject:
         if (schedule.cron is None) == (schedule.interval_ms is None):
             raise ValueError("a schedule takes exactly one of cron and interval_ms")
         return {
-            **request("SAVE_SCHEDULE", database),
+            **request("SAVE_SCHEDULE", project),
             "name": schedule.name,
             "procedureName": schedule.procedure_name,
             **_optional(cron=schedule.cron, intervalMs=schedule.interval_ms),
@@ -114,11 +114,11 @@ class ScriptRequestEncoder:
             ),
         }
 
-    def delete_schedule(self, database: str, name: str) -> JsonObject:
-        return {**request("DELETE_SCHEDULE", database), "name": name}
+    def delete_schedule(self, project: str, name: str) -> JsonObject:
+        return {**request("DELETE_SCHEDULE", project), "name": name}
 
-    def list_schedules(self, database: str, include_args: bool | None) -> JsonObject:
-        return {**request("LIST_SCHEDULES", database), **_optional(includeArgs=include_args)}
+    def list_schedules(self, project: str, include_args: bool | None) -> JsonObject:
+        return {**request("LIST_SCHEDULES", project), **_optional(includeArgs=include_args)}
 
     def list_scripts(self) -> JsonObject:
         return request("LIST_SCRIPTS")

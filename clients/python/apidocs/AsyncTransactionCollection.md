@@ -4,9 +4,9 @@ One collection seen from inside a transaction. Its reads see the transaction's o
 
 The sync class `TransactionCollection` has the same members; its methods block and return the value directly.
 
-## database_name
+## project_name
 
-The database the collection belongs to.
+The project the collection belongs to.
 
 ## name
 

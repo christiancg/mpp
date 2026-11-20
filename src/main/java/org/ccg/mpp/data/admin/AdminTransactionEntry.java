@@ -15,7 +15,7 @@ public class AdminTransactionEntry extends DbEntry {
     private static final String CLIENT_ID_FIELD = "clientId";
     private static final String SEQ_FIELD = "seq";
     private static final String OP_TYPE_FIELD = "opType";
-    private static final String TARGET_DB_FIELD = "targetDb";
+    private static final String TARGET_PROJECT_FIELD = "targetProject";
     private static final String TARGET_COLL_FIELD = "targetColl";
     private static final String PAYLOAD_FIELD = "payload";
     private static final String INSERTED_IDS_FIELD = "insertedIds";
@@ -46,7 +46,7 @@ public class AdminTransactionEntry extends DbEntry {
     private String clientId;
     private long seq;
     private String opType;
-    private String targetDb;
+    private String targetProject;
     private String targetColl;
     private JsonObject payload;
     private List<String> insertedIds = List.of();
@@ -55,20 +55,20 @@ public class AdminTransactionEntry extends DbEntry {
     private List<Long> versions = List.of();
 
     private AdminTransactionEntry() {
-        setDatabaseName(Globals.ADMIN_DB_NAME);
+        setProjectName(Globals.ADMIN_PROJECT_NAME);
         setCollectionName(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         setData(new JsonObject());
     }
 
-    public AdminTransactionEntry(String transactionId, String clientId, long seq, String opType, String targetDb,
+    public AdminTransactionEntry(String transactionId, String clientId, long seq, String opType, String targetProject,
             String targetColl, JsonObject payload) {
-        setDatabaseName(Globals.ADMIN_DB_NAME);
+        setProjectName(Globals.ADMIN_PROJECT_NAME);
         setCollectionName(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         this.transactionId = transactionId;
         this.clientId = clientId;
         this.seq = seq;
         this.opType = opType;
-        this.targetDb = targetDb;
+        this.targetProject = targetProject;
         this.targetColl = targetColl;
         this.payload = payload;
         set_id(buildId(transactionId, seq));
@@ -119,7 +119,7 @@ public class AdminTransactionEntry extends DbEntry {
         result.clientId = "";
         result.seq = 0;
         result.opType = opType;
-        result.targetDb = "";
+        result.targetProject = "";
         result.targetColl = "";
         result.payload = payload;
         result.set_id(transactionId + Globals.COLL_IDENTIFIER_SEPARATOR + markerSuffix);
@@ -135,7 +135,7 @@ public class AdminTransactionEntry extends DbEntry {
         result.clientId = object.get(CLIENT_ID_FIELD).asJsonString().getValue();
         result.seq = Long.parseLong(object.get(SEQ_FIELD).asJsonString().getValue());
         result.opType = object.get(OP_TYPE_FIELD).asJsonString().getValue();
-        result.targetDb = object.get(TARGET_DB_FIELD).asJsonString().getValue();
+        result.targetProject = object.get(TARGET_PROJECT_FIELD).asJsonString().getValue();
         result.targetColl = object.get(TARGET_COLL_FIELD).asJsonString().getValue();
         result.payload = object.get(PAYLOAD_FIELD).asJsonObject();
         result.insertedIds = readStringArray(object, INSERTED_IDS_FIELD);
@@ -158,7 +158,7 @@ public class AdminTransactionEntry extends DbEntry {
         data.addProperty(CLIENT_ID_FIELD, clientId);
         data.addProperty(SEQ_FIELD, Long.toString(seq));
         data.addProperty(OP_TYPE_FIELD, opType);
-        data.addProperty(TARGET_DB_FIELD, targetDb);
+        data.addProperty(TARGET_PROJECT_FIELD, targetProject);
         data.addProperty(TARGET_COLL_FIELD, targetColl);
         data.add(PAYLOAD_FIELD, payload);
         final var ids = new JsonArray();
@@ -199,8 +199,8 @@ public class AdminTransactionEntry extends DbEntry {
         return opType;
     }
 
-    public String getTargetDb() {
-        return targetDb;
+    public String getTargetProject() {
+        return targetProject;
     }
 
     public String getTargetColl() {
@@ -242,19 +242,19 @@ public class AdminTransactionEntry extends DbEntry {
             return false;
         return seq == that.seq && Objects.equals(transactionId, that.transactionId)
                 && Objects.equals(clientId, that.clientId) && Objects.equals(opType, that.opType)
-                && Objects.equals(targetDb, that.targetDb) && Objects.equals(targetColl, that.targetColl)
+                && Objects.equals(targetProject, that.targetProject) && Objects.equals(targetColl, that.targetColl)
                 && Objects.equals(payload, that.payload);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), transactionId, clientId, seq, opType, targetDb, targetColl, payload);
+        return Objects.hash(super.hashCode(), transactionId, clientId, seq, opType, targetProject, targetColl, payload);
     }
 
     @Override
     public String toString() {
         return "AdminTransactionEntry(super=" + super.toString() + ", transactionId=" + transactionId + ", clientId="
-                + clientId + ", seq=" + seq + ", opType=" + opType + ", targetDb=" + targetDb + ", targetColl="
-                + targetColl + ")";
+                + clientId + ", seq=" + seq + ", opType=" + opType + ", targetProject=" + targetProject
+                + ", targetColl=" + targetColl + ")";
     }
 }

@@ -22,7 +22,7 @@ public final class TriggerRunIndex {
     private static final NameMemo<String> names = new NameMemo<>(NAME_MEMO_CAPACITY);
 
     public record Summary(PkIndexEntry row, String nodeId, TriggerRunStatus status, long firedAt, long lastErrorAt,
-            String dbName, String collName, String txId) {
+            String projectName, String collName, String txId) {
         public String recordId() {
             return row.getValue();
         }
@@ -74,10 +74,10 @@ public final class TriggerRunIndex {
         return known;
     }
 
-    public static int knownDeadIn(String dbName) {
+    public static int knownDeadIn(String projectName) {
         var dead = 0;
         for (final var summary : summaries.values()) {
-            if (summary.isDead() && dbName.equals(summary.dbName())) {
+            if (summary.isDead() && projectName.equals(summary.projectName())) {
                 dead++;
             }
         }
@@ -111,7 +111,8 @@ public final class TriggerRunIndex {
 
     private static Summary summaryOf(AdminTriggerRunEntry entry, PkIndexEntry row) {
         return new Summary(row, canonical(entry.getNodeId()), entry.getStatus(), entry.getFiredAt(),
-                entry.getLastErrorAt(), canonical(entry.getDbName()), canonical(entry.getCollName()), entry.getTxId());
+                entry.getLastErrorAt(), canonical(entry.getTargetProject()), canonical(entry.getCollName()),
+                entry.getTxId());
     }
 
     private static String canonical(String name) {

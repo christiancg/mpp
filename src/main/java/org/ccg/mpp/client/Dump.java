@@ -52,8 +52,8 @@ public final class Dump {
         final var buffered = new BufferedOutputStream(stdout);
         try {
             sink = options.compress() ? new GZIPOutputStream(buffered) : buffered;
-            for (final var database : scope.databases()) {
-                dumpDatabase(scope, database);
+            for (final var project : scope.projects()) {
+                dumpProject(scope, project);
             }
         } catch (IOException e) {
             throw writeFailure(e);
@@ -78,32 +78,32 @@ public final class Dump {
         return new ClientException("cannot write the dump: " + e, ClientException.FAILED, e);
     }
 
-    private void dumpDatabase(DumpScope scope, DumpScope.DatabasePlan plan) throws IOException {
-        final var database = plan.name();
-        emit(Requests.createDatabase(database));
-        final var dumped = plan.collections().isEmpty() ? List.<String>of() : dumpCollections(database, plan);
+    private void dumpProject(DumpScope scope, DumpScope.ProjectPlan plan) throws IOException {
+        final var project = plan.name();
+        emit(Requests.createProject(project));
+        final var dumped = plan.collections().isEmpty() ? List.<String>of() : dumpCollections(project, plan);
         for (final var collection : dumped) {
-            dumpSchema(database, collection);
+            dumpSchema(project, collection);
         }
         for (final var collection : dumped) {
-            final var fields = scope.indexesOf(database, collection);
+            final var fields = scope.indexesOf(project, collection);
             if (!fields.isEmpty()) {
-                emit(Requests.createIndexes(database, collection, fields));
+                emit(Requests.createIndexes(project, collection, fields));
             }
         }
         dumpDefinitions(plan);
     }
 
-    private List<String> dumpCollections(String database, DumpScope.DatabasePlan plan) throws IOException {
+    private List<String> dumpCollections(String project, DumpScope.ProjectPlan plan) throws IOException {
         final var dumped = new ArrayList<String>();
-        try (var snapshot = DumpSnapshot.open(connection, database, plan.collections())) {
+        try (var snapshot = DumpSnapshot.open(connection, project, plan.collections())) {
             for (final var collection : plan.collections()) {
                 if (snapshot.collections().contains(collection)) {
-                    emit(Requests.createCollection(database, collection));
-                    dumpDocuments(snapshot, database, collection);
+                    emit(Requests.createCollection(project, collection));
+                    dumpDocuments(snapshot, project, collection);
                     dumped.add(collection);
                 } else {
-                    err.println("note: " + database + "." + collection
+                    err.println("note: " + project + "." + collection
                             + " was not dumped: it no longer exists or cannot be read");
                 }
             }
@@ -111,15 +111,15 @@ public final class Dump {
         return dumped;
     }
 
-    private void dumpDocuments(DumpSnapshot snapshot, String database, String collection) throws IOException {
+    private void dumpDocuments(DumpSnapshot snapshot, String project, String collection) throws IOException {
         String afterId = null;
         var limit = PAGE_SIZE;
         var count = 0;
         while (true) {
-            final var page = pageOf(snapshot, database, collection, afterId, limit);
+            final var page = pageOf(snapshot, project, collection, afterId, limit);
             var pageBytes = 0L;
             for (final var document : page.documents()) {
-                pageBytes += append(database, collection, document);
+                pageBytes += append(project, collection, document);
             }
             count += page.documents().size();
             if (page.done()) {
@@ -130,17 +130,17 @@ public final class Dump {
                 limit = nextPageSize(pageBytes, page.documents().size());
             }
         }
-        flushBatch(database, collection);
-        err.println(database + "." + collection + ": " + count + " documents");
+        flushBatch(project, collection);
+        err.println(project + "." + collection + ": " + count + " documents");
     }
 
-    private SnapshotPage pageOf(DumpSnapshot snapshot, String database, String collection, String afterId,
+    private SnapshotPage pageOf(DumpSnapshot snapshot, String project, String collection, String afterId,
             int firstLimit) {
         var limit = firstLimit;
-        var reply = pageReply(snapshot, database, collection, afterId, limit);
+        var reply = pageReply(snapshot, project, collection, afterId, limit);
         while (reply == null || limit > 1 && RESPONSE_BUDGET_EXHAUSTED.equals(Connection.errorCodeOf(reply))) {
             limit = Math.max(1, limit / 2);
-            reply = pageReply(snapshot, database, collection, afterId, limit);
+            reply = pageReply(snapshot, project, collection, afterId, limit);
         }
         if (!Connection.isOk(reply)) {
             throw snapshot.refused(collection, afterId, limit, reply);
@@ -153,7 +153,7 @@ public final class Dump {
         return new SnapshotPage(DumpScope.objectsOf(reply, "results"), lastId, done);
     }
 
-    private JsonObject pageReply(DumpSnapshot snapshot, String database, String collection, String afterId, int limit) {
+    private JsonObject pageReply(DumpSnapshot snapshot, String project, String collection, String afterId, int limit) {
         try {
             return snapshot.read(collection, afterId, limit);
         } catch (ClientException failure) {
@@ -161,7 +161,7 @@ public final class Dump {
                 throw failure;
             }
             if (limit == 1) {
-                throw new ClientException("the document of " + database + "." + collection + " after "
+                throw new ClientException("the document of " + project + "." + collection + " after "
                         + (afterId == null ? "the start" : "'" + afterId + "'")
                         + " is larger than the client's reply limit", ClientException.FAILED, failure);
             }
@@ -174,30 +174,30 @@ public final class Dump {
         return (int) Math.clamp(PAGE_TARGET_BYTES / bytesPerDocument, 1L, MAX_PAGE_SIZE);
     }
 
-    private int append(String database, String collection, JsonObject document) throws IOException {
+    private int append(String project, String collection, JsonObject document) throws IOException {
         final var size = eJson.toJsonBytes(document, SIZE_HINT).length;
         if (!batch.isEmpty() && batchBytes + size > BATCH_BYTES) {
-            flushBatch(database, collection);
+            flushBatch(project, collection);
         }
         batch.add(document);
         batchBytes += size;
         return size;
     }
 
-    private void flushBatch(String database, String collection) throws IOException {
+    private void flushBatch(String project, String collection) throws IOException {
         if (!batch.isEmpty()) {
-            emit(Requests.bulkSave(database, collection, batch));
+            emit(Requests.bulkSave(project, collection, batch));
             batch = new JsonArray();
             batchBytes = 0;
         }
     }
 
-    private void dumpSchema(String database, String collection) throws IOException {
-        final var request = Requests.getSchema(database, collection);
+    private void dumpSchema(String project, String collection) throws IOException {
+        final var request = Requests.getSchema(project, collection);
         final var reply = connection.send(request);
         final var schema = reply.get("schema");
         if (Connection.isOk(reply) && schema != null && schema.isJsonObject()) {
-            emit(Requests.saveSchema(database, collection, schema.asJsonObject()));
+            emit(Requests.saveSchema(project, collection, schema.asJsonObject()));
         } else if (Connection.isOk(reply)) {
             throw Connection.refused(request, reply);
         } else if (!NO_SCHEMA.equals(Connection.errorCodeOf(reply))) {
@@ -205,39 +205,38 @@ public final class Dump {
         }
     }
 
-    private void dumpDefinitions(DumpScope.DatabasePlan plan) throws IOException {
-        final var database = plan.name();
-        final var procedures = listed(Requests.listProcedures(database, true), "procedures");
+    private void dumpDefinitions(DumpScope.ProjectPlan plan) throws IOException {
+        final var project = plan.name();
+        final var procedures = listed(Requests.listProcedures(project, true), "procedures");
         if (procedures.isPresent()) {
             dumpProceduresAndTriggers(plan, procedures.get());
         } else {
-            err.println("note: triggers of " + database + " were not dumped: their procedures could not be listed");
+            err.println("note: triggers of " + project + " were not dumped: their procedures could not be listed");
         }
         if (plan.whole()) {
-            for (final var schedule : listedOrEmpty(Requests.listSchedules(database, true), "schedules")) {
-                emit(Requests.saveScheduleFrom(database, schedule));
+            for (final var schedule : listedOrEmpty(Requests.listSchedules(project, true), "schedules")) {
+                emit(Requests.saveScheduleFrom(project, schedule));
             }
         }
     }
 
-    private void dumpProceduresAndTriggers(DumpScope.DatabasePlan plan, List<JsonObject> procedures)
-            throws IOException {
-        final var database = plan.name();
+    private void dumpProceduresAndTriggers(DumpScope.ProjectPlan plan, List<JsonObject> procedures) throws IOException {
+        final var project = plan.name();
         final var triggers = new ArrayList<JsonObject>();
-        for (final var trigger : listedOrEmpty(Requests.listTriggers(database), "triggers")) {
+        for (final var trigger : listedOrEmpty(Requests.listTriggers(project), "triggers")) {
             if (plan.keepsTrigger(trigger)) {
                 triggers.add(trigger);
             }
         }
         for (final var procedure : proceduresToKeep(plan, procedures, triggers)) {
-            emit(Requests.saveProcedureFrom(database, procedure));
+            emit(Requests.saveProcedureFrom(project, procedure));
         }
         for (final var trigger : triggers) {
-            emit(Requests.saveTriggerFrom(database, trigger));
+            emit(Requests.saveTriggerFrom(project, trigger));
         }
     }
 
-    private static List<JsonObject> proceduresToKeep(DumpScope.DatabasePlan plan, List<JsonObject> procedures,
+    private static List<JsonObject> proceduresToKeep(DumpScope.ProjectPlan plan, List<JsonObject> procedures,
             List<JsonObject> triggers) {
         final var order = new ProcedureOrder(procedures);
         if (plan.whole()) {
@@ -265,7 +264,7 @@ public final class Dump {
         final var reply = connection.send(request);
         final var errorCode = Connection.errorCodeOf(reply);
         if (errorCode != null && SKIPPABLE_LISTINGS.contains(errorCode)) {
-            err.println("note: " + field + " of " + Connection.stringOf(request, Requests.DATABASE)
+            err.println("note: " + field + " of " + Connection.stringOf(request, Requests.PROJECT)
                     + " were not dumped: " + Connection.stringOf(reply, Connection.MESSAGE));
             return Optional.empty();
         }

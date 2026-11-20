@@ -156,7 +156,7 @@ class Run:
         found = oracles.check_no_stranded_state(connect, self.schema, self.seed, LOCK_TIMEOUT_MS,
                                                 output[self.scanned:])
         self.stranded = {coll for coll in self.schema.collections
-                         if any(d.detail.startswith(f"{self.schema.db}|{coll}:") for d in found)}
+                         if any(d.detail.startswith(f"{self.schema.project}|{coll}:") for d in found)}
         self.report("O7 no stranded state", found)
         self.scanned = len(output)
 
@@ -175,8 +175,8 @@ class Run:
         return folder
 
     def drifted(self, work_dir: str) -> bool:
-        return any(oracles.occupancy_drift(oracles.recorded_pages(work_dir, self.schema.db, coll),
-                                           oracles.actual_pages(work_dir, self.schema.db, coll))
+        return any(oracles.occupancy_drift(oracles.recorded_pages(work_dir, self.schema.project, coll),
+                                           oracles.actual_pages(work_dir, self.schema.project, coll))
                    for coll in self.schema.collections)
 
     def settled_snapshot(self) -> str:

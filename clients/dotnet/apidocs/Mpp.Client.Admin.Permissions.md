@@ -6,9 +6,9 @@ An empty `Permissions` grants nothing. `Admin` makes the user a superadmin, who 
 Creates permissions that grant nothing.
 
 ## CollectionKey(string, string)
-Builds the key of a collection in `Collections`, which is `database|collection`.
+Builds the key of a collection in `Collections`, which is `project|collection`.
 
-@param database the database name
+@param project the project name
 @param collection the collection name
 @returns the key
 
@@ -18,11 +18,11 @@ True for a superadmin, who is not limited by the other permissions.
 ## Collections
 Access per collection, keyed by `Permissions.CollectionKey`.
 
-## Databases
-Access per database, keyed by the database name.
+## Projects
+Access per project, keyed by the project name.
 
 ## Global
 The server-wide permissions.
 
 ## Scripts
-Script access per database, keyed by the database name.
+Script access per project, keyed by the project name.

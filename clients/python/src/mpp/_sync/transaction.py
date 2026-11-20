@@ -22,8 +22,8 @@ class TransactionCollection(Generic[T, R]):
         self._inner = inner
 
     @property
-    def database_name(self) -> str:
-        return self._inner.database_name
+    def project_name(self) -> str:
+        return self._inner.project_name
 
     @property
     def name(self) -> str:
@@ -68,25 +68,25 @@ class Transaction:
         return self._inner.is_open
 
     @overload
-    def collection(self, database: str, collection: str) -> TransactionCollection[Document, Document]: ...
+    def collection(self, project: str, collection: str) -> TransactionCollection[Document, Document]: ...
 
     @overload
-    def collection(self, database: str, collection: str, model: type[M]) -> TransactionCollection[M, M]: ...
+    def collection(self, project: str, collection: str, model: type[M]) -> TransactionCollection[M, M]: ...
 
     @overload
     def collection(
-        self, database: str, collection: str, *, codec: DocumentCodec[T, R]
+        self, project: str, collection: str, *, codec: DocumentCodec[T, R]
     ) -> TransactionCollection[T, R]: ...
 
     def collection(
         self,
-        database: str,
+        project: str,
         collection: str,
         model: type[Any] | None = None,
         *,
         codec: DocumentCodec[Any, Any] | None = None,
     ) -> TransactionCollection[Any, Any]:
-        return TransactionCollection(self._runtime, self._inner._collection(database, collection, model, codec))
+        return TransactionCollection(self._runtime, self._inner._collection(project, collection, model, codec))
 
     def commit(self) -> None:
         self._runtime.run(self._inner.commit())

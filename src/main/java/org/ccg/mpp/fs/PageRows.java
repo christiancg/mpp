@@ -12,16 +12,16 @@ final class PageRows {
     private PageRows() {
     }
 
-    static List<PkIndexEntry> of(PkIndexStore store, List<PkIndexEntry> residentRows, String dbName, String collName,
-            long page) throws IOException {
-        return of(store, residentRows, dbName, collName, page, null);
+    static List<PkIndexEntry> of(PkIndexStore store, List<PkIndexEntry> residentRows, String projectName,
+            String collName, long page) throws IOException {
+        return of(store, residentRows, projectName, collName, page, null);
     }
 
-    static List<PkIndexEntry> of(PkIndexStore store, List<PkIndexEntry> residentRows, String dbName, String collName,
-            long page, String excludedId) throws IOException {
+    static List<PkIndexEntry> of(PkIndexStore store, List<PkIndexEntry> residentRows, String projectName,
+            String collName, long page, String excludedId) throws IOException {
         final var rows = residentRows != null && !(residentRows instanceof PointScannedRows)
                 ? residentRows
-                : store.readWholePkIndexFile(dbName, collName);
+                : store.readWholePkIndexFile(projectName, collName);
         final var onPage = new ArrayList<PkIndexEntry>();
         for (final var row : rows) {
             if (row.getPage() == page && !row.getValue().equals(excludedId)) {
@@ -31,7 +31,7 @@ final class PageRows {
         return onPage;
     }
 
-    static List<PkIndexEntry> forLines(PkIndexStore store, List<PkIndexEntry> residentRows, String dbName,
+    static List<PkIndexEntry> forLines(PkIndexStore store, List<PkIndexEntry> residentRows, String projectName,
             String collName, List<PageLines.Line> lines) throws IOException {
         if (!(residentRows instanceof PointScannedRows)) {
             return residentRows;
@@ -42,7 +42,7 @@ final class PageRows {
                 ids.add(line.id());
             }
         }
-        final var rows = new ArrayList<>(store.rowsFor(dbName, collName, ids).values());
+        final var rows = new ArrayList<>(store.rowsFor(projectName, collName, ids).values());
         rows.sort(Comparator.comparing(PkIndexEntry::getValue));
         return rows;
     }

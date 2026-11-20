@@ -49,7 +49,7 @@ public class TransactionFencedResendTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         cluster.start(false, 1000L);
     }
@@ -72,7 +72,7 @@ public class TransactionFencedResendTest {
         final var clientId = clientTracker.registerForwardedClient("resender");
         TestUtils.ensureAdminUser(clientTracker.getAuthenticatedUsername(clientId));
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, coll);
+        final var request = new SaveRequest(TestGlobals.PROJECT, coll);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
@@ -84,7 +84,7 @@ public class TransactionFencedResendTest {
         final var transaction = clientTracker.getActiveTransaction(clientId);
         TransactionRecordCalls.persistBufferedOps(transaction);
         TxCommitLog.recordLocalCommit(transaction.getTransactionId().toString(), transaction.getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, coll)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, coll)));
         return clientId;
     }
 
@@ -98,7 +98,7 @@ public class TransactionFencedResendTest {
         cluster.configureMembership(2, node("self", cluster.serverPort()), node("other", 19991));
         for (var i = 0; i < 500; i++) {
             final var coll = "resend-moved-" + i;
-            if (!ownership.isOwner(TestGlobals.DB, coll)) {
+            if (!ownership.isOwner(TestGlobals.PROJECT, coll)) {
                 return coll;
             }
         }
@@ -106,8 +106,8 @@ public class TransactionFencedResendTest {
     }
 
     private void createCollection(String coll) throws Exception {
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, coll));
-        fs.createCollectionFile(TestGlobals.DB, coll);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, coll));
+        fs.createCollectionFile(TestGlobals.PROJECT, coll);
     }
 
     private void assertSliceRetained(UUID clientId, String txId, List<String> opIds) {
@@ -116,17 +116,19 @@ public class TransactionFencedResendTest {
                 "every op the marker names must survive the refused re-send");
         assertNotNull(clientTracker.getActiveTransaction(clientId),
                 "the transaction stays registered so its locks keep an owner");
-        assertTrue(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)),
+        assertTrue(
+                locks.isWriteLockedByCurrentThread(
+                        Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)),
                 "the half-applied collection must stay locked");
     }
 
     private void assertFinished(UUID clientId, String txId, String coll, String id) throws Exception {
         assertFalse(TxCommitLog.isLocallyCommitted(txId), "a finished commit clears its marker");
         assertNull(clientTracker.getActiveTransaction(clientId), "a finished commit deregisters the transaction");
-        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, coll)),
+        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.PROJECT, coll)),
                 "a finished commit releases its locks");
         assertNotNull(
-                cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, coll).stream()
+                cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, coll).stream()
                         .filter(entry -> entry.getValue().equals(id)).findFirst().orElse(null),
                 "the committed document must be present");
     }
@@ -246,7 +248,9 @@ public class TransactionFencedResendTest {
             assertEquals("500-24", response.getErrorCode(), "an undecided commit that fails before applying fails");
         }
         assertNull(clientTracker.getActiveTransaction(clientId), "the failed commit deregisters the transaction");
-        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)),
+        assertFalse(
+                locks.isWriteLockedByCurrentThread(
+                        Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)),
                 "the failed commit releases its locks");
     }
 }

@@ -37,46 +37,46 @@ final class CollectionRecordApplier {
     }
 
     static boolean install(AdminRecord record) throws Exception {
-        final var dbName = record.key().dbName();
+        final var projectName = record.key().projectName();
         final var collName = record.key().name();
         final var waitMillis = clusterConfig.replicationAckTimeoutMs();
-        if (!locks.tryLockDatabaseShared(dbName, waitMillis)) {
-            logger.warning(skipping(dbName, collName, "its database stayed locked by a drop"));
+        if (!locks.tryLockProjectShared(projectName, waitMillis)) {
+            logger.warning(skipping(projectName, collName, "its project stayed locked by a drop"));
             return false;
         }
         try {
-            if (!locks.tryLockWrite(dbName, collName, waitMillis)) {
-                logger.warning(skipping(dbName, collName, "its write lock stayed held"));
+            if (!locks.tryLockWrite(projectName, collName, waitMillis)) {
+                logger.warning(skipping(projectName, collName, "its write lock stayed held"));
                 return false;
             }
             try {
                 return installUnderNamesLock(record, waitMillis);
             } finally {
-                locks.release(dbName, collName);
+                locks.release(projectName, collName);
             }
         } finally {
-            locks.releaseDatabaseShared(dbName);
+            locks.releaseProjectShared(projectName);
         }
     }
 
     private static boolean installUnderNamesLock(AdminRecord record, long waitMillis) throws Exception {
-        final var dbName = record.key().dbName();
+        final var projectName = record.key().projectName();
         final var collName = record.key().name();
-        if (!locks.tryLockWrite(dbName, Globals.COLLECTION_NAMES_LOCK, waitMillis)) {
-            logger.warning(skipping(dbName, collName, "the collection names lock stayed held"));
+        if (!locks.tryLockWrite(projectName, Globals.COLLECTION_NAMES_LOCK, waitMillis)) {
+            logger.warning(skipping(projectName, collName, "the collection names lock stayed held"));
             return false;
         }
         try {
-            final var sibling = caseVariantOf(dbName, collName);
+            final var sibling = caseVariantOf(projectName, collName);
             if (sibling != null) {
-                logger.warning("Skipping the install of " + dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + ": "
-                        + sibling.name() + " was registered under the same folder meanwhile. The next round"
+                logger.warning("Skipping the install of " + projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName
+                        + ": " + sibling.name() + " was registered under the same folder meanwhile. The next round"
                         + " settles the pair by version.");
                 return false;
             }
             return installUnderLocks(record, AdminCollEntry.fromJsonObject(record.body()));
         } finally {
-            locks.release(dbName, Globals.COLLECTION_NAMES_LOCK);
+            locks.release(projectName, Globals.COLLECTION_NAMES_LOCK);
         }
     }
 
@@ -84,57 +84,57 @@ final class CollectionRecordApplier {
         if (!AdminRecords.stillOutranks(record)) {
             return true;
         }
-        final var dbName = record.key().dbName();
+        final var projectName = record.key().projectName();
         final var collName = record.key().name();
         final var incarnation = desired.getIncarnation();
         if (incarnation != 0) {
             hybridClock.observe(incarnation);
         }
-        if (!quarantine.quarantineStaleIncarnation(dbName, collName, incarnation,
+        if (!quarantine.quarantineStaleIncarnation(projectName, collName, incarnation,
                 clusterConfig.replicationAckTimeoutMs())) {
             return false;
         }
-        if (!LeftoverFolders.moveAsideUnregisteredCollection(dbName, collName)) {
+        if (!LeftoverFolders.moveAsideUnregisteredCollection(projectName, collName)) {
             return false;
         }
-        fs.createCollectionFile(dbName, collName);
-        if (cache.getAdminCollectionEntry(dbName, collName) == null) {
-            AdminOperationHelper.createPageCollections(dbName, collName);
+        fs.createCollectionFile(projectName, collName);
+        if (cache.getAdminCollectionEntry(projectName, collName) == null) {
+            AdminOperationHelper.createPageCollections(projectName, collName);
         }
-        final var existing = new HashSet<>(cache.getIndexesForCollection(dbName, collName));
+        final var existing = new HashSet<>(cache.getIndexesForCollection(projectName, collName));
         final var desiredIndexes = new HashSet<>(desired.getIndexes());
         final var added = new HashSet<>(desiredIndexes);
         added.removeAll(existing);
         final var removed = new HashSet<>(existing);
         removed.removeAll(desiredIndexes);
-        markAll(dbName, collName, added, removed);
-        final var installed = new AdminCollEntry(dbName, collName, desiredIndexes);
+        markAll(projectName, collName, added, removed);
+        final var installed = new AdminCollEntry(projectName, collName, desiredIndexes);
         installed.setIncarnation(incarnation);
         installed.setVersion(record.version());
         AdminOperationHelper.saveCollectionEntry(installed);
         for (final var field : added) {
-            IndexHelper.createIndex(dbName, collName, field);
+            IndexHelper.createIndex(projectName, collName, field);
         }
         for (final var field : removed) {
-            IndexHelper.dropIndex(dbName, collName, field);
+            IndexHelper.dropIndex(projectName, collName, field);
         }
-        clearAll(dbName, collName, added, removed);
+        clearAll(projectName, collName, added, removed);
         return true;
     }
 
-    private static void markAll(String dbName, String collName, Set<String> added, Set<String> removed)
+    private static void markAll(String projectName, String collName, Set<String> added, Set<String> removed)
             throws IOException {
         for (final var field : added) {
-            fs.indexMarkers().mark(dbName, collName, field);
+            fs.indexMarkers().mark(projectName, collName, field);
         }
         for (final var field : removed) {
-            fs.indexMarkers().mark(dbName, collName, field);
+            fs.indexMarkers().mark(projectName, collName, field);
         }
     }
 
-    private static void clearAll(String dbName, String collName, Set<String> added, Set<String> removed) {
-        added.forEach(field -> fs.indexMarkers().clear(dbName, collName, field));
-        removed.forEach(field -> fs.indexMarkers().clear(dbName, collName, field));
+    private static void clearAll(String projectName, String collName, Set<String> added, Set<String> removed) {
+        added.forEach(field -> fs.indexMarkers().clear(projectName, collName, field));
+        removed.forEach(field -> fs.indexMarkers().clear(projectName, collName, field));
     }
 
     static boolean indexFieldsAreValid(AdminRecord record) {
@@ -158,35 +158,36 @@ final class CollectionRecordApplier {
         return incarnation == 0 || hybridClock.withinSkew(incarnation, clusterConfig.maxClockSkewMs());
     }
 
-    static AdminRecordKey caseVariantOf(String dbName, String collName) {
-        final var sibling = OnDiskNameRegistry.collidingCollection(dbName, collName);
-        if (sibling == null || cache.getAdminCollectionEntry(dbName, sibling) == null) {
+    static AdminRecordKey caseVariantOf(String projectName, String collName) {
+        final var sibling = OnDiskNameRegistry.collidingCollection(projectName, collName);
+        if (sibling == null || cache.getAdminCollectionEntry(projectName, sibling) == null) {
             return null;
         }
-        return AdminRecordKey.collection(dbName, sibling);
+        return AdminRecordKey.collection(projectName, sibling);
     }
 
     static boolean remove(AdminRecord tombstone, boolean live) throws Exception {
         final var key = tombstone.key();
-        final var dbName = key.dbName();
+        final var projectName = key.projectName();
         final var collName = key.name();
         AdminStamp.tombstoneAt(key, tombstone.version());
-        if (cache.getAdminCollectionEntry(dbName, collName) == null || !tombstone.outranks(AdminRecords.live(key))) {
+        if (cache.getAdminCollectionEntry(projectName, collName) == null
+                || !tombstone.outranks(AdminRecords.live(key))) {
             return true;
         }
         if (live) {
-            return CollectionOperationHelper.dropCollection(dbName, collName, true, GrantRewrite.KEEP)
+            return CollectionOperationHelper.dropCollection(projectName, collName, true, GrantRewrite.KEEP)
                     .getStatus() == OperationStatus.OK;
         }
-        if (!quarantine.dropCollection(dbName, collName, clusterConfig.replicationAckTimeoutMs())) {
+        if (!quarantine.dropCollection(projectName, collName, clusterConfig.replicationAckTimeoutMs())) {
             return false;
         }
-        GrantPruner.forDroppedCollection(dbName, collName, GrantRewrite.KEEP);
+        GrantPruner.forDroppedCollection(projectName, collName, GrantRewrite.KEEP);
         return true;
     }
 
-    private static String skipping(String dbName, String collName, String reason) {
-        return "Skipping the install of " + dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + ": " + reason
+    private static String skipping(String projectName, String collName, String reason) {
+        return "Skipping the install of " + projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + ": " + reason
                 + " for " + clusterConfig.replicationAckTimeoutMs() + "ms. The next round retries it.";
     }
 }

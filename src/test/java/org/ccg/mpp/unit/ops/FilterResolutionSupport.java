@@ -39,7 +39,7 @@ public abstract class FilterResolutionSupport {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
     }
 
@@ -53,9 +53,9 @@ public abstract class FilterResolutionSupport {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(field, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(target, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(target, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     protected void insert(String id, String field, JsonBaseElement value) throws IOException {
@@ -64,9 +64,9 @@ public abstract class FilterResolutionSupport {
         if (value != null) {
             object.add(field, value);
         }
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     protected void insert(String id) throws IOException {
@@ -75,19 +75,19 @@ public abstract class FilterResolutionSupport {
 
     protected Cache mixedTypeFixture() {
         final var fixture = IocContainer.get(Cache.class);
-        fixture.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "seed", 0, 100, 0));
+        fixture.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL),
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "seed", 0, 100, 0));
         return fixture;
     }
 
     protected void indexField(Cache target, String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        target.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(field));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        target.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(field));
     }
 
     protected void indexField(String field) throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, field);
-        final var entry = cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL);
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, field);
+        final var entry = cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         final var indexes = new HashSet<>(entry.getIndexes());
         indexes.add(field);
         entry.setIndexes(indexes);
@@ -98,12 +98,12 @@ public abstract class FilterResolutionSupport {
     }
 
     protected Set<String> matched(FieldOperator op, PipelineContext context) throws IOException {
-        return FilterOperatorHelper.processOperator(op, null, TestGlobals.DB, TestGlobals.COLL, context)
+        return FilterOperatorHelper.processOperator(op, null, TestGlobals.PROJECT, TestGlobals.COLL, context)
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).collect(Collectors.toSet());
     }
 
     protected static List<JsonObject> rows(BaseAggregationStep... steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return AggregationOperationHelper.processAggregation(request);
     }

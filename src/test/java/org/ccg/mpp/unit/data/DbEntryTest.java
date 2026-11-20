@@ -12,15 +12,15 @@ import org.junit.jupiter.api.Test;
 public class DbEntryTest {
     @Test
     public void test_create_db_entry_from_valid_json_object() {
-        String databaseName = "testDB";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         JsonObject jsonObject = new JsonObject();
         jsonObject.addProperty(Globals.PK_FIELD, "12345");
         jsonObject.addProperty("name", "testName");
 
-        DbEntry entry = DbEntry.fromJsonObject(databaseName, collectionName, jsonObject);
+        DbEntry entry = DbEntry.fromJsonObject(projectName, collectionName, jsonObject);
 
-        assertEquals(databaseName, entry.getDatabaseName());
+        assertEquals(projectName, entry.getProjectName());
         assertEquals(collectionName, entry.getCollectionName());
         assertEquals("12345", entry.get_id());
         assertEquals(jsonObject, entry.getData());
@@ -28,14 +28,14 @@ public class DbEntryTest {
 
     @Test
     public void test_handle_json_object_without_id_field() {
-        String databaseName = "testDB";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         JsonObject jsonObject = new JsonObject();
         jsonObject.addProperty("name", "testName");
 
-        DbEntry entry = DbEntry.fromJsonObject(databaseName, collectionName, jsonObject);
+        DbEntry entry = DbEntry.fromJsonObject(projectName, collectionName, jsonObject);
 
-        assertEquals(databaseName, entry.getDatabaseName());
+        assertEquals(projectName, entry.getProjectName());
         assertEquals(collectionName, entry.getCollectionName());
         assertNull(entry.get_id());
         assertEquals(jsonObject, entry.getData());
@@ -43,13 +43,13 @@ public class DbEntryTest {
 
     @Test
     public void test_valid_json_string_conversion() {
-        String databaseName = "testDB";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         String jsonString = "{\"_id\":\"12345\", \"name\":\"testName\"}";
 
-        DbEntry entry = DbEntry.fromString(databaseName, collectionName, jsonString);
+        DbEntry entry = DbEntry.fromString(projectName, collectionName, jsonString);
 
-        assertEquals(databaseName, entry.getDatabaseName());
+        assertEquals(projectName, entry.getProjectName());
         assertEquals(collectionName, entry.getCollectionName());
         assertEquals("12345", entry.get_id());
         assertEquals("testName", entry.getData().get("name").asJsonString().getValue());
@@ -57,13 +57,13 @@ public class DbEntryTest {
 
     @Test
     public void test_json_string_without_id_field() {
-        String databaseName = "testDB";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         String jsonString = "{\"name\":\"testName\"}";
 
-        DbEntry entry = DbEntry.fromString(databaseName, collectionName, jsonString);
+        DbEntry entry = DbEntry.fromString(projectName, collectionName, jsonString);
 
-        assertEquals(databaseName, entry.getDatabaseName());
+        assertEquals(projectName, entry.getProjectName());
         assertEquals(collectionName, entry.getCollectionName());
         assertNull(entry.get_id());
         assertEquals("testName", entry.getData().get("name").asJsonString().getValue());

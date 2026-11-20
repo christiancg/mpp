@@ -20,8 +20,8 @@ import org.ccg.mpp.data.ProcedureDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
 import org.ccg.mpp.data.admin.AdminPageEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -41,11 +41,11 @@ public class AdminCache {
     private final Configuration configuration = Configuration.getInstance();
     private final FileSystem fs = IocContainer.get(FileSystem.class);
     private final EJson eJson = IocContainer.get(EJson.class);
-    private final Map<String, AdminDbEntry> databases = new ConcurrentHashMap<>();
+    private final Map<String, AdminProjectEntry> projects = new ConcurrentHashMap<>();
     private final Map<String, AdminCollEntry> collections = new ConcurrentHashMap<>();
     private final Map<String, AdminUserEntry> users = new ConcurrentHashMap<>();
     private final AdminPageCache pageCache = new AdminPageCache();
-    private final Map<String, PkIndexEntry> databasesPkIndex = new ConcurrentHashMap<>();
+    private final Map<String, PkIndexEntry> projectsPkIndex = new ConcurrentHashMap<>();
     private final Map<String, PkIndexEntry> collectionsPkIndex = new ConcurrentHashMap<>();
     private final Map<String, PkIndexEntry> usersPkIndex = new ConcurrentHashMap<>();
     private final Map<String, PkIndexEntry> collectionUsagePkIndex = new ConcurrentHashMap<>();
@@ -75,16 +75,16 @@ public class AdminCache {
 
     public void loadAdminData() throws IOException {
         for (var collName : Globals.ADMIN_COLLECTION_NAMES) {
-            pageCache.loadAdminPagesForCollection(Globals.ADMIN_DB_NAME, collName);
+            pageCache.loadAdminPagesForCollection(Globals.ADMIN_PROJECT_NAME, collName);
         }
         loadPkIndexInto(Globals.ADMIN_COLLECTION_USAGE_NAME, collectionUsagePkIndex);
         loadPkIndexInto(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME, transactionsPkIndex);
         loadPkIndexInto(Globals.ADMIN_TRIGGER_RUNS_COLLECTION_NAME, triggerRunsPkIndex);
-        loadPkIndexInto(Globals.ADMIN_DATABASES_COLLECTION_NAME, databasesPkIndex);
+        loadPkIndexInto(Globals.ADMIN_PROJECTS_COLLECTION_NAME, projectsPkIndex);
         loadPkIndexInto(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, collectionsPkIndex);
         loadPkIndexInto(Globals.ADMIN_USERS_COLLECTION_NAME, usersPkIndex);
-        loadAdminCollection(Globals.ADMIN_DATABASES_COLLECTION_NAME, databasesPkIndex, AdminDbEntry::fromJsonObject,
-                databases);
+        loadAdminCollection(Globals.ADMIN_PROJECTS_COLLECTION_NAME, projectsPkIndex, AdminProjectEntry::fromJsonObject,
+                projects);
         loadAdminCollection(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME, collectionsPkIndex,
                 AdminCollEntry::fromJsonObject, collections);
         loadAdminCollection(Globals.ADMIN_USERS_COLLECTION_NAME, usersPkIndex, AdminUserEntry::fromJsonObject, users);
@@ -109,7 +109,7 @@ public class AdminCache {
     }
 
     private void loadPkIndexInto(String collName, Map<String, PkIndexEntry> target) throws IOException {
-        target.putAll(fs.readWholePkIndexFile(Globals.ADMIN_DB_NAME, collName).stream()
+        target.putAll(fs.readWholePkIndexFile(Globals.ADMIN_PROJECT_NAME, collName).stream()
                 .collect(Collectors.toConcurrentMap(PkIndexEntry::getValue, indexEntry -> indexEntry)));
     }
 
@@ -123,53 +123,54 @@ public class AdminCache {
 
     private Map<String, DbEntry> readWholeAdminCollection(String collName) throws IOException {
         final var result = new HashMap<String, DbEntry>();
-        try (var pagesStream = fs.streamPages(Globals.ADMIN_DB_NAME, collName)) {
+        try (var pagesStream = fs.streamPages(Globals.ADMIN_PROJECT_NAME, collName)) {
             pagesStream.forEach(result::putAll);
         }
         return result;
     }
 
-    public List<AdminPageEntry> getAdminPageEntries(String dbName, String collName) {
-        return pageCache.getAdminPageEntries(dbName, collName);
+    public List<AdminPageEntry> getAdminPageEntries(String projectName, String collName) {
+        return pageCache.getAdminPageEntries(projectName, collName);
     }
 
-    public AdminPageEntry getAdminPageEntry(String dbName, String collName, long page) {
-        return pageCache.getAdminPageEntry(dbName, collName, page);
+    public AdminPageEntry getAdminPageEntry(String projectName, String collName, long page) {
+        return pageCache.getAdminPageEntry(projectName, collName, page);
     }
 
-    public void addAdminPageEntries(String dbName, String collName, AdminPageEntry adminPageEntry) {
-        pageCache.addAdminPageEntries(dbName, collName, adminPageEntry);
+    public void addAdminPageEntries(String projectName, String collName, AdminPageEntry adminPageEntry) {
+        pageCache.addAdminPageEntries(projectName, collName, adminPageEntry);
     }
 
-    public void addAdminPageEntries(String dbName, String collName, List<AdminPageEntry> adminPageEntries) {
-        pageCache.addAdminPageEntries(dbName, collName, adminPageEntries);
+    public void addAdminPageEntries(String projectName, String collName, List<AdminPageEntry> adminPageEntries) {
+        pageCache.addAdminPageEntries(projectName, collName, adminPageEntries);
     }
 
-    public void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta) {
-        pageCache.updatePageSizeInMemory(dbName, collName, page, bytesDelta);
+    public void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta) {
+        pageCache.updatePageSizeInMemory(projectName, collName, page, bytesDelta);
     }
 
-    public void updatePageSizeInMemory(String dbName, String collName, long page, long bytesDelta, int addedEntries) {
-        pageCache.updatePageSizeInMemory(dbName, collName, page, bytesDelta, addedEntries);
+    public void updatePageSizeInMemory(String projectName, String collName, long page, long bytesDelta,
+            int addedEntries) {
+        pageCache.updatePageSizeInMemory(projectName, collName, page, bytesDelta, addedEntries);
     }
 
-    public void updatePageSizeForUpdateInMemory(String dbName, String collName, long page, long bytesDelta) {
-        pageCache.updatePageSizeForUpdateInMemory(dbName, collName, page, bytesDelta);
+    public void updatePageSizeForUpdateInMemory(String projectName, String collName, long page, long bytesDelta) {
+        pageCache.updatePageSizeForUpdateInMemory(projectName, collName, page, bytesDelta);
     }
 
-    public List<PkIndexEntry> getAdminPagePkIndexes(String dbName, String collName) {
-        return pageCache.getAdminPagePkIndexes(dbName, collName);
+    public List<PkIndexEntry> getAdminPagePkIndexes(String projectName, String collName) {
+        return pageCache.getAdminPagePkIndexes(projectName, collName);
     }
 
     public void repositionAfterVacuum(VacuumedPage vacuumed) {
-        vacuumed.reposition(Globals.ADMIN_DB_NAME.equals(vacuumed.dbName())
+        vacuumed.reposition(Globals.ADMIN_PROJECT_NAME.equals(vacuumed.projectName())
                 ? adminCollectionPkIndex(vacuumed.collName())
                 : pageCache.pkIndexesForPagesCollection(vacuumed.collName()));
     }
 
     private Collection<PkIndexEntry> adminCollectionPkIndex(String collName) {
         return switch (collName) {
-            case Globals.ADMIN_DATABASES_COLLECTION_NAME -> databasesPkIndex.values();
+            case Globals.ADMIN_PROJECTS_COLLECTION_NAME -> projectsPkIndex.values();
             case Globals.ADMIN_COLLECTIONS_COLLECTION_NAME -> collectionsPkIndex.values();
             case Globals.ADMIN_USERS_COLLECTION_NAME -> usersPkIndex.values();
             case Globals.ADMIN_COLLECTION_USAGE_NAME -> collectionUsagePkIndex.values();
@@ -179,40 +180,40 @@ public class AdminCache {
         };
     }
 
-    public void removeAdminPageEntries(String dbName, String collName) {
-        pageCache.removeAdminPageEntries(dbName, collName);
+    public void removeAdminPageEntries(String projectName, String collName) {
+        pageCache.removeAdminPageEntries(projectName, collName);
     }
 
-    public long selectPageForInsert(String dbName, String collName, int entryByteSize) {
-        return pageCache.selectPageForInsert(dbName, collName, entryByteSize);
+    public long selectPageForInsert(String projectName, String collName, int entryByteSize) {
+        return pageCache.selectPageForInsert(projectName, collName, entryByteSize);
     }
 
-    public long[] selectPagesForInsert(String dbName, String collName, int[] entryByteSizes) {
-        return pageCache.selectPagesForInsert(dbName, collName, entryByteSizes);
+    public long[] selectPagesForInsert(String projectName, String collName, int[] entryByteSizes) {
+        return pageCache.selectPagesForInsert(projectName, collName, entryByteSizes);
     }
 
-    public PkIndexEntry getPkIndexAdminDbEntry(String dbName) {
-        return databasesPkIndex.get(dbName);
+    public PkIndexEntry getPkIndexAdminProjectEntry(String projectName) {
+        return projectsPkIndex.get(projectName);
     }
 
-    public void putPkIndexAdminDbEntry(PkIndexEntry adminPkIndexAdminDbEntry) {
-        databasesPkIndex.put(adminPkIndexAdminDbEntry.getValue(), adminPkIndexAdminDbEntry);
+    public void putPkIndexAdminProjectEntry(PkIndexEntry adminPkIndexAdminProjectEntry) {
+        projectsPkIndex.put(adminPkIndexAdminProjectEntry.getValue(), adminPkIndexAdminProjectEntry);
     }
 
-    public AdminDbEntry getAdminDbEntry(String dbName) {
-        return databases.get(dbName);
+    public AdminProjectEntry getAdminProjectEntry(String projectName) {
+        return projects.get(projectName);
     }
 
-    public Collection<AdminDbEntry> getAllAdminDbEntries() {
-        return databases.values();
+    public Collection<AdminProjectEntry> getAllAdminProjectEntries() {
+        return projects.values();
     }
 
-    public List<String> getUserDatabaseNames() {
-        return databases.keySet().stream().filter(name -> !Globals.ADMIN_DB_NAME.equals(name)).sorted().toList();
+    public List<String> getUserProjectNames() {
+        return projects.keySet().stream().filter(name -> !Globals.ADMIN_PROJECT_NAME.equals(name)).sorted().toList();
     }
 
-    public List<String> getCollectionNamesForDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public List<String> getCollectionNamesForProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         return collections.keySet().stream().filter(id -> id.startsWith(prefix))
                 .map(id -> id.substring(prefix.length())).sorted().toList();
     }
@@ -225,18 +226,18 @@ public class AdminCache {
         collectionsPkIndex.put(adminPkIndexAdminCollEntry.getValue(), adminPkIndexAdminCollEntry);
     }
 
-    public AdminCollEntry getAdminCollectionEntry(String dbName, String collName) {
-        return collections.get(Cache.getCollectionIdentifier(dbName, collName));
+    public AdminCollEntry getAdminCollectionEntry(String projectName, String collName) {
+        return collections.get(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public void putAdminDbEntry(AdminDbEntry dbEntry, PkIndexEntry indexEntry) {
-        databases.put(dbEntry.get_id(), dbEntry);
-        databasesPkIndex.put(dbEntry.get_id(), indexEntry);
+    public void putAdminProjectEntry(AdminProjectEntry dbEntry, PkIndexEntry indexEntry) {
+        projects.put(dbEntry.get_id(), dbEntry);
+        projectsPkIndex.put(dbEntry.get_id(), indexEntry);
     }
 
-    public void removeAdminDbEntry(String dbName) {
-        databases.remove(dbName);
-        databasesPkIndex.remove(dbName);
+    public void removeAdminProjectEntry(String projectName) {
+        projects.remove(projectName);
+        projectsPkIndex.remove(projectName);
     }
 
     public void putAdminCollectionEntry(AdminCollEntry dbEntry, PkIndexEntry indexEntry) {
@@ -250,12 +251,12 @@ public class AdminCache {
         collectionsPkIndex.remove(collIdentifier);
     }
 
-    public boolean hasIndex(String dbName, String collName, String fieldName) {
-        return getIndexesForCollection(dbName, collName).contains(fieldName);
+    public boolean hasIndex(String projectName, String collName, String fieldName) {
+        return getIndexesForCollection(projectName, collName).contains(fieldName);
     }
 
-    public Set<String> getIndexesForCollection(String dbName, String collName) {
-        final var collection = collections.get(Cache.getCollectionIdentifier(dbName, collName));
+    public Set<String> getIndexesForCollection(String projectName, String collName) {
+        final var collection = collections.get(Cache.getCollectionIdentifier(projectName, collName));
         // A collection dropped while a background index event was queued must read as "no indexes"
         // rather than throw, so that event becomes a clean no-op.
         if (collection == null) {
@@ -264,100 +265,100 @@ public class AdminCache {
         return collection.getIndexes();
     }
 
-    public JsonObject getCollectionSchema(String dbName, String collName) {
-        return schemaCache.get(dbName, collName);
+    public JsonObject getCollectionSchema(String projectName, String collName) {
+        return schemaCache.get(projectName, collName);
     }
 
-    public JsonObject loadSchemaUncached(String dbName, String collName) {
+    public JsonObject loadSchemaUncached(String projectName, String collName) {
         try {
-            final var raw = fs.metadataFiles().readCollectionSchema(dbName, collName);
+            final var raw = fs.metadataFiles().readCollectionSchema(projectName, collName);
             if (raw == null || raw.isBlank()) {
                 return null;
             }
             final var schema = AdminStamp.unwrappedSchema(eJson.fromJson(raw, JsonObject.class));
             SchemaPatternCaps.warnWhenOver(
-                    "Loaded the stored schema of " + Cache.getCollectionIdentifier(dbName, collName), schema);
+                    "Loaded the stored schema of " + Cache.getCollectionIdentifier(projectName, collName), schema);
             return schema;
         } catch (Exception e) {
-            logger.warning("Failed to load schema for " + Cache.getCollectionIdentifier(dbName, collName) + ": "
+            logger.warning("Failed to load schema for " + Cache.getCollectionIdentifier(projectName, collName) + ": "
                     + e.getMessage());
             throw new MetadataReadException(
-                    "Failed to read the schema for " + Cache.getCollectionIdentifier(dbName, collName), e);
+                    "Failed to read the schema for " + Cache.getCollectionIdentifier(projectName, collName), e);
         }
     }
 
-    public void putCollectionSchema(String dbName, String collName, JsonObject schema) {
-        schemaCache.put(Cache.getCollectionIdentifier(dbName, collName), schema);
+    public void putCollectionSchema(String projectName, String collName, JsonObject schema) {
+        schemaCache.put(Cache.getCollectionIdentifier(projectName, collName), schema);
     }
 
-    public void removeCollectionSchema(String dbName, String collName) {
-        schemaCache.remove(Cache.getCollectionIdentifier(dbName, collName));
+    public void removeCollectionSchema(String projectName, String collName) {
+        schemaCache.remove(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public void removeCollectionSchemasForDatabase(String dbName) {
-        schemaCache.removeForDatabase(dbName);
+    public void removeCollectionSchemasForProject(String projectName) {
+        schemaCache.removeForProject(projectName);
     }
 
-    public ProcedureDefinition getProcedure(String dbName, String name) {
-        return procedureCache.get(dbName, name);
+    public ProcedureDefinition getProcedure(String projectName, String name) {
+        return procedureCache.get(projectName, name);
     }
 
-    public ProcedureDefinition loadProcedureUncached(String dbName, String name) {
+    public ProcedureDefinition loadProcedureUncached(String projectName, String name) {
         try {
-            final var raw = fs.metadataFiles().readProcedure(dbName, name);
+            final var raw = fs.metadataFiles().readProcedure(projectName, name);
             if (raw == null || raw.isBlank()) {
                 return null;
             }
             return ProcedureDefinition.fromJsonObject(eJson.fromJson(raw, JsonObject.class));
         } catch (Exception e) {
-            logger.warning(
-                    "Failed to load procedure " + Cache.getCollectionIdentifier(dbName, name) + ": " + e.getMessage());
+            logger.warning("Failed to load procedure " + Cache.getCollectionIdentifier(projectName, name) + ": "
+                    + e.getMessage());
             throw new MetadataReadException(
-                    "Failed to read the procedure " + Cache.getCollectionIdentifier(dbName, name), e);
+                    "Failed to read the procedure " + Cache.getCollectionIdentifier(projectName, name), e);
         }
     }
 
-    public void putProcedure(String dbName, ProcedureDefinition definition) {
-        procedureCache.put(Cache.getCollectionIdentifier(dbName, definition.getName()), definition);
+    public void putProcedure(String projectName, ProcedureDefinition definition) {
+        procedureCache.put(Cache.getCollectionIdentifier(projectName, definition.getName()), definition);
     }
 
-    public void removeProcedure(String dbName, String name) {
-        procedureCache.remove(Cache.getCollectionIdentifier(dbName, name));
+    public void removeProcedure(String projectName, String name) {
+        procedureCache.remove(Cache.getCollectionIdentifier(projectName, name));
     }
 
-    public void removeProceduresForDatabase(String dbName) {
-        procedureCache.removeForDatabase(dbName);
+    public void removeProceduresForProject(String projectName) {
+        procedureCache.removeForProject(projectName);
     }
 
-    public ScheduleDefinition getSchedule(String dbName, String name) {
-        return scheduleCache.get(dbName, name);
+    public ScheduleDefinition getSchedule(String projectName, String name) {
+        return scheduleCache.get(projectName, name);
     }
 
-    public ScheduleDefinition loadScheduleUncached(String dbName, String name) {
+    public ScheduleDefinition loadScheduleUncached(String projectName, String name) {
         try {
-            final var raw = fs.metadataFiles().readSchedule(dbName, name);
+            final var raw = fs.metadataFiles().readSchedule(projectName, name);
             if (raw == null || raw.isBlank()) {
                 return null;
             }
             return ScheduleDefinition.fromJsonObject(eJson.fromJson(raw, JsonObject.class));
         } catch (Exception e) {
-            logger.warning(
-                    "Failed to load schedule " + Cache.getCollectionIdentifier(dbName, name) + ": " + e.getMessage());
+            logger.warning("Failed to load schedule " + Cache.getCollectionIdentifier(projectName, name) + ": "
+                    + e.getMessage());
             throw new MetadataReadException(
-                    "Failed to read the schedule " + Cache.getCollectionIdentifier(dbName, name), e);
+                    "Failed to read the schedule " + Cache.getCollectionIdentifier(projectName, name), e);
         }
     }
 
-    public void putSchedule(String dbName, ScheduleDefinition definition) {
-        scheduleCache.put(Cache.getCollectionIdentifier(dbName, definition.getName()), definition);
+    public void putSchedule(String projectName, ScheduleDefinition definition) {
+        scheduleCache.put(Cache.getCollectionIdentifier(projectName, definition.getName()), definition);
     }
 
-    public void removeSchedule(String dbName, String name) {
-        scheduleCache.remove(Cache.getCollectionIdentifier(dbName, name));
+    public void removeSchedule(String projectName, String name) {
+        scheduleCache.remove(Cache.getCollectionIdentifier(projectName, name));
     }
 
-    public void removeSchedulesForDatabase(String dbName) {
-        scheduleCache.removeForDatabase(dbName);
+    public void removeSchedulesForProject(String projectName) {
+        scheduleCache.removeForProject(projectName);
     }
 
     public void removeSchedulesMatching(Predicate<String> keyMatches) {
@@ -366,44 +367,44 @@ public class AdminCache {
 
     // An empty list doubles as the negative-cache sentinel, so an untriggered collection is read from
     // disk once rather than on every SAVE.
-    public List<TriggerDefinition> getTriggersFor(String dbName, String collName) {
-        final var id = Cache.getCollectionIdentifier(dbName, collName);
+    public List<TriggerDefinition> getTriggersFor(String projectName, String collName) {
+        final var id = Cache.getCollectionIdentifier(projectName, collName);
         var cached = triggers.get(id);
         if (cached == null) {
             final var generationAtLoad = triggerGeneration.current();
-            cached = loadTriggersUncached(dbName, collName);
+            cached = loadTriggersUncached(projectName, collName);
             final var loaded = cached;
             triggerGeneration.publishIfCurrent(generationAtLoad, () -> triggers.put(id, loaded));
         }
         return cached;
     }
 
-    public List<TriggerDefinition> loadTriggersUncached(String dbName, String collName) {
+    public List<TriggerDefinition> loadTriggersUncached(String projectName, String collName) {
         try {
-            final var raw = fs.metadataFiles().readTriggers(dbName, collName);
+            final var raw = fs.metadataFiles().readTriggers(projectName, collName);
             if (raw == null || raw.isBlank()) {
                 return List.of();
             }
             return List.copyOf(TriggerDefinition.fromFileJson(eJson.fromJson(raw, JsonObject.class)));
         } catch (Exception e) {
-            logger.warning("Failed to load triggers for " + Cache.getCollectionIdentifier(dbName, collName) + ": "
+            logger.warning("Failed to load triggers for " + Cache.getCollectionIdentifier(projectName, collName) + ": "
                     + e.getMessage());
             throw new MetadataReadException(
-                    "Failed to read the triggers for " + Cache.getCollectionIdentifier(dbName, collName), e);
+                    "Failed to read the triggers for " + Cache.getCollectionIdentifier(projectName, collName), e);
         }
     }
 
-    public void putTriggers(String dbName, String collName, List<TriggerDefinition> definitions) {
+    public void putTriggers(String projectName, String collName, List<TriggerDefinition> definitions) {
         triggerGeneration.invalidate(
-                () -> triggers.put(Cache.getCollectionIdentifier(dbName, collName), List.copyOf(definitions)));
+                () -> triggers.put(Cache.getCollectionIdentifier(projectName, collName), List.copyOf(definitions)));
     }
 
-    public void removeTriggers(String dbName, String collName) {
-        triggerGeneration.invalidate(() -> triggers.remove(Cache.getCollectionIdentifier(dbName, collName)));
+    public void removeTriggers(String projectName, String collName) {
+        triggerGeneration.invalidate(() -> triggers.remove(Cache.getCollectionIdentifier(projectName, collName)));
     }
 
-    public void removeTriggersForDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public void removeTriggersForProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         triggerGeneration.invalidate(() -> triggers.removeIf(id -> id.startsWith(prefix)));
     }
 

@@ -53,7 +53,7 @@ public class TriggerConsumingSliceTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -89,7 +89,7 @@ public class TriggerConsumingSliceTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString("live"));
         object.add("value", new JsonString("v"));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id("live");
         IocContainer.get(OperationProcessor.class).processMessage(request);
@@ -97,12 +97,12 @@ public class TriggerConsumingSliceTest {
 
     private static void recordRun(String nodeId) throws Exception {
         AdminOperationHelper.saveTriggerRun(
-                new AdminTriggerRunEntry(RUN_ID, 0L, nodeId, TestGlobals.DB, TestGlobals.COLL, "audit", "noop",
+                new AdminTriggerRunEntry(RUN_ID, 0L, nodeId, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "noop",
                         EventType.UPDATED, false, "admin", 0, System.currentTimeMillis(), List.of("live"), List.of()));
     }
 
     private static List<String> collections() {
-        return List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        return List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private List<String> crashWithASliceConsuming(String runId) throws Exception {
@@ -230,7 +230,7 @@ public class TriggerConsumingSliceTest {
 
         assertEquals(RUN_ID, new AdminTransactionEntry("tx", "c", 1L, AdminTransactionEntry.OP_TYPE_DELETE_TRIGGER_RUN,
                 "", "", consume).consumedTriggerRunId());
-        assertNull(new AdminTransactionEntry("tx", "c", 1L, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
+        assertNull(new AdminTransactionEntry("tx", "c", 1L, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT,
                 TestGlobals.COLL, consume).consumedTriggerRunId());
         assertNull(new AdminTransactionEntry("tx", "c", 1L, AdminTransactionEntry.OP_TYPE_DELETE_TRIGGER_RUN, "", "",
                 new JsonObject()).consumedTriggerRunId());

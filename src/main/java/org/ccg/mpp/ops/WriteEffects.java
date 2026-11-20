@@ -86,12 +86,12 @@ public final class WriteEffects {
         return durablePrefix.deleteVersions();
     }
 
-    void submitLanded(StagedTriggerRuns staged, Map<EventType, Set<String>> landedIds, String dbName, String collName,
-            String actingUser, int depth) {
+    void submitLanded(StagedTriggerRuns staged, Map<EventType, Set<String>> landedIds, String projectName,
+            String collName, String actingUser, int depth) {
         if (deferred) {
-            afterForce.add(() -> staged.submitLanded(landedIds, dbName, collName, actingUser, depth));
+            afterForce.add(() -> staged.submitLanded(landedIds, projectName, collName, actingUser, depth));
         } else {
-            staged.submitLanded(landedIds, dbName, collName, actingUser, depth);
+            staged.submitLanded(landedIds, projectName, collName, actingUser, depth);
         }
     }
 

@@ -43,9 +43,9 @@ public class CountAfterSizedScriptMapTest extends FilterResolutionSupport {
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add(FIELD, new JsonNumber(score));
         object.add("ref", new JsonNumber(score));
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void seed() throws IOException {

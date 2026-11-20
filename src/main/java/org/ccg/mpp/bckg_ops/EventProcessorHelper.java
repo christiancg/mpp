@@ -118,12 +118,12 @@ public class EventProcessorHelper {
         final var others = new ArrayList<Event>();
         for (final var event : batch) {
             if (event instanceof EntityEvent entityEvent) {
-                final var key = entityEvent.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR + entityEvent.getCollName()
-                        + Globals.COLL_IDENTIFIER_SEPARATOR + entityEvent.getIncarnation();
+                final var key = entityEvent.getProjectName() + Globals.COLL_IDENTIFIER_SEPARATOR
+                        + entityEvent.getCollName() + Globals.COLL_IDENTIFIER_SEPARATOR + entityEvent.getIncarnation();
                 entityGroups.computeIfAbsent(key, _ -> new ArrayList<>()).add(entityEvent);
             } else if (event instanceof ScriptRunHistoryEvent history && history.getRecord() != null
-                    && history.getRecord().database() != null) {
-                final var key = Cache.getCollectionIdentifier(history.getRecord().database(),
+                    && history.getRecord().project() != null) {
+                final var key = Cache.getCollectionIdentifier(history.getRecord().project(),
                         Globals.SCRIPT_RUNS_COLLECTION_NAME);
                 historyGroups.computeIfAbsent(key, _ -> new ArrayList<>()).add(history);
             } else {
@@ -193,9 +193,9 @@ public class EventProcessorHelper {
     private static String collectionOf(Event event) {
         return switch (event) {
             case EntityEvent entityEvent ->
-                entityEvent.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR + entityEvent.getCollName();
+                entityEvent.getProjectName() + Globals.COLL_IDENTIFIER_SEPARATOR + entityEvent.getCollName();
             case BulkEntityEvent bulkEvent ->
-                bulkEvent.getDbName() + Globals.COLL_IDENTIFIER_SEPARATOR + bulkEvent.getCollName();
+                bulkEvent.getProjectName() + Globals.COLL_IDENTIFIER_SEPARATOR + bulkEvent.getCollName();
             default -> null;
         };
     }
@@ -207,7 +207,7 @@ public class EventProcessorHelper {
             return;
         }
         final var first = group.getFirst();
-        final var dbName = first.getDbName();
+        final var projectName = first.getProjectName();
         final var collName = first.getCollName();
         if (belongsToAnotherIncarnation(first)) {
             clearPendingEvents(group);
@@ -219,23 +219,23 @@ public class EventProcessorHelper {
             ids.add(event.getId());
             refs.add(event.getEntity());
         }
-        final var indexFailure = indexFailureOf(() -> IndexHelper.bulkUpdateIndexes(dbName, collName,
+        final var indexFailure = indexFailureOf(() -> IndexHelper.bulkUpdateIndexes(projectName, collName,
                 new ArrayList<>(ids), lockBudgetMs, IndexPriors.of(refs)));
-        bookGroupPages(dbName, collName, group, first.getIncarnation());
+        bookGroupPages(projectName, collName, group, first.getIncarnation());
         if (indexFailure != null) {
             throw indexFailure;
         }
         clearPendingEvents(group);
     }
 
-    private static void bookGroupPages(String dbName, String collName, List<EntityEvent> group, long incarnation)
+    private static void bookGroupPages(String projectName, String collName, List<EntityEvent> group, long incarnation)
             throws InterruptedException {
         final var created = new ArrayList<EntityRef>(group.size());
         final var others = new ArrayList<EntityRef>(group.size());
         for (final var event : group) {
             (event.getType() == EventType.CREATED ? created : others).add(event.getEntity());
         }
-        AdminOperationHelper.bookWritePathPages(dbName, collName, created, others, incarnation);
+        AdminOperationHelper.bookWritePathPages(projectName, collName, created, others, incarnation);
     }
 
     private static void clearPendingEvents(List<EntityEvent> group) {
@@ -245,7 +245,8 @@ public class EventProcessorHelper {
     }
 
     private static void clearPendingEvent(EntityEvent event) {
-        pendingIndexWrites.clear(event.getDbName(), event.getCollName(), event.getId(), event.getPendingGeneration());
+        pendingIndexWrites.clear(event.getProjectName(), event.getCollName(), event.getId(),
+                event.getPendingGeneration());
     }
 
     public static void processEvent(Event event) throws IOException, InterruptedException {
@@ -284,17 +285,17 @@ public class EventProcessorHelper {
 
     private static void processBulkEntityEvent(BulkEntityEvent event, long lockBudgetMs)
             throws IOException, InterruptedException {
-        final var dbName = event.getDbName();
+        final var projectName = event.getProjectName();
         final var collName = event.getCollName();
         if (belongsToAnotherIncarnation(event)) {
             clearPending(event, event.getInserted());
             clearPending(event, event.getUpdated());
             return;
         }
-        final var indexFailure = indexFailureOf(
-                () -> IndexHelper.bulkUpdateIndexes(dbName, collName, idsOf(event.getInserted(), event.getUpdated()),
-                        lockBudgetMs, IndexPriors.of(event.getInserted(), event.getUpdated())));
-        AdminOperationHelper.bookWritePathPages(dbName, collName, event.getInserted(), event.getUpdated(),
+        final var indexFailure = indexFailureOf(() -> IndexHelper.bulkUpdateIndexes(projectName, collName,
+                idsOf(event.getInserted(), event.getUpdated()), lockBudgetMs,
+                IndexPriors.of(event.getInserted(), event.getUpdated())));
+        AdminOperationHelper.bookWritePathPages(projectName, collName, event.getInserted(), event.getUpdated(),
                 event.getIncarnation());
         if (indexFailure != null) {
             throw indexFailure;
@@ -308,7 +309,7 @@ public class EventProcessorHelper {
         for (var entry : entries) {
             ids.add(entry.id());
         }
-        pendingIndexWrites.clear(event.getDbName(), event.getCollName(), ids, event.getPendingGeneration());
+        pendingIndexWrites.clear(event.getProjectName(), event.getCollName(), ids, event.getPendingGeneration());
     }
 
     private static List<String> idsOf(List<EntityRef> inserted, List<EntityRef> updated) {
@@ -324,25 +325,25 @@ public class EventProcessorHelper {
 
     private static void processEntityEvent(EntityEvent event, long lockBudgetMs)
             throws IOException, InterruptedException {
-        final var dbName = event.getDbName();
+        final var projectName = event.getProjectName();
         final var collName = event.getCollName();
         final var id = event.getId();
         if (belongsToAnotherIncarnation(event)) {
-            pendingIndexWrites.clear(dbName, collName, id, event.getPendingGeneration());
+            pendingIndexWrites.clear(projectName, collName, id, event.getPendingGeneration());
             return;
         }
-        final var indexFailure = indexFailureOf(() -> IndexHelper.bulkUpdateIndexes(dbName, collName,
+        final var indexFailure = indexFailureOf(() -> IndexHelper.bulkUpdateIndexes(projectName, collName,
                 Collections.singletonList(id), lockBudgetMs, IndexPriors.of(List.of(event.getEntity()))));
-        AdminOperationHelper.updateEntryCount(dbName, collName, event.getType(), event.getEntity(),
+        AdminOperationHelper.updateEntryCount(projectName, collName, event.getType(), event.getEntity(),
                 event.getIncarnation());
         if (indexFailure != null) {
             throw indexFailure;
         }
-        pendingIndexWrites.clear(dbName, collName, id, event.getPendingGeneration());
+        pendingIndexWrites.clear(projectName, collName, id, event.getPendingGeneration());
     }
 
     private static boolean belongsToAnotherIncarnation(CollectionScopedEvent event) {
-        final var entry = AdminOperationHelper.getCollectionEntry(event.getDbName(), event.getCollName());
+        final var entry = AdminOperationHelper.getCollectionEntry(event.getProjectName(), event.getCollName());
         return entry == null || !CollectionIncarnation.sameLife(event.getIncarnation(), entry.getIncarnation());
     }
 

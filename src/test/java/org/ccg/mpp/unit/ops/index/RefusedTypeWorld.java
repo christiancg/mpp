@@ -76,19 +76,19 @@ final class RefusedTypeWorld {
             priors.computeIfAbsent(event.id(), _ -> new ArrayList<>()).add(IndexedValue.of(event.prior()));
         }
         unprocessed.removeAll(events);
-        locks.lockRead(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
-        locks.lockIndex(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, fieldName);
+        locks.lockRead(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
+        locks.lockIndex(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, fieldName);
         try {
-            final var batch = FieldIndexBatch.open(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, fieldName,
-                    List.copyOf(ids), withPriors ? priors : null);
+            final var batch = FieldIndexBatch.open(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL,
+                    fieldName, List.copyOf(ids), withPriors ? priors : null);
             for (final var id : ids) {
                 final var doc = support.documentOf(id, fieldName);
                 batch.apply(id, doc == null ? null : JsonUtils.getFromPath(doc.getData(), fieldName));
             }
             batch.flush();
         } finally {
-            locks.releaseIndex(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL, fieldName);
-            locks.releaseRead(FieldIndexBatchSupport.DB, FieldIndexBatchSupport.COLL);
+            locks.releaseIndex(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL, fieldName);
+            locks.releaseRead(FieldIndexBatchSupport.PROJECT, FieldIndexBatchSupport.COLL);
         }
     }
 

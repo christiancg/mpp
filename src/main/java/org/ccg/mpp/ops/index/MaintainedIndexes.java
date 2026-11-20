@@ -13,20 +13,20 @@ public final class MaintainedIndexes {
     private MaintainedIndexes() {
     }
 
-    public static List<String> of(String dbName, String collName) {
-        final var registered = cache.getIndexesForCollection(dbName, collName);
+    public static List<String> of(String projectName, String collName) {
+        final var registered = cache.getIndexesForCollection(projectName, collName);
         final var maintained = new ArrayList<String>(registered.size());
         for (final var fieldName : registered) {
-            if (!fs.indexMarkers().isMarked(dbName, collName, fieldName)) {
+            if (!fs.indexMarkers().isMarked(projectName, collName, fieldName)) {
                 maintained.add(fieldName);
             }
         }
         return maintained;
     }
 
-    public static boolean none(String dbName, String collName) {
-        for (final var fieldName : cache.getIndexesForCollection(dbName, collName)) {
-            if (!fs.indexMarkers().isMarked(dbName, collName, fieldName)) {
+    public static boolean none(String projectName, String collName) {
+        for (final var fieldName : cache.getIndexesForCollection(projectName, collName)) {
+            if (!fs.indexMarkers().isMarked(projectName, collName, fieldName)) {
                 return false;
             }
         }

@@ -30,7 +30,7 @@ bu.configure(host=HOST, port=PORT, username=ADMIN_USERNAME, password=ADMIN_PASSW
 
 
 def stats(c) -> dict:
-    return c.send({"type": "GET_DATABASE_STATS"})
+    return c.send({"type": "GET_PROJECT_STATS"})
 
 
 CACHE_CAP_TOLERANCE = 1.20
@@ -113,13 +113,13 @@ def rand_str(size: int) -> str:
 
 
 def setup_fixtures(c):
-    c.send({"type": "CREATE_DATABASE", "databaseName": "mem_db"})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": "mem_db", "collectionName": HOT_COLL})
-    c.send({"type": "CREATE_COLLECTION", "databaseName": "mem_db", "collectionName": COLD_COLL})
+    c.send({"type": "CREATE_PROJECT", "projectName": "mem_project"})
+    c.send({"type": "CREATE_COLLECTION", "projectName": "mem_project", "collectionName": HOT_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": "mem_project", "collectionName": COLD_COLL})
 
 
 def teardown_fixtures(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": "mem_db"})
+    c.send({"type": "DROP_PROJECT", "projectName": "mem_project"})
 
 
 def test_mass_insert_with_eviction(c):
@@ -135,7 +135,7 @@ def test_mass_insert_with_eviction(c):
             doc_id = f"{coll}_{i:06d}"
             batch.append({"_id": doc_id, "v": i, "payload": rand_str(PAYLOAD_BYTES)})
             if len(batch) >= BULK_BATCH_SIZE:
-                r = c.send({"type": "BULK_SAVE", "databaseName": "mem_db",
+                r = c.send({"type": "BULK_SAVE", "projectName": "mem_project",
                                 "collectionName": coll, "objects": batch})
                 if r.get("status") != "OK":
                     check_status("BULK_SAVE during mass insert", r, "OK")
@@ -146,11 +146,11 @@ def test_mass_insert_with_eviction(c):
                 probes += 1
                 if probes % LATENCY_PROBE_INTERVAL == 0:
                     t0 = time.perf_counter()
-                    c.send({"type": "LIST_DATABASES"})
+                    c.send({"type": "LIST_PROJECTS"})
                     dt_ms = (time.perf_counter() - t0) * 1000.0
                     max_probe_ms = max(max_probe_ms, dt_ms)
         if batch:
-            c.send({"type": "BULK_SAVE", "databaseName": "mem_db",
+            c.send({"type": "BULK_SAVE", "projectName": "mem_project",
                         "collectionName": coll, "objects": batch})
 
     check(
@@ -167,7 +167,7 @@ def test_correctness_after_eviction(c, sample_ids: dict):
     misses = []
     for coll, ids in sample_ids.items():
         for doc_id in ids:
-            r = c.send({"type": "FIND_BY_ID", "databaseName": "mem_db",
+            r = c.send({"type": "FIND_BY_ID", "projectName": "mem_project",
                             "collectionName": coll, "_id": doc_id})
             if r.get("status") != "OK":
                 misses.append((coll, doc_id, r.get("status")))
@@ -183,15 +183,15 @@ def test_hot_collection_remains_warm(c: Conn):
     section("Hot-vs-cold access pattern — repeated reads on hot, occasional on cold")
 
     for _ in range(200):
-        c.send({"type": "AGGREGATE", "databaseName": "mem_db",
+        c.send({"type": "AGGREGATE", "projectName": "mem_project",
                     "collectionName": HOT_COLL,
                     "aggregationSteps": [{"type": "COUNT"}]})
-    c.send({"type": "AGGREGATE", "databaseName": "mem_db",
+    c.send({"type": "AGGREGATE", "projectName": "mem_project",
                 "collectionName": COLD_COLL,
                 "aggregationSteps": [{"type": "COUNT"}]})
 
     t0 = time.perf_counter()
-    r = c.send({"type": "AGGREGATE", "databaseName": "mem_db",
+    r = c.send({"type": "AGGREGATE", "projectName": "mem_project",
                     "collectionName": HOT_COLL,
                     "aggregationSteps": [{"type": "COUNT"}]})
     dt_ms = (time.perf_counter() - t0) * 1000.0
@@ -207,7 +207,7 @@ def test_repeated_full_scan(c):
 
     counts = []
     for _ in range(5):
-        r = c.send({"type": "AGGREGATE", "databaseName": "mem_db",
+        r = c.send({"type": "AGGREGATE", "projectName": "mem_project",
                         "collectionName": HOT_COLL,
                         "aggregationSteps": [{"type": "COUNT"}]})
         if r.get("status") != "OK":
@@ -234,7 +234,7 @@ LATENCY_NOISE_FLOOR_MS = 1.0
 def average_save_ms(c: Conn, prefix: str) -> float:
     started = time.perf_counter()
     for i in range(LATENCY_SAVES):
-        c.send({"type": "SAVE", "databaseName": "mem_db", "collectionName": TINY_COLL,
+        c.send({"type": "SAVE", "projectName": "mem_project", "collectionName": TINY_COLL,
                 "object": {"_id": f"{prefix}{i}", "v": i}})
     return (time.perf_counter() - started) * 1000.0 / LATENCY_SAVES
 
@@ -242,21 +242,21 @@ def average_save_ms(c: Conn, prefix: str) -> float:
 def test_resident_index_does_not_slow_unrelated_saves(c: Conn):
     section(f"A resident {RESIDENT_INDEX_DOCS}-entry field index does not slow SAVEs into an unrelated collection")
     for coll in (TINY_COLL, RESIDENT_INDEX_COLL):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": "mem_db", "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": "mem_project", "collectionName": coll})
     average_save_ms(c, "warm")
     baseline_ms = average_save_ms(c, "base")
     for start in range(0, RESIDENT_INDEX_DOCS, RESIDENT_INDEX_BATCH):
-        r = c.send({"type": "BULK_SAVE", "databaseName": "mem_db", "collectionName": RESIDENT_INDEX_COLL,
+        r = c.send({"type": "BULK_SAVE", "projectName": "mem_project", "collectionName": RESIDENT_INDEX_COLL,
                     "objects": [{"_id": f"r{i:06d}", "k": f"key-{i}"} for i in range(start, start + RESIDENT_INDEX_BATCH)]},
                    timeout=120)
         if r.get("status") != "OK":
             check_status("BULK_SAVE of the indexed collection", r, "OK")
             return
     check_status("CREATE_INDEX on the large collection",
-                 c.send({"type": "CREATE_INDEX", "databaseName": "mem_db", "collectionName": RESIDENT_INDEX_COLL,
+                 c.send({"type": "CREATE_INDEX", "projectName": "mem_project", "collectionName": RESIDENT_INDEX_COLL,
                          "fieldName": "k"}, timeout=300), "OK")
     check_status("an index-backed FILTER loads the index into the cache",
-                 c.send({"type": "AGGREGATE", "databaseName": "mem_db", "collectionName": RESIDENT_INDEX_COLL,
+                 c.send({"type": "AGGREGATE", "projectName": "mem_project", "collectionName": RESIDENT_INDEX_COLL,
                          "aggregationSteps": [bu.filter_step("k", "EQUALS", "key-12345")]}, timeout=120), "OK")
     resident_bytes = stats(c).get("stats", {}).get("memory", {}).get("userCacheBytes", 0)
     check(f"the {RESIDENT_INDEX_DOCS}-entry index is resident ({resident_bytes / (1024 * 1024):.1f} MB cached)",
@@ -271,7 +271,7 @@ def test_resident_index_does_not_slow_unrelated_saves(c: Conn):
 
 ADMISSION_PORT = int(os.environ.get("MEMORY_ADMISSION_TEST_PORT", "9449"))
 ADMISSION_MAX_MEMORY = "6mb"
-ADMISSION_DB = "admission_db"
+ADMISSION_PROJECT = "admission_project"
 ADMISSION_ORDERS = "orders"
 ADMISSION_FILLER = "filler"
 ADMISSION_ORDER_DOCS = 20_000
@@ -283,25 +283,25 @@ def admission_save_ms(c: Conn, label: str) -> float:
     started = time.perf_counter()
     for i in range(ADMISSION_UPDATES):
         n = (i * 7919) % ADMISSION_ORDER_DOCS
-        c.send({"type": "SAVE", "databaseName": ADMISSION_DB, "collectionName": ADMISSION_ORDERS,
+        c.send({"type": "SAVE", "projectName": ADMISSION_PROJECT, "collectionName": ADMISSION_ORDERS,
                 "object": {"_id": f"o{n:06d}", "cat": f"c{(n + len(label)) % 20}", "n": n}})
     return (time.perf_counter() - started) * 1000.0 / ADMISSION_UPDATES
 
 
 def load_admission_fixture(c: Conn):
-    c.send({"type": "CREATE_DATABASE", "databaseName": ADMISSION_DB})
+    c.send({"type": "CREATE_PROJECT", "projectName": ADMISSION_PROJECT})
     for coll in (ADMISSION_ORDERS, ADMISSION_FILLER):
-        c.send({"type": "CREATE_COLLECTION", "databaseName": ADMISSION_DB, "collectionName": coll})
+        c.send({"type": "CREATE_COLLECTION", "projectName": ADMISSION_PROJECT, "collectionName": coll})
     for start in range(0, ADMISSION_ORDER_DOCS, 2_000):
-        c.send({"type": "BULK_SAVE", "databaseName": ADMISSION_DB, "collectionName": ADMISSION_ORDERS,
+        c.send({"type": "BULK_SAVE", "projectName": ADMISSION_PROJECT, "collectionName": ADMISSION_ORDERS,
                 "objects": [{"_id": f"o{i:06d}", "cat": f"c{i % 20}", "n": i}
                             for i in range(start, start + 2_000)]}, timeout=120)
     for start in range(0, ADMISSION_FILLER_DOCS, 2_000):
-        c.send({"type": "BULK_SAVE", "databaseName": ADMISSION_DB, "collectionName": ADMISSION_FILLER,
+        c.send({"type": "BULK_SAVE", "projectName": ADMISSION_PROJECT, "collectionName": ADMISSION_FILLER,
                 "objects": [{"_id": f"f{i:05d}", "payload": rand_str(PAYLOAD_BYTES)}
                             for i in range(start, start + 2_000)]}, timeout=120)
     check_status("CREATE_INDEX on orders.cat",
-                 c.send({"type": "CREATE_INDEX", "databaseName": ADMISSION_DB, "collectionName": ADMISSION_ORDERS,
+                 c.send({"type": "CREATE_INDEX", "projectName": ADMISSION_PROJECT, "collectionName": ADMISSION_ORDERS,
                          "fieldName": "cat"}, timeout=120), "OK")
 
 
@@ -328,7 +328,7 @@ def test_index_admission_evicts_documents_under_a_full_cache():
         with Conn(port=ADMISSION_PORT) as c:
             c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
             for _ in range(3):
-                c.send({"type": "AGGREGATE", "databaseName": ADMISSION_DB, "collectionName": ADMISSION_FILLER,
+                c.send({"type": "AGGREGATE", "projectName": ADMISSION_PROJECT, "collectionName": ADMISSION_FILLER,
                         "aggregationSteps": [bu.filter_step("payload", "NOT_EQUALS", "none")]}, timeout=120)
             mem = stats(c).get("stats", {}).get("memory", {})
             filled = mem.get("userCacheBytes", 0) / max(mem.get("maxMemoryBytes", 1), 1)
@@ -349,7 +349,7 @@ def test_index_admission_evicts_documents_under_a_full_cache():
 
 OWN_PORT = int(os.environ.get("MEMORY_TEST_OWN_PORT", "9448"))
 TIGHT_MAX_MEMORY = "2mb"
-TIGHT_DB = "tight_db"
+TIGHT_PROJECT = "tight_project"
 TIGHT_COLL = "tight_coll"
 SHARED_COLL = "shared_ids_coll"
 TIGHT_DOCS = int(os.environ.get("MEMORY_TEST_TIGHT_DOCS", "20000"))
@@ -366,7 +366,7 @@ def tight_probes() -> list:
 
 
 def answers(c: Conn, coll: str, steps: list):
-    r = c.send({"type": "AGGREGATE", "databaseName": TIGHT_DB, "collectionName": coll, "aggregationSteps": steps},
+    r = c.send({"type": "AGGREGATE", "projectName": TIGHT_PROJECT, "collectionName": coll, "aggregationSteps": steps},
                timeout=120)
     rows = r.get("results") or []
     return sorted(row.get("_id", str(row)) for row in rows)
@@ -381,10 +381,10 @@ def mismatched_probes(c: Conn, coll: str) -> list:
 
 
 def load_indexed(c: Conn, coll: str, documents: int):
-    check_status(f"create {coll}", c.send({"type": "CREATE_COLLECTION", "databaseName": TIGHT_DB,
+    check_status(f"create {coll}", c.send({"type": "CREATE_COLLECTION", "projectName": TIGHT_PROJECT,
                                            "collectionName": coll}), "OK")
     for start in range(0, documents, BULK_BATCH_SIZE):
-        r = c.send({"type": "BULK_SAVE", "databaseName": TIGHT_DB, "collectionName": coll,
+        r = c.send({"type": "BULK_SAVE", "projectName": TIGHT_PROJECT, "collectionName": coll,
                     "objects": [{"_id": f"{coll}-{i:06d}", "n": i % 50, "s": f"s{i % 40}", "t": i % 2 == 0,
                                  "pad": "p" * 64} for i in range(start, min(documents, start + BULK_BATCH_SIZE))]},
                    timeout=120)
@@ -393,19 +393,19 @@ def load_indexed(c: Conn, coll: str, documents: int):
             return
     for field in ("n", "s", "t"):
         check_status(f"CREATE_INDEX {coll}.{field}",
-                     c.send({"type": "CREATE_INDEX", "databaseName": TIGHT_DB, "collectionName": coll,
+                     c.send({"type": "CREATE_INDEX", "projectName": TIGHT_PROJECT, "collectionName": coll,
                              "fieldName": field}, timeout=300), "OK")
 
 
 def test_indexed_updates_stay_cheap_under_max_memory(c: Conn):
     section(f"{TIGHT_UPDATES} updates on {TIGHT_DOCS} documents with 3 indexes under maxMemory={TIGHT_MAX_MEMORY}")
-    c.send({"type": "CREATE_DATABASE", "databaseName": TIGHT_DB})
+    c.send({"type": "CREATE_PROJECT", "projectName": TIGHT_PROJECT})
     load_indexed(c, TIGHT_COLL, TIGHT_DOCS)
     rng = random.Random(20261025)
     started = time.perf_counter()
     for _ in range(TIGHT_UPDATES):
         i = rng.randrange(TIGHT_DOCS)
-        r = c.send({"type": "SAVE", "databaseName": TIGHT_DB, "collectionName": TIGHT_COLL,
+        r = c.send({"type": "SAVE", "projectName": TIGHT_PROJECT, "collectionName": TIGHT_COLL,
                     "object": {"_id": f"{TIGHT_COLL}-{i:06d}", "n": rng.randrange(60), "s": f"s{rng.randrange(45)}",
                                "t": rng.random() < 0.5, "pad": "u" * 64}})
         if r.get("status") != "OK":
@@ -427,11 +427,11 @@ def test_correctness_after_the_pk_list_is_evicted(c: Conn):
     check("the small collection's indexes answer like a scan before any eviction",
           not mismatched_probes(c, SHARED_COLL))
     for _ in range(3):
-        c.send({"type": "AGGREGATE", "databaseName": TIGHT_DB, "collectionName": TIGHT_COLL,
+        c.send({"type": "AGGREGATE", "projectName": TIGHT_PROJECT, "collectionName": TIGHT_COLL,
                 "aggregationSteps": [{"type": "SKIP", "skip": 0}, {"type": "COUNT"}]}, timeout=120)
     time.sleep(6)
     for i in range(0, SHARED_DOCS, 97):
-        c.send({"type": "SAVE", "databaseName": TIGHT_DB, "collectionName": SHARED_COLL,
+        c.send({"type": "SAVE", "projectName": TIGHT_PROJECT, "collectionName": SHARED_COLL,
                 "object": {"_id": f"{SHARED_COLL}-{i:06d}", "n": 7, "s": "s3", "t": True, "pad": "e"}})
     converged = bu.wait_until(lambda: not mismatched_probes(c, SHARED_COLL), TIGHT_CONVERGE_S, interval_s=1.0)
     check("after scans evicted the cache, the re-queried indexes still answer like a scan", converged,
@@ -457,7 +457,7 @@ def run_tight_memory_phase():
 
 AUTO_PORT = int(os.environ.get("MEMORY_TEST_AUTO_PORT", "9452"))
 AUTO_XMX = "256m"
-AUTO_DB = "auto_memory_db"
+AUTO_PROJECT = "auto_memory_project"
 AUTO_COLL = "auto_memory_coll"
 AUTO_DOCS = int(os.environ.get("MEMORY_TEST_AUTO_DOCS", "300000"))
 AUTO_SHARE = 0.40
@@ -465,16 +465,17 @@ CEILING_SHARE = 0.60
 
 
 def load_auto_memory_fixture(c: Conn) -> list:
-    check_status("create the auto-memory database", c.send({"type": "CREATE_DATABASE", "databaseName": AUTO_DB}), "OK")
+    check_status("create the auto-memory project", c.send({"type": "CREATE_PROJECT", "projectName": AUTO_PROJECT}),
+                 "OK")
     check_status("create the auto-memory collection",
-                 c.send({"type": "CREATE_COLLECTION", "databaseName": AUTO_DB, "collectionName": AUTO_COLL}), "OK")
+                 c.send({"type": "CREATE_COLLECTION", "projectName": AUTO_PROJECT, "collectionName": AUTO_COLL}), "OK")
     for field in ("cat", "n"):
         check_status(f"CREATE_INDEX on {field}",
-                     c.send({"type": "CREATE_INDEX", "databaseName": AUTO_DB, "collectionName": AUTO_COLL,
+                     c.send({"type": "CREATE_INDEX", "projectName": AUTO_PROJECT, "collectionName": AUTO_COLL,
                              "fieldName": field}, timeout=120), "OK")
     refused = []
     for start in range(0, AUTO_DOCS, 5_000):
-        r = c.send({"type": "BULK_SAVE", "databaseName": AUTO_DB, "collectionName": AUTO_COLL,
+        r = c.send({"type": "BULK_SAVE", "projectName": AUTO_PROJECT, "collectionName": AUTO_COLL,
                     "objects": [{"_id": f"a{i:07d}", "cat": f"c{i % 50}", "n": i}
                                 for i in range(start, start + 5_000)]}, timeout=300)
         if r.get("status") != "OK":
@@ -501,7 +502,7 @@ def test_auto_max_memory_follows_heap():
             refused = load_auto_memory_fixture(c)
             check(f"every BULK_SAVE of {AUTO_DOCS} documents succeeds under -Xmx{AUTO_XMX}", not refused,
                   detail=str(refused[:5]))
-            count = c.send({"type": "AGGREGATE", "databaseName": AUTO_DB, "collectionName": AUTO_COLL,
+            count = c.send({"type": "AGGREGATE", "projectName": AUTO_PROJECT, "collectionName": AUTO_COLL,
                             "aggregationSteps": [bu.filter_step("cat", "EQUALS", "c7"), {"type": "COUNT"}]},
                            timeout=120)
             check_status("an indexed COUNT still answers after the load", count, "OK")
@@ -522,7 +523,7 @@ def test_auto_max_memory_follows_heap():
             cap = mem.get("maxMemoryBytes", 0)
             check(f"maxMemory=1gb is capped at {CEILING_SHARE:.0%} of the heap (cap {cap} of {heap_max} bytes)",
                   heap_max > 0 and abs(cap - heap_max * CEILING_SHARE) <= heap_max * 0.03)
-            c.send({"type": "DROP_DATABASE", "databaseName": AUTO_DB}, timeout=120)
+            c.send({"type": "DROP_PROJECT", "projectName": AUTO_PROJECT}, timeout=120)
         check("the clamp is logged once at startup",
               bu.read_log(log_path).count("maxMemory=1gb is more than 60% of the JVM heap") == 1)
     finally:
@@ -532,25 +533,25 @@ def test_auto_max_memory_follows_heap():
     shutil.rmtree(work_dir, ignore_errors=True)
 
 
-USAGE_DB = "usage_flat_db"
+USAGE_PROJECT = "usage_flat_project"
 USAGE_COLLECTIONS = 200
 USAGE_TOUCH_SECONDS = 12
 
 
 def test_usage_profile_flush_keeps_the_background_queue_flat(c: Conn):
     section(f"Usage flush: {USAGE_COLLECTIONS} collections read for {USAGE_TOUCH_SECONDS}s keep the queue flat")
-    c.send({"type": "DROP_DATABASE", "databaseName": USAGE_DB})
-    check_status("create the usage database", c.send({"type": "CREATE_DATABASE", "databaseName": USAGE_DB}), "OK")
+    c.send({"type": "DROP_PROJECT", "projectName": USAGE_PROJECT})
+    check_status("create the usage project", c.send({"type": "CREATE_PROJECT", "projectName": USAGE_PROJECT}), "OK")
     names = [f"u{i:03d}" for i in range(USAGE_COLLECTIONS)]
     for name in names:
-        c.send({"type": "CREATE_COLLECTION", "databaseName": USAGE_DB, "collectionName": name})
+        c.send({"type": "CREATE_COLLECTION", "projectName": USAGE_PROJECT, "collectionName": name})
     deadline = time.time() + USAGE_TOUCH_SECONDS
     worst_maintenance = 0
     worst_pending = 0
     reads = 0
     while time.time() < deadline:
         for name in names:
-            c.send({"type": "FIND_BY_ID", "databaseName": USAGE_DB, "collectionName": name, "_id": "missing"})
+            c.send({"type": "FIND_BY_ID", "projectName": USAGE_PROJECT, "collectionName": name, "_id": "missing"})
             reads += 1
         background = stats(c).get("stats", {}).get("background", {})
         worst_maintenance = max(worst_maintenance, background.get("maintenance", 0))
@@ -558,7 +559,7 @@ def test_usage_profile_flush_keeps_the_background_queue_flat(c: Conn):
     print(f"  [usage] {reads} reads, worst maintenance={worst_maintenance}, worst pending={worst_pending}")
     check("at most two usage maintenance events are ever queued", worst_maintenance <= 2)
     check("the gated background queue stays near empty", worst_pending <= 20)
-    check_status("drop the usage database", c.send({"type": "DROP_DATABASE", "databaseName": USAGE_DB}), "OK")
+    check_status("drop the usage project", c.send({"type": "DROP_PROJECT", "projectName": USAGE_PROJECT}), "OK")
 
 
 def test_server_still_alive(c):
@@ -566,7 +567,7 @@ def test_server_still_alive(c):
 
     check_status("AUTHENTICATE still works",
           c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD), "OK")
-    check_status("LIST_DATABASES still responds", c.send({"type": "LIST_DATABASES"}), "OK")
+    check_status("LIST_PROJECTS still responds", c.send({"type": "LIST_PROJECTS"}), "OK")
 
 
 def main():
@@ -598,7 +599,7 @@ def main():
     with Conn() as c:
         c.authenticate(ADMIN_USERNAME, ADMIN_PASSWORD)
         after = print_memory_snapshot("after mass insert + sweep settle", c)
-        section("Memory-limit assertions (via GET_DATABASE_STATS)")
+        section("Memory-limit assertions (via GET_PROJECT_STATS)")
         assert_cache_respects_cap("post-insert cache stays within cap", after)
         assert_eviction_actually_happened("post-insert eviction observed", after)
         assert_heap_stays_under_high_watermark("post-insert heap below high watermark", after)

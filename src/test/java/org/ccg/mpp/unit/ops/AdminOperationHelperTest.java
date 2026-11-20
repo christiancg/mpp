@@ -19,7 +19,7 @@ import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.AdminOperationHelper;
@@ -35,7 +35,7 @@ public class AdminOperationHelperTest {
     @Test
     public void test_a_failed_owner_write_does_not_change_the_cached_owners() throws Exception {
         final var cache = IocContainer.get(Cache.class);
-        final var dbEntry = cache.getAdminDbEntry(TestGlobals.DB);
+        final var dbEntry = cache.getAdminProjectEntry(TestGlobals.PROJECT);
         org.junit.jupiter.api.Assumptions.assumeTrue(dbEntry != null);
         final var before = new ArrayList<>(dbEntry.getOwners());
         final var fs = IocContainer.get(org.ccg.mpp.fs.FileSystem.class);
@@ -43,46 +43,46 @@ public class AdminOperationHelperTest {
         TestUtils.setDbPath(fs, originalPath + "/does-not-exist");
         try {
             org.junit.jupiter.api.Assertions.assertThrows(Exception.class,
-                    () -> AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of("mallory")));
+                    () -> AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of("mallory")));
         } finally {
             TestUtils.setDbPath(fs, originalPath);
         }
 
-        assertEquals(before, cache.getAdminDbEntry(TestGlobals.DB).getOwners(),
+        assertEquals(before, cache.getAdminProjectEntry(TestGlobals.PROJECT).getOwners(),
                 "authorization reads the cached owners, so they may not change until the write is durable");
     }
 
     @Test
-    public void test_an_owner_update_for_a_dropped_database_inserts_nothing() throws Exception {
+    public void test_an_owner_update_for_a_dropped_project_inserts_nothing() throws Exception {
         final var cache = IocContainer.get(Cache.class);
-        AdminOperationHelper.deleteDatabaseEntry(TestGlobals.DB);
+        AdminOperationHelper.deleteProjectEntry(TestGlobals.PROJECT);
 
-        assertFalse(AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of("mallory")));
-        assertNull(cache.getAdminDbEntry(TestGlobals.DB));
-        assertNull(cache.getPkIndexAdminDbEntry(TestGlobals.DB));
+        assertFalse(AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of("mallory")));
+        assertNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
+        assertNull(cache.getPkIndexAdminProjectEntry(TestGlobals.PROJECT));
     }
 
     @Test
     public void test_a_failed_index_registration_does_not_change_the_cached_index_set() throws Exception {
         final var cache = IocContainer.get(Cache.class);
-        final var before = Set.copyOf(cache.getIndexesForCollection(TestGlobals.DB, TestGlobals.COLL));
+        final var before = Set.copyOf(cache.getIndexesForCollection(TestGlobals.PROJECT, TestGlobals.COLL));
         final var fs = IocContainer.get(org.ccg.mpp.fs.FileSystem.class);
         final var originalPath = TestUtils.getDbPath(fs);
         TestUtils.setDbPath(fs, originalPath + "/does-not-exist");
         try {
             assertThrows(Exception.class,
-                    () -> AdminOperationHelper.saveNewIndex(TestGlobals.DB, TestGlobals.COLL, "unregistered"));
+                    () -> AdminOperationHelper.saveNewIndex(TestGlobals.PROJECT, TestGlobals.COLL, "unregistered"));
         } finally {
             TestUtils.setDbPath(fs, originalPath);
         }
 
-        assertEquals(before, Set.copyOf(cache.getIndexesForCollection(TestGlobals.DB, TestGlobals.COLL)));
+        assertEquals(before, Set.copyOf(cache.getIndexesForCollection(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -96,15 +96,16 @@ public class AdminOperationHelperTest {
 
         org.ccg.mpp.ejson.elements.JsonObject d = new org.ccg.mpp.ejson.elements.JsonObject();
         d.addProperty("foo", "bar");
-        org.ccg.mpp.data.DbEntry entry = org.ccg.mpp.data.DbEntry.fromJsonObject(org.ccg.mpp.test.TestGlobals.DB,
+        org.ccg.mpp.data.DbEntry entry = org.ccg.mpp.data.DbEntry.fromJsonObject(org.ccg.mpp.test.TestGlobals.PROJECT,
                 org.ccg.mpp.test.TestGlobals.COLL, d);
         entry.set_id("entryA");
         entry.setPage(0L);
 
-        AdminOperationHelper.bulkUpdateEntryCount(org.ccg.mpp.test.TestGlobals.DB, org.ccg.mpp.test.TestGlobals.COLL,
-                org.ccg.mpp.bckg_ops.events.EventType.CREATED, java.util.List.of(EntityRef.of(entry)), 0L);
+        AdminOperationHelper.bulkUpdateEntryCount(org.ccg.mpp.test.TestGlobals.PROJECT,
+                org.ccg.mpp.test.TestGlobals.COLL, org.ccg.mpp.bckg_ops.events.EventType.CREATED,
+                java.util.List.of(EntityRef.of(entry)), 0L);
 
-        final var pageEntries = cache.getAdminPageEntries(org.ccg.mpp.test.TestGlobals.DB,
+        final var pageEntries = cache.getAdminPageEntries(org.ccg.mpp.test.TestGlobals.PROJECT,
                 org.ccg.mpp.test.TestGlobals.COLL);
         assertNotNull(pageEntries);
         final var pageZero = pageEntries.stream().filter(p -> p.getPage() == 0L).findFirst();
@@ -117,152 +118,154 @@ public class AdminOperationHelperTest {
     public void test_page_metadata_written_under_admin_pages_folder() throws Exception {
         final var d = new JsonObject();
         d.addProperty("foo", "bar");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, d);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, d);
         entry.set_id("entryLayout");
         entry.setPage(0L);
-        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 java.util.List.of(EntityRef.of(entry)), 0L);
         PageRowWriteBack.flushAll();
 
-        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.DB,
+        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, TestGlobals.PROJECT,
                 TestGlobals.COLL);
         final var filePath = Configuration.getInstance().getFilePath();
-        final var nestedDir = new File(filePath + File.separator + Globals.ADMIN_DB_NAME + File.separator
+        final var nestedDir = new File(filePath + File.separator + Globals.ADMIN_PROJECT_NAME + File.separator
                 + Globals.ADMIN_PAGES_FOLDER + File.separator + pagesCollName);
         assertTrue(nestedDir.isDirectory(), "page metadata must live under admin/pages/<db>_<coll>");
         assertTrue(new File(nestedDir, pagesCollName + "-0" + Globals.DB_FILE_EXTENSION).exists(),
                 "page metadata data file must exist inside the nested folder");
 
-        final var flatPagesDir = new File(filePath + File.separator + Globals.ADMIN_DB_NAME + File.separator + "pages_"
-                + TestGlobals.DB + "_" + TestGlobals.COLL);
+        final var flatPagesDir = new File(filePath + File.separator + Globals.ADMIN_PROJECT_NAME + File.separator
+                + "pages_" + TestGlobals.PROJECT + "_" + TestGlobals.COLL);
         assertFalse(flatPagesDir.exists(), "legacy flat admin/pages_<db>_<coll> folder must not be created");
         final var flatDir = new File(
-                filePath + File.separator + Globals.ADMIN_DB_NAME + File.separator + pagesCollName);
+                filePath + File.separator + Globals.ADMIN_PROJECT_NAME + File.separator + pagesCollName);
         assertFalse(flatDir.exists(), "no flat admin/<db>_<coll> folder should be created");
     }
 
     @Test
-    public void test_save_database_entry_creates_and_updates_with_locking() throws Exception {
-        AdminDbEntry dbEntry = new AdminDbEntry(Globals.ADMIN_DB_NAME);
+    public void test_save_project_entry_creates_and_updates_with_locking() throws Exception {
+        AdminProjectEntry dbEntry = new AdminProjectEntry(Globals.ADMIN_PROJECT_NAME);
         ResourceLocking locks = IocContainer.get(ResourceLocking.class);
         Cache cache = IocContainer.get(Cache.class);
 
-        AdminOperationHelper.saveDatabaseEntry(dbEntry);
+        AdminOperationHelper.saveProjectEntry(dbEntry);
 
         final var typeToken = new ReflectionUtils.TypeToken<Map<String, ReentrantReadWriteLock>>() {
         };
         final var actualLocks = TestUtils.getPrivateField(locks, "locks", typeToken);
-        assertNotNull(actualLocks
-                .get(Cache.getCollectionIdentifier(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME)));
-        final var inserted = cache.getAdminDbEntry(Globals.ADMIN_DB_NAME);
+        assertNotNull(actualLocks.get(
+                Cache.getCollectionIdentifier(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME)));
+        final var inserted = cache.getAdminProjectEntry(Globals.ADMIN_PROJECT_NAME);
         assertNotNull(inserted);
     }
 
     @Test
-    public void test_save_database_entry_updates_existing() {
-        AdminDbEntry dbEntry = new AdminDbEntry(TestGlobals.DB);
-        assertDoesNotThrow(() -> AdminOperationHelper.saveDatabaseEntry(dbEntry));
+    public void test_save_project_entry_updates_existing() {
+        AdminProjectEntry dbEntry = new AdminProjectEntry(TestGlobals.PROJECT);
+        assertDoesNotThrow(() -> AdminOperationHelper.saveProjectEntry(dbEntry));
         Cache cache = IocContainer.get(Cache.class);
-        assertNotNull(cache.getAdminDbEntry(TestGlobals.DB));
+        assertNotNull(cache.getAdminProjectEntry(TestGlobals.PROJECT));
     }
 
     @Test
     public void test_save_collection_entry_updates_existing() {
-        AdminCollEntry collEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        AdminCollEntry collEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         assertDoesNotThrow(() -> AdminOperationHelper.saveCollectionEntry(collEntry));
         Cache cache = IocContainer.get(Cache.class);
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL));
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
-    public void test_delete_database_entry_with_collections() throws Exception {
-        AdminDbEntry dbEntry = new AdminDbEntry("toDeleteWithColl");
-        AdminOperationHelper.saveDatabaseEntry(dbEntry);
+    public void test_delete_project_entry_with_collections() throws Exception {
+        AdminProjectEntry dbEntry = new AdminProjectEntry("toDeleteWithColl");
+        AdminOperationHelper.saveProjectEntry(dbEntry);
         AdminCollEntry collEntry = new AdminCollEntry("toDeleteWithColl", "aColl");
         AdminOperationHelper.saveCollectionEntry(collEntry);
 
-        assertDoesNotThrow(() -> AdminOperationHelper.deleteDatabaseEntry("toDeleteWithColl"));
+        assertDoesNotThrow(() -> AdminOperationHelper.deleteProjectEntry("toDeleteWithColl"));
 
         Cache cache = IocContainer.get(Cache.class);
-        assertNull(cache.getAdminDbEntry("toDeleteWithColl"));
+        assertNull(cache.getAdminProjectEntry("toDeleteWithColl"));
     }
 
     @Test
     public void test_delete_collection_entry_existing() throws Exception {
-        AdminCollEntry collEntry = new AdminCollEntry(TestGlobals.DB, "tempColl");
+        AdminCollEntry collEntry = new AdminCollEntry(TestGlobals.PROJECT, "tempColl");
         AdminOperationHelper.saveCollectionEntry(collEntry);
 
-        assertDoesNotThrow(() -> AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, "tempColl"));
+        assertDoesNotThrow(() -> AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, "tempColl"));
 
         Cache cache = IocContainer.get(Cache.class);
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "tempColl"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "tempColl"));
     }
 
-    // saveCollectionEntry also mutates the parent AdminDbEntry in admin/databases, so it now holds the
-    // databases lock too; both that lock and the admin/collections lock must be released when it returns.
+    // saveCollectionEntry also mutates the parent AdminProjectEntry in admin/projects, so it now holds the
+    // projects lock too; both that lock and the admin/collections lock must be released when it returns.
     @Test
-    public void test_save_collection_entry_releases_databases_and_collections_locks() throws Exception {
+    public void test_save_collection_entry_releases_projects_and_collections_locks() throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, "lockProbeColl"));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, "lockProbeColl"));
 
-        assertTrue(locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME),
-                "admin/databases lock must be released after saveCollectionEntry");
-        locks.releaseWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME);
-        assertTrue(locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME),
+        assertTrue(locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME),
+                "admin/projects lock must be released after saveCollectionEntry");
+        locks.releaseWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME);
+        assertTrue(locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME),
                 "admin/collections lock must be released after saveCollectionEntry");
-        locks.releaseWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
+        locks.releaseWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
     }
 
-    // deleteCollectionEntry likewise touches admin/databases under both locks and must release both.
+    // deleteCollectionEntry likewise touches admin/projects under both locks and must release both.
     @Test
-    public void test_delete_collection_entry_releases_databases_and_collections_locks() throws Exception {
+    public void test_delete_collection_entry_releases_projects_and_collections_locks() throws Exception {
         final var locks = IocContainer.get(ResourceLocking.class);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, "lockProbeColl2"));
-        AdminOperationHelper.deleteCollectionEntry(TestGlobals.DB, "lockProbeColl2");
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, "lockProbeColl2"));
+        AdminOperationHelper.deleteCollectionEntry(TestGlobals.PROJECT, "lockProbeColl2");
 
-        assertTrue(locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME),
-                "admin/databases lock must be released after deleteCollectionEntry");
-        locks.releaseWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME);
-        assertTrue(locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME),
+        assertTrue(locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME),
+                "admin/projects lock must be released after deleteCollectionEntry");
+        locks.releaseWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME);
+        assertTrue(locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME),
                 "admin/collections lock must be released after deleteCollectionEntry");
-        locks.releaseWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
+        locks.releaseWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
     }
 
     @Test
     public void test_upsert_collection_usage_creates_then_updates() throws Exception {
         final var mm = IocContainer.get(org.ccg.mpp.cache.MemoryManagement.class);
-        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.DB, TestGlobals.COLL, null);
+        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.PROJECT, TestGlobals.COLL, null);
         final var event = java.util.List.of(new org.ccg.mpp.cache.UsageCounter(org.ccg.mpp.cache.AccessKind.COLLECTION,
-                TestGlobals.DB, TestGlobals.COLL, null, 1L, System.currentTimeMillis()));
+                TestGlobals.PROJECT, TestGlobals.COLL, null, 1L, System.currentTimeMillis()));
         AdminOperationHelper.flushCollectionUsage(event);
-        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "");
+        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL,
+                "");
         Cache cache = IocContainer.get(Cache.class);
         assertNotNull(cache.getPkIndexCollectionUsage(id));
-        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.DB, TestGlobals.COLL, null);
+        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.PROJECT, TestGlobals.COLL, null);
         assertDoesNotThrow(() -> AdminOperationHelper.flushCollectionUsage(event));
     }
 
     @Test
-    public void test_upsert_collection_usage_ignores_admin_db() throws Exception {
+    public void test_upsert_collection_usage_ignores_admin_project() throws Exception {
         final var event = java.util.List.of(new org.ccg.mpp.cache.UsageCounter(org.ccg.mpp.cache.AccessKind.COLLECTION,
-                Globals.ADMIN_DB_NAME, "databases", null, 1L, System.currentTimeMillis()));
+                Globals.ADMIN_PROJECT_NAME, "projects", null, 1L, System.currentTimeMillis()));
         AdminOperationHelper.flushCollectionUsage(event);
-        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(Globals.ADMIN_DB_NAME, "databases", "");
+        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(Globals.ADMIN_PROJECT_NAME, "projects",
+                "");
         Cache cache = IocContainer.get(Cache.class);
         assertNull(cache.getPkIndexCollectionUsage(id));
     }
 
     @Test
     public void test_upsert_collection_usage_skips_when_collection_dropped() throws Exception {
-        final var droppedDb = "droppedUsageDb";
+        final var droppedProject = "droppedUsageProject";
         final var droppedColl = "droppedUsageColl";
         // Do not register the collection — getCollectionEntry returns null, simulating a dropped state.
         final var mm = IocContainer.get(org.ccg.mpp.cache.MemoryManagement.class);
-        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, droppedDb, droppedColl, null);
+        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, droppedProject, droppedColl, null);
         final var event = java.util.List.of(new org.ccg.mpp.cache.UsageCounter(org.ccg.mpp.cache.AccessKind.COLLECTION,
-                droppedDb, droppedColl, null, 1L, System.currentTimeMillis()));
+                droppedProject, droppedColl, null, 1L, System.currentTimeMillis()));
         AdminOperationHelper.flushCollectionUsage(event);
-        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(droppedDb, droppedColl, "");
+        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(droppedProject, droppedColl, "");
         Cache cache = IocContainer.get(Cache.class);
         assertNull(cache.getPkIndexCollectionUsage(id), "no usage row must be written for a dropped collection");
     }
@@ -270,12 +273,13 @@ public class AdminOperationHelperTest {
     @Test
     public void test_cleanup_collection_usage_removes_stale_only() throws Exception {
         final var mm = IocContainer.get(org.ccg.mpp.cache.MemoryManagement.class);
-        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.DB, TestGlobals.COLL, null);
+        mm.recordAccess(org.ccg.mpp.cache.AccessKind.COLLECTION, TestGlobals.PROJECT, TestGlobals.COLL, null);
         final var event = java.util.List.of(new org.ccg.mpp.cache.UsageCounter(org.ccg.mpp.cache.AccessKind.COLLECTION,
-                TestGlobals.DB, TestGlobals.COLL, null, 1L, System.currentTimeMillis()));
+                TestGlobals.PROJECT, TestGlobals.COLL, null, 1L, System.currentTimeMillis()));
         AdminOperationHelper.flushCollectionUsage(event);
         AdminOperationHelper.cleanupCollectionUsage(Long.MAX_VALUE);
-        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, "");
+        final var id = org.ccg.mpp.data.admin.AdminCollectionUsageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL,
+                "");
         Cache cache = IocContainer.get(Cache.class);
         assertNotNull(cache.getPkIndexCollectionUsage(id));
         // Make sure the threshold strictly exceeds the recorded lastAccessMillis (avoid same-millisecond race).
@@ -285,24 +289,26 @@ public class AdminOperationHelperTest {
     }
 
     @Test
-    public void test_delete_database_entry_clears_page_collections() throws Exception {
-        final var dbName = "pageLeakDb";
+    public void test_delete_project_entry_clears_page_collections() throws Exception {
+        final var projectName = "pageLeakProject";
         final var collName = "pageLeakColl";
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(dbName));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(dbName, collName));
-        AdminOperationHelper.createPageCollections(dbName, collName);
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(projectName));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(projectName, collName));
+        AdminOperationHelper.createPageCollections(projectName, collName);
 
         final var cache = IocContainer.get(Cache.class);
-        cache.updatePageSizeInMemory(dbName, collName, 0L, 64L);
-        assertNotNull(cache.getAdminPageEntries(dbName, collName), "page entries must exist before drop");
+        cache.updatePageSizeInMemory(projectName, collName, 0L, 64L);
+        assertNotNull(cache.getAdminPageEntries(projectName, collName), "page entries must exist before drop");
 
-        AdminOperationHelper.deleteDatabaseEntry(dbName);
+        AdminOperationHelper.deleteProjectEntry(projectName);
 
-        assertNull(cache.getAdminPageEntries(dbName, collName), "in-memory page entries must be evicted after drop");
+        assertNull(cache.getAdminPageEntries(projectName, collName),
+                "in-memory page entries must be evicted after drop");
 
-        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, dbName, collName);
-        final var pagesDir = new File(Configuration.getInstance().getFilePath() + File.separator + Globals.ADMIN_DB_NAME
-                + File.separator + Globals.ADMIN_PAGES_FOLDER + File.separator + pagesCollName);
+        final var pagesCollName = String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, projectName, collName);
+        final var pagesDir = new File(
+                Configuration.getInstance().getFilePath() + File.separator + Globals.ADMIN_PROJECT_NAME + File.separator
+                        + Globals.ADMIN_PAGES_FOLDER + File.separator + pagesCollName);
         assertFalse(pagesDir.exists(), "admin/pages/<db>_<coll> directory must be removed after drop");
     }
 
@@ -311,18 +317,18 @@ public class AdminOperationHelperTest {
         final var cache = IocContainer.get(Cache.class);
 
         final long bytes = 64L;
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0L, bytes);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0L, bytes);
 
         final var data = new JsonObject();
         data.addProperty("foo", "bar");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("doubleCountId");
         entry.setPage(0L);
 
-        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        AdminOperationHelper.bulkUpdateEntryCount(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 java.util.List.of(EntityRef.of(entry)), 0L);
 
-        final var pageEntries = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL);
+        final var pageEntries = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL);
         assertNotNull(pageEntries);
         final var page0 = pageEntries.stream().filter(p -> p.getPage() == 0L).findFirst();
         assertTrue(page0.isPresent());
@@ -332,16 +338,16 @@ public class AdminOperationHelperTest {
 
     @Test
     public void test_base_update_entry_count_created_admin_coll_applies_delta() throws Exception {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry("adminDeltaDb1"));
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry("adminDeltaDb2"));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry("adminDeltaProject1"));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry("adminDeltaProject2"));
 
         final var cache = IocContainer.get(Cache.class);
-        final var pageEntries = cache.getAdminPageEntries(Globals.ADMIN_DB_NAME,
-                Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        final var pageEntries = cache.getAdminPageEntries(Globals.ADMIN_PROJECT_NAME,
+                Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         assertNotNull(pageEntries);
         final var page0 = pageEntries.stream().filter(p -> p.getPage() == 0L).findFirst();
         assertTrue(page0.isPresent());
-        // There are already admin-created databases (admin itself and the two above), so entryCount >= 2.
+        // There are already admin-created projects (admin itself and the two above), so entryCount >= 2.
         assertTrue(page0.get().getEntryCount() >= 2, "both admin db entries must be counted");
         assertTrue(page0.get().getPageSize() > 0, "pageSize must reflect both entries");
     }
@@ -349,12 +355,12 @@ public class AdminOperationHelperTest {
     @Test
     public void test_two_concurrent_creates_do_not_duplicate_the_collection_name() throws Exception {
         final var cache = IocContainer.get(Cache.class);
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry("m17db"));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry("m17db"));
 
         AdminOperationHelper.saveCollectionEntry(new AdminCollEntry("m17db", "twice"));
         AdminOperationHelper.saveCollectionEntry(new AdminCollEntry("m17db", "twice"));
 
-        final var collections = cache.getAdminDbEntry("m17db").getCollections();
+        final var collections = cache.getAdminProjectEntry("m17db").getCollections();
         assertEquals(1, collections.stream().filter("twice"::equals).count(),
                 "a repeated registration must not duplicate the name, or one DROP strips only one copy");
     }
@@ -363,13 +369,13 @@ public class AdminOperationHelperTest {
             CountDownLatch release) {
         return new Thread(() -> {
             try {
-                locks.lock(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
+                locks.lock(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
                 held.countDown();
                 release.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
+                locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
             }
         });
     }
@@ -377,8 +383,8 @@ public class AdminOperationHelperTest {
     @SuppressWarnings("BusyWait")
     private static void awaitSecondLockWait(ResourceLocking locks) throws InterruptedException {
         final var deadline = System.currentTimeMillis() + 5_000L;
-        while (locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME)) {
-            locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        while (locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME)) {
+            locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME);
             assertTrue(System.currentTimeMillis() < deadline, "the write never reached the second admin lock");
             Thread.sleep(5);
         }
@@ -395,7 +401,7 @@ public class AdminOperationHelperTest {
 
         final var victim = new Thread(() -> {
             try {
-                AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, "m18coll"));
+                AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, "m18coll"));
             } catch (Exception ignored) {
                 Thread.currentThread().interrupt();
             }
@@ -407,15 +413,15 @@ public class AdminOperationHelperTest {
         release.countDown();
         blocker.join(5_000L);
 
-        assertTrue(locks.tryLockWrite(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME),
+        assertTrue(locks.tryLockWrite(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME),
                 "an interrupt while taking the second admin lock must not strand the first for the process lifetime");
-        locks.release(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME);
+        locks.release(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_PROJECTS_COLLECTION_NAME);
     }
 
     private static long storedCopiesOf(String opId) throws Exception {
         final var fs = IocContainer.get(org.ccg.mpp.fs.FileSystem.class);
         final var folder = new File(TestUtils.getDbPath(fs),
-                Globals.ADMIN_DB_NAME + File.separator + Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
+                Globals.ADMIN_PROJECT_NAME + File.separator + Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME);
         final var pages = folder.listFiles((_, name) -> name.endsWith(".dat"));
         if (pages == null) {
             return 0;
@@ -447,10 +453,10 @@ public class AdminOperationHelperTest {
     @Test
     public void test_an_admin_row_that_grows_updates_its_page_size() throws Exception {
         final var cache = IocContainer.get(Cache.class);
-        final var dbEntry = new AdminDbEntry(TestGlobals.DB);
-        AdminOperationHelper.saveDatabaseEntry(dbEntry);
-        final var afterInsert = cache.getAdminPageEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME,
-                0);
+        final var dbEntry = new AdminProjectEntry(TestGlobals.PROJECT);
+        AdminOperationHelper.saveProjectEntry(dbEntry);
+        final var afterInsert = cache.getAdminPageEntry(Globals.ADMIN_PROJECT_NAME,
+                Globals.ADMIN_PROJECTS_COLLECTION_NAME, 0);
         assertNotNull(afterInsert);
         final var sizeAfterInsert = afterInsert.getPageSize();
 
@@ -459,10 +465,10 @@ public class AdminOperationHelperTest {
             collections.add("collection-with-a-long-name-" + i);
         }
         dbEntry.setCollections(collections);
-        AdminOperationHelper.saveDatabaseEntry(dbEntry);
+        AdminOperationHelper.saveProjectEntry(dbEntry);
 
-        final var afterUpdate = cache.getAdminPageEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_DATABASES_COLLECTION_NAME,
-                0);
+        final var afterUpdate = cache.getAdminPageEntry(Globals.ADMIN_PROJECT_NAME,
+                Globals.ADMIN_PROJECTS_COLLECTION_NAME, 0);
         assertTrue(afterUpdate.getPageSize() > sizeAfterInsert,
                 "an admin row that grows on update must move its recorded page size, or first-fit keeps packing"
                         + " into a page it believes has room and the page file outgrows maxPageSize");

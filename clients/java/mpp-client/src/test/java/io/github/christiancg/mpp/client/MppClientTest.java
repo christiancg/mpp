@@ -46,15 +46,15 @@ public class MppClientTest {
     @Test
     public void test_connect_authenticates_and_reads_server_level_answers() throws Exception {
         try (var server = server(); var client = connect(server)) {
-            reply("LIST_DATABASES", "{\"type\":\"LIST_DATABASES\",\"status\":\"OK\",\"databases\":[\"shop\"]}");
+            reply("LIST_PROJECTS", "{\"type\":\"LIST_PROJECTS\",\"status\":\"OK\",\"projects\":[\"shop\"]}");
             reply("SERVER_INFO", "{\"type\":\"SERVER_INFO\",\"status\":\"OK\",\"server\":{\"state\":\"READY\","
                     + "\"version\":\"1.2\"}}");
-            reply("GET_DATABASE_STATS", "{\"type\":\"GET_DATABASE_STATS\",\"status\":\"OK\",\"stats\":{\"n\":1}}");
+            reply("GET_PROJECT_STATS", "{\"type\":\"GET_PROJECT_STATS\",\"status\":\"OK\",\"stats\":{\"n\":1}}");
             assertEquals("AUTHENTICATE", server.nextRequest().get("type").asString());
-            assertEquals(List.of("shop"), client.listDatabases());
+            assertEquals(List.of("shop"), client.listProjects());
             assertEquals("READY", client.serverInfo().state().orElseThrow());
             assertEquals("1.2", client.serverInfo().version().orElseThrow());
-            assertEquals(1, client.databaseStats().getLong("n").orElseThrow());
+            assertEquals(1, client.projectStats().getLong("n").orElseThrow());
             client.changePassword("old", "new");
             final var setPassword = server.nextRequestOfType("SET_PASSWORD");
             assertEquals("alice", setPassword.get("username").asString());
@@ -107,7 +107,7 @@ public class MppClientTest {
                 orders.deleteWhere(field("x").eq(2));
                 orders.updateWhere(field("x").eq(3), Document.of("y", 4));
                 orders.insert(Document.of("_id", "d"));
-                assertEquals("shop", orders.databaseName());
+                assertEquals("shop", orders.projectName());
                 assertEquals("orders", orders.name());
                 return transaction.id();
             });
@@ -155,9 +155,9 @@ public class MppClientTest {
             assertThrows(UnknownOutcomeException.class, () -> client.transaction(transaction -> "x"));
             server.nextRequestOfType("COMMIT_TRANSACTION");
             reply("COMMIT_TRANSACTION", "{\"type\":\"COMMIT_TRANSACTION\",\"status\":\"OK\"}");
-            client.listDatabases();
+            client.listProjects();
             assertEquals("AUTHENTICATE", server.nextRequest().get("type").asString());
-            assertEquals("LIST_DATABASES", server.nextRequest().get("type").asString());
+            assertEquals("LIST_PROJECTS", server.nextRequest().get("type").asString());
             assertEquals(2, server.acceptedConnections());
         }
     }
@@ -181,7 +181,7 @@ public class MppClientTest {
         reply("START_TRANSACTION", "{\"type\":\"START_TRANSACTION\",\"status\":\"ERROR\",\"errorCode\":\"409-3\"}");
         try (var server = server(); var client = connect(server)) {
             assertThrows(ConflictException.class, client::beginTransaction);
-            client.listDatabases();
+            client.listProjects();
             assertEquals(1, server.acceptedConnections());
         }
     }
@@ -193,7 +193,7 @@ public class MppClientTest {
         reply("LIST_USERS", "{\"type\":\"LIST_USERS\",\"status\":\"NOT_FOUND\",\"errorCode\":\"404-5\"}");
         reply("GET_SCHEMA", "{\"type\":\"GET_SCHEMA\",\"status\":\"NOT_FOUND\",\"errorCode\":\"404-4\"}");
         try (var server = server(); var client = connect(server)) {
-            final var orders = client.database("shop").collection("orders");
+            final var orders = client.project("shop").collection("orders");
             assertTrue(orders.findById("a").isEmpty());
             assertTrue(orders.query().toList().isEmpty());
             assertEquals(0, orders.query().count());
@@ -209,7 +209,7 @@ public class MppClientTest {
         reply("AGGREGATE", "{\"type\":\"AGGREGATE\",\"status\":\"NOT_FOUND\",\"errorCode\":\"404-4\"}");
         reply("LIST_USERS", "{\"type\":\"LIST_USERS\",\"status\":\"NOT_FOUND\",\"errorCode\":\"404-4\"}");
         try (var server = server(); var client = connect(server)) {
-            final var orders = client.database("shop").collection("orders");
+            final var orders = client.project("shop").collection("orders");
             assertThrows(io.github.christiancg.mpp.client.error.NotFoundException.class, () -> orders.findById("a"));
             assertThrows(io.github.christiancg.mpp.client.error.NotFoundException.class, () -> orders.query().toList());
             assertThrows(io.github.christiancg.mpp.client.error.NotFoundException.class,
@@ -223,7 +223,7 @@ public class MppClientTest {
                 "{\"type\":\"LISTEN\",\"status\":\"OK\",\"listenId\":\"L1\",\"isUpdate\":false," + "\"results\":[]}");
         try (var server = server()) {
             final var client = connect(server);
-            final var subscription = client.database("shop").collection("orders").listen(update -> {
+            final var subscription = client.project("shop").collection("orders").listen(update -> {
             });
             assertEquals("L1", subscription.listenId());
             client.close();

@@ -32,7 +32,7 @@ public class OperationProcessorGeoTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -57,9 +57,9 @@ public class OperationProcessorGeoTest {
         final var coll = "geoDistIdx";
         seedCity(coll);
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "location")).getStatus());
+                processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "location")).getStatus());
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(distanceStep("SMALLER_THAN")));
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -75,9 +75,9 @@ public class OperationProcessorGeoTest {
     public void test_distance_greater_than_falls_back_to_scan() {
         final var coll = "geoDistFar";
         seedCity(coll);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "location"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "location"));
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(distanceStep("GREATER_THAN")));
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -90,7 +90,7 @@ public class OperationProcessorGeoTest {
     public void test_within_filter_with_index() {
         final var coll = "geoWithin";
         seedCity(coll);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "location"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "location"));
 
         final var response = aggregate(coll, withinStep());
 
@@ -101,9 +101,9 @@ public class OperationProcessorGeoTest {
     public void test_count_after_distance_filter() {
         final var coll = "geoCount";
         seedCity(coll);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "location"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "location"));
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(distanceStep("SMALLER_THAN"), new CountAggregationStep()));
         final var response = (AggregateResponse) processor.processMessage(request);
 
@@ -112,14 +112,14 @@ public class OperationProcessorGeoTest {
     }
 
     private void seedCity(String coll) {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
         saveGeo(coll, "near", "#geo(40.0,-74.0)");
         saveGeo(coll, "close", "#geo(40.001,-74.001)");
         saveGeo(coll, "far", "#geo(34.05,-118.24)");
     }
 
     private void saveGeo(String coll, String id, String geo) {
-        final var save = new SaveRequest(TestGlobals.DB, coll);
+        final var save = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         obj.add("location", new JsonGeo(geo));
@@ -128,7 +128,7 @@ public class OperationProcessorGeoTest {
     }
 
     private AggregateResponse aggregate(String coll, FilterAggregationStep step) {
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(step));
         return (AggregateResponse) processor.processMessage(request);
     }

@@ -50,7 +50,8 @@ public class ClientFixturesTest {
         for (final var username : FIXTURE_USERS) {
             cache.putAdminUserEntry(
                     new AdminUserEntry(username, "hash", false, new HashSet<>(), new HashMap<>(), new HashMap<>()),
-                    new PkIndexEntry(Globals.ADMIN_DB_NAME, Globals.ADMIN_USERS_COLLECTION_NAME, username, 0, 10, 0));
+                    new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, Globals.ADMIN_USERS_COLLECTION_NAME, username, 0, 10,
+                            0));
         }
     }
 

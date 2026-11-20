@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 @RequiresDirectorySync
 @RequiresFileKeys
 public class PageVacuumCheckpointTest {
-    private static final String DB = "rewriteCkptDb";
+    private static final String PROJECT = "rewriteCkptProject";
     private static final String COLL = "rewriteCkptColl";
     private static final long WAIT_MS = 10_000L;
 
@@ -46,12 +46,12 @@ public class PageVacuumCheckpointTest {
     @BeforeEach
     public void setUp() throws Exception {
         power = PowerLossFixture.install();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         wal = new WriteAheadLog(rf.fx.paths);
         for (final var id : List.of("a", "b", "c")) {
             rf.appender.insert(rf.entry(id, "old-" + id, 0), ReplacerFixture.line(id, "old-" + id));
         }
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         TestUtils.setPrivateField(injector, "enabled", true);
     }
 
@@ -63,15 +63,15 @@ public class PageVacuumCheckpointTest {
     }
 
     private WalCodec.Decoded decodedLog() throws IOException {
-        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(DB, COLL).toPath()));
+        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath()));
     }
 
     private Map<String, String> scannedAfterPowerLoss() throws IOException {
         power.powerLoss();
-        PowerLossFixture.restart(rf.fx.paths, DB, COLL);
+        PowerLossFixture.restart(rf.fx.paths, PROJECT, COLL);
         WalRedo.redoAll(rf.fx.paths);
         final var scanned = new TreeMap<String, String>();
-        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(DB, COLL)) {
+        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(PROJECT, COLL)) {
             entries.forEach(entry -> scanned.merge(entry.get_id(), entry.getData().get("v").asJsonString().getValue(),
                     (first, second) -> first + "," + second));
         }
@@ -81,24 +81,25 @@ public class PageVacuumCheckpointTest {
     @Test
     public void aCheckpointDuringARewriteKeepsTheBegin() throws Exception {
         rf.replacer.delete(rf.fx.indexed("a"));
-        injector.arm(FaultPoint.WAL_REWRITE_BEGUN, FaultAction.PAUSE, DB + Globals.COLL_IDENTIFIER_SEPARATOR + COLL);
+        injector.arm(FaultPoint.WAL_REWRITE_BEGUN, FaultAction.PAUSE,
+                PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + COLL);
         final var vacuum = CompletableFuture.runAsync(() -> {
             try {
-                rf.vacuum.vacuum(DB, COLL, 0, PageRows.of(rf.fx.store, null, DB, COLL, 0));
+                rf.vacuum.vacuum(PROJECT, COLL, 0, PageRows.of(rf.fx.store, null, PROJECT, COLL, 0));
             } catch (IOException e) {
                 throw new IllegalStateException(e);
             }
         }, command -> Thread.ofVirtual().start(command));
         assertTrue(injector.awaitReached(FaultPoint.WAL_REWRITE_BEGUN, WAIT_MS), "the vacuum never began");
 
-        assertThrows(RewriteOpenException.class, () -> wal.checkpoint(DB, COLL));
+        assertThrows(RewriteOpenException.class, () -> wal.checkpoint(PROJECT, COLL));
         injector.release(FaultPoint.WAL_REWRITE_BEGUN);
         vacuum.get(WAIT_MS, TimeUnit.MILLISECONDS);
 
         final var rewrite = decodedLog().rewrites().get(0L);
         assertNotNull(rewrite, "the log still bounds the page by its REWRITE_BEGIN");
         assertNotEquals(WalCodec.NO_REWRITE_END, rewrite.lengthAfter());
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         assertEquals(Map.of("b", "old-b", "c", "old-c"), scannedAfterPowerLoss());
     }
 }

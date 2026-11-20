@@ -69,16 +69,17 @@ public class UserCacheIndexTest {
         fsField.setAccessible(true);
         fsField.set(cache, fsMock);
 
-        String dbName = "test_db";
+        String projectName = "test_db";
         String collName = "test_coll";
         String fieldName = "test_field";
 
         List<FieldIndexEntry<Double>> fieldIndexEntries = new ArrayList<>();
-        fieldIndexEntries.add(new FieldIndexEntry<>(dbName, collName, 1.5, new HashSet<>(List.of("1", "2"))));
+        fieldIndexEntries.add(new FieldIndexEntry<>(projectName, collName, 1.5, new HashSet<>(List.of("1", "2"))));
 
-        when(fsMock.readWholeFieldIndexFiles(dbName, collName, fieldName, Double.class)).thenReturn(fieldIndexEntries);
+        when(fsMock.readWholeFieldIndexFiles(projectName, collName, fieldName, Double.class))
+                .thenReturn(fieldIndexEntries);
 
-        List<FieldIndexEntry<Double>> result = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName,
+        List<FieldIndexEntry<Double>> result = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName,
                 Double.class);
 
         assertNotNull(result);
@@ -90,16 +91,16 @@ public class UserCacheIndexTest {
     public void test_returns_primary_key_index_from_cache()
             throws IOException, NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
-        List<PkIndexEntry> expectedPkIndex = List.of(new PkIndexEntry(dbName, collName, "value1", 0, 10, 0));
+        String collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
+        List<PkIndexEntry> expectedPkIndex = List.of(new PkIndexEntry(projectName, collName, "value1", 0, 10, 0));
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", type);
         pkIndexMap.put(collectionIdentifier, expectedPkIndex);
 
-        List<PkIndexEntry> actualPkIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        List<PkIndexEntry> actualPkIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
 
         assertEquals(expectedPkIndex, actualPkIndex);
     }
@@ -107,19 +108,19 @@ public class UserCacheIndexTest {
     @Test
     public void test_reposition_after_vacuum() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
-        final var before = new PkIndexEntry(dbName, collName, "a", 0, 10, 0);
-        final var removed = new PkIndexEntry(dbName, collName, "b", 10, 10, 0);
-        final var after = new PkIndexEntry(dbName, collName, "c", 20, 10, 0);
-        final var otherPage = new PkIndexEntry(dbName, collName, "d", 20, 10, 1);
+        final var before = new PkIndexEntry(projectName, collName, "a", 0, 10, 0);
+        final var removed = new PkIndexEntry(projectName, collName, "b", 10, 10, 0);
+        final var after = new PkIndexEntry(projectName, collName, "c", 20, 10, 0);
+        final var otherPage = new PkIndexEntry(projectName, collName, "d", 20, 10, 1);
         final var type = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
-        TestUtils.getPrivateField(cache, "pkIndexMap", type).put(Cache.getCollectionIdentifier(dbName, collName),
+        TestUtils.getPrivateField(cache, "pkIndexMap", type).put(Cache.getCollectionIdentifier(projectName, collName),
                 new ArrayList<>(List.of(before, removed, after, otherPage)));
 
-        cache.repositionAfterVacuum(new VacuumedPage(dbName, collName, 0, Map.of("c", new VacuumedPage.Move(20, 10),
-                "d", new VacuumedPage.Move(20, 10), "b", new VacuumedPage.Move(99, 0))));
+        cache.repositionAfterVacuum(new VacuumedPage(projectName, collName, 0, Map.of("c",
+                new VacuumedPage.Move(20, 10), "d", new VacuumedPage.Move(20, 10), "b", new VacuumedPage.Move(99, 0))));
 
         assertEquals(0, before.getPosition(), "a row the vacuum did not move is untouched");
         assertEquals(10, removed.getPosition(), "a move from another position is not this row's");
@@ -130,20 +131,20 @@ public class UserCacheIndexTest {
     @Test
     public void test_reposition_after_vacuum_uncached_is_noop() {
         UserCache cache = new UserCache();
-        assertDoesNotThrow(() -> cache.repositionAfterVacuum(new VacuumedPage("noDb", "noColl", 0, Map.of())));
+        assertDoesNotThrow(() -> cache.repositionAfterVacuum(new VacuumedPage("noProject", "noColl", 0, Map.of())));
     }
 
     @Test
     public void test_returns_list_when_index_loaded() throws IOException, NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
         String fieldName = "testField";
         Class<String> indexType = String.class;
-        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         String indexIdentifier = Cache.getIndexIdentifier(fieldName, indexType);
 
-        FieldIndexEntry<String> entry = new FieldIndexEntry<>(dbName, collName, "value", Set.of("id1", "id2"));
+        FieldIndexEntry<String> entry = new FieldIndexEntry<>(projectName, collName, "value", Set.of("id1", "id2"));
         Map<String, List<FieldIndexEntry<?>>> indexMap = new ConcurrentHashMap<>();
         indexMap.put(indexIdentifier, List.of(entry));
 
@@ -152,7 +153,7 @@ public class UserCacheIndexTest {
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
         fieldIndexMap.put(collectionIdentifier, indexMap);
 
-        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName,
+        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName,
                 indexType);
 
         assertNotNull(result);
@@ -169,14 +170,14 @@ public class UserCacheIndexTest {
         fsField.setAccessible(true);
         fsField.set(cache, fsMock);
 
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
         String fieldName = "testField";
         Class<String> indexType = String.class;
 
-        when(fsMock.readWholeFieldIndexFiles(dbName, collName, fieldName, indexType)).thenReturn(null);
+        when(fsMock.readWholeFieldIndexFiles(projectName, collName, fieldName, indexType)).thenReturn(null);
 
-        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName,
+        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName,
                 indexType);
 
         assertNull(result);
@@ -191,25 +192,25 @@ public class UserCacheIndexTest {
         fsField.setAccessible(true);
         fsField.set(cache, fsMock);
 
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
-        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        String collId = Cache.getCollectionIdentifier(projectName, collName);
 
         Map<String, List<FieldIndexEntry<?>>> innerMap = new ConcurrentHashMap<>();
         innerMap.put(Cache.getIndexIdentifier("ba", String.class),
-                List.of(new FieldIndexEntry<>(dbName, collName, "x", Set.of("id99"))));
+                List.of(new FieldIndexEntry<>(projectName, collName, "x", Set.of("id99"))));
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         TestUtils.getPrivateField(cache, "fieldIndexMap", type).put(collId, innerMap);
 
         List<FieldIndexEntry<String>> diskEntries = List
-                .of(new FieldIndexEntry<>(dbName, collName, "hello", Set.of("id1")));
-        when(fsMock.readWholeFieldIndexFiles(dbName, collName, "a", String.class)).thenReturn(diskEntries);
+                .of(new FieldIndexEntry<>(projectName, collName, "hello", Set.of("id1")));
+        when(fsMock.readWholeFieldIndexFiles(projectName, collName, "a", String.class)).thenReturn(diskEntries);
 
-        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, "a",
+        List<FieldIndexEntry<String>> result = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, "a",
                 String.class);
 
-        verify(fsMock).readWholeFieldIndexFiles(dbName, collName, "a", String.class);
+        verify(fsMock).readWholeFieldIndexFiles(projectName, collName, "a", String.class);
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("hello", result.getFirst().getValue());
@@ -224,25 +225,25 @@ public class UserCacheIndexTest {
         fsField.setAccessible(true);
         fsField.set(cache, fsMock);
 
-        String dbName = "testDB";
+        String projectName = "testProject";
         String collName = "testCollection";
-        String collId = Cache.getCollectionIdentifier(dbName, collName);
+        String collId = Cache.getCollectionIdentifier(projectName, collName);
 
         Map<String, List<FieldIndexEntry<?>>> innerMap = new ConcurrentHashMap<>();
         innerMap.put(Cache.getIndexIdentifier("ba", IndexKind.OBJECT.label()),
-                List.of(new FieldIndexEntry<>(dbName, collName, "deadbeef", Set.of("id99"))));
+                List.of(new FieldIndexEntry<>(projectName, collName, "deadbeef", Set.of("id99"))));
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         TestUtils.getPrivateField(cache, "fieldIndexMap", type).put(collId, innerMap);
 
         List<FieldIndexEntry<String>> diskEntries = List
-                .of(new FieldIndexEntry<>(dbName, collName, "cafebabe", Set.of("id1")));
-        when(fsMock.readWholeHashIndexFile(dbName, collName, "a", IndexKind.OBJECT)).thenReturn(diskEntries);
+                .of(new FieldIndexEntry<>(projectName, collName, "cafebabe", Set.of("id1")));
+        when(fsMock.readWholeHashIndexFile(projectName, collName, "a", IndexKind.OBJECT)).thenReturn(diskEntries);
 
-        List<FieldIndexEntry<String>> result = cache.getHashIndexAndLoadIfNecessary(dbName, collName, "a",
+        List<FieldIndexEntry<String>> result = cache.getHashIndexAndLoadIfNecessary(projectName, collName, "a",
                 IndexKind.OBJECT);
 
-        verify(fsMock).readWholeHashIndexFile(dbName, collName, "a", IndexKind.OBJECT);
+        verify(fsMock).readWholeHashIndexFile(projectName, collName, "a", IndexKind.OBJECT);
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("cafebabe", result.getFirst().getValue());
@@ -251,10 +252,10 @@ public class UserCacheIndexTest {
     @Test
     public void test_returns_true_when_field_index_present() throws NoSuchFieldException, IllegalAccessException {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
         String fieldName = "testField";
-        String collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        String collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
 
         Map<String, List<FieldIndexEntry<?>>> fieldIndexes = new HashMap<>();
         fieldIndexes.put(fieldName, new ArrayList<>());
@@ -265,7 +266,7 @@ public class UserCacheIndexTest {
 
         fieldIndexMap.put(collectionIdentifier, fieldIndexes);
 
-        boolean result = cache.hasLoadedIndex(dbName, collName, fieldName);
+        boolean result = cache.hasLoadedIndex(projectName, collName, fieldName);
 
         assertTrue(result);
     }
@@ -276,22 +277,22 @@ public class UserCacheIndexTest {
         final var type = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", type);
-        fieldIndexMap.put(Cache.getCollectionIdentifier("testDb", "testColl"),
+        fieldIndexMap.put(Cache.getCollectionIdentifier("testProject", "testColl"),
                 new HashMap<>(Map.of("score|Double", new ArrayList<>())));
 
-        assertTrue(cache.hasLoadedIndex("testDb", "testColl", "score"),
+        assertTrue(cache.hasLoadedIndex("testProject", "testColl", "score"),
                 "the cache keys a field index per value type, so a bare field name never matched");
-        assertFalse(cache.hasLoadedIndex("testDb", "testColl", "other"));
+        assertFalse(cache.hasLoadedIndex("testProject", "testColl", "other"));
     }
 
     @Test
     public void test_returns_false_when_field_index_map_empty() {
         UserCache cache = new UserCache();
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testColl";
         String fieldName = "testField";
 
-        boolean result = cache.hasLoadedIndex(dbName, collName, fieldName);
+        boolean result = cache.hasLoadedIndex(projectName, collName, fieldName);
 
         assertFalse(result);
     }
@@ -300,16 +301,19 @@ public class UserCacheIndexTest {
     public void test_get_ids_from_index_with_custom_type() throws IOException {
         var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        var dbName = "db";
+        var projectName = "db";
         var collName = "coll";
         var fieldName = "time";
         var timeValue = new JsonTime("#time(10:00:00)");
         var operator = new FieldOperator(FieldOperatorType.EQUALS, fieldName, timeValue);
-        List<FieldIndexEntry<Object>> idx = List.of(new FieldIndexEntry<>(dbName, collName, timeValue, Set.of("id1")));
-        when(cache.getFieldIndexAndLoadIfNecessary(eq(dbName), eq(collName), eq(fieldName), any())).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, (Object) timeValue)).thenCallRealMethod();
+        List<FieldIndexEntry<Object>> idx = List
+                .of(new FieldIndexEntry<>(projectName, collName, timeValue, Set.of("id1")));
+        when(cache.getFieldIndexAndLoadIfNecessary(eq(projectName), eq(collName), eq(fieldName), any()))
+                .thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, (Object) timeValue))
+                .thenCallRealMethod();
 
-        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, (Object) timeValue);
+        var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, (Object) timeValue);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"));
@@ -319,19 +323,19 @@ public class UserCacheIndexTest {
     public void test_get_ids_from_index_with_json_array_of_strings() throws IOException {
         var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        var dbName = "db";
+        var projectName = "db";
         var collName = "coll";
         var fieldName = "tag";
         var arr = new JsonArray();
         arr.add(new JsonString("alpha"));
         arr.add(new JsonString("beta"));
         var operator = new FieldOperator(FieldOperatorType.IN, fieldName, arr);
-        var idx = List.of(new FieldIndexEntry<>(dbName, collName, "alpha", Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, "gamma", Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, String.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        var idx = List.of(new FieldIndexEntry<>(projectName, collName, "alpha", Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, "gamma", Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, String.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"));
@@ -342,19 +346,19 @@ public class UserCacheIndexTest {
     public void test_get_ids_from_index_with_json_array_of_numbers() throws IOException {
         var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        var dbName = "db";
+        var projectName = "db";
         var collName = "coll";
         var fieldName = "score";
         var arr = new JsonArray();
         arr.add(new JsonNumber(10.0));
         arr.add(new JsonNumber(20.0));
         var operator = new FieldOperator(FieldOperatorType.IN, fieldName, arr);
-        List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(dbName, collName, 10.0, Set.of("id1")),
-                new FieldIndexEntry<>(dbName, collName, 30.0, Set.of("id2")));
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        List<FieldIndexEntry<Number>> idx = List.of(new FieldIndexEntry<>(projectName, collName, 10.0, Set.of("id1")),
+                new FieldIndexEntry<>(projectName, collName, 30.0, Set.of("id2")));
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"));
@@ -365,18 +369,18 @@ public class UserCacheIndexTest {
     public void test_get_ids_from_index_with_json_array_of_booleans() throws IOException {
         var cache = mock(UserCache.class);
         injectRealLocking(cache);
-        var dbName = "db";
+        var projectName = "db";
         var collName = "coll";
         var fieldName = "active";
         var arr = new JsonArray();
         arr.add(JsonBoolean.of(true));
         var operator = new FieldOperator(FieldOperatorType.IN, fieldName, arr);
-        var idx = List.of(new FieldIndexEntry<>(dbName, collName, false, Set.of("id2")),
-                new FieldIndexEntry<>(dbName, collName, true, Set.of("id1")));
-        when(cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Boolean.class)).thenReturn(idx);
-        when(cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr)).thenCallRealMethod();
+        var idx = List.of(new FieldIndexEntry<>(projectName, collName, false, Set.of("id2")),
+                new FieldIndexEntry<>(projectName, collName, true, Set.of("id1")));
+        when(cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Boolean.class)).thenReturn(idx);
+        when(cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr)).thenCallRealMethod();
 
-        var result = cache.getIdsFromIndex(dbName, collName, fieldName, operator, arr);
+        var result = cache.getIdsFromIndex(projectName, collName, fieldName, operator, arr);
 
         assertNotNull(result);
         assertTrue(result.contains("id1"));
@@ -403,14 +407,14 @@ public class UserCacheIndexTest {
         final var pkType = new ReflectionUtils.TypeToken<Map<String, List<PkIndexEntry>>>() {
         };
         final var pkIndexMap = TestUtils.getPrivateField(cache, "pkIndexMap", pkType);
-        pkIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"),
-                List.of(new PkIndexEntry("db1", "c1", "id1", 0, 1, 0)));
+        pkIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"),
+                List.of(new PkIndexEntry("project1", "c1", "id1", 0, 1, 0)));
         final var fieldType = new ReflectionUtils.TypeToken<Map<String, Map<String, List<FieldIndexEntry<?>>>>>() {
         };
         final var fieldIndexMap = TestUtils.getPrivateField(cache, "fieldIndexMap", fieldType);
         final Map<String, List<FieldIndexEntry<?>>> indexes = new ConcurrentHashMap<>();
-        indexes.put("f|String", List.of(new FieldIndexEntry<>("db1", "c1", "v", Set.of("id1"))));
-        fieldIndexMap.put(Cache.getCollectionIdentifier("db1", "c1"), indexes);
+        indexes.put("f|String", List.of(new FieldIndexEntry<>("project1", "c1", "v", Set.of("id1"))));
+        fieldIndexMap.put(Cache.getCollectionIdentifier("project1", "c1"), indexes);
         final var resources = cache.listCacheableResources();
         assertTrue(resources.stream().anyMatch(r -> r.kind() == org.ccg.mpp.cache.AccessKind.PK_INDEX));
         assertTrue(resources.stream().anyMatch(r -> r.kind() == org.ccg.mpp.cache.AccessKind.FIELD_INDEX));
@@ -430,10 +434,10 @@ public class UserCacheIndexTest {
         FileSystem fsMock = mock(FileSystem.class);
         TestUtils.setPrivateField(cache, "fs", fsMock);
 
-        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
-        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userDb", "c1", "id1", 0, 50, 0)));
+        final var collId = Cache.getCollectionIdentifier("userProject", "c1");
+        injectPkIndex(cache, collId, List.of(new PkIndexEntry("userProject", "c1", "id1", 0, 50, 0)));
 
-        final var result = cache.getEntriesByIds("userDb", "c1", Set.of("missing"));
+        final var result = cache.getEntriesByIds("userProject", "c1", Set.of("missing"));
 
         assertTrue(result.isEmpty());
         verify(fsMock, never()).getByIndexEntries(anyList());
@@ -445,17 +449,18 @@ public class UserCacheIndexTest {
         FileSystem fsMock = mock(FileSystem.class);
         TestUtils.setPrivateField(cache, "fs", fsMock);
 
-        final var collId = Cache.getCollectionIdentifier("userDb", "c1");
-        final var livePk = new PkIndexEntry("userDb", "c1", "id1", 100L, 50, 0);
+        final var collId = Cache.getCollectionIdentifier("userProject", "c1");
+        final var livePk = new PkIndexEntry("userProject", "c1", "id1", 100L, 50, 0);
         injectPkIndex(cache, collId, List.of(livePk));
 
         final var readObj = new JsonObject();
         readObj.addProperty(Globals.PK_FIELD, "id1");
-        when(fsMock.getByIndexEntries(anyList())).thenReturn(List.of(DbEntry.fromJsonObject("userDb", "c1", readObj)));
+        when(fsMock.getByIndexEntries(anyList()))
+                .thenReturn(List.of(DbEntry.fromJsonObject("userProject", "c1", readObj)));
 
         final var captor = org.mockito.ArgumentCaptor.forClass(List.class);
 
-        cache.getEntriesByIds("userDb", "c1", Set.of("id1"));
+        cache.getEntriesByIds("userProject", "c1", Set.of("id1"));
 
         //noinspection unchecked
         verify(fsMock).getByIndexEntries(captor.capture());

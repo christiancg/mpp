@@ -37,7 +37,7 @@ public class TransactionAbandonSessionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -50,7 +50,7 @@ public class TransactionAbandonSessionTest {
         final var session = clientTracker.registerTxSession(sessionId, "tester", "edge-node");
         session.submit(() -> {
             TransactionOperationHelper.start(session.clientId());
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             final var object = new JsonObject();
             object.add("_id", new JsonString(id));
             request.setObject(object);
@@ -75,7 +75,7 @@ public class TransactionAbandonSessionTest {
 
             assertNotNull(clientTracker.txSession(sessionId),
                     "the session is the only handle naming the write locks a fenced commit deliberately kept");
-            assertFalse(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL),
+            assertFalse(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL),
                     "the collection stays locked for recovery to finish the slice");
         } finally {
             TxCommitLog.clearLocalCommit(txId);
@@ -95,8 +95,8 @@ public class TransactionAbandonSessionTest {
         TransactionOperationHelper.abandonSession(sessionId);
 
         assertNull(clientTracker.txSession(sessionId));
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL));
-        locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL));
+        locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test

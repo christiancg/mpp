@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WriteIntentRecoveryVacuumTest {
-    private static final String DB = "vacuumDb";
+    private static final String PROJECT = "vacuumProject";
     private static final String COLL = "vacuumColl";
 
     @TempDir
@@ -28,7 +28,7 @@ public class WriteIntentRecoveryVacuumTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        it = new IntentFixture(tmp, DB, COLL);
+        it = new IntentFixture(tmp, PROJECT, COLL);
         it.fx.seed(0, "a", "b", "c");
         page0 = it.firstPage();
     }
@@ -48,7 +48,7 @@ public class WriteIntentRecoveryVacuumTest {
         deleteB();
         final var holed = it.firstPage();
         it.vacuumFirstPage();
-        final var temp = it.fx.paths.vacuumFile(DB, COLL, 0);
+        final var temp = it.fx.paths.vacuumFile(PROJECT, COLL, 0);
         Files.writeString(temp.toPath(), StorageFixture.record("a", "old-a"), StandardCharsets.UTF_8);
         final var rows = it.fx.indexedRows().stream().map(PkIndexEntry::toFileEntry).toList();
 
@@ -82,13 +82,13 @@ public class WriteIntentRecoveryVacuumTest {
         it.vacuumFirstPage();
         Files.writeString(it.fx.page(0).toPath(), compactedWithoutB(), StandardCharsets.UTF_8);
         it.recover();
-        final var rows = Files.readAllBytes(it.fx.paths.pkIndexFile(DB, COLL).toPath());
+        final var rows = Files.readAllBytes(it.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
         it.vacuumFirstPage();
 
         it.recover();
 
         assertEquals(new String(rows, StandardCharsets.UTF_8),
-                Files.readString(it.fx.paths.pkIndexFile(DB, COLL).toPath(), StandardCharsets.UTF_8));
+                Files.readString(it.fx.paths.pkIndexFile(PROJECT, COLL).toPath(), StandardCharsets.UTF_8));
         assertEquals(0, it.intents());
     }
 
@@ -97,22 +97,22 @@ public class WriteIntentRecoveryVacuumTest {
         it.vacuumFirstPage();
         Files.writeString(it.fx.page(0).toPath(), StorageFixture.record("c", "dup"), StandardCharsets.UTF_8,
                 StandardOpenOption.APPEND);
-        final var rows = Files.readAllBytes(it.fx.paths.pkIndexFile(DB, COLL).toPath());
+        final var rows = Files.readAllBytes(it.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
 
         it.recover();
 
         assertEquals(1, it.intents());
         assertEquals(new String(rows, StandardCharsets.UTF_8),
-                Files.readString(it.fx.paths.pkIndexFile(DB, COLL).toPath(), StandardCharsets.UTF_8));
+                Files.readString(it.fx.paths.pkIndexFile(PROJECT, COLL).toPath(), StandardCharsets.UTF_8));
     }
 
     @Test
     public void thePageSidePassDropsAVacuumTempFile() throws Exception {
         it.vacuumFirstPage();
-        final var temp = it.fx.paths.vacuumFile(DB, COLL, 0);
+        final var temp = it.fx.paths.vacuumFile(PROJECT, COLL, 0);
         Files.writeString(temp.toPath(), "partial", StandardCharsets.UTF_8);
 
-        assertEquals(1, it.fx.recovery.recoverPagesOf(DB, COLL));
+        assertEquals(1, it.fx.recovery.recoverPagesOf(PROJECT, COLL));
 
         assertFalse(temp.exists());
         assertEquals(page0, it.firstPage());
@@ -135,8 +135,8 @@ public class WriteIntentRecoveryVacuumTest {
         final var intent = it.vacuumFirstPage();
         Files.writeString(intent.log().toPath(), "", StandardCharsets.UTF_8);
 
-        assertTrue(it.fx.recovery.replayableIntentsOf(DB, COLL).isEmpty());
-        assertEquals(0, it.fx.recovery.recoverPagesOf(DB, COLL));
+        assertTrue(it.fx.recovery.replayableIntentsOf(PROJECT, COLL).isEmpty());
+        assertEquals(0, it.fx.recovery.recoverPagesOf(PROJECT, COLL));
         assertNull(it.fx.indexed("zzz"));
     }
 }

@@ -12,7 +12,7 @@ public class CloseConnectionRequestTest {
         CloseConnectionRequest request = new CloseConnectionRequest();
 
         assertEquals(OperationType.CLOSE_CONNECTION, request.getType());
-        assertNull(request.getDatabaseName());
+        assertNull(request.getProjectName());
         assertNull(request.getCollectionName());
     }
 }

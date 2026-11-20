@@ -45,10 +45,10 @@ public class OperationProcessorScriptControlTest {
         return new AdminUserEntry("admin", "hash", true, new HashSet<>(), new HashMap<>(), new HashMap<>());
     }
 
-    // Owning a database is the widest non-admin authority there is, and it still is not enough.
-    private static AdminUserEntry databaseOwner() {
+    // Owning a project is the widest non-admin authority there is, and it still is not enough.
+    private static AdminUserEntry projectOwner() {
         final var permissions = new HashMap<String, PermissionLevel>();
-        permissions.put(TestGlobals.DB, PermissionLevel.READ_WRITE);
+        permissions.put(TestGlobals.PROJECT, PermissionLevel.READ_WRITE);
         return new AdminUserEntry("owner", "hash", false, new HashSet<>(), permissions, new HashMap<>());
     }
 
@@ -79,14 +79,14 @@ public class OperationProcessorScriptControlTest {
     public void test_list_scripts_requires_admin() {
         final var request = new ListScriptsRequest();
         assertTrue(AuthorizationChecker.check(request, admin()).isAllowed());
-        assertFalse(AuthorizationChecker.check(request, databaseOwner()).isAllowed());
+        assertFalse(AuthorizationChecker.check(request, projectOwner()).isAllowed());
     }
 
     @Test
     public void test_cancel_script_requires_admin() {
         final var request = cancel(UUID.randomUUID().toString());
         assertTrue(AuthorizationChecker.check(request, admin()).isAllowed());
-        assertFalse(AuthorizationChecker.check(request, databaseOwner()).isAllowed());
+        assertFalse(AuthorizationChecker.check(request, projectOwner()).isAllowed());
     }
 
     @Test

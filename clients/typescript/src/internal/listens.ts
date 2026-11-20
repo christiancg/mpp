@@ -25,13 +25,13 @@ export class Listens {
     }
 
     listen<R>(
-        database: string,
+        project: string,
         collection: string,
         steps: readonly PipelineStep[],
         decode: (document: Document) => R,
         handler: ListenHandler<R>,
     ): Promise<Subscription> {
-        const request = this.#encoder.listen(database, collection, steps);
+        const request = this.#encoder.listen(project, collection, steps);
         const next = this.#queue.then(() => this.#register(request, decode, handler));
         this.#queue = next.catch(() => undefined);
         return next;

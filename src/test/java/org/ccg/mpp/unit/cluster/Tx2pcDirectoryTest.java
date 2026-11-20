@@ -49,7 +49,7 @@ public class Tx2pcDirectoryTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origEnabled = config.isClusterEnabled();
         origPool = TestUtils.getPrivateField(directory, "pool", PeerConnectionPool.class);
         TestUtils.setPrivateField(config, "clusterEnabled", true);
@@ -71,7 +71,7 @@ public class Tx2pcDirectoryTest {
     private String seedPrepared(String coordinator, List<String> participants) throws Exception {
         final var dtxId = UUID.randomUUID().toString();
         Tx2pcLog.recordParticipantPrepared(dtxId, coordinator, participants,
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         return dtxId;
     }
 

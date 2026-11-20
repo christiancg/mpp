@@ -34,7 +34,7 @@ public class PeerNamesTest {
 
     @Test
     public void acceptsOrdinaryNames() {
-        assertTrue(PeerNames.collection("myDb", "my-coll_1"));
+        assertTrue(PeerNames.collection("myProject", "my-coll_1"));
         assertTrue(PeerNames.collection("abc", "a".repeat(64)));
         assertTrue(PeerNames.collection("shop", "script_runs"));
         assertTrue(PeerNames.payload(upsertIntoOrders("o-1", "3f2a9c1e-7b1d-4c1a-9a5e-0c5b1f9d2e11")));
@@ -55,7 +55,7 @@ public class PeerNamesTest {
     }
 
     @Test
-    public void rejectsReservedDatabases() {
+    public void rejectsReservedProjects() {
         for (final var reserved : List.of("admin", "admin_pages", "cluster", "ADMIN", "Admin_Pages", "CLUSTER")) {
             assertFalse(PeerNames.collection(reserved, "orders"), reserved);
         }

@@ -43,24 +43,24 @@ public final class TransactionWrites {
 
     // Hooks run once the session holds the collection lock, so they see the same serialization a
     // non-transactional write does.
-    public static BeforeHookOutcome runBeforeHooks(String dbName, String collName, EventType event, String actingUser,
-            JsonObject object, String id, OperationType type, SchemaBudget schemaBudget) {
-        if (!BeforeHookContext.hasHooksFor(dbName, collName, event)) {
+    public static BeforeHookOutcome runBeforeHooks(String projectName, String collName, EventType event,
+            String actingUser, JsonObject object, String id, OperationType type, SchemaBudget schemaBudget) {
+        if (!BeforeHookContext.hasHooksFor(projectName, collName, event)) {
             return BeforeHookOutcome.accepted(object);
         }
-        try (var hooks = BeforeHookContext.open(dbName, collName, event, actingUser, schemaBudget)) {
+        try (var hooks = BeforeHookContext.open(projectName, collName, event, actingUser, schemaBudget)) {
             return hooks.apply(object, id, type);
         }
     }
 
-    public static OperationResponse runDeleteBeforeHooks(Transaction transaction, String collId, String dbName,
+    public static OperationResponse runDeleteBeforeHooks(Transaction transaction, String collId, String projectName,
             String collName, String id) {
-        if (!BeforeHookContext.hasHooksFor(dbName, collName, EventType.DELETED)) {
+        if (!BeforeHookContext.hasHooksFor(projectName, collName, EventType.DELETED)) {
             return null;
         }
         final JsonObject document;
         try {
-            document = effectiveDocumentFor(transaction, collId, dbName, collName, id);
+            document = effectiveDocumentFor(transaction, collId, projectName, collName, id);
         } catch (IOException e) {
             logger.error(OperationType.DELETE + " failed with " + ErrorCode.ERROR_DELETING.getCode(), e);
             return new OperationResponse(OperationType.DELETE, ErrorCode.ERROR_DELETING);
@@ -68,28 +68,28 @@ public final class TransactionWrites {
         if (document == null) {
             return null;
         }
-        try (var hooks = BeforeHookContext.open(dbName, collName, EventType.DELETED,
+        try (var hooks = BeforeHookContext.open(projectName, collName, EventType.DELETED,
                 clientTracker.getAuthenticatedUsername(transaction.getClientId()))) {
             final var outcome = hooks.apply(document, id, OperationType.DELETE);
             return outcome.isRejected() ? outcome.rejection() : null;
         }
     }
 
-    public static JsonObject effectiveDocumentFor(Transaction transaction, String collId, String dbName,
+    public static JsonObject effectiveDocumentFor(Transaction transaction, String collId, String projectName,
             String collName, String id) throws IOException {
         final var overlay = transaction.overlayFor(collId);
         if (overlay != null && overlay.containsKey(id)) {
             final var buffered = overlay.get(id);
             return Transaction.isTombstone(buffered) ? null : buffered;
         }
-        final var entries = cache.getEntriesByIds(dbName, collName, Set.of(id));
+        final var entries = cache.getEntriesByIds(projectName, collName, Set.of(id));
         return entries.isEmpty() ? null : entries.getFirst().getData();
     }
 
-    public static JsonObject documentForDeletedTrigger(Transaction transaction, String collId, String dbName,
+    public static JsonObject documentForDeletedTrigger(Transaction transaction, String collId, String projectName,
             String collName, String id) {
         final var depth = transaction.getTriggerDepth();
-        if (!TriggerHelper.firesOnDelete(dbName, collName, depth)) {
+        if (!TriggerHelper.firesOnDelete(projectName, collName, depth)) {
             return null;
         }
         final var overlay = transaction.overlayFor(collId);
@@ -97,7 +97,7 @@ public final class TransactionWrites {
         if (buffered != null && !Transaction.isTombstone(buffered)) {
             return buffered;
         }
-        final var captured = TriggerHelper.captureForDelete(dbName, collName, id, depth);
+        final var captured = TriggerHelper.captureForDelete(projectName, collName, id, depth);
         return captured == null ? null : captured.getData();
     }
 

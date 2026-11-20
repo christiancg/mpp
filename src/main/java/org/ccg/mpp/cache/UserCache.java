@@ -88,24 +88,24 @@ public class UserCache {
         return configuration.getMaxMemoryBytes();
     }
 
-    public List<PkIndexEntry> getPkIndexAndLoadIfNecessary(String dbName, String collName) throws IOException {
-        return pkTier.loadIfNecessary(dbName, collName);
+    public List<PkIndexEntry> getPkIndexAndLoadIfNecessary(String projectName, String collName) throws IOException {
+        return pkTier.loadIfNecessary(projectName, collName);
     }
 
-    public PkIndexEntry pkRowFor(String dbName, String collName, String id) throws IOException {
-        return pkTier.rowFor(dbName, collName, id);
+    public PkIndexEntry pkRowFor(String projectName, String collName, String id) throws IOException {
+        return pkTier.rowFor(projectName, collName, id);
     }
 
-    public int pkCountForCoverage(String dbName, String collName) throws IOException {
-        return pkTier.countForCoverage(dbName, collName);
+    public int pkCountForCoverage(String projectName, String collName) throws IOException {
+        return pkTier.countForCoverage(projectName, collName);
     }
 
-    public int pkIndexSize(String dbName, String collName) throws IOException {
-        return pkTier.size(dbName, collName);
+    public int pkIndexSize(String projectName, String collName) throws IOException {
+        return pkTier.size(projectName, collName);
     }
 
-    public boolean isResidentPkIndex(String dbName, String collName, List<PkIndexEntry> rows) {
-        return rows != null && pkIndexMap.get(Cache.getCollectionIdentifier(dbName, collName)) == rows;
+    public boolean isResidentPkIndex(String projectName, String collName, List<PkIndexEntry> rows) {
+        return rows != null && pkIndexMap.get(Cache.getCollectionIdentifier(projectName, collName)) == rows;
     }
 
     public boolean tryPinTransientPkIndex() {
@@ -120,16 +120,16 @@ public class UserCache {
         pkTier.repositionAfterVacuum(vacuumed);
     }
 
-    public boolean isCachingDisabled(String dbName) {
-        return isReservedDatabase(dbName) || configuration.isCachingDisabled();
+    public boolean isCachingDisabled(String projectName) {
+        return isReservedProject(projectName) || configuration.isCachingDisabled();
     }
 
-    static boolean isReservedDatabase(String dbName) {
-        return Globals.ADMIN_DB_NAME.equals(dbName) || Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    static boolean isReservedProject(String projectName) {
+        return Globals.ADMIN_PROJECT_NAME.equals(projectName) || Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName);
     }
 
-    public boolean shouldCache(String dbName, AdmissionRequest request) {
-        if (isCachingDisabled(dbName)) {
+    public boolean shouldCache(String projectName, AdmissionRequest request) {
+        if (isCachingDisabled(projectName)) {
             return false;
         }
         if (configuration.isCacheUnlimited()) {
@@ -140,7 +140,7 @@ public class UserCache {
     }
 
     public boolean wouldAdmit(AdmissionRequest request) {
-        if (isCachingDisabled(request.dbName())) {
+        if (isCachingDisabled(request.projectName())) {
             return false;
         }
         if (configuration.isCacheUnlimited()) {
@@ -150,56 +150,57 @@ public class UserCache {
         return footprintBytes() + request.bytes() <= maxBytes || admission.mayMakeRoom(request, maxBytes);
     }
 
-    boolean admits(String dbName, AccessKind tier, String collName, String fieldName, LongSupplier bytes) {
-        return !isCachingDisabled(dbName)
-                && shouldCache(dbName, new AdmissionRequest(tier, dbName, collName, fieldName, bytes.getAsLong()));
+    boolean admits(String projectName, AccessKind tier, String collName, String fieldName, LongSupplier bytes) {
+        return !isCachingDisabled(projectName) && shouldCache(projectName,
+                new AdmissionRequest(tier, projectName, collName, fieldName, bytes.getAsLong()));
     }
 
     boolean admissionFeasible(AccessKind tier, long bytes) {
         return configuration.isCacheUnlimited() || admission.feasible(tier, bytes, configuration.getMaxMemoryBytes());
     }
 
-    boolean loadsAdmitted(String dbName, String collName, AccessKind tier, long estimatedBytes) {
-        return isReservedDatabase(dbName) || rl.holdsCollectionLock(dbName, collName) && !isCachingDisabled(dbName)
-                && admissionFeasible(tier, estimatedBytes);
+    boolean loadsAdmitted(String projectName, String collName, AccessKind tier, long estimatedBytes) {
+        return isReservedProject(projectName) || rl.holdsCollectionLock(projectName, collName)
+                && !isCachingDisabled(projectName) && admissionFeasible(tier, estimatedBytes);
     }
 
     public long footprintBytes() {
         return sizes.footprint().bytes();
     }
 
-    public <T> List<FieldIndexEntry<T>> getFieldIndexAndLoadIfNecessary(String dbName, String collName,
+    public <T> List<FieldIndexEntry<T>> getFieldIndexAndLoadIfNecessary(String projectName, String collName,
             String fieldName, Class<T> indexType) throws IOException {
-        return loadIndex(dbName, collName, Cache.getIndexIdentifier(fieldName, indexType),
-                () -> wholeLoads.fieldIndex(dbName, collName, fieldName, indexType,
-                        bytes -> loadsAdmitted(dbName, collName, AccessKind.FIELD_INDEX, bytes)));
+        return loadIndex(projectName, collName, Cache.getIndexIdentifier(fieldName, indexType),
+                () -> wholeLoads.fieldIndex(projectName, collName, fieldName, indexType,
+                        bytes -> loadsAdmitted(projectName, collName, AccessKind.FIELD_INDEX, bytes)));
     }
 
-    public List<FieldIndexEntry<String>> getHashIndexAndLoadIfNecessary(String dbName, String collName,
+    public List<FieldIndexEntry<String>> getHashIndexAndLoadIfNecessary(String projectName, String collName,
             String fieldName, IndexKind kind) throws IOException {
-        return loadIndex(dbName, collName, Cache.getHashIndexIdentifier(fieldName, kind.label()),
-                () -> wholeLoads.hashIndex(dbName, collName, fieldName, kind,
-                        bytes -> loadsAdmitted(dbName, collName, AccessKind.FIELD_INDEX, bytes)));
+        return loadIndex(projectName, collName, Cache.getHashIndexIdentifier(fieldName, kind.label()),
+                () -> wholeLoads.hashIndex(projectName, collName, fieldName, kind,
+                        bytes -> loadsAdmitted(projectName, collName, AccessKind.FIELD_INDEX, bytes)));
     }
 
-    public List<FieldIndexEntry<?>> residentFieldIndex(String dbName, String collName, String indexIdentifier) {
-        final var index = fieldIndexMap.get(Cache.getCollectionIdentifier(dbName, collName));
+    public List<FieldIndexEntry<?>> residentFieldIndex(String projectName, String collName, String indexIdentifier) {
+        final var index = fieldIndexMap.get(Cache.getCollectionIdentifier(projectName, collName));
         return index == null ? null : index.get(indexIdentifier);
     }
 
-    public void admitMaintainedFieldIndex(String dbName, String collName, String indexIdentifier,
+    public void admitMaintainedFieldIndex(String projectName, String collName, String indexIdentifier,
             List<FieldIndexEntry<?>> written) {
-        if (rl.holdsCollectionLock(dbName, collName) && residentFieldIndex(dbName, collName, indexIdentifier) == null
-                && fieldIndexMayFit(dbName, collName, indexIdentifier, written.size())) {
-            admitFieldIndex(dbName, collName, indexIdentifier, FieldIndexList.of(written));
+        if (rl.holdsCollectionLock(projectName, collName)
+                && residentFieldIndex(projectName, collName, indexIdentifier) == null
+                && fieldIndexMayFit(projectName, collName, indexIdentifier, written.size())) {
+            admitFieldIndex(projectName, collName, indexIdentifier, FieldIndexList.of(written));
         }
     }
 
-    public void rememberFieldIndexBatch(String dbName, String collName, String indexIdentifier, int previousCount,
+    public void rememberFieldIndexBatch(String projectName, String collName, String indexIdentifier, int previousCount,
             long deltaBytes, int changedIds) {
-        final var resident = residentFieldIndex(dbName, collName, indexIdentifier);
+        final var resident = residentFieldIndex(projectName, collName, indexIdentifier);
         if (resident != null) {
-            sizes.adjustFieldIndex(Cache.getCollectionIdentifier(dbName, collName), indexIdentifier, previousCount,
+            sizes.adjustFieldIndex(Cache.getCollectionIdentifier(projectName, collName), indexIdentifier, previousCount,
                     resident.size(), deltaBytes, changedIds);
             signalIfOverBudget();
         }
@@ -213,77 +214,78 @@ public class UserCache {
         overBudget.signalIfOver(this::footprintBytes);
     }
 
-    public FieldIndexLookup fieldIndexLookup(String dbName, String collName, String fieldName) {
-        return fieldLookups.get(Cache.getCollectionIdentifier(dbName, collName), fieldName);
+    public FieldIndexLookup fieldIndexLookup(String projectName, String collName, String fieldName) {
+        return fieldLookups.get(Cache.getCollectionIdentifier(projectName, collName), fieldName);
     }
 
-    public void admitFieldIndexLookup(String dbName, String collName, String fieldName, FieldIndexLookup lookup) {
-        if (!rl.holdsCollectionLock(dbName, collName) || isCachingDisabled(dbName)) {
-            evictFieldIndexLookup(dbName, collName, fieldName);
+    public void admitFieldIndexLookup(String projectName, String collName, String fieldName, FieldIndexLookup lookup) {
+        if (!rl.holdsCollectionLock(projectName, collName) || isCachingDisabled(projectName)) {
+            evictFieldIndexLookup(projectName, collName, fieldName);
             return;
         }
-        final var resident = fieldIndexLookup(dbName, collName, fieldName);
-        if (resident == lookup || admits(dbName, AccessKind.FIELD_INDEX, collName, fieldName,
+        final var resident = fieldIndexLookup(projectName, collName, fieldName);
+        if (resident == lookup || admits(projectName, AccessKind.FIELD_INDEX, collName, fieldName,
                 () -> CacheSizeEstimator.estimateFieldIndexLookupSize(lookup.size()))) {
-            fieldLookups.put(Cache.getCollectionIdentifier(dbName, collName), fieldName, lookup, sizes.footprint());
+            fieldLookups.put(Cache.getCollectionIdentifier(projectName, collName), fieldName, lookup,
+                    sizes.footprint());
             signalIfOverBudget();
         } else {
-            evictFieldIndexLookup(dbName, collName, fieldName);
+            evictFieldIndexLookup(projectName, collName, fieldName);
         }
     }
 
-    public void evictFieldIndexLookup(String dbName, String collName, String fieldName) {
-        fieldLookups.evict(Cache.getCollectionIdentifier(dbName, collName), fieldName);
+    public void evictFieldIndexLookup(String projectName, String collName, String fieldName) {
+        fieldLookups.evict(Cache.getCollectionIdentifier(projectName, collName), fieldName);
     }
 
-    private <T> List<FieldIndexEntry<T>> loadIndex(String dbName, String collName, String indexIdentifier,
+    private <T> List<FieldIndexEntry<T>> loadIndex(String projectName, String collName, String indexIdentifier,
             IndexLoader<T> loader) throws IOException {
-        final var existingIndex = residentFieldIndex(dbName, collName, indexIdentifier);
+        final var existingIndex = residentFieldIndex(projectName, collName, indexIdentifier);
         if (existingIndex != null) {
             @SuppressWarnings("unchecked")
             final var typed = (List<FieldIndexEntry<T>>) (List<?>) existingIndex;
             return typed;
         }
         final var indexEntries = loader.load();
-        if (indexEntries != null && rl.holdsCollectionLock(dbName, collName)
-                && fieldIndexMayFit(dbName, collName, indexIdentifier, indexEntries.size())) {
-            admitFieldIndex(dbName, collName, indexIdentifier, FieldIndexList.of(indexEntries));
+        if (indexEntries != null && rl.holdsCollectionLock(projectName, collName)
+                && fieldIndexMayFit(projectName, collName, indexIdentifier, indexEntries.size())) {
+            admitFieldIndex(projectName, collName, indexIdentifier, FieldIndexList.of(indexEntries));
         }
         return indexEntries;
     }
 
-    private boolean fieldIndexMayFit(String dbName, String collName, String indexIdentifier, int entries) {
+    private boolean fieldIndexMayFit(String projectName, String collName, String indexIdentifier, int entries) {
         final var lowerBound = CacheSizeEstimator.minimumFieldIndexBytes(entries);
-        final var request = AdmissionRequest.forFieldIndex(dbName, collName, indexIdentifier, lowerBound);
+        final var request = AdmissionRequest.forFieldIndex(projectName, collName, indexIdentifier, lowerBound);
         if (admissionFeasible(AccessKind.FIELD_INDEX, lowerBound)
-                || !isCachingDisabled(dbName) && admission.makeRoomInTier(request, maxMemoryBytes())) {
+                || !isCachingDisabled(projectName) && admission.makeRoomInTier(request, maxMemoryBytes())) {
             return true;
         }
-        if (!isCachingDisabled(dbName)) {
+        if (!isCachingDisabled(projectName)) {
             refuseFieldIndex(request, indexIdentifier);
         }
         return false;
     }
 
     private void refuseFieldIndex(AdmissionRequest request, String indexIdentifier) {
-        fitWarnings.fieldIndexRefused(request.dbName(), request.collName(), indexIdentifier, request.bytes(),
+        fitWarnings.fieldIndexRefused(request.projectName(), request.collName(), indexIdentifier, request.bytes(),
                 maxMemoryBytes(), footprintBytes());
-        sizes.refuseFieldIndex(Cache.getCollectionIdentifier(request.dbName(), request.collName()), indexIdentifier,
-                request.bytes());
+        sizes.refuseFieldIndex(Cache.getCollectionIdentifier(request.projectName(), request.collName()),
+                indexIdentifier, request.bytes());
         admission.recordRefusal(request);
     }
 
-    private void admitFieldIndex(String dbName, String collName, String indexIdentifier,
+    private void admitFieldIndex(String projectName, String collName, String indexIdentifier,
             List<FieldIndexEntry<?>> copy) {
-        if (isCachingDisabled(dbName)) {
+        if (isCachingDisabled(projectName)) {
             return;
         }
-        final var collectionIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        final var collectionIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         SharedIdLists.share(pkIndexMap.get(collectionIdentifier), copy);
-        final var request = AdmissionRequest.forFieldIndex(dbName, collName, indexIdentifier,
+        final var request = AdmissionRequest.forFieldIndex(projectName, collName, indexIdentifier,
                 CacheSizeEstimator.estimateFieldIndexSize(copy));
-        if (!shouldCache(dbName, request)
-                && !(admission.makeRoomInTier(request, maxMemoryBytes()) && shouldCache(dbName, request))) {
+        if (!shouldCache(projectName, request)
+                && !(admission.makeRoomInTier(request, maxMemoryBytes()) && shouldCache(projectName, request))) {
             refuseFieldIndex(request, indexIdentifier);
             return;
         }
@@ -302,71 +304,71 @@ public class UserCache {
         List<FieldIndexEntry<T>> load() throws IOException;
     }
 
-    public <T> Set<String> getIdsFromIndex(String dbName, String collName, String fieldName, FieldOperator operator,
-            T value) throws IOException {
+    public <T> Set<String> getIdsFromIndex(String projectName, String collName, String fieldName,
+            FieldOperator operator, T value) throws IOException {
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
-            final var result = IndexLookupResolver.doGetIdsFromIndex(this, dbName, collName, fieldName, operator,
+            final var result = IndexLookupResolver.doGetIdsFromIndex(this, projectName, collName, fieldName, operator,
                     value);
             if (result == null) {
                 return null;
             }
-            recordFieldIndexAccess(dbName, collName, fieldName);
+            recordFieldIndexAccess(projectName, collName, fieldName);
             return result;
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
     }
 
-    public void recordFieldIndexAccess(String dbName, String collName, String fieldName) {
-        usageTracker.recordAccess(AccessKind.FIELD_INDEX, dbName, collName, fieldName);
+    public void recordFieldIndexAccess(String projectName, String collName, String fieldName) {
+        usageTracker.recordAccess(AccessKind.FIELD_INDEX, projectName, collName, fieldName);
     }
 
-    public void addEntryToCache(String dbName, String collName, DbEntry entry) {
-        documentTier.addEntryToCache(dbName, collName, entry);
+    public void addEntryToCache(String projectName, String collName, DbEntry entry) {
+        documentTier.addEntryToCache(projectName, collName, entry);
     }
 
-    public void addEntriesToCache(String dbName, String collName, List<DbEntry> entries) {
-        documentTier.addEntriesToCache(dbName, collName, entries);
+    public void addEntriesToCache(String projectName, String collName, List<DbEntry> entries) {
+        documentTier.addEntriesToCache(projectName, collName, entries);
     }
 
-    public DbEntry getById(String dbName, String collName, PkIndexEntry idxEntry) throws Exception {
-        return documentTier.getById(dbName, collName, idxEntry);
+    public DbEntry getById(String projectName, String collName, PkIndexEntry idxEntry) throws Exception {
+        return documentTier.getById(projectName, collName, idxEntry);
     }
 
-    public Map<String, DbEntry> getCachedCollection(String dbName, String collName) {
-        return documentTier.getCachedCollection(dbName, collName);
+    public Map<String, DbEntry> getCachedCollection(String projectName, String collName) {
+        return documentTier.getCachedCollection(projectName, collName);
     }
 
-    public Map<String, DbEntry> admitWholeCollection(String dbName, String collName, Map<String, DbEntry> loaded) {
-        return documentTier.admitWholeCollection(dbName, collName, loaded);
+    public Map<String, DbEntry> admitWholeCollection(String projectName, String collName, Map<String, DbEntry> loaded) {
+        return documentTier.admitWholeCollection(projectName, collName, loaded);
     }
 
-    void admitScannedCollection(String dbName, String collName, ConcurrentHashMap<String, DbEntry> collected,
+    void admitScannedCollection(String projectName, String collName, ConcurrentHashMap<String, DbEntry> collected,
             long measuredBytes) {
-        documentTier.admitCollected(dbName, collName, collected, measuredBytes, collected);
+        documentTier.admitCollected(projectName, collName, collected, measuredBytes, collected);
     }
 
-    public List<DbEntry> getEntriesByIds(String dbName, String collName, Set<String> ids) throws IOException {
-        return documentTier.getEntriesByIds(dbName, collName, ids, null);
+    public List<DbEntry> getEntriesByIds(String projectName, String collName, Set<String> ids) throws IOException {
+        return documentTier.getEntriesByIds(projectName, collName, ids, null);
     }
 
-    public List<DbEntry> getEntriesByIds(String dbName, String collName, Set<String> ids, PkRows pinned)
+    public List<DbEntry> getEntriesByIds(String projectName, String collName, Set<String> ids, PkRows pinned)
             throws IOException {
-        return documentTier.getEntriesByIds(dbName, collName, ids, pinned);
+        return documentTier.getEntriesByIds(projectName, collName, ids, pinned);
     }
 
-    public void evictEntry(String dbName, String collName, String pk) {
-        documentTier.evictEntry(dbName, collName, pk);
+    public void evictEntry(String projectName, String collName, String pk) {
+        documentTier.evictEntry(projectName, collName, pk);
     }
 
-    public void evictDatabase(String dbName) {
-        final var prefix = dbName + Globals.COLL_IDENTIFIER_SEPARATOR;
+    public void evictProject(String projectName) {
+        final var prefix = projectName + Globals.COLL_IDENTIFIER_SEPARATOR;
         for (final var collectionIdentifier : List.copyOf(pkIndexMap.keySet())) {
             if (collectionIdentifier.startsWith(prefix)) {
                 pkTier.evict(collectionIdentifier);
@@ -383,8 +385,8 @@ public class UserCache {
         fitWarnings.forgetByPrefix(prefix);
     }
 
-    public void evictCollection(String dbName, String collName) {
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+    public void evictCollection(String projectName, String collName) {
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         pkTier.evict(collIdentifier);
         documentTier.evictCollectionDocuments(collIdentifier);
         fieldIndexMap.remove(collIdentifier);
@@ -393,35 +395,35 @@ public class UserCache {
         fitWarnings.forgetCollection(collIdentifier);
     }
 
-    public void evictCollectionDocuments(String dbName, String collName) {
-        documentTier.evictCollectionDocuments(Cache.getCollectionIdentifier(dbName, collName));
+    public void evictCollectionDocuments(String projectName, String collName) {
+        documentTier.evictCollectionDocuments(Cache.getCollectionIdentifier(projectName, collName));
     }
 
-    public void evictPkIndex(String dbName, String collName) {
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+    public void evictPkIndex(String projectName, String collName) {
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         pkTier.evict(collIdentifier);
         SharedIdLists.sharersOf(fieldIndexMap.get(collIdentifier))
-                .forEach(key -> evictFieldIndex(dbName, collName, key));
+                .forEach(key -> evictFieldIndex(projectName, collName, key));
     }
 
-    public String canonicalPkId(String dbName, String collName, String id) {
-        return SharedIdLists.canonicalId(pkIndexMap.get(Cache.getCollectionIdentifier(dbName, collName)), id);
+    public String canonicalPkId(String projectName, String collName, String id) {
+        return SharedIdLists.canonicalId(pkIndexMap.get(Cache.getCollectionIdentifier(projectName, collName)), id);
     }
 
     public void evict(CacheableResource resource) {
         switch (resource.kind()) {
-            case PK_INDEX -> evictPkIndex(resource.dbName(), resource.collName());
-            case FIELD_INDEX -> evictFieldIndex(resource.dbName(), resource.collName(), resource.indexKey());
-            default -> evictCollectionDocuments(resource.dbName(), resource.collName());
+            case PK_INDEX -> evictPkIndex(resource.projectName(), resource.collName());
+            case FIELD_INDEX -> evictFieldIndex(resource.projectName(), resource.collName(), resource.indexKey());
+            default -> evictCollectionDocuments(resource.projectName(), resource.collName());
         }
     }
 
-    public void evictFieldIndex(String dbName, String collName, String indexKey) {
-        evictFieldIndexLookup(dbName, collName, CacheableResource.indexedFieldOf(indexKey));
+    public void evictFieldIndex(String projectName, String collName, String indexKey) {
+        evictFieldIndexLookup(projectName, collName, CacheableResource.indexedFieldOf(indexKey));
         if (Cache.isFieldLookupIdentifier(indexKey)) {
             return;
         }
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         sizes.clearRefusedFieldIndex(collIdentifier, indexKey);
         fieldIndexMap.computeIfPresent(collIdentifier, (_, indexes) -> {
             indexes.remove(indexKey);
@@ -430,9 +432,9 @@ public class UserCache {
         });
     }
 
-    public void evictFieldIndexAllTypes(String dbName, String collName, String fieldName) {
-        evictFieldIndexLookup(dbName, collName, fieldName);
-        final var collIdentifier = Cache.getCollectionIdentifier(dbName, collName);
+    public void evictFieldIndexAllTypes(String projectName, String collName, String fieldName) {
+        evictFieldIndexLookup(projectName, collName, fieldName);
+        final var collIdentifier = Cache.getCollectionIdentifier(projectName, collName);
         final var prefix = fieldName + Globals.COLL_IDENTIFIER_SEPARATOR;
         sizes.clearRefusedField(collIdentifier, fieldName);
         fieldIndexMap.computeIfPresent(collIdentifier, (_, indexes) -> {
@@ -485,8 +487,8 @@ public class UserCache {
         return sizes.rememberedFieldIndexBytes(collId, indexKey, entries.size());
     }
 
-    public boolean hasLoadedIndex(String dbName, String collName, String fieldName) {
-        final var fieldIndexes = fieldIndexMap.get(Cache.getCollectionIdentifier(dbName, collName));
+    public boolean hasLoadedIndex(String projectName, String collName, String fieldName) {
+        final var fieldIndexes = fieldIndexMap.get(Cache.getCollectionIdentifier(projectName, collName));
         if (fieldIndexes == null) {
             return false;
         }

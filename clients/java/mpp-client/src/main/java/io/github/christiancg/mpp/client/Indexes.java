@@ -12,12 +12,12 @@ import tools.jackson.databind.node.ObjectNode;
 
 public final class Indexes {
     private final ClientContext context;
-    private final String database;
+    private final String project;
     private final String collection;
 
-    Indexes(ClientContext context, String database, String collection) {
+    Indexes(ClientContext context, String project, String collection) {
         this.context = context;
-        this.database = database;
+        this.project = project;
         this.collection = collection;
     }
 
@@ -25,21 +25,21 @@ public final class Indexes {
         final var fields = new ArrayList<String>();
         fields.add(Objects.requireNonNull(field, "field"));
         fields.addAll(Arrays.asList(moreFields));
-        context.channel().send(Operation.CREATE_INDEX, context.encoder().createIndex(database, collection, fields));
+        context.channel().send(Operation.CREATE_INDEX, context.encoder().createIndex(project, collection, fields));
     }
 
     public void drop(String field) {
-        context.channel().send(Operation.DROP_INDEX, context.encoder().dropIndex(database, collection, field));
+        context.channel().send(Operation.DROP_INDEX, context.encoder().dropIndex(project, collection, field));
     }
 
     public ReindexResult reindex(String... fields) {
         return result(context.channel().send(Operation.REINDEX,
-                context.encoder().reindex(database, collection, List.of(fields))));
+                context.encoder().reindex(project, collection, List.of(fields))));
     }
 
     public ReindexResult reindexPrimaryKey() {
         return result(
-                context.channel().send(Operation.REINDEX, context.encoder().reindexPrimaryKey(database, collection)));
+                context.channel().send(Operation.REINDEX, context.encoder().reindexPrimaryKey(project, collection)));
     }
 
     private static ReindexResult result(ObjectNode reply) {

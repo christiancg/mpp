@@ -79,17 +79,17 @@ public class ScriptCancellationIntegrationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.createPageCollections(TestGlobals.DB, OUTPUT_COLL);
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OUTPUT_COLL));
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(ADMIN));
+        TestUtils.createTestProjectAndCollection();
+        IocContainer.get(FileSystem.class).createCollectionFile(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.createPageCollections(TestGlobals.PROJECT, OUTPUT_COLL);
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OUTPUT_COLL));
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(ADMIN));
         final var request = new CreateUserRequest();
         request.setUsername(ADMIN);
         request.setPassword("password123");
         request.setAdmin(true);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(request);
     }
@@ -125,16 +125,16 @@ public class ScriptCancellationIntegrationTest {
         TestUtils.setPrivateField(configuration, "scriptTextImportEnabled", false);
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
         TestUtils.setPrivateField(configuration, "procedureCacheSize", 128);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
         schedules.clear();
         for (final var entry : TriggerRunLog.pending()) {
             TriggerDispatcher.consumeQuietly(entry.getRunId(), entry.getTriggerName());
@@ -190,10 +190,10 @@ public class ScriptCancellationIntegrationTest {
     public void test_cancels_running_script() throws Exception {
         final var result = new AtomicReference<RunScriptResponse>();
         final var runner = Thread.ofVirtual().start(() -> result.set((RunScriptResponse) ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, SLOW_SCRIPT, null), ADMIN, null)));
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, SLOW_SCRIPT, null), ADMIN, null)));
         final var row = awaitOneScript();
         assertEquals("RUN_SCRIPT", stringField(row, "kind"));
-        assertEquals(TestGlobals.DB, stringField(row, "database"));
+        assertEquals(TestGlobals.PROJECT, stringField(row, "project"));
         assertEquals(ADMIN, stringField(row, "username"));
         assertTrue(row.get("ageMs").asJsonNumber().getValue().longValue() >= 0);
 
@@ -211,10 +211,10 @@ public class ScriptCancellationIntegrationTest {
 
     @Test
     public void test_list_shows_kind_and_name_for_procedure() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "slow", SLOW_SCRIPT), ADMIN);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "slow", SLOW_SCRIPT), ADMIN);
         final var result = new AtomicReference<org.ccg.mpp.ops.resp.OperationResponse>();
-        final var runner = Thread.ofVirtual().start(
-                () -> result.set(processor.processMessage(new CallProcedureRequest(TestGlobals.DB, "slow", null))));
+        final var runner = Thread.ofVirtual().start(() -> result
+                .set(processor.processMessage(new CallProcedureRequest(TestGlobals.PROJECT, "slow", null))));
         final var row = awaitOneScript();
         assertEquals("CALL_PROCEDURE", stringField(row, "kind"));
         assertEquals("slow", stringField(row, "name"));
@@ -227,7 +227,7 @@ public class ScriptCancellationIntegrationTest {
 
     @Test
     public void test_list_shows_trigger_run() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "slow", SLOW_SCRIPT), ADMIN);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "slow", SLOW_SCRIPT), ADMIN);
         installTrigger();
         final var done = new CountDownLatch(1);
         Thread.ofVirtual().start(() -> {
@@ -249,7 +249,7 @@ public class ScriptCancellationIntegrationTest {
 
     @Test
     public void test_list_shows_scheduled_run() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "slow", SLOW_SCRIPT), ADMIN);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "slow", SLOW_SCRIPT), ADMIN);
         final var entry = registerSchedule();
         final var done = new CountDownLatch(1);
         Thread.ofVirtual().start(() -> {
@@ -272,10 +272,10 @@ public class ScriptCancellationIntegrationTest {
     // trigger wants it stopped, not retried, so the pending record is consumed rather than replayed.
     @Test
     public void test_cancelled_trigger_run_is_not_replayed() throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "slow", SLOW_SCRIPT), ADMIN);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "slow", SLOW_SCRIPT), ADMIN);
         installTrigger();
         final var event = triggerEvent("t2", null);
-        final var runId = TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(event.getDbName(),
+        final var runId = TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(event.getProjectName(),
                 event.getCollName(), event.getTriggerName(), event.getProcedureName(), event.getType(),
                 event.isBatchMode(), event.getActingUser(), event.getDepth(), event.getFiredAt(), event.getEntries()));
         assertNotNull(runId);
@@ -309,7 +309,7 @@ public class ScriptCancellationIntegrationTest {
     @Test
     public void test_run_id_is_returned_on_the_response() {
         final var response = (RunScriptResponse) ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "return 1;", null), ADMIN, null);
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null), ADMIN, null);
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
         assertNotNull(response.getRunId());
         assertEquals(java.util.UUID.fromString(response.getRunId()).toString(), response.getRunId());
@@ -326,7 +326,7 @@ public class ScriptCancellationIntegrationTest {
                     java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_DATE) + ".log");
             java.nio.file.Files.deleteIfExists(logFile.toPath());
             final var response = (RunScriptResponse) ScriptOperationHelper
-                    .execute(new RunScriptRequest(TestGlobals.DB, "return 1;", null), ADMIN, null);
+                    .execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null), ADMIN, null);
             assertTrue(logFile.exists(), "nothing was logged for the run");
             assertTrue(java.nio.file.Files.readString(logFile.toPath()).contains("runId=" + response.getRunId()),
                     "the log line does not name the run");
@@ -350,30 +350,33 @@ public class ScriptCancellationIntegrationTest {
     public void test_registry_empty_after_every_outcome() throws Exception {
         assertEquals(0, scriptLoad.current());
         assertEquals(OperationStatus.OK, ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "return 1;", null), ADMIN, null).getStatus());
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null), ADMIN, null).getStatus());
         assertEquals(0, scriptLoad.current());
 
-        assertEquals(ErrorCode.SCRIPT_FAILED.getCode(),
-                ScriptOperationHelper
-                        .execute(new RunScriptRequest(TestGlobals.DB, "throw new Error('nope');", null), ADMIN, null)
-                        .getErrorCode());
+        assertEquals(ErrorCode.SCRIPT_FAILED.getCode(), ScriptOperationHelper
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, "throw new Error('nope');", null), ADMIN, null)
+                .getErrorCode());
         assertEquals(0, scriptLoad.current());
 
         TestUtils.setPrivateField(configuration, "scriptTimeoutMs", 50L);
-        assertEquals(ErrorCode.SCRIPT_TIMEOUT.getCode(), ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "while (true) { }", null), ADMIN, null).getErrorCode());
+        assertEquals(ErrorCode.SCRIPT_TIMEOUT.getCode(),
+                ScriptOperationHelper
+                        .execute(new RunScriptRequest(TestGlobals.PROJECT, "while (true) { }", null), ADMIN, null)
+                        .getErrorCode());
         assertEquals(0, scriptLoad.current());
 
         TestUtils.setPrivateField(configuration, "scriptTimeoutMs", 60_000L);
         TestUtils.setPrivateField(configuration, "scriptInstructionBudget", 1_000L);
-        assertEquals(ErrorCode.SCRIPT_LIMIT_EXCEEDED.getCode(), ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "while (true) { }", null), ADMIN, null).getErrorCode());
+        assertEquals(ErrorCode.SCRIPT_LIMIT_EXCEEDED.getCode(),
+                ScriptOperationHelper
+                        .execute(new RunScriptRequest(TestGlobals.PROJECT, "while (true) { }", null), ADMIN, null)
+                        .getErrorCode());
         assertEquals(0, scriptLoad.current());
 
         TestUtils.setPrivateField(configuration, "scriptInstructionBudget", 10_000_000L);
         final var result = new AtomicReference<RunScriptResponse>();
         final var runner = Thread.ofVirtual().start(() -> result.set((RunScriptResponse) ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, SLOW_SCRIPT, null), ADMIN, null)));
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, SLOW_SCRIPT, null), ADMIN, null)));
         assertTrue(cancel(stringField(awaitOneScript(), "runId")).isCancelled());
         runner.join(30_000L);
         assertEquals(ErrorCode.SCRIPT_CANCELLED.getCode(), result.get().getErrorCode());
@@ -384,7 +387,7 @@ public class ScriptCancellationIntegrationTest {
     @Test
     public void test_cancelling_a_finished_run_returns_false() {
         final var response = (RunScriptResponse) ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, "return 1;", null), ADMIN, null);
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null), ADMIN, null);
         assertFalse(cancel(response.getRunId()).isCancelled());
     }
 
@@ -394,7 +397,7 @@ public class ScriptCancellationIntegrationTest {
                 + "', { _id: 'tx-cancelled', ok: true });\n" + "  while (true) { }\n" + "});\n";
         final var result = new AtomicReference<RunScriptResponse>();
         final var runner = Thread.ofVirtual().start(() -> result.set((RunScriptResponse) ScriptOperationHelper
-                .execute(new RunScriptRequest(TestGlobals.DB, script, null), ADMIN, null)));
+                .execute(new RunScriptRequest(TestGlobals.PROJECT, script, null), ADMIN, null)));
         assertTrue(cancel(stringField(awaitOneScript(), "runId")).isCancelled());
         runner.join(30_000L);
         assertEquals(ErrorCode.SCRIPT_CANCELLED.getCode(), result.get().getErrorCode());
@@ -415,14 +418,14 @@ public class ScriptCancellationIntegrationTest {
     }
 
     private JsonObject outputRow() {
-        final var request = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.DB, OUTPUT_COLL);
+        final var request = new org.ccg.mpp.ops.req.FindByIdRequest(TestGlobals.PROJECT, OUTPUT_COLL);
         request.set_id("tx-cancelled");
         final var response = processor.processMessage(request);
         return response instanceof org.ccg.mpp.ops.resp.FindByIdResponse found ? found.getObject() : null;
     }
 
     private void installTrigger() {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "slow",
                         TriggerDefinition.MODE_DOCUMENT, false, true, ADMIN, 1L, 1L, 1L, ADMIN)));
     }
@@ -431,20 +434,20 @@ public class ScriptCancellationIntegrationTest {
         final var data = new JsonObject();
         data.add("_id", new JsonString(id));
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id(id);
         dbEntry.setData(data);
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, "audit", "slow", false,
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, "audit", "slow", false,
                 List.of(dbEntry), ADMIN, 0, runId);
     }
 
     private ScheduleRegistry.Entry registerSchedule() throws Exception {
         final var definition = new ScheduleDefinition("s", "slow", null, 60_000L, null, 0L, true, ADMIN, null, 1L, 1L,
                 1L, ADMIN);
-        fs.metadataFiles().writeSchedule(TestGlobals.DB, "s", eJson.toJson(definition.toJsonObject()));
-        cache.removeSchedule(TestGlobals.DB, "s");
-        schedules.reload(TestGlobals.DB);
-        return schedules.get(TestGlobals.DB, "s");
+        fs.metadataFiles().writeSchedule(TestGlobals.PROJECT, "s", eJson.toJson(definition.toJsonObject()));
+        cache.removeSchedule(TestGlobals.PROJECT, "s");
+        schedules.reload(TestGlobals.PROJECT);
+        return schedules.get(TestGlobals.PROJECT, "s");
     }
 }

@@ -11,8 +11,8 @@ public class RunScriptRequest extends OperationRequest {
         super(OperationType.RUN_SCRIPT, null, null);
     }
 
-    public RunScriptRequest(String databaseName, String script, JsonObject args) {
-        super(OperationType.RUN_SCRIPT, databaseName, null);
+    public RunScriptRequest(String projectName, String script, JsonObject args) {
+        super(OperationType.RUN_SCRIPT, projectName, null);
         this.script = script;
         this.args = args;
     }

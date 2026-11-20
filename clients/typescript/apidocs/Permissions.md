@@ -10,14 +10,14 @@ Whether the user is an admin.
 
 Server-wide grants.
 
-## databases
+## projects
 
-Grants by database name.
+Grants by project name.
 
 ## collections
 
-Grants by `database|collection` key; build one with `collectionKey`.
+Grants by `project|collection` key; build one with `collectionKey`.
 
 ## scripts
 
-Script grants by database name.
+Script grants by project name.

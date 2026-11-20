@@ -99,23 +99,23 @@ public sealed class FacadeTests
         {
             ["_id"] = "bob",
             ["admin"] = true,
-            ["globalPermissions"] = new JsonArray("CREATE_DATABASE"),
-            ["databasePermissions"] = new JsonObject { ["shop"] = "READ" },
-            ["ownedDatabases"] = new JsonArray("shop"),
+            ["globalPermissions"] = new JsonArray("CREATE_PROJECT"),
+            ["projectPermissions"] = new JsonObject { ["shop"] = "READ" },
+            ["ownedProjects"] = new JsonArray("shop"),
         }));
         var user = (await _recorder.Admin.Users().ListAsync()).Single();
         Assert.Equal("bob", user.Username);
         Assert.True(user.IsAdmin);
-        Assert.Equal(["CREATE_DATABASE"], user.GlobalPermissions);
-        Assert.Equal("READ", user.DatabasePermissions.GetString("shop"));
+        Assert.Equal(["CREATE_PROJECT"], user.GlobalPermissions);
+        Assert.Equal("READ", user.ProjectPermissions.GetString("shop"));
         Assert.Equal(Document.Empty, user.CollectionPermissions);
-        Assert.Equal(["shop"], user.OwnedDatabases);
+        Assert.Equal(["shop"], user.OwnedProjects);
         Reply("transactions", new JsonArray(new JsonObject { ["dtxId"] = "d", ["coordinator"] = "n1", ["participants"] = new JsonArray("n2"), ["ageMs"] = 5 }));
         var transaction = (await _recorder.Admin.Transactions().ListAsync()).Single();
         Assert.Equal(("d", "n1", false, 5L), (transaction.DtxId, transaction.Coordinator, transaction.CoordinatorReachable, transaction.AgeMs));
-        Reply("scripts", new JsonArray(new JsonObject { ["runId"] = "r", ["kind"] = "RUN_SCRIPT", ["database"] = "shop", ["username"] = "bob" }));
+        Reply("scripts", new JsonArray(new JsonObject { ["runId"] = "r", ["kind"] = "RUN_SCRIPT", ["project"] = "shop", ["username"] = "bob" }));
         var run = (await _recorder.Admin.Scripts().ListAsync()).Single();
-        Assert.Equal(("r", "RUN_SCRIPT", "shop", "bob", 0L), (run.RunId, run.Kind, run.Database, run.Username, run.AgeMs));
+        Assert.Equal(("r", "RUN_SCRIPT", "shop", "bob", 0L), (run.RunId, run.Kind, run.Project, run.Username, run.AgeMs));
         Reply("runs", new JsonArray(new JsonObject { ["runId"] = "t", ["status"] = "DEAD", ["attempts"] = 3, ["lastError"] = "boom", ["trigger"] = "audit" }));
         var triggerRun = (await _recorder.Admin.TriggerRuns().ListAsync()).Single();
         Assert.Equal(("t", "DEAD", 3L, "boom", "audit"), (triggerRun.RunId, triggerRun.Status, triggerRun.Attempts, triggerRun.LastError, triggerRun.Trigger));
@@ -234,7 +234,7 @@ public sealed class FacadeTests
         Assert.Equal("object", (await _recorder.Orders.Schema().GetAsync())!.GetString("type"));
         Assert.Equal(["orders"], await _recorder.Shop.ListCollectionsAsync());
         Assert.Equal(3, (await _recorder.Shop.StatsAsync()).GetDouble("documents"));
-        Assert.Equal("shop", _recorder.Orders.DatabaseName);
+        Assert.Equal("shop", _recorder.Orders.ProjectName);
         Assert.Equal("orders", _recorder.Orders.Name);
         Assert.Equal("shop", _recorder.Shop.Name);
         _recorder.Channel.Replies = request => RecordingChannel.Error(request, "NOT_FOUND", "404-2");

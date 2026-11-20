@@ -11,7 +11,7 @@ import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.ejson.elements.JsonObject;
 
 public final class DumpScope {
-    public record DatabasePlan(String name, List<String> collections, boolean whole) {
+    public record ProjectPlan(String name, List<String> collections, boolean whole) {
         public boolean keepsTrigger(JsonObject listed) {
             return collections.contains(Connection.stringOf(listed, Requests.COLLECTION));
         }
@@ -20,37 +20,37 @@ public final class DumpScope {
     private static final String FORBIDDEN = "FORBIDDEN";
     private static final String COLLECTIONS = "collections";
 
-    private final List<DatabasePlan> databases;
+    private final List<ProjectPlan> projects;
     private final Map<String, List<String>> indexes;
 
-    private DumpScope(List<DatabasePlan> databases, Map<String, List<String>> indexes) {
-        this.databases = databases;
+    private DumpScope(List<ProjectPlan> projects, Map<String, List<String>> indexes) {
+        this.projects = projects;
         this.indexes = indexes;
     }
 
     public static DumpScope plan(Connection connection, ClientOptions options, PrintStream err) {
-        final var databases = options.collections().isEmpty()
-                ? wholeDatabases(connection, options.databases(), err)
+        final var projects = options.collections().isEmpty()
+                ? wholeProjects(connection, options.projects(), err)
                 : namedCollections(connection, options.collections());
-        return new DumpScope(databases, indexesOf(connection.sendOk(Requests.stats())));
+        return new DumpScope(projects, indexesOf(connection.sendOk(Requests.stats())));
     }
 
-    public List<DatabasePlan> databases() {
-        return databases;
+    public List<ProjectPlan> projects() {
+        return projects;
     }
 
-    public List<String> indexesOf(String database, String collection) {
-        return indexes.getOrDefault(database + "." + collection, List.of());
+    public List<String> indexesOf(String project, String collection) {
+        return indexes.getOrDefault(project + "." + collection, List.of());
     }
 
-    private static List<DatabasePlan> wholeDatabases(Connection connection, List<String> filter, PrintStream err) {
-        final var existing = stringsOf(connection.sendOk(Requests.listDatabases()), "databases");
+    private static List<ProjectPlan> wholeProjects(Connection connection, List<String> filter, PrintStream err) {
+        final var existing = stringsOf(connection.sendOk(Requests.listProjects()), "projects");
         for (final var name : filter) {
             if (!existing.contains(name)) {
-                throw new ClientException("database '" + name + "' not found", ClientException.FAILED);
+                throw new ClientException("project '" + name + "' not found", ClientException.FAILED);
             }
         }
-        final var plans = new ArrayList<DatabasePlan>();
+        final var plans = new ArrayList<ProjectPlan>();
         for (final var name : filter.isEmpty() ? existing : filter) {
             final var request = Requests.listCollections(name);
             final var reply = connection.send(request);
@@ -63,17 +63,17 @@ public final class DumpScope {
             }
             final var collections = new ArrayList<>(stringsOf(reply, COLLECTIONS));
             collections.remove(Globals.SCRIPT_RUNS_COLLECTION_NAME);
-            plans.add(new DatabasePlan(name, List.copyOf(collections), true));
+            plans.add(new ProjectPlan(name, List.copyOf(collections), true));
         }
         return plans;
     }
 
-    private static List<DatabasePlan> namedCollections(Connection connection, List<ClientOptions.CollectionRef> refs) {
+    private static List<ProjectPlan> namedCollections(Connection connection, List<ClientOptions.CollectionRef> refs) {
         final var grouped = new LinkedHashMap<String, LinkedHashSet<String>>();
         for (final var ref : refs) {
-            grouped.computeIfAbsent(ref.database(), ignored -> new LinkedHashSet<>()).add(ref.collection());
+            grouped.computeIfAbsent(ref.project(), ignored -> new LinkedHashSet<>()).add(ref.collection());
         }
-        final var plans = new ArrayList<DatabasePlan>();
+        final var plans = new ArrayList<ProjectPlan>();
         for (final var entry : grouped.entrySet()) {
             final var existing = collectionsOf(connection, entry.getKey());
             for (final var collection : entry.getValue()) {
@@ -82,13 +82,13 @@ public final class DumpScope {
                             ClientException.FAILED);
                 }
             }
-            plans.add(new DatabasePlan(entry.getKey(), List.copyOf(entry.getValue()), false));
+            plans.add(new ProjectPlan(entry.getKey(), List.copyOf(entry.getValue()), false));
         }
         return plans;
     }
 
-    private static List<String> collectionsOf(Connection connection, String database) {
-        return stringsOf(connection.sendOk(Requests.listCollections(database)), COLLECTIONS);
+    private static List<String> collectionsOf(Connection connection, String project) {
+        return stringsOf(connection.sendOk(Requests.listCollections(project)), COLLECTIONS);
     }
 
     private static Map<String, List<String>> indexesOf(JsonObject statsReply) {
@@ -98,10 +98,10 @@ public final class DumpScope {
             throw unexpectedReply("stats");
         }
         final var stats = statsElement.asJsonObject();
-        for (final var database : objectsOf(stats, "databases")) {
-            final var databaseName = Connection.stringOf(database, Requests.NAME);
-            for (final var collection : objectsOf(database, COLLECTIONS)) {
-                found.put(databaseName + "." + Connection.stringOf(collection, Requests.NAME),
+        for (final var project : objectsOf(stats, "projects")) {
+            final var projectName = Connection.stringOf(project, Requests.NAME);
+            for (final var collection : objectsOf(project, COLLECTIONS)) {
+                found.put(projectName + "." + Connection.stringOf(collection, Requests.NAME),
                         stringsOf(collection, "indexes"));
             }
         }

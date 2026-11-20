@@ -2,7 +2,7 @@
 """Filtered test262 conformance harness for SimpleJS.
 
 Runs the official tc39/test262 corpus against SimpleJs.run(source, HostBindings), filtered down to
-the language + built-ins surface a database script host actually exposes, and gates on a tracked
+the language + built-ins surface a project script host actually exposes, and gates on a tracked
 baseline of known failures so conformance can only ratchet upward.
 
 Stdlib only: CI has no `pip install` step, so there is no PyYAML and no requests. That constraint is

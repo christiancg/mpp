@@ -14,21 +14,21 @@ Whether the user is an admin.
 
 Server-wide grants.
 
-## databasePermissions
+## projectPermissions
 
-Grants by database.
+Grants by project.
 
 ## collectionPermissions
 
-Grants by `database|collection`.
+Grants by `project|collection`.
 
 ## scriptPermissions
 
-Script grants by database.
+Script grants by project.
 
-## ownedDatabases
+## ownedProjects
 
-The databases the user owns.
+The projects the user owns.
 
 ## raw
 

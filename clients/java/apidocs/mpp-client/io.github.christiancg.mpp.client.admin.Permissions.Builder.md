@@ -10,22 +10,22 @@ Builds `Permissions`.
 @param permissions server-wide permissions to add
 @return this builder
 
-## database(String, DataPermission)
+## project(String, DataPermission)
 
-@param database the database
+@param project the project
 @param permission the access
 @return this builder
 
 ## collection(String, String, DataPermission)
 
-@param database the database
+@param project the project
 @param collection the collection
 @param permission the access
 @return this builder
 
 ## scripts(String, ScriptPermission)
 
-@param database the database
+@param project the project
 @param permission the script access
 @return this builder
 

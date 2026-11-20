@@ -14,8 +14,8 @@ CLUSTER_PORT = int(os.environ.get("PROC_TEST_CLUSTER_PORT", "9996"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "proc_test_db"
-OTHER_DB = "proc_other_db"
+PROJECT = "proc_test_project"
+OTHER_PROJECT = "proc_other_project"
 COLL = "orders"
 AUDIT = "audit"
 UNREADABLE_COLL = "broken_triggers"
@@ -48,7 +48,7 @@ BUSY_TRIGGERED_COLL = "busy_triggered"
 BUSY_AUDIT = "busy_audit"
 BUSY_TRIGGERED_DOCS = 300
 BUSY_CALLERS = 3
-CAP_DB = "proc_cap_db"
+CAP_PROJECT = "proc_cap_project"
 CAP_RUNS_COLL = "capped_runs"
 DEAD_LETTER_CAP = 3
 CAPPED_DEAD_LETTERS = 6
@@ -85,32 +85,32 @@ SHUTDOWN_CEILING_SECONDS = 7.0
 
 
 class Conn(bu.Conn):
-    def save_procedure(self, name, script, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_PROCEDURE", "databaseName": db, "name": name, "script": script}
+    def save_procedure(self, name, script, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_PROCEDURE", "projectName": project, "name": name, "script": script}
         payload.update(extra)
         return self.send(payload)
 
-    def call(self, name, args=None, db=DB) -> dict:
-        payload = {"type": "CALL_PROCEDURE", "databaseName": db, "procedureName": name}
+    def call(self, name, args=None, project=PROJECT) -> dict:
+        payload = {"type": "CALL_PROCEDURE", "projectName": project, "procedureName": name}
         if args is not None:
             payload["args"] = args
         return self.send(payload)
 
-    def save_trigger(self, name, events, procedure, coll=COLL, db=DB, **extra) -> dict:
-        payload = {"type": "SAVE_TRIGGER", "databaseName": db, "collectionName": coll,
+    def save_trigger(self, name, events, procedure, coll=COLL, project=PROJECT, **extra) -> dict:
+        payload = {"type": "SAVE_TRIGGER", "projectName": project, "collectionName": coll,
                    "name": name, "events": events, "procedureName": procedure}
         payload.update(extra)
         return self.send(payload)
 
-    def test_trigger(self, name, event, document, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "TEST_TRIGGER", "databaseName": db, "collectionName": coll,
+    def test_trigger(self, name, event, document, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "TEST_TRIGGER", "projectName": project, "collectionName": coll,
                           "name": name, "event": event, "document": document})
 
-    def save_doc(self, doc, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "SAVE", "databaseName": db, "collectionName": coll, "object": doc})
+    def save_doc(self, doc, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "SAVE", "projectName": project, "collectionName": coll, "object": doc})
 
-    def find(self, doc_id, coll=COLL, db=DB) -> dict:
-        return self.send({"type": "FIND_BY_ID", "databaseName": db, "collectionName": coll, "_id": doc_id})
+    def find(self, doc_id, coll=COLL, project=PROJECT) -> dict:
+        return self.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": doc_id})
 
 
 admin_conn = Conn.authenticated
@@ -186,33 +186,33 @@ def write_config(work_dir: str, scripts_enabled: bool, triggers_enabled: bool,
 
 def setup_data(conn: Conn):
     section("Setup")
-    for db in (DB, OTHER_DB):
-        conn.send({"type": "DROP_DATABASE", "databaseName": db})
-        check_status(f"CREATE_DATABASE {db}", conn.send({"type": "CREATE_DATABASE", "databaseName": db}), "OK")
+    for project in (PROJECT, OTHER_PROJECT):
+        conn.send({"type": "DROP_PROJECT", "projectName": project})
+        check_status(f"CREATE_PROJECT {project}", conn.send({"type": "CREATE_PROJECT", "projectName": project}), "OK")
     for coll in (COLL, AUDIT):
         check_status(f"create collection {coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
-    check_status("create collection in the other database",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": OTHER_DB, "collectionName": COLL}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
+    check_status("create collection in the other project",
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": OTHER_PROJECT, "collectionName": COLL}), "OK")
 
     check_status("create the RUN-level user", conn.send({
         "type": "CREATE_USER", "username": RUNNER, "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "RUN"}}), "OK")
+        "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "RUN"}}), "OK")
     check_status("create the MANAGE-level user", conn.send({
         "type": "CREATE_USER", "username": MANAGER, "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+        "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
     check_status("create the writer with no audit access", conn.send({
         "type": "CREATE_USER", "username": WRITER, "password": USER_PASSWORD, "admin": False,
-        "collectionPermissions": {f"{DB}|{COLL}": "READ_WRITE"}}), "OK")
+        "collectionPermissions": {f"{PROJECT}|{COLL}": "READ_WRITE"}}), "OK")
     check_status("create a user with a legacy boolean grant", conn.send({
         "type": "CREATE_USER", "username": LEGACY, "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: True}}), "OK")
+        "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: True}}), "OK")
     for username in (MANAGER_TWO, PROC_OWNER):
         check_status(f"create the MANAGE-level user {username}", conn.send({
             "type": "CREATE_USER", "username": username, "password": USER_PASSWORD, "admin": False,
-            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
-    check_status("make the owner user a database owner", conn.send({
-        "type": "SET_DATABASE_OWNERS", "databaseName": DB, "owners": [ADMIN_USERNAME, PROC_OWNER]}), "OK")
+            "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
+    check_status("make the owner user a project owner", conn.send({
+        "type": "SET_PROJECT_OWNERS", "projectName": PROJECT, "owners": [ADMIN_USERNAME, PROC_OWNER]}), "OK")
 
 
 def test_procedure_lifecycle(conn: Conn):
@@ -222,14 +222,14 @@ def test_procedure_lifecycle(conn: Conn):
     check("first save is version 1", saved.get("version") == 1, f"got {saved.get('version')}")
     check_result("call it", conn.call("answer"), 42)
 
-    listed = conn.send({"type": "LIST_PROCEDURES", "databaseName": DB})
+    listed = conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT})
     names = sorted(p.get("name") for p in listed.get("procedures", []))
     check("list reports both procedures", names == ["answer", "versioned"], f"got {names}")
     check("list omits the source by default",
           all("source" not in p for p in listed.get("procedures", [])),
           f"got {listed.get('procedures')}")
 
-    with_source = conn.send({"type": "LIST_PROCEDURES", "databaseName": DB, "includeSource": True})
+    with_source = conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT, "includeSource": True})
     sources = {p.get("name"): p.get("source") for p in with_source.get("procedures", [])}
     check("includeSource returns the body", sources.get("answer") == "return 42;", f"got {sources}")
 
@@ -249,10 +249,10 @@ def test_procedure_lifecycle(conn: Conn):
     check("the document is there", found.get("status") == "OK", f"got {found}")
 
     check_status("delete a procedure",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "answer"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "answer"}), "OK")
     check_code("calling a deleted procedure is not found", conn.call("answer"), "NOT_FOUND", "404-8")
     check_status("deleting again is idempotent",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "answer"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "answer"}), "OK")
 
     check_status("a disabled procedure saves",
                  conn.save_procedure("switched-off", "return 1;", enabled=False), "OK")
@@ -274,22 +274,23 @@ def test_procedure_name_case_collision(conn: Conn):
     check("re-saving MyProc bumped its version", (resaved.get("version") or 0) > 1,
           detail=str(resaved)[:160])
     check_status("a trigger references MyProc", conn.save_trigger("case_guard", ["CREATED"], "MyProc"), "OK")
-    conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "myproc"})
-    listed = conn.send({"type": "LIST_PROCEDURES", "databaseName": DB})
+    conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "myproc"})
+    listed = conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT})
     names = [p.get("name") for p in listed.get("procedures", [])]
     check("deleting myproc leaves the referenced MyProc in place", "MyProc" in names, f"got {names}")
     check_result("MyProc is still callable", conn.call("MyProc"), 3)
     check_code("myproc is not a name for MyProc", conn.call("myproc"), "NOT_FOUND", "404-8")
     refused = conn.save_trigger("case_alias", ["CREATED"], "myproc")
     check("a trigger cannot name myproc", refused.get("status") != "OK", detail=str(refused)[:160])
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "case_guard"})
-    conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "MyProc"})
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "case_guard"})
+    conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "MyProc"})
 
 
 def test_procedure_validation(conn: Conn):
     section("Procedure validation")
-    check_code("unknown database", conn.save_procedure("valid_name", "return 1;", db="no_such_db"), "NOT_FOUND", "404-4")
-    check_code("reserved database", conn.save_procedure("valid_name", "return 1;", db="admin"), "ERROR", "400-1")
+    check_code("unknown project", conn.save_procedure("valid_name", "return 1;", project="no_such_project"),
+               "NOT_FOUND", "404-4")
+    check_code("reserved project", conn.save_procedure("valid_name", "return 1;", project="admin"), "ERROR", "400-1")
     check_code("a name that is too short", conn.save_procedure("ab", "return 1;"), "ERROR", "400-1")
     check_code("a name with a path separator", conn.save_procedure("a/b", "return 1;"), "ERROR", "400-1")
     check_code("a name with a dot", conn.save_procedure("a.b", "return 1;"), "ERROR", "400-1")
@@ -317,9 +318,9 @@ def test_permissions():
         check_status("a MANAGE user may install", manager.save_procedure("by_manager", "return 'ok';"), "OK")
         check_result("and call", manager.call("by_manager"), "ok")
         check_status("a MANAGE user may delete what it installed",
-                     manager.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "by_manager"}), "OK")
-        check_code("MANAGE on one database confers nothing on another",
-                   manager.save_procedure("elsewhere", "return 1;", db=OTHER_DB), "FORBIDDEN", "403-1")
+                     manager.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "by_manager"}), "OK")
+        check_code("MANAGE on one project confers nothing on another",
+                   manager.save_procedure("elsewhere", "return 1;", project=OTHER_PROJECT), "FORBIDDEN", "403-1")
 
     with user_conn(LEGACY) as legacy:
         check_result("a legacy boolean grant still calls", legacy.call("greet", {"name": "legacy"}), "hi legacy")
@@ -336,30 +337,30 @@ def test_permissions():
     with admin_conn() as admin:
         check_status("promote the RUN user to MANAGE", admin.send({
             "type": "CHANGE_PERMISSIONS", "username": RUNNER, "admin": False,
-            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+            "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
     with user_conn(RUNNER) as promoted:
         check_status("the promoted user may now install",
                      promoted.save_procedure("after_promotion", "return 1;"), "OK")
     with admin_conn() as admin:
         check_status("demote back to RUN", admin.send({
             "type": "CHANGE_PERMISSIONS", "username": RUNNER, "admin": False,
-            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "RUN"}}), "OK")
+            "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "RUN"}}), "OK")
     with user_conn(RUNNER) as demoted:
         check_code("and may not install again",
                    demoted.save_procedure("after_demotion", "return 1;"), "FORBIDDEN", "403-1")
     check_code("an invalid level is rejected loudly", admin_conn().send({
         "type": "CHANGE_PERMISSIONS", "username": RUNNER, "admin": False,
-        "scriptPermissions": {DB: "MANAGER"}}), "ERROR", "400-1")
+        "scriptPermissions": {PROJECT: "MANAGER"}}), "ERROR", "400-1")
 
 
 def test_storage_placement(work_dir: str):
     section("Storage placement")
     db_root = os.path.join(work_dir, "db")
-    procedures = os.path.join(db_root, DB, ".procedures")
+    procedures = os.path.join(db_root, PROJECT, ".procedures")
     check("procedures live in a folder beside the collections", os.path.isdir(procedures), procedures)
     check("one file per procedure", os.path.isfile(os.path.join(procedures, "greet.json")),
           str(os.listdir(procedures)) if os.path.isdir(procedures) else "no folder")
-    triggers = os.path.join(db_root, DB, COLL, f"{COLL}-triggers.json")
+    triggers = os.path.join(db_root, PROJECT, COLL, f"{COLL}-triggers.json")
     check("triggers live in the collection folder beside its schema", os.path.isfile(triggers), triggers)
     admin_children = sorted(os.listdir(os.path.join(db_root, "admin")))
     check("nothing new under admin/",
@@ -399,11 +400,11 @@ def test_triggers(conn: Conn):
     check("overwriting the same _id audits as UPDATED", updated.get("status") == "OK", f"got {updated}")
 
     check_status("delete a document",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "t1"}), "OK")
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "t1"}), "OK")
     deleted_row = await_doc(conn, "DELETED-t1")
     check("a DELETED trigger fires too", deleted_row.get("status") == "OK", f"got {deleted_row}")
 
-    listed = conn.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": COLL})
+    listed = conn.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": COLL})
     check("list reports the trigger",
           any(t.get("name") == "audit_writes" for t in listed.get("triggers", [])), f"got {listed}")
 
@@ -429,7 +430,7 @@ def test_a_transaction_reports_only_its_net_effect(conn: Conn):
     check_status("start a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     check_status("create a new document in it", conn.save_doc({"_id": "txnet1", "n": 1}), "OK")
     check_status("delete it in the same transaction",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "txnet1"}), "OK")
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "txnet1"}), "OK")
     check_status("commit", conn.send({"type": "COMMIT_TRANSACTION"}), "OK")
     check("no DELETED fires for a document nobody outside the transaction saw",
           await_absent(conn, "DELETED-txnet1").get("status") != "OK")
@@ -440,18 +441,18 @@ def test_a_transaction_reports_only_its_net_effect(conn: Conn):
     check_status("start another transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     check_status("update the existing document", conn.save_doc({"_id": "txnet2", "n": 2}), "OK")
     check_status("then delete it",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "txnet2"}), "OK")
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "txnet2"}), "OK")
     check_status("commit", conn.send({"type": "COMMIT_TRANSACTION"}), "OK")
     check("deleting a document that existed before the transaction still fires DELETED",
           await_doc(conn, "DELETED-txnet2").get("status") == "OK")
 
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "audit_tx_net"})
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "audit_tx_net"})
 
 
 def install_the_trigger_whose_file_will_break(conn: Conn):
     section("The collection whose trigger file phase 2 makes unreadable")
     check_status("create the collection", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": UNREADABLE_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": UNREADABLE_COLL}), "OK")
     check_status("install a trigger on it",
                  conn.save_trigger("audit_unreadable", ["CREATED", "UPDATED"], "auditor", coll=UNREADABLE_COLL), "OK")
     check_status("write a document", conn.save_doc({"_id": "ur-seed", "n": 1}, coll=UNREADABLE_COLL), "OK")
@@ -460,7 +461,7 @@ def install_the_trigger_whose_file_will_break(conn: Conn):
           "the fixture never fired, so what phase 2 asserts about it would prove nothing")
 
     check_status("create the collection whose trigger file phase 2 corrupts", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CORRUPT_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CORRUPT_COLL}), "OK")
     check_status("install a trigger on it",
                  conn.save_trigger("audit_corrupt", ["CREATED", "UPDATED"], "auditor", coll=CORRUPT_COLL), "OK")
     check_status("write a document", conn.save_doc({"_id": "co-seed", "n": 1}, coll=CORRUPT_COLL), "OK")
@@ -490,7 +491,7 @@ def test_result_cap(conn: Conn):
     row = await_doc(conn, "big-cap1")
     check("the trigger completed despite its oversized result", row.get("status") == "OK", f"got {row}")
     check_status("remove the trigger again",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                             "name": "big_result_trigger"}), "OK")
 
 
@@ -505,7 +506,7 @@ def test_trigger_validation(conn: Conn):
     check_code("missing procedure", conn.save_trigger("valid_name", ["CREATED"], "no_such_procedure"),
                "NOT_FOUND", "404-8")
     check_code("a procedure a trigger still references cannot be deleted",
-               conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "auditor"}), "ERROR", "400-14")
+               conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "auditor"}), "ERROR", "400-14")
 
 
 def test_definer_rights():
@@ -525,7 +526,7 @@ def test_definer_rights():
 
 
 def stored_procedure(conn: Conn, name: str) -> dict:
-    listed = conn.send({"type": "LIST_PROCEDURES", "databaseName": DB, "includeSource": True})
+    listed = conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT, "includeSource": True})
     return next((p for p in listed.get("procedures") or [] if p.get("name") == name), {})
 
 
@@ -541,7 +542,7 @@ def check_the_direct_binding_is_protected(manager: Conn, intruder: Conn):
     check_bound("another MANAGE user may not overwrite it", intruder.save_procedure("guarded", "return 'pwned';"))
     check_bound("nor disable it", intruder.save_procedure("guarded", GUARDED_SOURCE, enabled=False))
     check_bound("nor delete it",
-                intruder.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "guarded"}))
+                intruder.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "guarded"}))
     after = stored_procedure(manager, "guarded")
     check("the source and version are unchanged",
           (after.get("source"), after.get("version"), after.get("enabled"))
@@ -554,20 +555,20 @@ def check_the_direct_binding_is_protected(manager: Conn, intruder: Conn):
 def check_the_privileged_may_overwrite(manager: Conn):
     with user_conn(PROC_OWNER) as owner, admin_conn() as admin:
         check_status("the definer may overwrite it", manager.save_procedure("guarded", GUARDED_SOURCE), "OK")
-        check_status("a database owner may", owner.save_procedure("guarded", GUARDED_SOURCE), "OK")
+        check_status("a project owner may", owner.save_procedure("guarded", GUARDED_SOURCE), "OK")
         check_status("an admin may", admin.save_procedure("guarded", GUARDED_SOURCE), "OK")
     check_status("drop the guard trigger", manager.send(
-        {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "guard_trigger"}), "OK")
+        {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "guard_trigger"}), "OK")
 
 
 def check_schedule_and_hook_bindings(manager: Conn, intruder: Conn):
     check_status("MANAGER installs a scheduled procedure", manager.save_procedure("sched_guarded", "return 1;"), "OK")
     check_status("and schedules it hourly", manager.send(
-        {"type": "SAVE_SCHEDULE", "databaseName": DB, "name": "guard_schedule", "procedureName": "sched_guarded",
+        {"type": "SAVE_SCHEDULE", "projectName": PROJECT, "name": "guard_schedule", "procedureName": "sched_guarded",
          "intervalMs": 3_600_000}), "OK")
     check_bound("a schedule binding protects its procedure", intruder.save_procedure("sched_guarded", "return 2;"))
     check_status("drop the schedule", manager.send(
-        {"type": "DELETE_SCHEDULE", "databaseName": DB, "name": "guard_schedule"}), "OK")
+        {"type": "DELETE_SCHEDULE", "projectName": PROJECT, "name": "guard_schedule"}), "OK")
 
     check_status("MANAGER installs a before hook",
                  install_hook(manager, "guard_hook", "guarded_hook", "return null;", ["CREATED"]), "OK")
@@ -582,7 +583,7 @@ def check_import_bindings(manager: Conn, intruder: Conn):
     check_status("binds a trigger to the entry", manager.save_trigger("guard_import", ["CREATED"], "guard_entry"), "OK")
     check_bound("the imported library is protected too", intruder.save_procedure("guard_lib", "export const v = 1;"))
     check_status("drop the import trigger", manager.send(
-        {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "guard_import"}), "OK")
+        {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "guard_import"}), "OK")
 
     check_status("MANAGER installs a procedure importing by a computed name", manager.save_procedure(
         "guard_dyn", "const n = 'x'; try { await import('procedures/' + n); } catch (e) {} return 1;"), "OK")
@@ -590,7 +591,7 @@ def check_import_bindings(manager: Conn, intruder: Conn):
     check_bound("so any procedure name counts as reached",
                 intruder.save_procedure("guard_unrelated", "return 1;"))
     check_status("drop the computed-import trigger", manager.send(
-        {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "guard_dyn_trigger"}), "OK")
+        {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "guard_dyn_trigger"}), "OK")
     check_status("with nothing bound the same save is free",
                  intruder.save_procedure("guard_unrelated", "return 1;"), "OK")
 
@@ -609,13 +610,13 @@ def test_a_procedure_bound_by_another_definer_is_protected():
 
 def test_a_manager_cannot_change_a_trigger_defined_by_someone_else():
     section("A MANAGE user cannot replace or delete a trigger another user defined")
-    delete_foreign = {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "foreign_owned"}
+    delete_foreign = {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "foreign_owned"}
     with user_conn(MANAGER) as manager, user_conn(MANAGER_TWO) as intruder:
         check_status("MANAGER installs a trigger", manager.save_trigger("foreign_owned", ["CREATED"], "greet"), "OK")
         check_code("another MANAGE user may not replace it",
                    intruder.save_trigger("foreign_owned", ["DELETED"], "greet"), "FORBIDDEN", "403-5")
         check_code("nor delete it", intruder.send(delete_foreign), "FORBIDDEN", "403-5")
-        listed = manager.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": COLL})
+        listed = manager.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": COLL})
         stored = next((t for t in (listed.get("triggers") or []) if t.get("name") == "foreign_owned"), {})
         check("the trigger is unchanged", stored.get("events") == ["CREATED"], f"got {stored}")
         check_status("its definer may delete it", manager.send(delete_foreign), "OK")
@@ -629,14 +630,14 @@ def test_a_client_cannot_forge_a_definer():
         check_status("a MANAGE user installs a trigger carrying a forged stamp",
                      manager.save_trigger("forged_stamp", ["CREATED"], "greet", **forged), "OK")
         with admin_conn() as admin:
-            listed = admin.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": COLL})
+            listed = admin.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": COLL})
             stored = next((t for t in (listed.get("triggers") or []) if t.get("name") == "forged_stamp"), {})
             check("the definer is the caller, not the forged admin", stored.get("definer") == MANAGER,
                   f"got {stored}")
             check("so is updatedBy", stored.get("updatedBy") == MANAGER, f"got {stored}")
             check("and the version was assigned by the server", stored.get("version") == 1, f"got {stored}")
         check_status("clean up the trigger", manager.send(
-            {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL, "name": "forged_stamp"}), "OK")
+            {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL, "name": "forged_stamp"}), "OK")
         check_code("a forged stamp does not skip the import check",
                    manager.save_procedure("forged_import", "import { x } from 'procedures/not_there'; return x;",
                                           stampedVersion=5), "ERROR", "400-18")
@@ -650,25 +651,25 @@ def test_procedure_source_requires_manage():
             "lib_hidden", "export function secret(x) { return x + 1; }"), "OK")
     with user_conn(RUNNER) as runner:
         check_code("a READ/RUN user asking for the source is refused (403-6)",
-                   runner.send({"type": "LIST_PROCEDURES", "databaseName": DB, "includeSource": True}),
+                   runner.send({"type": "LIST_PROCEDURES", "projectName": PROJECT, "includeSource": True}),
                    "FORBIDDEN", "403-6")
-        summary = runner.send({"type": "LIST_PROCEDURES", "databaseName": DB})
+        summary = runner.send({"type": "LIST_PROCEDURES", "projectName": PROJECT})
         check_status("the summary still lists for that user", summary, "OK")
         check("the summary carries no source",
               all("source" not in p for p in (summary.get("procedures") or [])), str(summary)[:300])
         check_result("an imported function prints as a native stub for a RUN-only user",
-                     runner.send({"type": "RUN_SCRIPT", "databaseName": DB, "script": show}),
+                     runner.send({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": show}),
                      "function secret() { [native code] }|2")
     with user_conn(MANAGER) as manager:
-        listed = manager.send({"type": "LIST_PROCEDURES", "databaseName": DB, "includeSource": True})
+        listed = manager.send({"type": "LIST_PROCEDURES", "projectName": PROJECT, "includeSource": True})
         sources = {p.get("name"): p.get("source") for p in (listed.get("procedures") or [])}
         check("a MANAGE user lists the source",
               sources.get("lib_hidden") == "export function secret(x) { return x + 1; }", f"got {sources}")
         check_result("and prints the imported function's source",
-                     manager.send({"type": "RUN_SCRIPT", "databaseName": DB, "script": show}),
+                     manager.send({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": show}),
                      "function secret(x) { return x + 1; }|2")
     with admin_conn() as admin:
-        check_status("drop the library", admin.send({"type": "DELETE_PROCEDURE", "databaseName": DB,
+        check_status("drop the library", admin.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT,
                                                      "name": "lib_hidden"}), "OK")
 
 
@@ -702,11 +703,11 @@ def test_procedure_imports(conn: Conn):
     check("a library may import a library", conn.call("shouter", {"id": "o1"}).get("result") == "ORDER:O1",
           f"got {conn.call('shouter', {'id': 'o1'}).get('result')!r}")
 
-    listed = conn.send({"type": "LIST_PROCEDURES", "databaseName": DB})
+    listed = conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT})
     names = [p.get("name") for p in (listed.get("procedures") or [])]
     check("a library is listed like any other procedure", "lib_fmt" in names, f"got {names}")
 
-    check_status("delete the library", conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB,
+    check_status("delete the library", conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT,
                                                   "name": "lib_fmt"}), "OK")
     failed = conn.call("labeller", {"id": "o9"})
     check("deleting the library breaks its importers at the next call",
@@ -772,7 +773,7 @@ def test_trigger_import_failure(conn: Conn):
     check("the trigger wrote its row", await_doc(conn, "gone-ok1").get("status") == "OK")
 
     check_status("delete the library the trigger's procedure imports",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "lib_gone"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "lib_gone"}), "OK")
     before = trigger_failures(conn)
     check_status("a write still succeeds with the trigger broken", conn.save_doc({"_id": "ok2", "n": 2}), "OK")
     missing = await_doc(conn, "gone-ok2", timeout=5.0)
@@ -815,7 +816,7 @@ def test_trigger_failure_logs_a_stack(conn: Conn, log_path: str):
 
 
 def trigger_failures(conn: Conn) -> int:
-    stats = conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("triggers", {})
+    stats = conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("triggers", {})
     return stats.get("failed", 0)
 
 
@@ -829,7 +830,8 @@ def test_batch_mode(conn: Conn):
                  conn.save_trigger("audit_writes", ["CREATED", "UPDATED"], "batch_counter", mode="batch"), "OK")
     docs = [{"_id": f"b{i}", "n": i} for i in range(4)]
     check_status("bulk save four documents",
-                 conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": docs}), "OK")
+                 conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": docs}),
+                 "OK")
     row = await_doc(conn, "batch-4")
     check("batch mode fired once with the whole batch", row.get("status") == "OK", f"got {row}")
 
@@ -837,7 +839,7 @@ def test_batch_mode(conn: Conn):
 def test_batch_deleted_trigger_fires_once_per_transaction(conn: Conn):
     section("A batch DELETED trigger fires once for a transaction's deletes")
     check_status("create a collection for it", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": BATCH_DELETE_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": BATCH_DELETE_COLL}), "OK")
     check_status("install a batch delete counter", conn.save_procedure("batch_delete_counter",
                  "import db from 'db'; import args from 'args';"
                  "db.save(db.name, '" + AUDIT + "', { _id: 'batchdel-' + args.documents.length,"
@@ -851,20 +853,20 @@ def test_batch_deleted_trigger_fires_once_per_transaction(conn: Conn):
     check_status("start a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     for doc_id in ("bd1", "bd2", "bd3"):
         check_status(f"delete {doc_id} in it", conn.send(
-            {"type": "DELETE", "databaseName": DB, "collectionName": BATCH_DELETE_COLL, "_id": doc_id}), "OK")
+            {"type": "DELETE", "projectName": PROJECT, "collectionName": BATCH_DELETE_COLL, "_id": doc_id}), "OK")
     check_status("commit", conn.send({"type": "COMMIT_TRANSACTION"}), "OK")
 
     row = await_doc(conn, "batchdel-3")
     check("the batch run received all three deleted documents", row.get("status") == "OK", f"got {row}")
     check("and no single-document run fired", await_absent(conn, "batchdel-1").get("status") != "OK")
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": BATCH_DELETE_COLL,
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": BATCH_DELETE_COLL,
                "name": "batch_deletes_watch"})
 
 
 def test_deleted_trigger_fires_per_document_of_a_conditional_delete(conn: Conn):
     section("A DELETE with a condition fires the DELETED trigger once per deleted document")
     check_status("create a collection for it", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": WHERE_DELETE_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": WHERE_DELETE_COLL}), "OK")
     check_status("install a per-document delete recorder", conn.save_procedure("where_delete_recorder",
                  "import db from 'db'; import args from 'args';"
                  "db.save(db.name, '" + AUDIT + "', { _id: 'wheredel-' + args.id, kind: args.document.kind });"
@@ -875,7 +877,7 @@ def test_deleted_trigger_fires_per_document_of_a_conditional_delete(conn: Conn):
     for doc_id, kind in (("wd1", "old"), ("wd2", "old"), ("wd3", "new")):
         check_status(f"write {doc_id}", conn.save_doc({"_id": doc_id, "kind": kind}, coll=WHERE_DELETE_COLL), "OK")
 
-    reply = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": WHERE_DELETE_COLL,
+    reply = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": WHERE_DELETE_COLL,
                        "condition": {"fieldOperatorType": "EQUALS", "field": "kind", "value": "old"}})
     check_field("the condition deleted the two old documents", reply, "deletedCount", 2)
 
@@ -885,14 +887,14 @@ def test_deleted_trigger_fires_per_document_of_a_conditional_delete(conn: Conn):
               row.get("status") == "OK" and (row.get("object") or {}).get("kind") == "old", f"got {row}")
     check("no run fired for the document the condition kept",
           await_absent(conn, "wheredel-wd3").get("status") != "OK")
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": WHERE_DELETE_COLL,
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": WHERE_DELETE_COLL,
                "name": "where_deletes_watch"})
 
 
 def test_updated_trigger_fires_per_document_of_a_conditional_save(conn: Conn):
     section("A SAVE with a condition fires the UPDATED trigger once per updated document")
     check_status("create a collection for it", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": WHERE_UPDATE_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": WHERE_UPDATE_COLL}), "OK")
     check_status("install a per-document update recorder", conn.save_procedure("where_update_recorder",
                  "import db from 'db'; import args from 'args';"
                  "db.save(db.name, '" + AUDIT + "', { _id: 'whereupd-' + args.id, kind: args.document.kind,"
@@ -905,7 +907,7 @@ def test_updated_trigger_fires_per_document_of_a_conditional_save(conn: Conn):
         check_status(f"write {doc_id}", conn.save_doc({"_id": doc_id, "kind": kind, "size": 3},
                                                       coll=WHERE_UPDATE_COLL), "OK")
 
-    reply = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": WHERE_UPDATE_COLL,
+    reply = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": WHERE_UPDATE_COLL,
                        "condition": {"fieldOperatorType": "EQUALS", "field": "kind", "value": "old"},
                        "object": {"kind": "renewed"}})
     check_field("the condition updated the two old documents", reply, "updatedCount", 2)
@@ -917,14 +919,14 @@ def test_updated_trigger_fires_per_document_of_a_conditional_save(conn: Conn):
               row.get("status") == "OK" and body.get("kind") == "renewed" and body.get("size") == 3, f"got {row}")
     check("no run fired for the document the condition kept",
           await_absent(conn, "whereupd-wu3").get("status") != "OK")
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": WHERE_UPDATE_COLL,
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": WHERE_UPDATE_COLL,
                "name": "where_updates_watch"})
 
 
 def test_a_refused_insert_fires_nothing(conn: Conn):
     section("A SAVE with failOnUpdate refused for an existing _id runs no hook and fires no trigger")
     check_status("create a collection for it", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": INSERT_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": INSERT_COLL}), "OK")
     check_status("write the document the insert collides with",
                  conn.save_doc({"_id": "taken", "kind": "original"}, coll=INSERT_COLL), "OK")
     check_status("install an update recorder", conn.save_procedure("insert_update_recorder",
@@ -938,20 +940,20 @@ def test_a_refused_insert_fires_nothing(conn: Conn):
         "export default (d) => { if (d.kind === 'overwrite') { throw new Error('vetoed'); } return d; };",
         ["CREATED", "UPDATED"], coll=INSERT_COLL), "OK")
 
-    reply = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": INSERT_COLL, "failOnUpdate": True,
+    reply = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": INSERT_COLL, "failOnUpdate": True,
                        "object": {"_id": "taken", "kind": "overwrite"}})
     check_code("the insert of an existing id -> 409-18, not the hook's 400-21", reply, "ERROR", "409-18")
     check("no after trigger fired for it", await_absent(conn, "insert-after-taken").get("status") != "OK")
     check_field("the document is unchanged", conn.send(
-        {"type": "FIND_BY_ID", "databaseName": DB, "collectionName": INSERT_COLL, "_id": "taken"}),
+        {"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": INSERT_COLL, "_id": "taken"}),
         "object.kind", "original")
 
     check_status("an insert of a new id is accepted", conn.send(
-        {"type": "SAVE", "databaseName": DB, "collectionName": INSERT_COLL, "failOnUpdate": True,
+        {"type": "SAVE", "projectName": PROJECT, "collectionName": INSERT_COLL, "failOnUpdate": True,
          "object": {"_id": "fresh", "kind": "new"}}), "OK")
     check("its after trigger fired", await_doc(conn, "insert-after-fresh").get("status") == "OK")
     for name in ("insert_watch", "insert_hook"):
-        conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": INSERT_COLL, "name": name})
+        conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": INSERT_COLL, "name": name})
 
 
 def test_cascade(conn: Conn):
@@ -978,7 +980,7 @@ def test_cascade(conn: Conn):
     beyond = await_absent(conn, f"cascade-{TRIGGER_MAX_DEPTH + 1}", settle=4.0)
     check(f"and terminated at triggerMaxDepth={TRIGGER_MAX_DEPTH}", beyond.get("status") != "OK", f"got {beyond}")
     check_status("remove the cascading trigger",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                             "name": "cascade_test"}), "OK")
 
 
@@ -988,7 +990,7 @@ def install_hook(conn: Conn, name, procedure, source, events, coll=COLL):
 
 
 def drop_hook(conn: Conn, name, coll=COLL):
-    conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": coll, "name": name})
+    conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": coll, "name": name})
 
 
 def test_before_hooks(conn: Conn):
@@ -997,7 +999,7 @@ def test_before_hooks(conn: Conn):
                  install_hook(conn, "normalize", "normalizer",
                               "export default (doc) => ({ ...doc, total: doc.qty * doc.price });",
                               ["CREATED", "UPDATED"]), "OK")
-    listed = conn.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": COLL})
+    listed = conn.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": COLL})
     row = next((x for x in listed.get("triggers", []) if x.get("name") == "normalize"), None)
     check("the row reports its timing", row is not None and row.get("timing") == "before", f"got {row}")
 
@@ -1032,7 +1034,7 @@ def test_before_hook_preserves_custom_spelling(conn: Conn):
     for field, spelling in CUSTOM_SPELLINGS.items():
         check(f"the {field} value is stored exactly as written", stored.get(field) == spelling,
               f"expected {spelling!r}, got {stored.get(field)!r}")
-    distinct = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": COLL, "aggregationSteps": [
+    distinct = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": COLL, "aggregationSteps": [
         {"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "_id", "value": "spell1"}},
         {"type": "DISTINCT", "fieldName": "loc"}]})
     check("DISTINCT yields the written spelling",
@@ -1100,7 +1102,7 @@ def test_before_hook_contract(conn: Conn):
     check_status("install a DELETED hook that returns a document",
                  install_hook(conn, "del_returns", "delreturns", "export default (doc) => ({ ...doc });",
                               ["DELETED"]), "OK")
-    refused = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "cd1"})
+    refused = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "cd1"})
     check_code("returning a document on DELETED is refused", refused, "ERROR", "400-21")
     check("the document survives", conn.find("cd1").get("status") == "OK")
     drop_hook(conn, "del_returns")
@@ -1111,7 +1113,7 @@ def test_before_hook_sees_the_same_id_in_and_out_of_a_transaction(conn: Conn):
     check_status("install a hook that records the _id it saw",
                  install_hook(conn, "id_seer", "idseer", "export default (doc) => ({ ...doc, seenId: doc._id });",
                               ["CREATED"]), "OK")
-    saved = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"qty": 1}})
+    saved = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"qty": 1}})
     check_status("an id-less save outside a transaction succeeds", saved, "OK")
     stored = conn.find(saved.get("_id")).get("object") or {}
     check("the hook saw the _id the document is stored under", stored.get("seenId") == saved.get("_id"),
@@ -1122,11 +1124,11 @@ def test_before_hook_sees_the_same_id_in_and_out_of_a_transaction(conn: Conn):
                  install_hook(conn, "id_dropper", "iddropper", "export default () => ({ fresh: true });",
                               ["CREATED"]), "OK")
     check_code("outside a transaction the hook's dropped _id is refused",
-               conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"qty": 1}}),
+               conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"qty": 1}}),
                "ERROR", "400-21")
     check_status("start a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     check_code("inside a transaction the same hook is refused the same way",
-               conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"qty": 1}}),
+               conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"qty": 1}}),
                "ERROR", "400-21")
     check_status("roll back", conn.send({"type": "ROLLBACK_TRANSACTION"}), "OK")
     drop_hook(conn, "id_dropper")
@@ -1137,11 +1139,12 @@ def test_before_hook_schema_recheck(conn: Conn):
     schema = {"type": "object", "properties": {"qty": {"type": "number"}}, "required": ["qty"],
               "additionalProperties": False}
     check_status("install a schema", conn.send(
-        {"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": "hooked", "schema": schema}), "OK")         if False else None
+        {"type": "SAVE_SCHEMA", "projectName": PROJECT, "collectionName": "hooked", "schema": schema}),
+                 "OK")         if False else None
     check_status("create a schema-guarded collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": "guarded"}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": "guarded"}), "OK")
     check_status("save the schema", conn.send(
-        {"type": "SAVE_SCHEMA", "databaseName": DB, "collectionName": "guarded", "schema": schema}), "OK")
+        {"type": "SAVE_SCHEMA", "projectName": PROJECT, "collectionName": "guarded", "schema": schema}), "OK")
     check_status("install a hook that adds a forbidden field",
                  install_hook(conn, "sneak", "sneaky", "export default (doc) => ({ ...doc, extra: 1 });",
                               ["CREATED", "UPDATED"], coll="guarded"), "OK")
@@ -1162,13 +1165,13 @@ def test_before_hook_replacement_depth(conn: Conn):
     check_code("a plain save is refused", conn.save_doc({"_id": "deep1", "qty": 1}), "ERROR", "400-21")
     check("and nothing was written", conn.find("deep1").get("status") != "OK")
     check_code("a bulk save is refused", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
          "objects": [{"_id": "deep2", "qty": 1}, {"_id": "deep3", "qty": 2}]}), "ERROR", "400-21")
     check("and neither document was written",
           conn.find("deep2").get("status") != "OK" and conn.find("deep3").get("status") != "OK")
     check_status("start a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     check_code("inside a transaction the save is refused the same way", conn.send(
-        {"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": {"_id": "deep4", "qty": 1}}),
+        {"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": {"_id": "deep4", "qty": 1}}),
                "ERROR", "400-21")
     check_status("roll back", conn.send({"type": "ROLLBACK_TRANSACTION"}), "OK")
     check("and nothing was written", conn.find("deep4").get("status") != "OK")
@@ -1183,15 +1186,15 @@ def test_before_hook_on_delete(conn: Conn):
                  install_hook(conn, "guard_delete", "guarddelete",
                               "export default (doc) => { if (doc.locked) { throw new Error('locked'); } };",
                               ["DELETED"]), "OK")
-    refused = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "d1"})
+    refused = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "d1"})
     check_code("deleting a locked document is refused", refused, "ERROR", "400-21")
     check("the locked document survives", conn.find("d1").get("status") == "OK")
     guarded = {"fieldOperatorType": "EQUALS", "field": "qty", "value": 1}
-    refused = conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "condition": guarded})
+    refused = conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "condition": guarded})
     check_code("a condition matching the locked document is refused whole", refused, "ERROR", "400-21")
     check("the unlocked match survives the refused conditional delete", conn.find("d2").get("status") == "OK")
     check_status("deleting an unlocked one succeeds",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": COLL, "_id": "d2"}), "OK")
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": COLL, "_id": "d2"}), "OK")
     check("it is gone", conn.find("d2").get("status") != "OK")
     drop_hook(conn, "guard_delete")
 
@@ -1199,7 +1202,7 @@ def test_before_hook_on_delete(conn: Conn):
 def test_before_hook_on_conditional_save(conn: Conn):
     section("Before hooks - SAVE with a condition")
     check_status("seed two documents to update", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
          "objects": [{"_id": "cs1", "batch": "cs", "qty": 2, "price": 5},
                      {"_id": "cs2", "batch": "cs", "qty": 3, "price": 5}]}), "OK")
     check_status("install a recomputing, guarding update hook",
@@ -1208,13 +1211,13 @@ def test_before_hook_on_conditional_save(conn: Conn):
                               " return { ...doc, total: doc.qty * doc.price }; };",
                               ["UPDATED"]), "OK")
     batch = {"fieldOperatorType": "EQUALS", "field": "batch", "value": "cs"}
-    reply = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "condition": batch,
+    reply = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "condition": batch,
                        "object": {"price": 10}})
     check_field("both documents are updated", reply, "updatedCount", 2)
     for doc_id, total in (("cs1", 20), ("cs2", 30)):
         body = conn.find(doc_id).get("object") or {}
         check(f"the hook saw {doc_id} merged and recomputed its total", body.get("total") == total, f"got {body}")
-    refused = conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "condition": batch,
+    refused = conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "condition": batch,
                          "object": {"price": -1}})
     check_code("a merge the hook rejects is refused whole", refused, "ERROR", "400-21")
     check("and no document took the refused price",
@@ -1231,7 +1234,7 @@ def test_before_hook_bulk_save(conn: Conn):
                               ["CREATED", "UPDATED"]), "OK")
     docs = [{"_id": f"bk{i}", "qty": i} for i in range(10)]
     check_status("bulk save ten documents", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": docs}), "OK")
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": docs}), "OK")
     first = (conn.find("bk1").get("object") or {})
     last = (conn.find("bk9").get("object") or {})
     check("every document carries the computed field", first.get("total") == 2 and last.get("total") == 18,
@@ -1246,7 +1249,7 @@ def test_before_hook_bulk_save(conn: Conn):
                               ["CREATED", "UPDATED"]), "OK")
     batch = [{"_id": f"bv{i}", "qty": i} for i in range(10)]
     check_code("the whole request is refused", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": batch}), "ERROR", "400-21")
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": batch}), "ERROR", "400-21")
     stored = [i for i in range(10) if conn.find(f"bv{i}").get("status") == "OK"]
     check("not one document from the batch was stored", stored == [], f"stored {stored}")
     drop_hook(conn, "bulk_veto")
@@ -1260,7 +1263,7 @@ def test_before_hook_bulk_save(conn: Conn):
                               " owner: 'hook' });",
                               ["CREATED", "UPDATED"]), "OK")
     check_code("a bulk entry whose _id the hook changed is refused", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL, "objects": [{"_id": "Aa", "qty": 2}]}),
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL, "objects": [{"_id": "Aa", "qty": 2}]}),
         "ERROR", "400-21")
     check_code("the same swap is refused on a single save", conn.save_doc({"_id": "Aa", "qty": 3}), "ERROR",
                "400-21")
@@ -1282,14 +1285,14 @@ def test_before_hook_bulk_save_in_a_transaction(conn: Conn):
     check_status("install a hook counting its calls",
                  install_hook(conn, "bulk_count", "bulkcount", COUNTING_HOOK, ["CREATED", "UPDATED"]), "OK")
     check_status("bulk save three documents outside a transaction", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
          "objects": [{"_id": f"bo{i}", "qty": i} for i in range(3)]}), "OK")
     check("outside a transaction the calls are numbered 1..3",
           calls_of(conn, ["bo0", "bo1", "bo2"]) == [1, 2, 3], f"got {calls_of(conn, ['bo0', 'bo1', 'bo2'])}")
 
     check_status("start a transaction", conn.send({"type": "START_TRANSACTION"}), "OK")
     check_status("bulk save three documents inside it", conn.send(
-        {"type": "BULK_SAVE", "databaseName": DB, "collectionName": COLL,
+        {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": COLL,
          "objects": [{"_id": f"bt{i}", "qty": i} for i in range(3)]}), "OK")
     check_status("commit", conn.send({"type": "COMMIT_TRANSACTION"}), "OK")
     check("inside a transaction the calls are numbered 1..3 as well",
@@ -1297,7 +1300,7 @@ def test_before_hook_bulk_save_in_a_transaction(conn: Conn):
     drop_hook(conn, "bulk_count")
 
     check_status("create the collection a trigger bulk-saves into",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COUNTED_COLL}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COUNTED_COLL}), "OK")
     check_status("install the counting hook on it",
                  install_hook(conn, "bulk_count_target", "bulkcounttarget", COUNTING_HOOK, ["CREATED", "UPDATED"],
                               coll=COUNTED_COLL), "OK")
@@ -1365,13 +1368,13 @@ def test_before_hook_sandbox(conn: Conn):
 def test_before_hook_no_db(conn: Conn):
     section("Before hooks - the capability boundary")
     check_status("install a hook that reaches for db",
-                 install_hook(conn, "needs_db", "needsdb",
+                 install_hook(conn, "needs_project", "needsdb",
                               "import db from 'db'; export default (doc) => doc;", ["CREATED", "UPDATED"]), "OK")
     refused = conn.save_doc({"_id": "nd1", "qty": 1})
     check_code("a hook with no db binding refuses the write", refused, "ERROR", "400-21")
-    check("the message says database access is unavailable",
-          "Database access is not available" in (refused.get("message") or ""), f"got {refused}")
-    drop_hook(conn, "needs_db")
+    check("the message says project access is unavailable",
+          "Project access is not available" in (refused.get("message") or ""), f"got {refused}")
+    drop_hook(conn, "needs_project")
 
     check_status("install a shared library procedure",
                  conn.save_procedure("hooklib", "export function tag(d) { return { ...d, via: 'lib' }; }"), "OK")
@@ -1391,13 +1394,13 @@ def test_a_before_hook_does_not_change_the_scripts_suppressed_error(conn: Conn):
                  install_hook(conn, "realm_hook", "realmhook", "export default (doc) => doc;", ["CREATED", "UPDATED"]),
                  "OK")
     script = ("import db from 'db';"
-              f" db.save('{DB}', '{COLL}', {{ _id: 'realm1', qty: 1 }});"
+              f" db.save('{PROJECT}', '{COLL}', {{ _id: 'realm1', qty: 1 }});"
               " try { using a = { [Symbol.dispose]() { throw new Error('a'); } },"
               " b = { [Symbol.dispose]() { throw new Error('b'); } }; }"
               " catch (e) { return e instanceof SuppressedError; }"
               " return 'no error';")
     check_result("the script's SuppressedError is still its own realm's",
-                 conn.send({"type": "RUN_SCRIPT", "databaseName": DB, "script": script}), True)
+                 conn.send({"type": "RUN_SCRIPT", "projectName": PROJECT, "script": script}), True)
     drop_hook(conn, "realm_hook")
 
 
@@ -1468,7 +1471,7 @@ def test_before_hook_definer_is_not_enforced(conn: Conn):
     section("Before hooks - the definer divergence")
     check_status("create a throwaway installer", conn.send({
         "type": "CREATE_USER", "username": "hook_installer", "password": USER_PASSWORD, "admin": False,
-        "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+        "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
     with user_conn("hook_installer") as installer:
         check_status("they install a before hook",
                      install_hook(installer, "by_installer", "byinstaller",
@@ -1544,7 +1547,7 @@ def test_dry_run(conn: Conn):
 
 
 def history_rows(conn: Conn, **filters) -> list:
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                           "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": False}]})
     rows = response.get("results") or []
     for field, value in filters.items():
@@ -1569,7 +1572,7 @@ def test_run_history(conn: Conn):
                                      "let total = args.n || 0;\n"
                                      "for (let i = 0; i < 50; i++) total += i;\n"
                                      "return total;"), "OK")
-    check_status("call it", conn.send({"type": "CALL_PROCEDURE", "databaseName": DB,
+    check_status("call it", conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT,
                                        "procedureName": "historied", "args": {"n": 41}}), "OK")
 
     rows = await_history(conn, kind="CALL_PROCEDURE", name="historied")
@@ -1601,7 +1604,7 @@ def test_run_history(conn: Conn):
           len(history_rows(conn)) >= history_before, "the listing should be unaffected")
 
     check_code("a client may not write into script_runs",
-               conn.send({"type": "SAVE", "databaseName": DB, "collectionName": "script_runs",
+               conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": "script_runs",
                           "object": {"_id": "forged", "outcome": "ok"}}), "ERROR", "400-1")
 
 
@@ -1609,7 +1612,7 @@ def test_run_history_failures(conn: Conn):
     section("Run history for failures")
     check_status("install a procedure that throws",
                  conn.save_procedure("history_boom", "throw new RangeError('history boom');"), "OK")
-    conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "history_boom"})
+    conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "history_boom"})
 
     rows = await_history(conn, kind="CALL_PROCEDURE", name="history_boom")
     check("a failed call is recorded", len(rows) == 1, f"rows={rows!r}")
@@ -1622,7 +1625,7 @@ def test_run_history_failures(conn: Conn):
 
     check_status("install a procedure whose message is shaped like a custom type",
                  conn.save_procedure("history_shaped", "throw new Error('#tag(fix)');"), "OK")
-    conn.send({"type": "CALL_PROCEDURE", "databaseName": DB, "procedureName": "history_shaped"})
+    conn.send({"type": "CALL_PROCEDURE", "projectName": PROJECT, "procedureName": "history_shaped"})
     shaped = await_history(conn, kind="CALL_PROCEDURE", name="history_shaped")
     check("the custom-shaped failure is recorded", len(shaped) == 1, f"rows={shaped!r}")
     if shaped:
@@ -1631,7 +1634,7 @@ def test_run_history_failures(conn: Conn):
 
     check_status("install a trigger owned by a user about to be deleted",
                  conn.send({"type": "CREATE_USER", "username": "ghostdefiner", "password": "password123",
-                            "admin": True, "globalPermissions": [], "databasePermissions": {},
+                            "admin": True, "globalPermissions": [], "projectPermissions": {},
                             "collectionPermissions": {}}), "OK")
     with user_conn("ghostdefiner") as ghost:
         check_status("the ghost installs a trigger",
@@ -1646,7 +1649,7 @@ def test_run_history_failures(conn: Conn):
           not await_latest(lambda: history_rows(conn, kind="TRIGGER", name="ghost_trigger"), bool, 2.0, 0.2),
           f"rows={history_rows(conn, kind='TRIGGER', name='ghost_trigger')!r}")
     check_status("remove the ghost trigger",
-                 conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": COLL,
+                 conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": COLL,
                             "name": "ghost_trigger"}), "OK")
 
 
@@ -1660,14 +1663,14 @@ def test_a_custom_shaped_history_row_survives_the_restart(conn: Conn):
 
 
 def fenced_collection_folder(work_dir: str) -> str:
-    return os.path.join(work_dir, "db", DB, FENCED_COLL)
+    return os.path.join(work_dir, "db", PROJECT, FENCED_COLL)
 
 
 def arrange_a_commit_interrupted_past_its_commit_point(conn: Conn, work_dir: str):
     section("A commit that cannot finish applying, then a kill with no drain")
     for coll in (RECOVERED_COLL, FENCED_COLL):
         check_status(f"create {coll}", conn.send(
-            {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+            {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("install an after trigger on the recovered collection",
                  conn.save_trigger("audit_recovered", ["CREATED", "UPDATED"], "auditor", coll=RECOVERED_COLL), "OK")
 
@@ -1709,7 +1712,7 @@ def test_a_recovered_commit_fires_its_triggers(conn: Conn):
 
 def test_an_unreadable_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: str):
     section("A trigger file that cannot be read is not 'no triggers'")
-    trigger_file = os.path.join(work_dir, "db", DB, UNREADABLE_COLL, f"{UNREADABLE_COLL}-triggers.json")
+    trigger_file = os.path.join(work_dir, "db", PROJECT, UNREADABLE_COLL, f"{UNREADABLE_COLL}-triggers.json")
     check("the trigger file survived the restart", os.path.isfile(trigger_file), trigger_file)
     with open(trigger_file, "rb") as fp:
         original = fp.read()
@@ -1723,7 +1726,7 @@ def test_an_unreadable_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: st
         check_code("saving a trigger is refused",
                    conn.save_trigger("audit_second", ["CREATED"], "auditor", coll=UNREADABLE_COLL), "ERROR", "500-29")
         check_code("deleting one is refused", conn.send(
-            {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": UNREADABLE_COLL,
+            {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": UNREADABLE_COLL,
              "name": "audit_unreadable"}), "ERROR", "500-30")
     finally:
         bu.restore_access(trigger_file, 0o644)
@@ -1732,7 +1735,7 @@ def test_an_unreadable_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: st
         after = fp.read()
     check("neither DDL call erased the definitions it could not read", after == original,
           f"the file changed while it was unreadable: {after!r}")
-    listed = conn.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": UNREADABLE_COLL})
+    listed = conn.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": UNREADABLE_COLL})
     check("the trigger is still installed once the file can be read again",
           any(t.get("name") == "audit_unreadable" for t in (listed.get("triggers") or [])), f"got {listed}")
     check_status("and a write fires it again", conn.save_doc({"_id": "ur2", "n": 2}, coll=UNREADABLE_COLL), "OK")
@@ -1741,7 +1744,7 @@ def test_an_unreadable_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: st
 
 def test_a_corrupt_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: str):
     section("A trigger file that cannot be parsed is not 'no triggers' either")
-    trigger_file = os.path.join(work_dir, "db", DB, CORRUPT_COLL, f"{CORRUPT_COLL}-triggers.json")
+    trigger_file = os.path.join(work_dir, "db", PROJECT, CORRUPT_COLL, f"{CORRUPT_COLL}-triggers.json")
     check("the trigger file survived the restart", os.path.isfile(trigger_file), trigger_file)
     with open(trigger_file, "rb") as fp:
         original = fp.read()
@@ -1754,11 +1757,11 @@ def test_a_corrupt_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: str):
         check_code("a write is refused rather than quietly firing no triggers", refused, "ERROR", "500-7")
         check("and nothing was written", conn.find("co1", coll=CORRUPT_COLL).get("status") != "OK")
         check_code("listing the triggers answers an error instead of dropping the connection", conn.send(
-            {"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": CORRUPT_COLL}), "ERROR", "500-8")
+            {"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": CORRUPT_COLL}), "ERROR", "500-8")
         check_code("saving a trigger is refused",
                    conn.save_trigger("audit_second", ["CREATED"], "auditor", coll=CORRUPT_COLL), "ERROR", "500-29")
         check_code("deleting one is refused", conn.send(
-            {"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": CORRUPT_COLL,
+            {"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": CORRUPT_COLL,
              "name": "audit_corrupt"}), "ERROR", "500-30")
         with open(trigger_file, "rb") as fp:
             while_corrupt = fp.read()
@@ -1769,7 +1772,7 @@ def test_a_corrupt_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: str):
         with open(trigger_file, "wb") as fp:
             fp.write(original)
 
-    listed = conn.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": CORRUPT_COLL})
+    listed = conn.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": CORRUPT_COLL})
     check("the trigger is still installed once the file parses again",
           any(t.get("name") == "audit_corrupt" for t in (listed.get("triggers") or [])), f"got {listed}")
     check_status("and a write fires it again", conn.save_doc({"_id": "co2", "n": 2}, coll=CORRUPT_COLL), "OK")
@@ -1778,57 +1781,57 @@ def test_a_corrupt_trigger_file_is_not_an_empty_one(conn: Conn, work_dir: str):
 
 def test_an_unparseable_definition_is_answered_not_dropped(conn: Conn, work_dir: str):
     section("An unparseable definition is answered with an error, and the connection survives")
-    procedures = os.path.join(work_dir, "db", DB, ".procedures")
+    procedures = os.path.join(work_dir, "db", PROJECT, ".procedures")
     torn = os.path.join(procedures, "torn_definition.json")
     with open(torn, "wb") as fp:
         fp.write(b'{"name":"torn_definition","source"')
     try:
-        check_code("LIST_PROCEDURES answers", conn.send({"type": "LIST_PROCEDURES", "databaseName": DB}),
+        check_code("LIST_PROCEDURES answers", conn.send({"type": "LIST_PROCEDURES", "projectName": PROJECT}),
                    "ERROR", "500-8")
         check_code("CALL_PROCEDURE answers", conn.call("torn_definition"), "ERROR", "500-8")
         check_status("and the same connection still serves the next request", conn.send(
-            {"type": "LIST_DATABASES"}), "OK")
+            {"type": "LIST_PROJECTS"}), "OK")
     finally:
         os.remove(torn)
     check_status("LIST_PROCEDURES works again once the file is gone", conn.send(
-        {"type": "LIST_PROCEDURES", "databaseName": DB}), "OK")
+        {"type": "LIST_PROCEDURES", "projectName": PROJECT}), "OK")
 
 
 def test_a_deleted_definition_stops_being_served(conn: Conn):
     section("A deleted procedure or schema stops applying immediately")
     coll = "definition_cache_coll"
     check_status("create the collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
 
     check_status("save a procedure", conn.save_procedure("ghost_proc", "export default () => 1;"), "OK")
     check_status("the procedure runs", conn.call("ghost_proc"), "OK")
     check_status("delete the procedure",
-                 conn.send({"type": "DELETE_PROCEDURE", "databaseName": DB, "name": "ghost_proc"}), "OK")
+                 conn.send({"type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "ghost_proc"}), "OK")
     after = conn.call("ghost_proc")
     check("a deleted procedure stops being callable at once", after.get("status") != "OK",
           f"got {after.get('status')}/{after.get('errorCode')}")
 
     schema = {"type": "object", "properties": {"n": {"type": "string"}}, "required": ["n"]}
-    check_status("save a schema", conn.send({"type": "SAVE_SCHEMA", "databaseName": DB,
+    check_status("save a schema", conn.send({"type": "SAVE_SCHEMA", "projectName": PROJECT,
                                              "collectionName": coll, "schema": schema}), "OK")
     rejected = conn.save_doc({"_id": "s1", "n": 7}, coll=coll)
     check("the schema rejects a non-conforming write", rejected.get("status") != "OK",
           f"got {rejected.get('status')}/{rejected.get('errorCode')}")
 
-    check_status("delete the schema", conn.send({"type": "DELETE_SCHEMA", "databaseName": DB,
+    check_status("delete the schema", conn.send({"type": "DELETE_SCHEMA", "projectName": PROJECT,
                                                  "collectionName": coll}), "OK")
     check_status("a deleted schema stops rejecting writes at once",
                  conn.save_doc({"_id": "s2", "n": 7}, coll=coll), "OK")
 
 
 def retries_scheduled(conn: Conn) -> int:
-    return conn.send({"type": "GET_DATABASE_STATS"}).get("stats", {}).get("triggers", {}).get("retried", 0)
+    return conn.send({"type": "GET_PROJECT_STATS"}).get("stats", {}).get("triggers", {}).get("retried", 0)
 
 
 def arrange_a_pending_trigger_retry(conn: Conn):
     section("A trigger retry still waiting out its backoff")
     check_status("create a collection for it", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": RETRY_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": RETRY_COLL}), "OK")
     check_status("install a procedure that always throws",
                  conn.save_procedure("shutdown_boom", "throw new Error('shutdown boom');"), "OK")
     check_status("point a trigger at it",
@@ -1867,7 +1870,7 @@ def test_a_run_left_pending_standalone_is_replayed_once_clustered(conn: Conn):
 def test_concurrent_hooked_and_triggered_saves_fire_once_each(conn: Conn):
     section(f"{GROUPED_WRITERS} writers save concurrently through a before hook and an after trigger")
     for coll in (GROUPED_COLL, GROUPED_AUDIT):
-        check_status(f"create {coll}", conn.send({"type": "CREATE_COLLECTION", "databaseName": DB,
+        check_status(f"create {coll}", conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT,
                                                   "collectionName": coll}), "OK")
     check_status("install the pass-through hook procedure",
                  conn.save_procedure("grouped_hook", "export default (doc) => undefined;"), "OK")
@@ -1899,14 +1902,14 @@ def test_concurrent_hooked_and_triggered_saves_fire_once_each(conn: Conn):
           f"{answered.count('OK')} of {writes}")
 
     def audited():
-        return conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": GROUPED_AUDIT,
+        return conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": GROUPED_AUDIT,
                           "aggregationSteps": [{"type": "COUNT"}]})
 
     bu.wait_until(lambda: bu.count_of(audited()) == writes, timeout_s=60, interval_s=0.25)
     time.sleep(1.0)
     check("every write fired its trigger exactly once", bu.count_of(audited()) == writes,
           f"{bu.count_of(audited())} audit rows for {writes} writes")
-    docs = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": GROUPED_AUDIT,
+    docs = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": GROUPED_AUDIT,
                       "aggregationSteps": [{"type": "DISTINCT", "fieldName": "doc"}, {"type": "COUNT"}]})
     check("one audit row per written document", bu.count_of(docs) == writes, f"got {docs}")
     bu.wait_until(lambda: not [run for run in trigger_runs(conn) if run.get("trigger") == "grouped_audit"],
@@ -1914,7 +1917,7 @@ def test_concurrent_hooked_and_triggered_saves_fire_once_each(conn: Conn):
     left = [run for run in trigger_runs(conn) if run.get("trigger") == "grouped_audit"]
     check("no trigger run is left behind", not left, f"left {left!r}")
     for name in ("grouped_audit", "grouped_hook"):
-        conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": GROUPED_COLL, "name": name})
+        conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": GROUPED_COLL, "name": name})
 
 
 def trigger_runs(conn: Conn, status: str | None = None) -> list:
@@ -1941,7 +1944,7 @@ def arrange_failing_trigger(conn: Conn, trigger: str, procedure: str, procedure_
 
 
 def remove_failing_trigger(conn: Conn, trigger: str, label: str, coll=COLL):
-    check_status(label, conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": coll,
+    check_status(label, conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": coll,
                                    "name": trigger}), "OK")
     check_status("restore the vetoing hook for the next phase",
                  install_hook(conn, "off_hook", "offhook",
@@ -1991,7 +1994,7 @@ def test_same_named_triggers_in_one_transaction_dead_letter_their_own_run(conn: 
     section("Same-named triggers on two collections keep their own run in one transaction")
     for coll in (TWIN_FAILING_COLL, TWIN_AUDITED_COLL):
         check_status(f"create {coll}", conn.send(
-            {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+            {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("install a procedure that always throws",
                  conn.save_procedure("twin_boom", "throw new Error('twin boom');"), "OK")
     check_status("install a procedure that audits",
@@ -2013,13 +2016,13 @@ def test_same_named_triggers_in_one_transaction_dead_letter_their_own_run(conn: 
     check("and it is the failing collection's run",
           [run.get("collection") for run in dead] == [TWIN_FAILING_COLL], f"runs={dead!r}")
     for coll in (TWIN_FAILING_COLL, TWIN_AUDITED_COLL):
-        conn.send({"type": "DELETE_TRIGGER", "databaseName": DB, "collectionName": coll, "name": "twin"})
+        conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT, "collectionName": coll, "name": "twin"})
 
 
 def test_a_host_call_with_too_few_arguments_dead_letters(conn: Conn):
     section("A trigger whose script calls db with too few arguments is dead-lettered")
     arrange_failing_trigger(conn, "arity", "arity_boom",
-                            "install a trigger whose procedure omits db.save's database argument",
+                            "install a trigger whose procedure omits db.save's project argument",
                             "import db from 'db';\n"
                             "db.save('" + AUDIT + "', { _id: 'never' });", ["CREATED", "UPDATED"], "aritydoc")
 
@@ -2152,7 +2155,7 @@ def test_trigger_run_operations(conn: Conn):
 
 def test_stats(conn: Conn):
     section("Statistics")
-    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    stats = conn.send({"type": "GET_PROJECT_STATS"})
     triggers = (stats.get("stats") or {}).get("triggers") or {}
     check("stats report the trigger counters", "fired" in triggers and "dropped" in triggers, f"got {stats}")
     check("triggers are reported as enabled", triggers.get("enabled") is True, f"got {triggers}")
@@ -2165,11 +2168,11 @@ def test_stats(conn: Conn):
 
 
 def node_stats(conn: Conn) -> dict:
-    return conn.send({"type": "GET_DATABASE_STATS"}).get("stats") or {}
+    return conn.send({"type": "GET_PROJECT_STATS"}).get("stats") or {}
 
 
 def history_count(conn: Conn, name: str) -> int:
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": "script_runs",
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": "script_runs",
                           "aggregationSteps": [bu.filter_step("name", "EQUALS", name), {"type": "COUNT"}]})
     return bu.count_of(response) or 0
 
@@ -2191,7 +2194,7 @@ def test_a_burst_of_runs_lands_in_history(conn: Conn):
 def install_counting_trigger(conn: Conn, coll: str, audit: str, name: str):
     for target in (coll, audit):
         check_status(f"create {target}", conn.send(
-            {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": target}), "OK")
+            {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": target}), "OK")
     check_status(f"install the {name} procedure", conn.save_procedure(
         name, "import db from 'db'; import args from 'args';"
               " db.save(db.name, '" + audit + "', { doc: args.id, event: args.event }); return 1;"), "OK")
@@ -2200,12 +2203,12 @@ def install_counting_trigger(conn: Conn, coll: str, audit: str, name: str):
 
 
 def audit_rows(conn: Conn, audit: str) -> int:
-    return bu.count_of(conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": audit,
+    return bu.count_of(conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": audit,
                                   "aggregationSteps": [{"type": "COUNT"}]})) or 0
 
 
 def audited_documents(conn: Conn, audit: str) -> int:
-    return bu.count_of(conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": audit,
+    return bu.count_of(conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": audit,
                                   "aggregationSteps": [{"type": "DISTINCT", "fieldName": "doc"},
                                                        {"type": "COUNT"}]})) or 0
 
@@ -2228,7 +2231,7 @@ def check_fired_exactly_once(conn: Conn, audit: str, trigger: str, expected: int
 
 
 def bulk_of(prefix: str, count: int, coll: str) -> dict:
-    return {"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll,
+    return {"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll,
             "objects": [{"_id": f"{prefix}{i}", "n": i} for i in range(count)]}
 
 
@@ -2304,7 +2307,7 @@ def test_a_read_only_trigger_consumes_its_run(conn: Conn):
                                  lambda count: count == pending_before, 10.0, 0.2)
     check("pendingRuns is back to its baseline", pending_after == pending_before,
           f"before={pending_before} after={pending_after}")
-    check_status("remove the read-only trigger", conn.send({"type": "DELETE_TRIGGER", "databaseName": DB,
+    check_status("remove the read-only trigger", conn.send({"type": "DELETE_TRIGGER", "projectName": PROJECT,
                                                             "collectionName": COLL, "name": "read_only_watch"}),
                  "OK")
 
@@ -2340,7 +2343,7 @@ def test_retention_empties_history(conn: Conn):
 def test_triggers_per_collection_are_capped(conn: Conn):
     section("A collection holds at most triggerMaxPerCollection triggers")
     check_status("create a collection to fill",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": CAP_COLL}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": CAP_COLL}), "OK")
     check_status("store a no-op procedure", conn.save_procedure("cap_noop", "return 1;"), "OK")
     saved = [conn.save_trigger(f"cap{i}", ["CREATED"], "cap_noop", coll=CAP_COLL).get("status")
              for i in range(TRIGGER_MAX_PER_COLLECTION)]
@@ -2350,31 +2353,31 @@ def test_triggers_per_collection_are_capped(conn: Conn):
     check_status("replacing an existing trigger is never refused",
                  conn.save_trigger("cap0", ["UPDATED"], "cap_noop", coll=CAP_COLL), "OK")
     check_status("drop the filled collection",
-                 conn.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": CAP_COLL}), "OK")
+                 conn.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": CAP_COLL}), "OK")
 
 
 def trigger_entry(conn: Conn, coll: str, name: str) -> dict:
-    listed = conn.send({"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": coll})
+    listed = conn.send({"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": coll})
     return next((entry for entry in listed.get("triggers") or [] if entry.get("name") == name), {})
 
 
 def set_revoked_definer_grants(admin: Conn, source_access: bool) -> dict:
-    database_permissions = {DB: "READ_WRITE"} if source_access else {}
+    project_permissions = {PROJECT: "READ_WRITE"} if source_access else {}
     return admin.send({"type": "CHANGE_PERMISSIONS", "username": REVOKED_DEFINER,
-                       "databasePermissions": database_permissions,
-                       "collectionPermissions": {f"{DB}|{AUDIT}": "READ_WRITE"},
-                       "scriptPermissions": {DB: "MANAGE"}})
+                       "projectPermissions": project_permissions,
+                       "collectionPermissions": {f"{PROJECT}|{AUDIT}": "READ_WRITE"},
+                       "scriptPermissions": {PROJECT: "MANAGE"}})
 
 
 def test_a_trigger_whose_definer_lost_collection_read_is_disabled():
     section("A trigger whose definer loses READ on its collection is skipped and disabled")
     with admin_conn() as admin:
         check_status("create the source collection",
-                     admin.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REVOKE_COLL}),
+                     admin.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REVOKE_COLL}),
                      "OK")
         check_status("create a definer with MANAGE", admin.send({
             "type": "CREATE_USER", "username": REVOKED_DEFINER, "password": USER_PASSWORD, "admin": False,
-            "databasePermissions": {DB: "READ_WRITE"}, "scriptPermissions": {DB: "MANAGE"}}), "OK")
+            "projectPermissions": {PROJECT: "READ_WRITE"}, "scriptPermissions": {PROJECT: "MANAGE"}}), "OK")
         with user_conn(REVOKED_DEFINER) as definer:
             check_status("the definer stores an auditing procedure", definer.save_procedure(
                 "revocable_audit", "import db from 'db'; import args from 'args';"
@@ -2410,7 +2413,7 @@ def test_a_trigger_whose_definer_lost_collection_read_is_disabled():
               f"got {trigger_entry(admin, REVOKE_COLL, 'revocable')}")
         check_status("a write after the re-save", admin.save_doc({"_id": "r4"}, coll=REVOKE_COLL), "OK")
         check("fires again", await_doc(admin, "revocable-r4").get("status") == "OK", "the audit row never appeared")
-        admin.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": REVOKE_COLL})
+        admin.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": REVOKE_COLL})
         admin.send({"type": "DELETE_USER", "username": REVOKED_DEFINER})
 
 
@@ -2425,7 +2428,7 @@ def test_a_first_run_delivers_the_document_as_it_is_when_it_runs(conn: Conn):
     section("A trigger's first run reads the document when it runs, not when it fired")
     for coll in (FIRST_RUN_COLL, FIRST_RUN_BLOCK_COLL):
         check_status(f"create {coll}",
-                     conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll}), "OK")
+                     conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll}), "OK")
     check_status("a procedure that holds its trigger worker", conn.save_procedure(
         "first_run_blocker", "return new Promise(done => setTimeout(() => done(1), 2500));"), "OK")
     check_status("a procedure that records the value it was handed", conn.save_procedure(
@@ -2451,7 +2454,7 @@ def test_a_first_run_delivers_the_document_as_it_is_when_it_runs(conn: Conn):
     occupy_both_trigger_workers(conn, "gone")
     check_status("save a document", conn.save_doc({"_id": "gone", "v": 1}, coll=FIRST_RUN_COLL), "OK")
     check_status("delete it before its run starts",
-                 conn.send({"type": "DELETE", "databaseName": DB, "collectionName": FIRST_RUN_COLL, "_id": "gone"}),
+                 conn.send({"type": "DELETE", "projectName": PROJECT, "collectionName": FIRST_RUN_COLL, "_id": "gone"}),
                  "OK")
     skipped = await_latest(lambda: [row for row in history_rows(conn, kind="TRIGGER", name="first_run_audit")
                                     if row.get("outcome") == "skipped"], bool, 15.0, 0.2)
@@ -2464,18 +2467,19 @@ def test_a_first_run_delivers_the_document_as_it_is_when_it_runs(conn: Conn):
 def test_dropping_a_collection_discards_its_dead_letters(conn: Conn):
     section("Dropping a collection discards its pending and dead-lettered trigger runs")
     check_status("create a collection whose runs will die",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": DROPPED_RUNS_COLL}),
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": DROPPED_RUNS_COLL}),
                  "OK")
     arrange_failing_trigger(conn, "dropping", "dropping_boom", "install a trigger whose procedure always throws",
                             "throw new Error('dropping boom');", ["CREATED"], "dropped-doc", coll=DROPPED_RUNS_COLL)
     check("the run is dead-lettered", len(await_dead_letters(conn, "dropping")) == 1,
           f"runs={dead_letters_for(conn, 'dropping')!r}")
     check_status("drop the collection",
-                 conn.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": DROPPED_RUNS_COLL}), "OK")
+                 conn.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": DROPPED_RUNS_COLL}),
+                 "OK")
     check("its dead letter is gone with it", not dead_letters_for(conn, "dropping"),
           f"runs={dead_letters_for(conn, 'dropping')!r}")
     check_status("re-create a collection of the same name",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": DROPPED_RUNS_COLL}),
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": DROPPED_RUNS_COLL}),
                  "OK")
     check("which inherits no run of the dropped one", not dead_letters_for(conn, "dropping"),
           f"runs={dead_letters_for(conn, 'dropping')!r}")
@@ -2486,64 +2490,65 @@ def test_cascade_deletes(conn: Conn, work_dir: str):
     section("Cascade deletes")
     db_root = os.path.join(work_dir, "db")
     check_status("create a throwaway collection",
-                 conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": "throwaway"}), "OK")
+                 conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": "throwaway"}), "OK")
     check_status("install a trigger on it",
                  conn.save_trigger("temp", ["CREATED"], "auditor", coll="throwaway"), "OK")
-    trigger_file = os.path.join(db_root, DB, "throwaway", "throwaway-triggers.json")
+    trigger_file = os.path.join(db_root, PROJECT, "throwaway", "throwaway-triggers.json")
     check("the trigger file exists", os.path.isfile(trigger_file), trigger_file)
     check_status("drop the collection",
-                 conn.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": "throwaway"}), "OK")
+                 conn.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": "throwaway"}), "OK")
     check("dropping the collection took the trigger file", not os.path.exists(trigger_file), trigger_file)
 
-    check_status("create a throwaway database",
-                 conn.send({"type": "CREATE_DATABASE", "databaseName": "proc_drop_db"}), "OK")
+    check_status("create a throwaway project",
+                 conn.send({"type": "CREATE_PROJECT", "projectName": "proc_drop_project"}), "OK")
     check_status("install a procedure in it",
-                 conn.save_procedure("doomed", "return 1;", db="proc_drop_db"), "OK")
-    procedures = os.path.join(db_root, "proc_drop_db", ".procedures")
+                 conn.save_procedure("doomed", "return 1;", project="proc_drop_project"), "OK")
+    procedures = os.path.join(db_root, "proc_drop_project", ".procedures")
     check("its procedures folder exists", os.path.isdir(procedures), procedures)
-    check_status("drop the database",
-                 conn.send({"type": "DROP_DATABASE", "databaseName": "proc_drop_db"}), "OK")
-    check("dropping the database took the procedures folder", not os.path.exists(procedures), procedures)
-    check_status("re-create the database",
-                 conn.send({"type": "CREATE_DATABASE", "databaseName": "proc_drop_db"}), "OK")
-    check_code("the old procedure is gone", conn.call("doomed", db="proc_drop_db"), "NOT_FOUND", "404-8")
+    check_status("drop the project",
+                 conn.send({"type": "DROP_PROJECT", "projectName": "proc_drop_project"}), "OK")
+    check("dropping the project took the procedures folder", not os.path.exists(procedures), procedures)
+    check_status("re-create the project",
+                 conn.send({"type": "CREATE_PROJECT", "projectName": "proc_drop_project"}), "OK")
+    check_code("the old procedure is gone", conn.call("doomed", project="proc_drop_project"), "NOT_FOUND", "404-8")
     check_status("a new procedure of the same name",
-                 conn.save_procedure("doomed", "return 99;", db="proc_drop_db"), "OK")
-    check_result("runs the new body", conn.call("doomed", db="proc_drop_db"), 99)
+                 conn.save_procedure("doomed", "return 99;", project="proc_drop_project"), "OK")
+    check_result("runs the new body", conn.call("doomed", project="proc_drop_project"), 99)
 
 
-def dead_runs_of(conn: Conn, trigger_name: str, database: str) -> list:
+def dead_runs_of(conn: Conn, trigger_name: str, project: str) -> list:
     return [run for run in trigger_runs(conn, "DEAD")
-            if run.get("trigger") == trigger_name and run.get("database") == database]
+            if run.get("trigger") == trigger_name and run.get("project") == project]
 
 
 def cap_log_lines(log_path: str) -> int:
     with open(log_path, encoding="utf-8", errors="replace") as log:
-        lines = sum(1 for line in log if f"Database '{CAP_DB}' holds" in line
+        lines = sum(1 for line in log if f"Project '{CAP_PROJECT}' holds" in line
                     and "triggerDeadLetterMaxRuns" in line)
     return lines
 
 
 def test_dead_letter_cap_drops_oldest(conn: Conn, log_path: str):
-    section(f"triggerDeadLetterMaxRuns={DEAD_LETTER_CAP} keeps the newest dead letters of a database")
-    conn.send({"type": "DROP_DATABASE", "databaseName": CAP_DB})
-    check_status("create the capped database", conn.send({"type": "CREATE_DATABASE", "databaseName": CAP_DB}), "OK")
+    section(f"triggerDeadLetterMaxRuns={DEAD_LETTER_CAP} keeps the newest dead letters of a project")
+    conn.send({"type": "DROP_PROJECT", "projectName": CAP_PROJECT})
+    check_status("create the capped project", conn.send({"type": "CREATE_PROJECT", "projectName": CAP_PROJECT}), "OK")
     check_status("create its collection", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": CAP_DB, "collectionName": CAP_RUNS_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": CAP_PROJECT, "collectionName": CAP_RUNS_COLL}), "OK")
     check_status("a procedure that always throws",
-                 conn.save_procedure("cap_boom", "throw new Error('cap boom');", db=CAP_DB), "OK")
+                 conn.save_procedure("cap_boom", "throw new Error('cap boom');", project=CAP_PROJECT), "OK")
     check_status("a trigger running it", conn.save_trigger("capping", ["CREATED"], "cap_boom", coll=CAP_RUNS_COLL,
-                                                           db=CAP_DB), "OK")
+                                                           project=CAP_PROJECT), "OK")
     died = []
     for index in range(CAPPED_DEAD_LETTERS):
         check_status(f"write {index} fires the failing trigger", conn.save_doc({"_id": f"cap{index}"},
-                                                                               coll=CAP_RUNS_COLL, db=CAP_DB), "OK")
-        fresh = await_latest(lambda: [run.get("runId") for run in dead_runs_of(conn, "capping", CAP_DB)
+                                                                               coll=CAP_RUNS_COLL, project=CAP_PROJECT),
+                     "OK")
+        fresh = await_latest(lambda: [run.get("runId") for run in dead_runs_of(conn, "capping", CAP_PROJECT)
                                       if run.get("runId") not in died], bool, 30.0, 0.2)
         check(f"write {index} is dead-lettered", len(fresh) == 1, f"new dead letters {fresh!r}")
         died.extend(fresh)
     newest = sorted(died[-DEAD_LETTER_CAP:])
-    kept = await_latest(lambda: sorted(run.get("runId") for run in dead_runs_of(conn, "capping", CAP_DB)),
+    kept = await_latest(lambda: sorted(run.get("runId") for run in dead_runs_of(conn, "capping", CAP_PROJECT)),
                         lambda runs: runs == newest, 10.0, 0.2)
     check(f"only the newest {DEAD_LETTER_CAP} dead letters are kept", kept == newest,
           f"kept={kept!r} died in order={died!r}")
@@ -2552,7 +2557,7 @@ def test_dead_letter_cap_drops_oldest(conn: Conn, log_path: str):
     listed = len(trigger_runs(conn))
     pending = node_stats(conn).get("triggers", {}).get("pendingRuns")
     check("pendingRuns still counts every kept record", pending == listed, f"pendingRuns={pending} listed={listed}")
-    check_status("drop the capped database", conn.send({"type": "DROP_DATABASE", "databaseName": CAP_DB}), "OK")
+    check_status("drop the capped project", conn.send({"type": "DROP_PROJECT", "projectName": CAP_PROJECT}), "OK")
 
 
 def exhausted_counts(log_path: str) -> list:
@@ -2570,13 +2575,13 @@ def exhausted_counts(log_path: str) -> list:
 def arrange_many_dead_runs(conn: Conn):
     section(f"{MANY_DEAD_RUNS} dead-lettered runs")
     check_status("create the collection", conn.send(
-        {"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": MANY_DEAD_COLL}), "OK")
+        {"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": MANY_DEAD_COLL}), "OK")
     check_status("a procedure that always throws", conn.save_procedure("many_boom", "throw new Error('many');"), "OK")
     check_status("a trigger running it", conn.save_trigger("many_dead", ["CREATED"], "many_boom",
                                                            coll=MANY_DEAD_COLL), "OK")
     check_status(f"one BULK_SAVE fires {MANY_DEAD_RUNS} runs", conn.send(bulk_of("many", MANY_DEAD_RUNS,
                                                                               MANY_DEAD_COLL)), "OK")
-    dead = await_latest(lambda: len(dead_runs_of(conn, "many_dead", DB)), lambda count: count >= MANY_DEAD_RUNS,
+    dead = await_latest(lambda: len(dead_runs_of(conn, "many_dead", PROJECT)), lambda count: count >= MANY_DEAD_RUNS,
                         180.0, 1.0)
     check(f"all {MANY_DEAD_RUNS} runs are dead-lettered", dead == MANY_DEAD_RUNS, f"dead={dead}")
     recorded = await_latest(lambda: history_count(conn, "many_dead"), lambda count: count >= MANY_DEAD_RUNS,
@@ -2587,15 +2592,15 @@ def arrange_many_dead_runs(conn: Conn):
 
 def test_sweep_with_many_dead_runs_is_cheap(conn: Conn, log_path: str, history_before: int):
     section("With many dead letters, startup, dead-lettering and the sweep keep working from the run index")
-    check("every dead letter survived the restart", len(dead_runs_of(conn, "many_dead", DB)) == MANY_DEAD_RUNS,
-          f"dead={len(dead_runs_of(conn, 'many_dead', DB))}")
+    check("every dead letter survived the restart", len(dead_runs_of(conn, "many_dead", PROJECT)) == MANY_DEAD_RUNS,
+          f"dead={len(dead_runs_of(conn, 'many_dead', PROJECT))}")
     check("startup replayed no dead letter", history_count(conn, "many_dead") == history_before,
           f"history {history_before} -> {history_count(conn, 'many_dead')}")
     listed = len(trigger_runs(conn))
     pending = node_stats(conn).get("triggers", {}).get("pendingRuns")
     check("pendingRuns equals the listed runs", pending == listed, f"pendingRuns={pending} listed={listed}")
     check_status("one more failing write", conn.save_doc({"_id": "many-extra"}, coll=MANY_DEAD_COLL), "OK")
-    extra = await_latest(lambda: len(dead_runs_of(conn, "many_dead", DB)),
+    extra = await_latest(lambda: len(dead_runs_of(conn, "many_dead", PROJECT)),
                          lambda count: count > MANY_DEAD_RUNS, 30.0, 0.3)
     check("it is dead-lettered beside the others", extra == MANY_DEAD_RUNS + 1, f"dead={extra}")
     at_start = len(exhausted_counts(log_path))
@@ -2604,12 +2609,12 @@ def test_sweep_with_many_dead_runs_is_cheap(conn: Conn, log_path: str, history_b
     check("and counted every one of them", exhausted_counts(log_path)[-1:] >= [MANY_DEAD_RUNS + 1],
           f"counts={exhausted_counts(log_path)!r}")
     check("the sweep removed none of them (retention and cap not reached)",
-          len(dead_runs_of(conn, "many_dead", DB)) == MANY_DEAD_RUNS + 1,
-          f"dead={len(dead_runs_of(conn, 'many_dead', DB))}")
+          len(dead_runs_of(conn, "many_dead", PROJECT)) == MANY_DEAD_RUNS + 1,
+          f"dead={len(dead_runs_of(conn, 'many_dead', PROJECT))}")
     check_status("drop the collection", conn.send(
-        {"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": MANY_DEAD_COLL}), "OK")
-    check("its dead letters went with it", not dead_runs_of(conn, "many_dead", DB),
-          f"dead={len(dead_runs_of(conn, 'many_dead', DB))}")
+        {"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": MANY_DEAD_COLL}), "OK")
+    check("its dead letters went with it", not dead_runs_of(conn, "many_dead", PROJECT),
+          f"dead={len(dead_runs_of(conn, 'many_dead', PROJECT))}")
 
 
 def test_switches_off(conn: Conn):
@@ -2617,7 +2622,7 @@ def test_switches_off(conn: Conn):
     check_code("scriptsEnabled=false refuses a call", conn.call("greet"), "FORBIDDEN", "403-2")
     check_code("and a save", conn.save_procedure("valid_name", "return 1;"), "FORBIDDEN", "403-2")
     check_status("trigger DDL still works", conn.send(
-        {"type": "LIST_TRIGGERS", "databaseName": DB, "collectionName": COLL}), "OK")
+        {"type": "LIST_TRIGGERS", "projectName": PROJECT, "collectionName": COLL}), "OK")
     check_status("a write still succeeds", conn.save_doc({"_id": "quiet", "n": 1}), "OK")
     quiet = await_absent(conn, "UPDATED-quiet")
     check("triggersEnabled=false fires nothing", quiet.get("status") != "OK", f"got {quiet}")
@@ -2626,7 +2631,7 @@ def test_switches_off(conn: Conn):
     check("the write landed", conn.find("off1").get("status") == "OK")
     check_code("TEST_TRIGGER is refused with scripts off",
                conn.test_trigger("off_hook", "CREATED", {"_id": "x"}), "FORBIDDEN", "403-2")
-    stats = conn.send({"type": "GET_DATABASE_STATS"})
+    stats = conn.send({"type": "GET_PROJECT_STATS"})
     triggers = (stats.get("stats") or {}).get("triggers") or {}
     check("stats report triggers as disabled", triggers.get("enabled") is False, f"got {triggers}")
     check("stats report the before-hook counters",

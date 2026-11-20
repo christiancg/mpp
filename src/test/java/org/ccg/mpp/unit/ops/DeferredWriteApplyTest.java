@@ -60,10 +60,10 @@ public class DeferredWriteApplyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         recorder = RecordingForcer.install(true);
         DeferredWrites.install();
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "n"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "n"));
         final var seeded = new ArrayList<JsonObject>();
         for (var index = 0; index < DOCUMENTS; index++) {
             seeded.add(document("d" + index, index));
@@ -75,7 +75,7 @@ public class DeferredWriteApplyTest {
     public void tearDown() throws Exception {
         writablePages(true);
         recorder.close();
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -88,13 +88,13 @@ public class DeferredWriteApplyTest {
     }
 
     private OperationResponse bulkSave(List<JsonObject> objects) {
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return processor.processMessage(request);
     }
 
     private static List<File> pages() {
-        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.DB + "/" + TestGlobals.COLL)
+        final var files = new File(TestGlobals.PATH + "/" + TestGlobals.PROJECT + "/" + TestGlobals.COLL)
                 .listFiles((_, name) -> name.endsWith(".dat"));
         return files == null ? List.of() : List.of(files);
     }
@@ -117,7 +117,7 @@ public class DeferredWriteApplyTest {
     }
 
     private JsonObject findD1() {
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("d1");
         final var response = processor.processMessage(find);
         assertEquals(OperationStatus.OK, response.getStatus(), response.getMessage());
@@ -130,7 +130,7 @@ public class DeferredWriteApplyTest {
             steps.add(new SkipAggregationStep(0));
         }
         steps.add(new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "n", new JsonNumber(n))));
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         return processor.processMessage(request);
     }
@@ -172,7 +172,7 @@ public class DeferredWriteApplyTest {
         failTheTakeBack();
         bulkSave(List.of(document("d1", 100)));
         recorder.refusingWhen((_, _) -> false);
-        final var find = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var find = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         find.set_id("d1");
 
         assertEquals("503-19", query(true, 1).getErrorCode(), "a scan must not read the half-applied pages");
@@ -186,11 +186,11 @@ public class DeferredWriteApplyTest {
     @Test
     public void unappliedBlanksAreNotVisibleToAScan() {
         writablePages(false);
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id("d2");
         final var deleted = processor.processMessage(delete);
         writablePages(true);
-        cache.evictCollection(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(OperationStatus.OK, deleted.getStatus(), deleted.getMessage());
         assertEquals(List.of(), idsWhere(true, 2));
@@ -215,16 +215,16 @@ public class DeferredWriteApplyTest {
         Mockito.verify(spy, Mockito.never()).healTornPageTails(ArgumentMatchers.any(PkRowsSession.class));
         Mockito.verify(spy, Mockito.never()).retireDanglingPkEntries(ArgumentMatchers.any());
         Mockito.verify(spy, Mockito.never()).adoptOrphanedRecords(ArgumentMatchers.any());
-        final var liveBytes = fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var liveBytes = fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .mapToLong(PkIndexEntry::getLength).sum();
         assertEquals(liveBytes,
-                cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+                cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                         .mapToLong(AdminPageEntry::getPageSize).sum(),
                 "the replayed collection's page rows are rebuilt");
     }
 
     private Map<Long, List<Long>> rowsByPage() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(row -> row.getEntryCount() > 0 || row.getPageSize() > 0)
                 .collect(Collectors.toMap(AdminPageEntry::getPage,
                         row -> List.of((long) row.getEntryCount(), row.getPageSize()), (a, _) -> a, TreeMap::new));
@@ -232,7 +232,7 @@ public class DeferredWriteApplyTest {
 
     private Map<Long, List<Long>> liveByPage() throws Exception {
         final var live = new TreeMap<Long, List<Long>>();
-        for (final var row : fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL)) {
+        for (final var row : fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL)) {
             live.merge(row.getPage(), List.of(1L, row.getLength()),
                     (a, b) -> List.of(a.getFirst() + b.getFirst(), a.getLast() + b.getLast()));
         }
@@ -251,7 +251,7 @@ public class DeferredWriteApplyTest {
         assertEquals("500-34", bulkSave(List.of(grownD1())).getErrorCode());
         freeTheDisk();
 
-        assertTrue(fs.applyDeferredWrites(TestGlobals.DB, TestGlobals.COLL));
+        assertTrue(fs.applyDeferredWrites(TestGlobals.PROJECT, TestGlobals.COLL));
         findD1();
 
         assertEquals(liveByPage(), rowsByPage(), "the rows follow the replayed write once the collection is used");
@@ -259,14 +259,14 @@ public class DeferredWriteApplyTest {
 
     @Test
     public void aReplayInsideAnotherWritersLockHoldStillReconcilesThePageRows() throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             failTheTakeBack();
             assertEquals("500-34", bulkSave(List.of(grownD1())).getErrorCode());
             freeTheDisk();
             bulkSave(List.of(document("d2", 200)));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertEquals(100.0, findD1().get("n").asJsonNumber().getValue());

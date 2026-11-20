@@ -11,12 +11,12 @@ public class ReindexRequest extends OperationRequest {
         super(OperationType.REINDEX, null, null);
     }
 
-    public ReindexRequest(String databaseName, String collectionName, List<String> fieldNames) {
-        this(databaseName, collectionName, fieldNames, false);
+    public ReindexRequest(String projectName, String collectionName, List<String> fieldNames) {
+        this(projectName, collectionName, fieldNames, false);
     }
 
-    public ReindexRequest(String databaseName, String collectionName, List<String> fieldNames, boolean primaryKey) {
-        super(OperationType.REINDEX, databaseName, collectionName);
+    public ReindexRequest(String projectName, String collectionName, List<String> fieldNames, boolean primaryKey) {
+        super(OperationType.REINDEX, projectName, collectionName);
         this.fieldNames = fieldNames;
         this.primaryKey = primaryKey;
     }

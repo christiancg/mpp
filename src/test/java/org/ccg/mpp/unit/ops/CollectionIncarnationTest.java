@@ -32,7 +32,7 @@ public class CollectionIncarnationTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -42,14 +42,13 @@ public class CollectionIncarnationTest {
     }
 
     private long incarnationOf(String collName) {
-        return cache.getAdminCollectionEntry(TestGlobals.DB, collName).getIncarnation();
+        return cache.getAdminCollectionEntry(TestGlobals.PROJECT, collName).getIncarnation();
     }
 
     private static CreateCollectionRequest forgedCreate(long incarnation) {
-        return (CreateCollectionRequest) RequestParser
-                .parseRequest("{\"type\":\"CREATE_COLLECTION\",\"databaseName\":\"" + TestGlobals.DB
-                        + "\",\"collectionName\":\"" + FORGED_TARGET + "\",\"incarnation\":" + incarnation
-                        + ",\"incarnationText\":\"" + incarnation + "\"}");
+        return (CreateCollectionRequest) RequestParser.parseRequest("{\"type\":\"CREATE_COLLECTION\",\"projectName\":\""
+                + TestGlobals.PROJECT + "\",\"collectionName\":\"" + FORGED_TARGET + "\",\"incarnation\":" + incarnation
+                + ",\"incarnationText\":\"" + incarnation + "\"}");
     }
 
     @Test
@@ -57,7 +56,7 @@ public class CollectionIncarnationTest {
         final var before = clock.current();
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "local_coll")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "local_coll")).getStatus());
 
         assertTrue(incarnationOf("local_coll") > before);
     }
@@ -65,11 +64,11 @@ public class CollectionIncarnationTest {
     @Test
     public void test_a_duplicate_create_keeps_the_existing_incarnation() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "dupIncColl")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "dupIncColl")).getStatus());
         final var first = incarnationOf("dupIncColl");
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "dupIncColl")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "dupIncColl")).getStatus());
 
         assertEquals(first, incarnationOf("dupIncColl"));
     }
@@ -103,30 +102,30 @@ public class CollectionIncarnationTest {
 
     @Test
     public void test_case_differing_collection_is_refused() {
-        final var created = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "caseProbe"));
+        final var created = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "caseProbe"));
         assertEquals(OperationStatus.OK, created.getStatus());
-        final var colliding = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "CaseProbe"));
+        final var colliding = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "CaseProbe"));
         assertEquals(ErrorCode.NAME_COLLIDES_ON_DISK.getCode(), colliding.getErrorCode());
     }
 
     @Test
     public void test_dropping_then_recreating_a_collection_name_is_not_a_collision() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "dropProbe")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "dropProbe")).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, "dropProbe")).getStatus());
-        final var recreated = processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "dropProbe"));
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, "dropProbe")).getStatus());
+        final var recreated = processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "dropProbe"));
         assertEquals(OperationStatus.OK, recreated.getStatus());
-        assertNull(OnDiskNameRegistry.collidingCollection(TestGlobals.DB, "dropProbe"));
+        assertNull(OnDiskNameRegistry.collidingCollection(TestGlobals.PROJECT, "dropProbe"));
     }
 
     @Test
     public void test_a_dropped_collection_name_frees_its_case_variants_too() {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "freedProbe")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "freedProbe")).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, "freedProbe")).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, "freedProbe")).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "FreedProbe")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "FreedProbe")).getStatus());
     }
 }

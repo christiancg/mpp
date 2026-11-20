@@ -143,7 +143,7 @@ public class ServerMain {
         DeviceSyncGuard.fallBackWhenUnsyncable(fs);
         installDurableShadowIfConfigured();
         StorageFormatGuard.stampIfUnstamped(fs);
-        fs.createAdminDatabase();
+        fs.createAdminProject();
         StartupWarnings.retainAndReportUncleanStops();
         final var replayed = PageOccupancyReconciler.markReplayed(fs.redoWriteAheadLogs());
         DeferredWrites.install();
@@ -187,7 +187,7 @@ public class ServerMain {
         StartupWarnings.warnIfClusterWithoutTls();
         StartupWarnings.warnIfMetricsExposedWithoutToken();
         StartupWarnings.warnIfNamesShareAnOnDiskKey();
-        StartupWarnings.warnIfDatabaseSharesTheClusterFolder();
+        StartupWarnings.warnIfProjectSharesTheClusterFolder();
         startMetricsIfEnabled();
         startClusterIfEnabled();
         TriggerRunRecovery.recoverLocal(startupTriggerRuns);
@@ -265,9 +265,9 @@ public class ServerMain {
     private static void seedHybridClock() {
         var highest = Math.max(highestBufferedOpVersionOrZero(), highestAdminVersionOrZero());
         try {
-            for (final var dbName : cache.getUserDatabaseNames()) {
-                for (final var collName : cache.getCollectionNamesForDatabase(dbName)) {
-                    highest = Math.max(highest, highestVersionOrZero(dbName, collName));
+            for (final var projectName : cache.getUserProjectNames()) {
+                for (final var collName : cache.getCollectionNamesForProject(projectName)) {
+                    highest = Math.max(highest, highestVersionOrZero(projectName, collName));
                 }
             }
         } catch (Exception e) {
@@ -308,17 +308,17 @@ public class ServerMain {
         return highest;
     }
 
-    private static long highestVersionOrZero(String dbName, String collName) {
+    private static long highestVersionOrZero(String projectName, String collName) {
         var highest = 0L;
         try {
-            final var collEntry = cache.getAdminCollectionEntry(dbName, collName);
+            final var collEntry = cache.getAdminCollectionEntry(projectName, collName);
             if (collEntry != null) {
                 highest = Math.max(highest, collEntry.getIncarnation());
             }
-            highest = Math.max(highest, fs.highestPkVersion(dbName, collName));
-            highest = Math.max(highest, fs.tombstones().highestVersion(dbName, collName));
+            highest = Math.max(highest, fs.highestPkVersion(projectName, collName));
+            highest = Math.max(highest, fs.tombstones().highestVersion(projectName, collName));
         } catch (Exception e) {
-            logger.error("Could not seed the write clock from " + dbName + "|" + collName
+            logger.error("Could not seed the write clock from " + projectName + "|" + collName
                     + "; versions written to it could regress after this restart", e);
         }
         return highest;
@@ -328,7 +328,7 @@ public class ServerMain {
         try {
             AdminOperationHelper.relistUnlistedCollections();
         } catch (Exception failure) {
-            logger.error("Failed to re-list registered collections missing from their database's list", failure);
+            logger.error("Failed to re-list registered collections missing from their project's list", failure);
         }
     }
 
@@ -362,8 +362,8 @@ public class ServerMain {
 
         final var passwordHash = PasswordHasher.hash(defaultPassword);
         final var globalPerms = new HashSet<GlobalPermissionType>();
-        globalPerms.add(GlobalPermissionType.CREATE_DATABASE);
-        globalPerms.add(GlobalPermissionType.DROP_DATABASE);
+        globalPerms.add(GlobalPermissionType.CREATE_PROJECT);
+        globalPerms.add(GlobalPermissionType.DROP_PROJECT);
 
         final var adminUser = new AdminUserEntry(defaultUsername, passwordHash, true, globalPerms, new HashMap<>(),
                 new HashMap<>());

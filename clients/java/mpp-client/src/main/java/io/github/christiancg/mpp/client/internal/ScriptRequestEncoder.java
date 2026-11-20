@@ -31,16 +31,16 @@ public final class ScriptRequestEncoder {
         this.pipeline = pipeline;
     }
 
-    public ObjectNode runScript(String database, String script) {
-        return RequestEncoder.of(Operation.RUN_SCRIPT, database).put("script", script);
+    public ObjectNode runScript(String project, String script) {
+        return RequestEncoder.of(Operation.RUN_SCRIPT, project).put("script", script);
     }
 
-    public ObjectNode runScript(String database, String script, Document args) {
-        return withArgs(runScript(database, script), args);
+    public ObjectNode runScript(String project, String script, Document args) {
+        return withArgs(runScript(project, script), args);
     }
 
-    public ObjectNode saveProcedure(String database, ProcedureDefinition procedure) {
-        final var request = RequestEncoder.of(Operation.SAVE_PROCEDURE, database).put(NAME, procedure.name())
+    public ObjectNode saveProcedure(String project, ProcedureDefinition procedure) {
+        final var request = RequestEncoder.of(Operation.SAVE_PROCEDURE, project).put(NAME, procedure.name())
                 .put("script", procedure.script());
         procedure.description().ifPresent(description -> request.put(DESCRIPTION, description));
         procedure.enabled().ifPresent(enabled -> request.put(ENABLED, enabled));
@@ -48,28 +48,28 @@ public final class ScriptRequestEncoder {
         return request;
     }
 
-    public ObjectNode deleteProcedure(String database, String name) {
-        return RequestEncoder.of(Operation.DELETE_PROCEDURE, database).put(NAME, name);
+    public ObjectNode deleteProcedure(String project, String name) {
+        return RequestEncoder.of(Operation.DELETE_PROCEDURE, project).put(NAME, name);
     }
 
-    public ObjectNode listProcedures(String database) {
-        return RequestEncoder.of(Operation.LIST_PROCEDURES, database);
+    public ObjectNode listProcedures(String project) {
+        return RequestEncoder.of(Operation.LIST_PROCEDURES, project);
     }
 
-    public ObjectNode listProcedures(String database, boolean includeSource) {
-        return listProcedures(database).put("includeSource", includeSource);
+    public ObjectNode listProcedures(String project, boolean includeSource) {
+        return listProcedures(project).put("includeSource", includeSource);
     }
 
-    public ObjectNode callProcedure(String database, String name) {
-        return RequestEncoder.of(Operation.CALL_PROCEDURE, database).put(PROCEDURE, name);
+    public ObjectNode callProcedure(String project, String name) {
+        return RequestEncoder.of(Operation.CALL_PROCEDURE, project).put(PROCEDURE, name);
     }
 
-    public ObjectNode callProcedure(String database, String name, Document args) {
-        return withArgs(callProcedure(database, name), args);
+    public ObjectNode callProcedure(String project, String name, Document args) {
+        return withArgs(callProcedure(project, name), args);
     }
 
-    public ObjectNode saveTrigger(String database, String collection, TriggerDefinition trigger) {
-        final var request = RequestEncoder.of(Operation.SAVE_TRIGGER, database, collection).put(NAME, trigger.name());
+    public ObjectNode saveTrigger(String project, String collection, TriggerDefinition trigger) {
+        final var request = RequestEncoder.of(Operation.SAVE_TRIGGER, project, collection).put(NAME, trigger.name());
         final var events = request.putArray("events");
         trigger.events().forEach(event -> events.add(event.name()));
         request.put(PROCEDURE, trigger.procedureName());
@@ -81,26 +81,26 @@ public final class ScriptRequestEncoder {
         return request;
     }
 
-    public ObjectNode deleteTrigger(String database, String collection, String name) {
-        return RequestEncoder.of(Operation.DELETE_TRIGGER, database, collection).put(NAME, name);
+    public ObjectNode deleteTrigger(String project, String collection, String name) {
+        return RequestEncoder.of(Operation.DELETE_TRIGGER, project, collection).put(NAME, name);
     }
 
-    public ObjectNode listTriggers(String database) {
-        return RequestEncoder.of(Operation.LIST_TRIGGERS, database);
+    public ObjectNode listTriggers(String project) {
+        return RequestEncoder.of(Operation.LIST_TRIGGERS, project);
     }
 
-    public ObjectNode listTriggers(String database, String collection) {
-        return RequestEncoder.of(Operation.LIST_TRIGGERS, database, collection);
+    public ObjectNode listTriggers(String project, String collection) {
+        return RequestEncoder.of(Operation.LIST_TRIGGERS, project, collection);
     }
 
-    public ObjectNode testTrigger(String database, String collection, String name, TriggerEvent event,
+    public ObjectNode testTrigger(String project, String collection, String name, TriggerEvent event,
             Document document) {
-        return RequestEncoder.of(Operation.TEST_TRIGGER, database, collection).put(NAME, name)
-                .put("event", event.name()).set("document", Documents.node(document));
+        return RequestEncoder.of(Operation.TEST_TRIGGER, project, collection).put(NAME, name).put("event", event.name())
+                .set("document", Documents.node(document));
     }
 
-    public ObjectNode saveSchedule(String database, ScheduleDefinition schedule) {
-        final var request = RequestEncoder.of(Operation.SAVE_SCHEDULE, database).put(NAME, schedule.name())
+    public ObjectNode saveSchedule(String project, ScheduleDefinition schedule) {
+        final var request = RequestEncoder.of(Operation.SAVE_SCHEDULE, project).put(NAME, schedule.name())
                 .put(PROCEDURE, schedule.procedureName());
         schedule.cron().ifPresent(cron -> request.put("cron", cron));
         schedule.interval().ifPresent(interval -> request.put("intervalMs", interval.toMillis()));
@@ -112,16 +112,16 @@ public final class ScriptRequestEncoder {
         return request;
     }
 
-    public ObjectNode deleteSchedule(String database, String name) {
-        return RequestEncoder.of(Operation.DELETE_SCHEDULE, database).put(NAME, name);
+    public ObjectNode deleteSchedule(String project, String name) {
+        return RequestEncoder.of(Operation.DELETE_SCHEDULE, project).put(NAME, name);
     }
 
-    public ObjectNode listSchedules(String database) {
-        return RequestEncoder.of(Operation.LIST_SCHEDULES, database);
+    public ObjectNode listSchedules(String project) {
+        return RequestEncoder.of(Operation.LIST_SCHEDULES, project);
     }
 
-    public ObjectNode listSchedules(String database, boolean includeArgs) {
-        return listSchedules(database).put("includeArgs", includeArgs);
+    public ObjectNode listSchedules(String project, boolean includeArgs) {
+        return listSchedules(project).put("includeArgs", includeArgs);
     }
 
     public ObjectNode listScripts() {
@@ -189,7 +189,7 @@ public final class ScriptRequestEncoder {
         request.put("admin", permissions.admin());
         final var global = request.putArray("globalPermissions");
         permissions.global().forEach(permission -> global.add(permission.name()));
-        names(request.putObject("databasePermissions"), permissions.databases());
+        names(request.putObject("projectPermissions"), permissions.projects());
         names(request.putObject("collectionPermissions"), permissions.collections());
         names(request.putObject("scriptPermissions"), permissions.scripts());
         return request;

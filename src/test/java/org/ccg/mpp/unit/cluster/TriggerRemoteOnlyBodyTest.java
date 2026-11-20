@@ -24,7 +24,7 @@ import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.TriggerRunLog;
 import org.ccg.mpp.ops.resp.OperationResponse;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
 import org.ccg.mpp.test.ClusterTestHarness;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -48,7 +48,7 @@ public class TriggerRemoteOnlyBodyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         coordinatorPool = TestUtils.getPrivateField(coordinator, "pool", PeerConnectionPool.class);
         routerPool = TestUtils.getPrivateField(router, "pool", PeerConnectionPool.class);
@@ -91,20 +91,20 @@ public class TriggerRemoteOnlyBodyTest {
 
     private static void recordPendingRun() throws Exception {
         AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(RUN_ID, 0L, TriggerRunLog.currentNodeId(),
-                TestGlobals.DB, TestGlobals.COLL, "audit", "mark", EventType.CREATED, false, "admin", 0,
+                TestGlobals.PROJECT, TestGlobals.COLL, "audit", "mark", EventType.CREATED, false, "admin", 0,
                 System.currentTimeMillis(), List.of("watched"), List.of()));
     }
 
-    private EnforcingDatabaseAccess bodyThatWroteOnlyToAnotherOwner() {
-        final var database = new EnforcingDatabaseAccess("admin", null);
-        database.beginTransaction();
-        clientTracker.addTransactionParticipant(sessionClientIdOf(database), REMOTE);
-        return database;
+    private EnforcingProjectAccess bodyThatWroteOnlyToAnotherOwner() {
+        final var project = new EnforcingProjectAccess("admin", null);
+        project.beginTransaction();
+        clientTracker.addTransactionParticipant(sessionClientIdOf(project), REMOTE);
+        return project;
     }
 
-    private static UUID sessionClientIdOf(EnforcingDatabaseAccess database) {
+    private static UUID sessionClientIdOf(EnforcingProjectAccess project) {
         try {
-            return TestUtils.getPrivateField(database, "sessionClientId", UUID.class);
+            return TestUtils.getPrivateField(project, "sessionClientId", UUID.class);
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
@@ -113,10 +113,10 @@ public class TriggerRemoteOnlyBodyTest {
     @Test
     public void a_trigger_whose_body_wrote_only_to_another_owner_consumes_its_run() throws Exception {
         recordPendingRun();
-        final var database = bodyThatWroteOnlyToAnotherOwner();
-        database.bufferTriggerRunConsume(RUN_ID);
+        final var project = bodyThatWroteOnlyToAnotherOwner();
+        project.bufferTriggerRunConsume(RUN_ID);
 
-        assertDoesNotThrow(database::commitTransaction);
+        assertDoesNotThrow(project::commitTransaction);
 
         assertTrue(TriggerRunLog.recordIdsFor(RUN_ID).isEmpty(),
                 "a run whose effects committed must not stay pending, or the next restart replays its body");
@@ -125,11 +125,11 @@ public class TriggerRemoteOnlyBodyTest {
     @Test
     public void a_trigger_whose_body_wrote_to_two_other_owners_consumes_its_run() throws Exception {
         recordPendingRun();
-        final var database = bodyThatWroteOnlyToAnotherOwner();
-        clientTracker.addTransactionParticipant(sessionClientIdOf(database), SECOND_REMOTE);
-        database.bufferTriggerRunConsume(RUN_ID);
+        final var project = bodyThatWroteOnlyToAnotherOwner();
+        clientTracker.addTransactionParticipant(sessionClientIdOf(project), SECOND_REMOTE);
+        project.bufferTriggerRunConsume(RUN_ID);
 
-        assertDoesNotThrow(database::commitTransaction);
+        assertDoesNotThrow(project::commitTransaction);
 
         assertTrue(TriggerRunLog.recordIdsFor(RUN_ID).isEmpty(),
                 "a 2PC commit must prepare and apply the slice holding the consume op too");
@@ -137,13 +137,13 @@ public class TriggerRemoteOnlyBodyTest {
 
     @Test
     public void buffering_the_consume_marks_the_local_slice() {
-        final var database = bodyThatWroteOnlyToAnotherOwner();
-        final var sessionClientId = sessionClientIdOf(database);
+        final var project = bodyThatWroteOnlyToAnotherOwner();
+        final var sessionClientId = sessionClientIdOf(project);
 
-        database.bufferTriggerRunConsume(RUN_ID);
+        project.bufferTriggerRunConsume(RUN_ID);
 
         assertTrue(clientTracker.hasLocalSlice(sessionClientId),
                 "the consume op lives in this node's slice, so the commit must include that slice");
-        database.rollbackTransaction();
+        project.rollbackTransaction();
     }
 }

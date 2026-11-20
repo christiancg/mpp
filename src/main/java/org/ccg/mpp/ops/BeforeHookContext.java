@@ -43,7 +43,7 @@ public final class BeforeHookContext implements AutoCloseable {
     private static final AtomicLong rejected = new AtomicLong();
     private static final AtomicLong failed = new AtomicLong();
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final EventType event;
     private final String actingUser;
@@ -55,9 +55,9 @@ public final class BeforeHookContext implements AutoCloseable {
     private final SchemaBudget schemaBudget;
     private List<String> lastStack;
 
-    private BeforeHookContext(String dbName, String collName, EventType event, String actingUser,
+    private BeforeHookContext(String projectName, String collName, EventType event, String actingUser,
             List<TriggerDefinition> hooks, boolean capturing, SchemaBudget schemaBudget) {
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.schemaBudget = schemaBudget;
         this.collName = collName;
         this.event = event;
@@ -66,27 +66,27 @@ public final class BeforeHookContext implements AutoCloseable {
         this.logs = capturing ? new ArrayList<>() : null;
         this.scriptRun = hooks.isEmpty()
                 ? null
-                : runRegistry.register(ScriptRunKind.BEFORE_HOOK, dbName, collName, actingUser, null);
+                : runRegistry.register(ScriptRunKind.BEFORE_HOOK, projectName, collName, actingUser, null);
         this.deadline = System.currentTimeMillis() + configuration.getBeforeHookTimeoutMs();
     }
 
-    public static boolean hasHooksFor(String dbName, String collName, EventType event) {
-        return !hooksFor(dbName, collName, event).isEmpty();
+    public static boolean hasHooksFor(String projectName, String collName, EventType event) {
+        return !hooksFor(projectName, collName, event).isEmpty();
     }
 
-    public static BeforeHookContext open(String dbName, String collName, EventType event, String actingUser) {
-        return open(dbName, collName, event, actingUser, SchemaValidationHelper.newBudget());
+    public static BeforeHookContext open(String projectName, String collName, EventType event, String actingUser) {
+        return open(projectName, collName, event, actingUser, SchemaValidationHelper.newBudget());
     }
 
-    public static BeforeHookContext open(String dbName, String collName, EventType event, String actingUser,
+    public static BeforeHookContext open(String projectName, String collName, EventType event, String actingUser,
             SchemaBudget schemaBudget) {
-        return new BeforeHookContext(dbName, collName, event, actingUser, hooksFor(dbName, collName, event), false,
-                schemaBudget);
+        return new BeforeHookContext(projectName, collName, event, actingUser, hooksFor(projectName, collName, event),
+                false, schemaBudget);
     }
 
-    public static BeforeHookContext openForTest(String dbName, String collName, EventType event, String actingUser,
+    public static BeforeHookContext openForTest(String projectName, String collName, EventType event, String actingUser,
             TriggerDefinition hook) {
-        return new BeforeHookContext(dbName, collName, event, actingUser, List.of(hook), true,
+        return new BeforeHookContext(projectName, collName, event, actingUser, List.of(hook), true,
                 SchemaValidationHelper.newBudget());
     }
 
@@ -98,12 +98,12 @@ public final class BeforeHookContext implements AutoCloseable {
         return lastStack;
     }
 
-    private static List<TriggerDefinition> hooksFor(String dbName, String collName, EventType event) {
+    private static List<TriggerDefinition> hooksFor(String projectName, String collName, EventType event) {
         if (!configuration.isTriggersEnabled() || Globals.SCRIPT_RUNS_COLLECTION_NAME.equals(collName)) {
             return List.of();
         }
         final var matching = new ArrayList<TriggerDefinition>();
-        for (final var trigger : cache.getTriggersFor(dbName, collName)) {
+        for (final var trigger : cache.getTriggersFor(projectName, collName)) {
             if (trigger.isBefore() && trigger.isEnabled() && trigger.getEvents().contains(event)) {
                 matching.add(trigger);
             }
@@ -131,7 +131,7 @@ public final class BeforeHookContext implements AutoCloseable {
 
     @SuppressWarnings("resource")
     private BeforeHookOutcome runOne(TriggerDefinition hook, JsonObject document, String id, OperationType type) {
-        final var procedure = cache.getProcedure(dbName, hook.getProcedureName());
+        final var procedure = cache.getProcedure(projectName, hook.getProcedureName());
         if (procedure == null || !procedure.isEnabled()) {
             failed.incrementAndGet();
             return reject(type, hook, "its procedure '" + hook.getProcedureName() + "' no longer exists");
@@ -178,7 +178,7 @@ public final class BeforeHookContext implements AutoCloseable {
         }
         final String schemaErrors;
         try {
-            schemaErrors = SchemaValidationHelper.schemaErrors(dbName, collName, replacement, schemaBudget);
+            schemaErrors = SchemaValidationHelper.schemaErrors(projectName, collName, replacement, schemaBudget);
         } catch (SchemaBudgetExceededException e) {
             rejected.incrementAndGet();
             return reject(type, hook, "the document it returned exceeds the schema validation budget");
@@ -213,10 +213,10 @@ public final class BeforeHookContext implements AutoCloseable {
         if (remaining <= 0) {
             throw new ScriptCallableException(TIMEOUT, TIMED_OUT_MESSAGE);
         }
-        final var compiled = compiledProcedures.get(dbName, hook.getProcedureName(), version, source);
+        final var compiled = compiledProcedures.get(projectName, hook.getProcedureName(), version, source);
         final var bindings = logs == null
-                ? HookHostBindings.live(dbName, limits(remaining), this::isCancelled)
-                : HookHostBindings.capturing(dbName, limits(remaining), logs::add, this::isCancelled);
+                ? HookHostBindings.live(projectName, limits(remaining), this::isCancelled)
+                : HookHostBindings.capturing(projectName, limits(remaining), logs::add, this::isCancelled);
         final var opened = simpleJs.openCallable(compiled, bindings);
         callables.put(key, opened);
         return opened;
@@ -235,7 +235,7 @@ public final class BeforeHookContext implements AutoCloseable {
     private JsonObject contextFor(TriggerDefinition hook, String id) {
         final var context = new JsonObject();
         context.add("event", new JsonString(event.name()));
-        context.add("database", new JsonString(dbName));
+        context.add("project", new JsonString(projectName));
         context.add("collection", new JsonString(collName));
         context.add("trigger", new JsonString(hook.getName()));
         context.add("actingUser", new JsonString(actingUser == null ? "" : actingUser));
@@ -264,10 +264,10 @@ public final class BeforeHookContext implements AutoCloseable {
     }
 
     private void recordRefusal(TriggerDefinition hook, String outcome, String errorName, String reason) {
-        ScriptRunHistory.record(
-                new ScriptRunRecord(scriptRun == null ? null : scriptRun.runId(), ScriptRunKind.BEFORE_HOOK, dbName,
-                        hook.getName(), hook.getProcedureName(), collName, event.name(), hook.getDefiner(), actingUser,
-                        System.currentTimeMillis(), 0L, 1, outcome, errorName, reason, lastStack, null, null, false));
+        ScriptRunHistory.record(new ScriptRunRecord(scriptRun == null ? null : scriptRun.runId(),
+                ScriptRunKind.BEFORE_HOOK, projectName, hook.getName(), hook.getProcedureName(), collName, event.name(),
+                hook.getDefiner(), actingUser, System.currentTimeMillis(), 0L, 1, outcome, errorName, reason, lastStack,
+                null, null, false));
     }
 
     private BeforeHookOutcome failure(OperationType type, TriggerDefinition hook, ScriptCallableException e) {

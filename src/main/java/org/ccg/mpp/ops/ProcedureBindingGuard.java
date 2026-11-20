@@ -22,31 +22,31 @@ public final class ProcedureBindingGuard {
     private ProcedureBindingGuard() {
     }
 
-    public static OperationResponse refusal(OperationType type, String dbName, String procedureName, String actingUser)
-            throws IOException {
-        if (exempt(dbName, actingUser)) {
+    public static OperationResponse refusal(OperationType type, String projectName, String procedureName,
+            String actingUser) throws IOException {
+        if (exempt(projectName, actingUser)) {
             return null;
         }
         final var memo = new HashMap<String, ModuleReferences>();
-        for (final var boundProcedure : foreignBoundProcedures(dbName, actingUser)) {
-            if (reaches(dbName, boundProcedure, procedureName, memo)) {
+        for (final var boundProcedure : foreignBoundProcedures(projectName, actingUser)) {
+            if (reaches(projectName, boundProcedure, procedureName, memo)) {
                 return new OperationResponse(type, "Procedure '" + procedureName
-                        + "' is bound by a trigger or schedule that runs as another user; only that user, a database"
+                        + "' is bound by a trigger or schedule that runs as another user; only that user, a project"
                         + " owner or an admin may change it", ErrorCode.PROCEDURE_BOUND_BY_OTHER_DEFINER);
             }
         }
         return null;
     }
 
-    static OperationResponse foreignDefinitionRefusal(OperationType type, String dbName, String definer,
+    static OperationResponse foreignDefinitionRefusal(OperationType type, String projectName, String definer,
             String actingUser) {
-        if (definer == null || definer.equals(actingUser) || exempt(dbName, actingUser)) {
+        if (definer == null || definer.equals(actingUser) || exempt(projectName, actingUser)) {
             return null;
         }
         return new OperationResponse(type, ErrorCode.DEFINITION_OWNED_BY_OTHER_DEFINER);
     }
 
-    private static boolean exempt(String dbName, String actingUser) {
+    private static boolean exempt(String projectName, String actingUser) {
         if (actingUser == null) {
             return false;
         }
@@ -54,16 +54,16 @@ public final class ProcedureBindingGuard {
         if (user != null && user.isAdmin()) {
             return true;
         }
-        final var dbEntry = cache.getAdminDbEntry(dbName);
+        final var dbEntry = cache.getAdminProjectEntry(projectName);
         return dbEntry != null && dbEntry.isOwner(actingUser);
     }
 
-    private static Set<String> foreignBoundProcedures(String dbName, String actingUser) throws IOException {
+    private static Set<String> foreignBoundProcedures(String projectName, String actingUser) throws IOException {
         final var bindings = new LinkedHashSet<String>();
-        for (final var trigger : TriggerOperationHelper.triggersIn(dbName)) {
+        for (final var trigger : TriggerOperationHelper.triggersIn(projectName)) {
             addIfForeign(bindings, trigger.getDefiner(), trigger.getProcedureName(), actingUser);
         }
-        for (final var schedule : ScheduleOperationHelper.schedulesIn(dbName)) {
+        for (final var schedule : ScheduleOperationHelper.schedulesIn(projectName)) {
             addIfForeign(bindings, schedule.getDefiner(), schedule.getProcedureName(), actingUser);
         }
         return bindings;
@@ -75,7 +75,7 @@ public final class ProcedureBindingGuard {
         }
     }
 
-    private static boolean reaches(String dbName, String from, String target, Map<String, ModuleReferences> memo) {
+    private static boolean reaches(String projectName, String from, String target, Map<String, ModuleReferences> memo) {
         final var visited = new HashSet<String>();
         final var pending = new ArrayDeque<String>();
         pending.add(from);
@@ -87,7 +87,7 @@ public final class ProcedureBindingGuard {
             if (!visited.add(name)) {
                 continue;
             }
-            final var references = memo.computeIfAbsent(name, key -> referencesOf(dbName, key));
+            final var references = memo.computeIfAbsent(name, key -> referencesOf(projectName, key));
             if (references.opaque()) {
                 return true;
             }
@@ -96,12 +96,12 @@ public final class ProcedureBindingGuard {
         return false;
     }
 
-    private static ModuleReferences referencesOf(String dbName, String name) {
-        final var definition = cache.getProcedure(dbName, name);
+    private static ModuleReferences referencesOf(String projectName, String name) {
+        final var definition = cache.getProcedure(projectName, name);
         if (definition == null || definition.getSource() == null) {
             return NO_REFERENCES;
         }
-        final var compiled = compiledProcedures.get(dbName, name, definition.getVersion(), definition.getSource());
+        final var compiled = compiledProcedures.get(projectName, name, definition.getVersion(), definition.getSource());
         return simpleJs.moduleReferences(compiled);
     }
 }

@@ -28,7 +28,7 @@ public class MessageProcessorDeletedUserTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(USERNAME);
 
         final var serverIn = new PipedInputStream(toServer, 1 << 16);
@@ -56,16 +56,16 @@ public class MessageProcessorDeletedUserTest {
                 send("{\"type\":\"AUTHENTICATE\",\"username\":\"" + USERNAME + "\",\"password\":\"" + PASSWORD + "\"}")
                         .contains("\"OK\""));
         assertTrue(send("{\"type\":\"START_TRANSACTION\"}").contains("\"OK\""));
-        assertTrue(send("{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        assertTrue(send("{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"held\"}}").contains("\"OK\""));
         AdminOperationHelper.deleteUserEntry(USERNAME);
     }
 
     private static boolean collectionIsWritable() {
         final var locks = IocContainer.get(ResourceLocking.class);
-        final var free = locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL);
+        final var free = locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         if (free) {
-            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         return free;
     }

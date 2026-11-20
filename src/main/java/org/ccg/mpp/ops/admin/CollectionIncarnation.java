@@ -9,13 +9,13 @@ public final class CollectionIncarnation {
     private CollectionIncarnation() {
     }
 
-    public static long current(String dbName, String collName) {
-        final var entry = cache.getAdminCollectionEntry(dbName, collName);
+    public static long current(String projectName, String collName) {
+        final var entry = cache.getAdminCollectionEntry(projectName, collName);
         return entry == null ? 0L : entry.getIncarnation();
     }
 
-    public static boolean isCurrent(String dbName, String collName, long incarnation) {
-        final var entry = cache.getAdminCollectionEntry(dbName, collName);
+    public static boolean isCurrent(String projectName, String collName, long incarnation) {
+        final var entry = cache.getAdminCollectionEntry(projectName, collName);
         return entry != null && sameLife(incarnation, entry.getIncarnation());
     }
 

@@ -46,7 +46,7 @@ Adds a `GROUP_BY` step. Each output row holds the group's key and its rows in a 
 @returns the new query
 
 ## Join(string, string, string, string)
-Adds a `JOIN` step against another collection of the same database. Each row gets the matching remote documents as an array under `asField`.
+Adds a `JOIN` step against another collection of the same project. Each row gets the matching remote documents as an array under `asField`.
 
 @param collection the remote collection
 @param localField the field of this collection

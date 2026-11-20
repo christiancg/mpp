@@ -104,31 +104,31 @@ public class ProcedureAndTriggerRequestTest {
     @Test
     public void test_requests_parse_from_the_wire() {
         final var save = (SaveProcedureRequest) RequestParser.parseRequest(
-                "{\"type\":\"SAVE_PROCEDURE\",\"databaseName\":\"db\",\"name\":\"p\",\"script\":\"return 1;\","
+                "{\"type\":\"SAVE_PROCEDURE\",\"projectName\":\"db\",\"name\":\"p\",\"script\":\"return 1;\","
                         + "\"ifVersion\":3,\"enabled\":false}");
         assertEquals("p", save.getName());
         assertEquals(3L, save.getIfVersion());
         assertFalse(save.isEnabled());
 
         final var call = (CallProcedureRequest) RequestParser.parseRequest(
-                "{\"type\":\"CALL_PROCEDURE\",\"databaseName\":\"db\",\"procedureName\":\"p\",\"args\":{\"n\":1}}");
+                "{\"type\":\"CALL_PROCEDURE\",\"projectName\":\"db\",\"procedureName\":\"p\",\"args\":{\"n\":1}}");
         assertEquals("p", call.getProcedureName());
         assertEquals(1d, call.getArgs().get("n").asJsonNumber().getValue().doubleValue());
 
         final var trigger = (SaveTriggerRequest) RequestParser.parseRequest(
-                "{\"type\":\"SAVE_TRIGGER\",\"databaseName\":\"db\",\"collectionName\":\"coll\",\"name\":\"t\","
+                "{\"type\":\"SAVE_TRIGGER\",\"projectName\":\"db\",\"collectionName\":\"coll\",\"name\":\"t\","
                         + "\"events\":[\"CREATED\"],\"procedureName\":\"p\",\"allowCascade\":true}");
         assertEquals(List.of("CREATED"), trigger.getEvents());
         assertTrue(trigger.isAllowCascade());
 
         assertInstanceOf(DeleteProcedureRequest.class,
-                RequestParser.parseRequest("{\"type\":\"DELETE_PROCEDURE\",\"databaseName\":\"db\",\"name\":\"p\"}"));
+                RequestParser.parseRequest("{\"type\":\"DELETE_PROCEDURE\",\"projectName\":\"db\",\"name\":\"p\"}"));
         assertInstanceOf(ListProceduresRequest.class,
-                RequestParser.parseRequest("{\"type\":\"LIST_PROCEDURES\",\"databaseName\":\"db\"}"));
+                RequestParser.parseRequest("{\"type\":\"LIST_PROCEDURES\",\"projectName\":\"db\"}"));
         assertInstanceOf(DeleteTriggerRequest.class, RequestParser.parseRequest(
-                "{\"type\":\"DELETE_TRIGGER\",\"databaseName\":\"db\",\"collectionName\":\"c\",\"name\":\"t\"}"));
+                "{\"type\":\"DELETE_TRIGGER\",\"projectName\":\"db\",\"collectionName\":\"c\",\"name\":\"t\"}"));
         assertInstanceOf(ListTriggersRequest.class,
-                RequestParser.parseRequest("{\"type\":\"LIST_TRIGGERS\",\"databaseName\":\"db\"}"));
+                RequestParser.parseRequest("{\"type\":\"LIST_TRIGGERS\",\"projectName\":\"db\"}"));
     }
 
     @Test

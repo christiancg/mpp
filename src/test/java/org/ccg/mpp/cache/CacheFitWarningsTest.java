@@ -25,10 +25,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
 public class CacheFitWarningsTest {
-    private static final String DB = "fitDb";
+    private static final String PROJECT = "fitProject";
     private static final String COLL = "fitColl";
-    private static final String PK_WARNING = "The primary-key index of " + DB + "|" + COLL;
-    private static final String FIELD_WARNING = "The field index status|String of " + DB + "|" + COLL;
+    private static final String PK_WARNING = "The primary-key index of " + PROJECT + "|" + COLL;
+    private static final String FIELD_WARNING = "The field index status|String of " + PROJECT + "|" + COLL;
 
     private final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private final Configuration configuration = Configuration.getInstance();
@@ -44,9 +44,9 @@ public class CacheFitWarningsTest {
         final var fs = mock(FileSystem.class);
         final var rows = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < 500; i++) {
-            rows.add(new PkIndexEntry(DB, COLL, "row-" + i, i, 1, 0));
+            rows.add(new PkIndexEntry(PROJECT, COLL, "row-" + i, i, 1, 0));
         }
-        when(fs.readWholePkIndexFile(DB, COLL)).thenReturn(rows);
+        when(fs.readWholePkIndexFile(PROJECT, COLL)).thenReturn(rows);
         TestUtils.setPrivateField(cache, "fs", fs);
     }
 
@@ -58,18 +58,18 @@ public class CacheFitWarningsTest {
     }
 
     private void loadTwiceUnderLock() throws Exception {
-        locks.lock(DB, COLL);
+        locks.lock(PROJECT, COLL);
         try {
-            cache.getPkIndexAndLoadIfNecessary(DB, COLL);
-            cache.getPkIndexAndLoadIfNecessary(DB, COLL);
+            cache.getPkIndexAndLoadIfNecessary(PROJECT, COLL);
+            cache.getPkIndexAndLoadIfNecessary(PROJECT, COLL);
             final List<FieldIndexEntry<?>> rows = new ArrayList<>();
             for (var i = 0; i < 50; i++) {
-                rows.add(new FieldIndexEntry<>(DB, COLL, "value-" + i, new HashSet<>(Set.of("id-" + i))));
+                rows.add(new FieldIndexEntry<>(PROJECT, COLL, "value-" + i, new HashSet<>(Set.of("id-" + i))));
             }
-            cache.admitMaintainedFieldIndex(DB, COLL, Cache.getIndexIdentifier("status", String.class), rows);
-            cache.admitMaintainedFieldIndex(DB, COLL, Cache.getIndexIdentifier("status", String.class), rows);
+            cache.admitMaintainedFieldIndex(PROJECT, COLL, Cache.getIndexIdentifier("status", String.class), rows);
+            cache.admitMaintainedFieldIndex(PROJECT, COLL, Cache.getIndexIdentifier("status", String.class), rows);
         } finally {
-            locks.release(DB, COLL);
+            locks.release(PROJECT, COLL);
         }
     }
 
@@ -84,12 +84,12 @@ public class CacheFitWarningsTest {
             assertLoggedTimes(logWriter, PK_WARNING, 1);
             assertLoggedTimes(logWriter, FIELD_WARNING, 1);
 
-            cache.evictCollection(DB, COLL);
+            cache.evictCollection(PROJECT, COLL);
             loadTwiceUnderLock();
             assertLoggedTimes(logWriter, PK_WARNING, 2);
             assertLoggedTimes(logWriter, FIELD_WARNING, 2);
 
-            cache.evictDatabase(DB);
+            cache.evictProject(PROJECT);
             loadTwiceUnderLock();
             assertLoggedTimes(logWriter, PK_WARNING, 3);
         }
@@ -99,10 +99,10 @@ public class CacheFitWarningsTest {
     public void anIndexThatFitsMaxMemoryIsNeverWarnedAbout() {
         final var warnings = new CacheFitWarnings();
         try (var logWriter = mockStatic(LogWriter.class)) {
-            warnings.pkIndexOutgrows(DB, COLL, 200L, 200L);
-            warnings.fieldIndexOutgrows(DB, COLL, "status|String", 200L, 200L);
+            warnings.pkIndexOutgrows(PROJECT, COLL, 200L, 200L);
+            warnings.fieldIndexOutgrows(PROJECT, COLL, "status|String", 200L, 200L);
             logWriter.verifyNoInteractions();
-            warnings.pkIndexOutgrows(DB, COLL, 201L, 200L);
+            warnings.pkIndexOutgrows(PROJECT, COLL, 201L, 200L);
             assertLoggedTimes(logWriter, PK_WARNING, 1);
         }
     }
@@ -111,22 +111,22 @@ public class CacheFitWarningsTest {
     public void aTypeCrowdedOutByOtherResidentsIsWarnedAboutOncePerHour() {
         final var clock = new AtomicLong();
         final var warnings = new CacheFitWarnings(clock::get);
-        final var crowded = "No room in maxMemory for the field index status|String of " + DB + "|" + COLL;
-        final var crowdedPk = "No room in maxMemory for the primary-key index of " + DB + "|" + COLL;
+        final var crowded = "No room in maxMemory for the field index status|String of " + PROJECT + "|" + COLL;
+        final var crowdedPk = "No room in maxMemory for the primary-key index of " + PROJECT + "|" + COLL;
         try (var logWriter = mockStatic(LogWriter.class)) {
-            warnings.fieldIndexRefused(DB, COLL, "status|String", 150L, 200L, 120L);
-            warnings.fieldIndexRefused(DB, COLL, "status|String", 150L, 200L, 120L);
-            warnings.pkIndexRefused(DB, COLL, 150L, 200L, 120L);
+            warnings.fieldIndexRefused(PROJECT, COLL, "status|String", 150L, 200L, 120L);
+            warnings.fieldIndexRefused(PROJECT, COLL, "status|String", 150L, 200L, 120L);
+            warnings.pkIndexRefused(PROJECT, COLL, 150L, 200L, 120L);
             assertLoggedTimes(logWriter, crowded + ": it needs about 150 bytes and 80 are free", 1);
             assertLoggedTimes(logWriter, crowdedPk, 1);
 
             clock.addAndGet(CacheFitWarnings.CROWDED_OUT_INTERVAL_NANOS);
-            warnings.fieldIndexRefused(DB, COLL, "status|String", 150L, 200L, 120L);
+            warnings.fieldIndexRefused(PROJECT, COLL, "status|String", 150L, 200L, 120L);
             assertLoggedTimes(logWriter, crowded, 2);
 
-            warnings.forgetCollection(Cache.getCollectionIdentifier(DB, COLL));
-            warnings.fieldIndexRefused(DB, COLL, "status|String", 150L, 200L, 120L);
-            warnings.fieldIndexRefused(DB, COLL, "status|String", 250L, 200L, 120L);
+            warnings.forgetCollection(Cache.getCollectionIdentifier(PROJECT, COLL));
+            warnings.fieldIndexRefused(PROJECT, COLL, "status|String", 150L, 200L, 120L);
+            warnings.fieldIndexRefused(PROJECT, COLL, "status|String", 250L, 200L, 120L);
             assertLoggedTimes(logWriter, crowded, 3);
             assertLoggedTimes(logWriter, FIELD_WARNING, 1);
         }

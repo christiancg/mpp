@@ -20,7 +20,7 @@ import base_utils as b
 REPO = pathlib.Path(__file__).resolve().parents[2]
 JAR = REPO / "target" / "mpp.jar"
 DEFAULT_JAVA_HOME = "/Users/christiancoello/Library/Java/JavaVirtualMachines/openjdk-27/Contents/Home"
-DB, COLL, REFS = "prof", "docs", "refs"
+PROJECT, COLL, REFS = "prof", "docs", "refs"
 DOCS = 50000
 BULK = 5000
 
@@ -190,7 +190,7 @@ class Profiler:
 
 
 def aggregate(conn: b.Conn, steps: list, coll: str = COLL) -> dict:
-    response = conn.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll,
+    response = conn.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll,
                           "aggregationSteps": steps})
     if response.get("status") != "OK":
         raise SystemExit(f"aggregate failed: {response}")
@@ -198,18 +198,18 @@ def aggregate(conn: b.Conn, steps: list, coll: str = COLL) -> dict:
 
 
 def bulk_save(conn: b.Conn, coll: str, objects: list) -> None:
-    response = conn.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll, "objects": objects})
+    response = conn.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll, "objects": objects})
     if response.get("status") != "OK":
         raise SystemExit(f"bulk save failed: {response}")
 
 
 def warm_phases(profiler: Profiler) -> None:
     conn = b.Conn.authenticated(timeout=1800)
-    conn.send({"type": "CREATE_DATABASE", "databaseName": DB})
+    conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
     for coll in (COLL, REFS):
-        conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": coll})
+        conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": coll})
     for field in ("cat", "email"):
-        conn.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": COLL, "fieldName": field})
+        conn.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": COLL, "fieldName": field})
 
     def insert_all():
         for start in range(0, DOCS, BULK):
@@ -220,14 +220,14 @@ def warm_phases(profiler: Profiler) -> None:
     small_qty = {"type": "FILTER", "operator": {"fieldOperatorType": "SMALLER_THAN", "field": "qty", "value": 10}}
     profiler.phase("scan_filter", 5 * DOCS, "KB per doc", lambda: [aggregate(conn, [small_qty]) for _ in range(5)])
     profiler.phase("find_by_id", DOCS // 10, "KB per doc", lambda: [
-        conn.send({"type": "FIND_BY_ID", "databaseName": DB, "collectionName": COLL, "_id": f"d{i}"})
+        conn.send({"type": "FIND_BY_ID", "projectName": PROJECT, "collectionName": COLL, "_id": f"d{i}"})
         for i in range(0, DOCS, 10)])
 
     def update_some():
         for i in range(2000):
             changed = document(i)
             changed["qty"] = 1
-            conn.send({"type": "SAVE", "databaseName": DB, "collectionName": COLL, "object": changed})
+            conn.send({"type": "SAVE", "projectName": PROJECT, "collectionName": COLL, "object": changed})
 
     profiler.phase("save_update", 2000, "MB per op", update_some, settle=True)
 
@@ -253,8 +253,8 @@ def warm_phases(profiler: Profiler) -> None:
 
 def cold_phases(profiler: Profiler) -> None:
     conn = b.Conn.authenticated(timeout=1800)
-    conn.send({"type": "CREATE_DATABASE", "databaseName": DB})
-    conn.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": COLL})
+    conn.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
+    conn.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": COLL})
 
     def insert_all():
         for start in range(0, DOCS, BULK):

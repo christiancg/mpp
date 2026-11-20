@@ -23,7 +23,7 @@ public final class RangeIdWalk implements Iterator<String> {
     private static final Cache cache = IocContainer.get(Cache.class);
     private static final ResourceLocking rl = IocContainer.get(ResourceLocking.class);
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final RangeBounds bounds;
     private final boolean ascending;
@@ -39,31 +39,32 @@ public final class RangeIdWalk implements Iterator<String> {
     private int heldModifications;
     private List<String> heldIds;
 
-    private RangeIdWalk(String dbName, String collName, RangeBounds bounds, boolean ascending, int firstPage) {
-        this.dbName = dbName;
+    private RangeIdWalk(String projectName, String collName, RangeBounds bounds, boolean ascending, int firstPage) {
+        this.projectName = projectName;
         this.collName = collName;
         this.bounds = bounds;
         this.ascending = ascending;
         this.pageSize = firstPage;
     }
 
-    public static RangeIdWalk open(String dbName, String collName, RangeBounds bounds, boolean ascending,
+    public static RangeIdWalk open(String projectName, String collName, RangeBounds bounds, boolean ascending,
             long firstPage, ReadObserver observer) throws IOException {
         final var fieldName = bounds.fieldName();
-        final var pendingBefore = PendingWriteReconciler.pendingIds(dbName, collName);
-        if (!rl.holdsCollectionLock(dbName, collName) || cache.hasNoIndex(dbName, collName, fieldName)
+        final var pendingBefore = PendingWriteReconciler.pendingIds(projectName, collName);
+        if (!rl.holdsCollectionLock(projectName, collName) || cache.hasNoIndex(projectName, collName, fieldName)
                 || !pendingBefore.isEmpty()) {
             return null;
         }
-        final var walk = new RangeIdWalk(dbName, collName, bounds, ascending,
+        final var walk = new RangeIdWalk(projectName, collName, bounds, ascending,
                 Math.clamp(firstPage, 1, Integer.MAX_VALUE - 8));
-        if (!walk.readPage() || !PendingWriteReconciler.pendingIdsAround(pendingBefore, dbName, collName).isEmpty()) {
+        if (!walk.readPage()
+                || !PendingWriteReconciler.pendingIdsAround(pendingBefore, projectName, collName).isEmpty()) {
             return null;
         }
-        if (!Globals.ADMIN_DB_NAME.equals(dbName)) {
-            cache.recordFieldIndexAccess(dbName, collName, fieldName);
+        if (!Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
+            cache.recordFieldIndexAccess(projectName, collName, fieldName);
         }
-        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(dbName, collName, fieldName));
+        observer.indexUsed(fieldName, AnalyzeContext.fieldLockId(projectName, collName, fieldName));
         return walk;
     }
 
@@ -96,18 +97,18 @@ public final class RangeIdWalk implements Iterator<String> {
     private boolean readPage() throws IOException {
         final var fieldName = bounds.fieldName();
         try {
-            rl.lockIndexRead(dbName, collName, fieldName);
+            rl.lockIndexRead(projectName, collName, fieldName);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while acquiring index read lock", e);
         }
         try {
-            final var entries = cache.getFieldIndexAndLoadIfNecessary(dbName, collName, fieldName, Number.class);
+            final var entries = cache.getFieldIndexAndLoadIfNecessary(projectName, collName, fieldName, Number.class);
             page = new ArrayList<>();
             at = 0;
             if (entries == null) {
                 if (opened) {
-                    throw new IOException("The index on " + fieldName + " of " + dbName + "|" + collName
+                    throw new IOException("The index on " + fieldName + " of " + projectName + "|" + collName
                             + " could not be read in the middle of a walk");
                 }
                 lastPage = true;
@@ -122,7 +123,7 @@ public final class RangeIdWalk implements Iterator<String> {
             opened = true;
             return true;
         } finally {
-            rl.releaseIndexRead(dbName, collName, fieldName);
+            rl.releaseIndexRead(projectName, collName, fieldName);
         }
     }
 

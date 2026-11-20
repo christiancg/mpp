@@ -38,7 +38,7 @@ public class AggregationSortViaIndexTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
     }
 
@@ -51,18 +51,18 @@ public class AggregationSortViaIndexTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private void enableIndex() throws InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
     }
 
     private List<Double> run(BaseAggregationStep... steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return AggregationOperationHelper.processAggregation(request).stream()
                 .map(o -> o.get(FIELD).asJsonNumber().getValue().doubleValue()).toList();
@@ -76,7 +76,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private void save(String id, Double value) {
-        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         if (value != null) {
@@ -88,7 +88,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private void saveNullField(String id) {
-        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new org.ccg.mpp.ops.req.SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(FIELD, org.ccg.mpp.ejson.elements.JsonNull.INSTANCE);
@@ -98,7 +98,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private List<String> runIds(BaseAggregationStep... steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return AggregationOperationHelper.processAggregation(request).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
@@ -204,7 +204,7 @@ public class AggregationSortViaIndexTest {
     @Test
     public void test_index_sort_drops_ids_whose_document_is_gone() throws IOException, InterruptedException {
         seed(300);
-        TestUtils.uncacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, "d0005");
+        TestUtils.uncacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, "d0005");
 
         final var sorted = run(new SortAggregationStep(FIELD, true));
 
@@ -217,7 +217,7 @@ public class AggregationSortViaIndexTest {
         seed(300);
         final var pending = IocContainer.get(PendingIndexWrites.class);
         insert("d0007", 999999);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, "d0007");
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "d0007");
         try {
             final var sorted = run(new SortAggregationStep(FIELD, true));
 
@@ -228,7 +228,7 @@ public class AggregationSortViaIndexTest {
                 assertTrue(sorted.get(i - 1) <= sorted.get(i));
             }
         } finally {
-            pending.clear(TestGlobals.DB, TestGlobals.COLL, "d0007", 0L);
+            pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "d0007", 0L);
         }
     }
 
@@ -237,12 +237,12 @@ public class AggregationSortViaIndexTest {
         seed(400);
         final var expected = run(new SortAggregationStep(FIELD, true), new LimitAggregationStep(25));
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        pending.mark(TestGlobals.DB, TestGlobals.COLL, "d0011");
+        pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "d0011");
         try {
             assertEquals(expected, run(new SortAggregationStep(FIELD, true), new LimitAggregationStep(25)),
                     "the fallback path must produce the same order as the bounded index read");
         } finally {
-            pending.clear(TestGlobals.DB, TestGlobals.COLL, "d0011", 0L);
+            pending.clear(TestGlobals.PROJECT, TestGlobals.COLL, "d0011", 0L);
         }
     }
 
@@ -254,14 +254,14 @@ public class AggregationSortViaIndexTest {
             final var tags = new JsonArray();
             tags.add(new JsonString("t" + i));
             obj.add("tags", tags);
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
             entry.set_id("h" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "tags");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("tags"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "tags");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("tags"));
 
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep("tags", true)));
         final var results = AggregationOperationHelper.processAggregation(request);
 
@@ -282,13 +282,13 @@ public class AggregationSortViaIndexTest {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.add(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
     }
 
     private List<String> idsFrom(boolean ascending, Integer limit) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var steps = new java.util.ArrayList<BaseAggregationStep>();
         steps.add(new SortAggregationStep(FIELD, ascending));
         if (limit != null) {
@@ -346,7 +346,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private List<String> ascendingSortKeys() throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep(FIELD, true)));
         return AggregationOperationHelper.processAggregation(request).stream().map(o -> {
             final var primitive = o.get(FIELD).asJsonPrimitive();
@@ -381,7 +381,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private List<String> sortedIdsFromTheIndex() throws IOException {
-        return IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        return IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 Comparator.comparingDouble(entry -> ((Number) entry.getValue()).doubleValue()), Long.MAX_VALUE,
                 ReadObserver.NONE);
     }
@@ -403,8 +403,8 @@ public class AggregationSortViaIndexTest {
         seed(50);
         final var bare = new JsonObject();
         bare.add(Globals.PK_FIELD, new JsonString("bare"));
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
-                DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, bare));
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, bare));
 
         assertNull(sortedIdsFromTheIndex(), "fifty ids under fifty-one pk rows must decline");
         assertEquals(runIds(new SkipAggregationStep(0), new SortAggregationStep(FIELD, true)),
@@ -412,7 +412,7 @@ public class AggregationSortViaIndexTest {
     }
 
     private List<String> idsSorted() throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new SortAggregationStep(FIELD, true)));
         return AggregationOperationHelper.processAggregation(request).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
@@ -429,12 +429,12 @@ public class AggregationSortViaIndexTest {
                 case 1 -> obj.addProperty(FIELD, (i % 2 == 0 ? "Word" : "word") + (i * 7) % 500);
                 default -> obj.addProperty(FIELD, i % 5 == 0);
             }
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL,
-                    DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj));
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL,
+                    DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj));
         }
         enableIndex();
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "rank");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD, "rank"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "rank");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD, "rank"));
         for (final var ascending : List.of(true, false)) {
             final var compares = new long[1];
             final Comparator<FieldIndexEntry<?>> order = (a, b) -> {
@@ -449,17 +449,17 @@ public class AggregationSortViaIndexTest {
                 final var everything = new ArrayList<FieldIndexEntry<?>>();
                 for (final var type : List.of(Number.class, String.class, Boolean.class)) {
                     everything.addAll(
-                            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, type));
+                            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, type));
                 }
                 everything.sort(order);
                 final var expected = IndexHelper.idsInOrder(everything, order, limit);
                 compares[0] = 0;
-                final var walked = IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, FIELD, order,
+                final var walked = IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, order,
                         limit, ReadObserver.NONE);
                 assertEquals(expected, walked, "ascending " + ascending + " limit " + limit);
             }
             compares[0] = 0;
-            final var ranked = IndexHelper.getSortedIdsForField(TestGlobals.DB, TestGlobals.COLL, "rank", order, 7,
+            final var ranked = IndexHelper.getSortedIdsForField(TestGlobals.PROJECT, TestGlobals.COLL, "rank", order, 7,
                     ReadObserver.NONE);
             assertEquals(7, ranked.size());
             assertTrue(compares[0] < 64, "a top-7 over 3000 numbers walks the sorted list, it never sorts a copy: "

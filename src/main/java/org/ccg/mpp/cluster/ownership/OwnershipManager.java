@@ -23,12 +23,12 @@ public class OwnershipManager implements MembershipListener {
         this.ring = new HashRing(view.aliveNodeIds(), clusterConfig.virtualNodesPerNode());
     }
 
-    public String ownerFor(String dbName, String collName) {
-        return ring.owner(dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
+    public String ownerFor(String projectName, String collName) {
+        return ring.owner(projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName);
     }
 
-    public boolean isOwner(String dbName, String collName) {
-        final var owner = ownerFor(dbName, collName);
+    public boolean isOwner(String projectName, String collName) {
+        final var owner = ownerFor(projectName, collName);
         return owner != null && owner.equals(selfNodeId);
     }
 
@@ -41,8 +41,8 @@ public class OwnershipManager implements MembershipListener {
         return view.aliveCount() >= majority();
     }
 
-    public String ownerAddress(String dbName, String collName) {
-        final var owner = ownerFor(dbName, collName);
+    public String ownerAddress(String projectName, String collName) {
+        final var owner = ownerFor(projectName, collName);
         if (owner == null) {
             return null;
         }
@@ -51,10 +51,10 @@ public class OwnershipManager implements MembershipListener {
     }
 
     public boolean isAdminCoordinator() {
-        return isOwner(Globals.ADMIN_DB_NAME, Globals.CLUSTER_ADMIN_COORDINATOR_KEY);
+        return isOwner(Globals.ADMIN_PROJECT_NAME, Globals.CLUSTER_ADMIN_COORDINATOR_KEY);
     }
 
     public String adminCoordinatorAddress() {
-        return ownerAddress(Globals.ADMIN_DB_NAME, Globals.CLUSTER_ADMIN_COORDINATOR_KEY);
+        return ownerAddress(Globals.ADMIN_PROJECT_NAME, Globals.CLUSTER_ADMIN_COORDINATOR_KEY);
     }
 }

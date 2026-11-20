@@ -49,7 +49,7 @@ public class Tx2pcCoordinatorIndeterminateTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         origPool = TestUtils.getPrivateField(coordinator, "pool", PeerConnectionPool.class);
         cluster.enableAlone();
@@ -81,7 +81,7 @@ public class Tx2pcCoordinatorIndeterminateTest {
         final var id = "tpc-logged";
         final var clientId = clientTracker.addClient(TestUtils.clientSocket());
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         request.setObject(object);

@@ -15,33 +15,33 @@ import org.junit.jupiter.api.Test;
 
 public class DdlIT extends ServerIT {
     @Test
-    public void test_databases_and_collections_are_created_listed_and_dropped() {
-        final var database = client.database("ddl_it");
-        database.create();
-        assertTrue(client.listDatabases().contains("ddl_it"));
-        final var orders = database.collection("orders");
+    public void test_projects_and_collections_are_created_listed_and_dropped() {
+        final var project = client.project("ddl_it");
+        project.create();
+        assertTrue(client.listProjects().contains("ddl_it"));
+        final var orders = project.collection("orders");
         orders.create();
-        assertEquals(List.of("orders"), database.listCollections());
+        assertEquals(List.of("orders"), project.listCollections());
         orders.drop();
-        assertTrue(database.listCollections().isEmpty());
-        database.drop();
-        assertFalse(client.listDatabases().contains("ddl_it"));
+        assertTrue(project.listCollections().isEmpty());
+        project.drop();
+        assertFalse(client.listProjects().contains("ddl_it"));
     }
 
     @Test
     public void test_names_differing_only_by_case_and_reserved_names_are_refused() {
-        client.database("Case_db").create();
-        final var error = assertThrows(ConflictException.class, () -> client.database("case_DB").create());
+        client.project("Case_db").create();
+        final var error = assertThrows(ConflictException.class, () -> client.project("case_DB").create());
         assertEquals("409-11", error.rawCode().orElseThrow());
-        assertThrows(MppException.class, () -> client.database("Admin").create());
-        assertThrows(IllegalArgumentException.class, () -> client.database("no"));
+        assertThrows(MppException.class, () -> client.project("Admin").create());
+        assertThrows(IllegalArgumentException.class, () -> client.project("no"));
     }
 
     @Test
     public void test_indexes_create_many_recreate_drop_and_reindex() {
-        final var database = client.database("index_it");
-        database.create();
-        final var users = database.collection("users");
+        final var project = client.project("index_it");
+        project.create();
+        final var users = project.collection("users");
         users.create();
         users.saveAll(List.of(Document.of("_id", "u1", "email", "a@x", "status", "on"),
                 Document.of("_id", "u2", "email", "b@x", "status", "off")));
@@ -59,9 +59,9 @@ public class DdlIT extends ServerIT {
 
     @Test
     public void test_a_schema_is_enforced_until_deleted() {
-        final var database = client.database("schema_it");
-        database.create();
-        final var people = database.collection("people");
+        final var project = client.project("schema_it");
+        project.create();
+        final var people = project.collection("people");
         people.create();
         assertTrue(people.schema().get().isEmpty());
         people.schema().save(Document.of("type", "object", "required", List.of("name"), "properties",

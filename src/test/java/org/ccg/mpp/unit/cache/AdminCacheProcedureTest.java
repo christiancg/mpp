@@ -27,7 +27,7 @@ public class AdminCacheProcedureTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -38,93 +38,93 @@ public class AdminCacheProcedureTest {
 
     @BeforeEach
     void clear() throws Exception {
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
     }
 
     private ProcedureDefinition write(String name) throws Exception {
         final var definition = new ProcedureDefinition(name, "return " + 1L + ";", 1L, null, true, 1L, 1L, "alice");
-        fs.metadataFiles().writeProcedure(TestGlobals.DB, name, eJson.toJson(definition.toJsonObject()));
+        fs.metadataFiles().writeProcedure(TestGlobals.PROJECT, name, eJson.toJson(definition.toJsonObject()));
         return definition;
     }
 
     @Test
     public void test_get_procedure_loads_lazily_from_disk() throws Exception {
         final var written = write("lazy");
-        assertEquals(written, cache.getProcedure(TestGlobals.DB, "lazy"));
+        assertEquals(written, cache.getProcedure(TestGlobals.PROJECT, "lazy"));
     }
 
     // Proven by writing the file after the miss: the negative entry must still answer null.
     @Test
     public void test_absence_is_negatively_cached() throws Exception {
-        assertNull(cache.getProcedure(TestGlobals.DB, "later"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "later"));
         write("later");
-        assertNull(cache.getProcedure(TestGlobals.DB, "later"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "later"));
     }
 
     @Test
     public void test_put_procedure_overrides_the_cached_value() throws Exception {
         write("p");
-        assertEquals(1L, cache.getProcedure(TestGlobals.DB, "p").getVersion());
+        assertEquals(1L, cache.getProcedure(TestGlobals.PROJECT, "p").getVersion());
         final var bumped = new ProcedureDefinition("p", "return 2;", 2L, null, true, 1L, 2L, "bob");
-        cache.putProcedure(TestGlobals.DB, bumped);
-        assertEquals(2L, cache.getProcedure(TestGlobals.DB, "p").getVersion());
+        cache.putProcedure(TestGlobals.PROJECT, bumped);
+        assertEquals(2L, cache.getProcedure(TestGlobals.PROJECT, "p").getVersion());
     }
 
     @Test
     public void test_remove_procedure_forgets_only_that_name() throws Exception {
         write("keep");
         write("drop");
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "keep"));
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "drop"));
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, "drop");
-        cache.removeProcedure(TestGlobals.DB, "drop");
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "keep"));
-        assertNull(cache.getProcedure(TestGlobals.DB, "drop"));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "keep"));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "drop"));
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "drop");
+        cache.removeProcedure(TestGlobals.PROJECT, "drop");
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "keep"));
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "drop"));
     }
 
     @Test
-    public void test_remove_procedures_for_database_leaves_other_databases() throws Exception {
+    public void test_remove_procedures_for_project_leaves_other_projects() throws Exception {
         write("p");
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "p"));
-        cache.removeProceduresForDatabase("someOtherDb");
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "p"));
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, "p");
-        assertNull(cache.getProcedure(TestGlobals.DB, "p"));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "p"));
+        cache.removeProceduresForProject("someOtherProject");
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "p"));
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "p");
+        assertNull(cache.getProcedure(TestGlobals.PROJECT, "p"));
     }
 
     @Test
     public void test_a_malformed_procedure_file_refuses_rather_than_reading_as_absent() throws Exception {
-        fs.metadataFiles().writeProcedure(TestGlobals.DB, "broken", "not json at all");
+        fs.metadataFiles().writeProcedure(TestGlobals.PROJECT, "broken", "not json at all");
 
-        assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.DB, "broken"),
+        assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.PROJECT, "broken"),
                 "conflating a read failure with absence makes an existing procedure answer PROCEDURE_NOT_FOUND");
     }
 
     @Test
     public void test_a_read_failure_is_not_cached_as_absence() throws Exception {
-        fs.metadataFiles().writeProcedure(TestGlobals.DB, "flaky", "not json at all");
-        assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.DB, "flaky"));
+        fs.metadataFiles().writeProcedure(TestGlobals.PROJECT, "flaky", "not json at all");
+        assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.PROJECT, "flaky"));
 
         write("flaky");
 
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "flaky"),
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "flaky"),
                 "a failed read cached as a miss leaves the procedure invisible until eviction or restart");
     }
 
     @Test
     public void test_a_procedures_folder_that_cannot_be_listed_is_not_cached_as_absence() throws Exception {
-        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + Globals.PROCEDURES_FOLDER);
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + Globals.PROCEDURES_FOLDER);
         if (folder.exists()) {
             TestUtils.deleteFolder(folder);
         }
         Files.writeString(folder.toPath(), "x", StandardCharsets.UTF_8);
         try {
-            assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.DB, "listed"),
+            assertThrows(MetadataReadException.class, () -> cache.getProcedure(TestGlobals.PROJECT, "listed"),
                     "a listing failure read as absence made the trigger dispatcher consume every pending run");
         } finally {
             Files.delete(folder.toPath());
@@ -132,6 +132,6 @@ public class AdminCacheProcedureTest {
 
         write("listed");
 
-        assertNotNull(cache.getProcedure(TestGlobals.DB, "listed"));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, "listed"));
     }
 }

@@ -27,7 +27,7 @@ public class ClusterConnectionHandlerShutdownTest extends ClusterConnectionHandl
     private final InFlightRequests inFlightRequests = IocContainer.get(InFlightRequests.class);
 
     private ClusterMessage forwardedSave(String id) {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
         final var message = envelope(ClusterMessageType.FORWARD_REQUEST);
         message.setForwardBody(raw);
@@ -39,7 +39,7 @@ public class ClusterConnectionHandlerShutdownTest extends ClusterConnectionHandl
         document.addProperty("_id", REPLICATED_ID);
         document.addProperty("v", 1);
         final var message = envelope(ClusterMessageType.REPLICATE);
-        message.setReplication(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        message.setReplication(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(document), null, List.of("7")));
         return message;
     }
@@ -129,7 +129,7 @@ public class ClusterConnectionHandlerShutdownTest extends ClusterConnectionHandl
     @Test
     public void test_an_admitted_peer_write_is_counted_in_flight() throws Exception {
         final Thread writer;
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             writer = Thread.ofVirtual().start(() -> {
                 try {
@@ -140,7 +140,7 @@ public class ClusterConnectionHandlerShutdownTest extends ClusterConnectionHandl
             });
             assertTrue(awaitOneInFlight(), "a peer write blocked on its lock must hold the shutdown drains back");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         writer.join(TimeUnit.SECONDS.toMillis(30));
         assertTrue(inFlightRequests.awaitIdle(TimeUnit.SECONDS.toMillis(10)),

@@ -21,14 +21,15 @@ public class PendingIndexWritesTest {
     @Test
     public void test_a_recovered_mark_sets_the_dirty_marker_and_the_drain_clears_it() throws Exception {
         org.ccg.mpp.test.TestUtils.standardInitialSetup();
-        org.ccg.mpp.test.TestUtils.createTestDatabaseAndCollection();
+        org.ccg.mpp.test.TestUtils.createTestProjectAndCollection();
         try {
-            pending.markRecovered(org.ccg.mpp.test.TestGlobals.DB, org.ccg.mpp.test.TestGlobals.COLL, List.of("1"));
-            assertEquals(List.of(org.ccg.mpp.test.TestGlobals.DB + "|" + org.ccg.mpp.test.TestGlobals.COLL),
+            pending.markRecovered(org.ccg.mpp.test.TestGlobals.PROJECT, org.ccg.mpp.test.TestGlobals.COLL,
+                    List.of("1"));
+            assertEquals(List.of(org.ccg.mpp.test.TestGlobals.PROJECT + "|" + org.ccg.mpp.test.TestGlobals.COLL),
                     TestUtils.dirtyIndexCollections(),
                     "queued index work must leave an on-disk marker an unclean stop can be seen by");
 
-            pending.clear(org.ccg.mpp.test.TestGlobals.DB, org.ccg.mpp.test.TestGlobals.COLL, "1", 0L);
+            pending.clear(org.ccg.mpp.test.TestGlobals.PROJECT, org.ccg.mpp.test.TestGlobals.COLL, "1", 0L);
 
             assertTrue(TestUtils.dirtyIndexCollections().isEmpty(), "draining the collection clears its marker");
         } finally {
@@ -140,9 +141,9 @@ public class PendingIndexWritesTest {
     @Test
     public void test_a_recreated_collection_writes_its_marker_after_a_drop_clears_the_old_life() throws Exception {
         org.ccg.mpp.test.TestUtils.standardInitialSetup();
-        org.ccg.mpp.test.TestUtils.createTestDatabaseAndCollection();
+        org.ccg.mpp.test.TestUtils.createTestProjectAndCollection();
         final var fs = org.ccg.mpp.ioc.IocContainer.get(org.ccg.mpp.fs.FileSystem.class);
-        final var db = org.ccg.mpp.test.TestGlobals.DB;
+        final var db = org.ccg.mpp.test.TestGlobals.PROJECT;
         final var coll = org.ccg.mpp.test.TestGlobals.COLL;
         try {
             pending.mark(db, coll, "old");
@@ -159,12 +160,12 @@ public class PendingIndexWritesTest {
     }
 
     @Test
-    public void test_clear_database_clears_only_that_database() {
+    public void test_clear_project_clears_only_that_project() {
         pending.mark("db", "a", "1");
         pending.mark("db", "b", "2");
         pending.mark("dbx", "a", "3");
 
-        pending.clearDatabase("db");
+        pending.clearProject("db");
 
         assertTrue(pending.idsFor("db", "a").isEmpty());
         assertTrue(pending.idsFor("db", "b").isEmpty());
@@ -174,7 +175,7 @@ public class PendingIndexWritesTest {
     @Test
     public void test_a_clear_from_before_the_drop_is_ignored() {
         final var oldGeneration = pending.mark("db", "coll", "1");
-        pending.clearDatabase("db");
+        pending.clearProject("db");
         final var newGeneration = pending.mark("db", "coll", "1");
 
         pending.clear("db", "coll", "1", oldGeneration);
@@ -195,7 +196,7 @@ public class PendingIndexWritesTest {
         assertFalse(TestUtils.getPrivateField(pending, "pins", Map.class).containsKey("db|coll"));
         assertTrue(TestUtils.getPrivateField(pending, "pins", Map.class).containsKey("db|kept"));
         assertFalse(pending.holdsIndexWork("db", "coll"));
-        pending.clearDatabase("db");
+        pending.clearProject("db");
         assertTrue(TestUtils.getPrivateField(pending, "pending", Map.class).isEmpty());
         assertTrue(TestUtils.getPrivateField(pending, "pins", Map.class).isEmpty());
     }

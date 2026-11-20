@@ -57,7 +57,7 @@ public class TriggerRunDirectoryTest {
     @BeforeAll
     static void setUpAll() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -129,11 +129,11 @@ public class TriggerRunDirectoryTest {
         final var data = new JsonObject();
         data.add("_id", new JsonString("doc1"));
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id("doc1");
         entry.setData(data);
-        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL,
+        return TriggerRunLog.record(new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL,
                 triggerName, "proc", EventType.DELETED, false, "alice", 0, System.currentTimeMillis(), List.of(entry)));
     }
 
@@ -144,7 +144,7 @@ public class TriggerRunDirectoryTest {
         assertEquals(1, rows.size());
         assertEquals(runId, rows.getFirst().getRunId());
         assertEquals("PENDING", rows.getFirst().getStatus());
-        assertEquals(TestGlobals.DB, rows.getFirst().getDatabase());
+        assertEquals(TestGlobals.PROJECT, rows.getFirst().getProject());
         assertEquals("audit", rows.getFirst().getTriggerName());
         assertEquals("DELETED", rows.getFirst().getEventType());
     }

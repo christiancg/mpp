@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalLogStateTest {
-    private static final String DB = "walStateDb";
+    private static final String PROJECT = "walStateProject";
     private static final String COLL = "walStateColl";
 
     @TempDir
@@ -22,13 +22,13 @@ public class WalLogStateTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        final var fixture = new StorageFixture(tmp, DB, COLL);
+        final var fixture = new StorageFixture(tmp, PROJECT, COLL);
         fixture.seed(0, "a", "b");
-        log = fixture.paths.writeAheadLog(DB, COLL);
+        log = fixture.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private WalLogState state() throws IOException {
-        return WalLogState.of(log, log.getAbsolutePath(), DB, COLL);
+        return WalLogState.of(log, log.getAbsolutePath(), PROJECT, COLL);
     }
 
     @Test

@@ -13,17 +13,17 @@ import java.util.function.Consumer;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.simplejs.host.CapturingHostBindings;
 import org.ccg.mpp.simplejs.host.ConsoleCapture;
-import org.ccg.mpp.simplejs.host.DatabaseAccess;
 import org.ccg.mpp.simplejs.host.HostBindings;
 import org.ccg.mpp.simplejs.host.ModuleResolver;
 import org.ccg.mpp.simplejs.host.NetworkAccess;
+import org.ccg.mpp.simplejs.host.ProjectAccess;
 import org.ccg.mpp.simplejs.host.ResolvedModule;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.junit.jupiter.api.Test;
 
 public class CapturingHostBindingsTest {
-    private record FullBindings(JsonObject args, DatabaseAccess database, Consumer<String> console,
-            ResourceLimits limits, ModuleResolver moduleResolver, NetworkAccess network, ZoneId timeZone, Locale locale,
+    private record FullBindings(JsonObject args, ProjectAccess project, Consumer<String> console, ResourceLimits limits,
+            ModuleResolver moduleResolver, NetworkAccess network, ZoneId timeZone, Locale locale,
             boolean strictScriptGoal) implements HostBindings {
     }
 
@@ -38,7 +38,7 @@ public class CapturingHostBindingsTest {
         final var capture = new ConsoleCapture(10, 100);
         final var wrapped = CapturingHostBindings.wrap(delegate, capture);
         assertSame(delegate.args(), wrapped.args());
-        assertNull(wrapped.database());
+        assertNull(wrapped.project());
         assertSame(delegate.limits(), wrapped.limits());
         assertTrue(wrapped.strictScriptGoal());
         assertSame(delegate.moduleResolver(), wrapped.moduleResolver());

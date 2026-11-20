@@ -9,28 +9,28 @@ import org.junit.jupiter.api.Test;
 public class DropIndexRequestTest {
     @Test
     public void test_create_drop_index_request_with_valid_params() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         String fieldName = "testField";
 
-        DropIndexRequest request = new DropIndexRequest(dbName, collectionName, fieldName);
+        DropIndexRequest request = new DropIndexRequest(projectName, collectionName, fieldName);
 
         assertEquals(OperationType.DROP_INDEX, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collectionName, request.getCollectionName());
         assertEquals(fieldName, request.getFieldName());
     }
 
     @Test
     public void test_getters_and_setters() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collectionName = "testCollection";
         String fieldName = "testField";
 
-        DropIndexRequest request = new DropIndexRequest(dbName, collectionName, fieldName);
+        DropIndexRequest request = new DropIndexRequest(projectName, collectionName, fieldName);
 
         assertEquals(OperationType.DROP_INDEX, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collectionName, request.getCollectionName());
         assertEquals(fieldName, request.getFieldName());
 

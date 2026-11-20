@@ -54,11 +54,11 @@ public class TriggeredBulkSaveHookTest {
         IocContainer.get(TriggerExecutor.class).stop();
         TriggerTestSupport.consumeAllPendingRuns();
         BeforeHookTestSupport.installHook("gate", "gate", REFUSING_HOOK, EventType.CREATED, EventType.UPDATED);
-        final var triggers = new ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        final var triggers = new ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         triggers.add(new TriggerDefinition("audit", new LinkedHashSet<>(Set.of(EventType.CREATED)), "recalc",
                 TriggerDefinition.MODE_DOCUMENT, false, true, BeforeHookTestSupport.ACTOR, 1L, 1L, 1L,
                 BeforeHookTestSupport.ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, triggers);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, triggers);
     }
 
     private static BulkSaveRequest bulkOf(String... ids) {
@@ -66,13 +66,13 @@ public class TriggeredBulkSaveHookTest {
         for (final var id : ids) {
             objects.add(BeforeHookTestSupport.document(id));
         }
-        final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(objects);
         return request;
     }
 
     private boolean stored(String id) throws Exception {
-        return !cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of(id)).isEmpty();
+        return !cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of(id)).isEmpty();
     }
 
     @Test

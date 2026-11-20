@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 @RequiresDirectorySync
 @RequiresFileKeys
 public class WalRewriteBarrierTest {
-    private static final String DB = "barrierDb";
+    private static final String PROJECT = "barrierProject";
     private static final String COLL = "barrierColl";
 
     @TempDir
@@ -43,12 +43,12 @@ public class WalRewriteBarrierTest {
     @BeforeEach
     public void setUp() throws Exception {
         power = PowerLossFixture.install();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         wal = new WriteAheadLog(rf.fx.paths);
         for (final var id : List.of("a", "b", "c")) {
             rf.appender.insert(rf.entry(id, "old-" + id, 0), ReplacerFixture.line(id, "old-" + id));
         }
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
     }
 
     @AfterEach
@@ -57,16 +57,16 @@ public class WalRewriteBarrierTest {
     }
 
     private void redo() throws IOException {
-        PowerLossFixture.restart(rf.fx.paths, DB, COLL);
+        PowerLossFixture.restart(rf.fx.paths, PROJECT, COLL);
         WalRedo.redoAll(rf.fx.paths);
     }
 
     private WalCodec.Decoded decodedLog() throws IOException {
-        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(DB, COLL).toPath()));
+        return WalCodec.decodeAll(Files.readAllBytes(rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath()));
     }
 
     private void vacuum() throws IOException {
-        rf.vacuum.vacuum(DB, COLL, 0, PageRows.of(rf.fx.store, null, DB, COLL, 0));
+        rf.vacuum.vacuum(PROJECT, COLL, 0, PageRows.of(rf.fx.store, null, PROJECT, COLL, 0));
     }
 
     private void deleteTracked(String id) throws IOException {
@@ -79,7 +79,7 @@ public class WalRewriteBarrierTest {
 
     private void assertHolds(Map<String, String> expected) throws IOException {
         final var scanned = new TreeMap<String, String>();
-        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(DB, COLL)) {
+        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(PROJECT, COLL)) {
             entries.forEach(entry -> scanned.merge(entry.get_id(), entry.getData().get("v").asJsonString().getValue(),
                     (first, second) -> first + "," + second));
         }
@@ -123,9 +123,9 @@ public class WalRewriteBarrierTest {
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         final var page = rf.fx.page(0);
         final var barrier = new WalRewriteBarrier(wal);
-        barrier.settle(DB, COLL);
+        barrier.settle(PROJECT, COLL);
         final var lengthBefore = page.length();
-        barrier.begin(DB, COLL, 0, lengthBefore);
+        barrier.begin(PROJECT, COLL, 0, lengthBefore);
         appendUnloggedRecord(page);
         power.powerLoss();
 
@@ -177,15 +177,15 @@ public class WalRewriteBarrierTest {
     public void test_a_vacuum_inside_a_write_group_settles_the_group_first() throws Exception {
         TestUtils.setPrivateField(org.ccg.mpp.config.Configuration.getInstance(), "maxPageSize", 75L);
         try {
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("c", "new-c", 1, null);
-            assertNotNull(wal.openGroupOf(DB, COLL));
+            assertNotNull(wal.openGroupOf(PROJECT, COLL));
 
             deleteTracked("a");
 
             assertEquals(StorageFixture.record("b", "old-b"), rf.fx.firstPageText(),
                     "the group's deferred blank of c landed before the page was read");
-            assertTrue(wal.closeGroup(DB, COLL));
+            assertTrue(wal.closeGroup(PROJECT, COLL));
             power.powerLoss();
 
             redo();
@@ -197,7 +197,7 @@ public class WalRewriteBarrierTest {
     }
 
     private AtomicInteger countingLogForces() throws Exception {
-        final var log = rf.fx.paths.writeAheadLog(DB, COLL).toPath().toAbsolutePath().normalize();
+        final var log = rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath().toAbsolutePath().normalize();
         final var logForces = new AtomicInteger();
         TestUtils.setPrivateStaticField(SyncedWrites.class, "forcer", (Forcer) (channel, path) -> {
             if (path.toAbsolutePath().normalize().equals(log)) {
@@ -209,11 +209,11 @@ public class WalRewriteBarrierTest {
     }
 
     private void vacuumEndingAGroupThenReopen() throws IOException {
-        wal.openGroup(DB, COLL);
+        wal.openGroup(PROJECT, COLL);
         rf.replace("c", "new-c", 1, null);
         deleteTracked("a");
-        assertNull(wal.openGroupOf(DB, COLL), "the vacuum ended the group");
-        wal.openGroup(DB, COLL);
+        assertNull(wal.openGroupOf(PROJECT, COLL), "the vacuum ended the group");
+        wal.openGroup(PROJECT, COLL);
         for (final var id : List.of("d", "e")) {
             rf.appender.insert(rf.entry(id, "old-" + id, 2), ReplacerFixture.line(id, "old-" + id));
         }
@@ -224,17 +224,17 @@ public class WalRewriteBarrierTest {
         TestUtils.setPrivateField(org.ccg.mpp.config.Configuration.getInstance(), "maxPageSize", 75L);
         try {
             final var logForces = countingLogForces();
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             rf.replace("c", "new-c", 1, null);
             deleteTracked("a");
-            wal.openGroup(DB, COLL);
+            wal.openGroup(PROJECT, COLL);
             final var beforeAppends = logForces.get();
             for (final var id : List.of("d", "e")) {
                 rf.appender.insert(rf.entry(id, "old-" + id, 2), ReplacerFixture.line(id, "old-" + id));
             }
             assertEquals(beforeAppends, logForces.get(), "the reopened group appends without forcing");
 
-            assertTrue(wal.forceGroup(DB, COLL));
+            assertTrue(wal.forceGroup(PROJECT, COLL));
             assertEquals(beforeAppends + 1, logForces.get(), "one force covers every write after the vacuum");
             power.powerLoss();
             redo();
@@ -267,7 +267,7 @@ public class WalRewriteBarrierTest {
         TestUtils.setPrivateField(org.ccg.mpp.config.Configuration.getInstance(), "maxPageSize", 75L);
         try {
             vacuumEndingAGroupThenReopen();
-            final var log = rf.fx.paths.writeAheadLog(DB, COLL).toPath().toAbsolutePath().normalize();
+            final var log = rf.fx.paths.writeAheadLog(PROJECT, COLL).toPath().toAbsolutePath().normalize();
             TestUtils.setPrivateStaticField(SyncedWrites.class, "forcer", (Forcer) (channel, path) -> {
                 if (path.toAbsolutePath().normalize().equals(log)) {
                     throw new IOException("force refused for " + path);
@@ -275,8 +275,8 @@ public class WalRewriteBarrierTest {
                 power.force(channel, path);
             });
 
-            assertFalse(wal.forceGroup(DB, COLL));
-            assertFalse(wal.closeGroup(DB, COLL));
+            assertFalse(wal.forceGroup(PROJECT, COLL));
+            assertFalse(wal.closeGroup(PROJECT, COLL));
 
             assertFalse(decodedLog().rewrites().isEmpty(), "the take-back never cuts the barrier frames");
             TestUtils.setPrivateStaticField(SyncedWrites.class, "forcer", power);
@@ -292,12 +292,12 @@ public class WalRewriteBarrierTest {
         try (var recorder = RecordingForcer.install(true)) {
             rf.replace("b", "new-b", 0, PagePlacement.APPEND);
             final var barrier = new WalRewriteBarrier(wal);
-            barrier.settle(DB, COLL);
-            final var begun = barrier.begin(DB, COLL, 0, rf.fx.page(0).length());
+            barrier.settle(PROJECT, COLL);
+            final var begun = barrier.begin(PROJECT, COLL, 0, rf.fx.page(0).length());
             assertTrue(decodedLog().rewrites().containsKey(0L));
             TestUtils.getPrivateField(recorder, "foldersBeforeFailing", AtomicInteger.class).set(0);
 
-            assertFalse(barrier.landed(begun, rf.fx.paths.collectionFolder(DB, COLL).toPath()));
+            assertFalse(barrier.landed(begun, rf.fx.paths.collectionFolder(PROJECT, COLL).toPath()));
 
             assertEquals(Map.of(), decodedLog().rewrites(), "the checkpoint replaced the barrier");
             assertEquals(List.of(), decodedLog().records());
@@ -311,9 +311,9 @@ public class WalRewriteBarrierTest {
         rf.replacer.delete(rf.fx.indexed("a"));
         vacuum();
         final var compacted = Files.readAllBytes(rf.fx.page(0).toPath());
-        wal.markUnapplied(DB, COLL);
+        wal.markUnapplied(PROJECT, COLL);
 
-        wal.requireApplied(DB, COLL);
+        wal.requireApplied(PROJECT, COLL);
 
         assertArrayEquals(compacted, Files.readAllBytes(rf.fx.page(0).toPath()));
         assertHolds(Map.of("b", "new-b", "c", "old-c"));
@@ -325,21 +325,21 @@ public class WalRewriteBarrierTest {
         final var maxPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", 4096L);
         try {
-            final var admin = new ReplacerFixture(new File(tmp, "adminRoot"), Globals.ADMIN_DB_NAME, COLL);
+            final var admin = new ReplacerFixture(new File(tmp, "adminRoot"), Globals.ADMIN_PROJECT_NAME, COLL);
             for (final var id : List.of("x", "y")) {
                 admin.appender.insert(admin.entry(id, "v0", 0), ReplacerFixture.line(id, "v0"));
             }
-            new WriteAheadLog(admin.fx.paths).checkpoint(Globals.ADMIN_DB_NAME, COLL);
+            new WriteAheadLog(admin.fx.paths).checkpoint(Globals.ADMIN_PROJECT_NAME, COLL);
             for (var round = 1; admin.fx.page(0).length() < 2048; round++) {
                 admin.replace("x", "v" + round + "-" + "p".repeat(80), 0, PagePlacement.APPEND);
             }
             assertTrue(admin.fx.page(0).length() < 4096, "the compaction must happen below the cap");
 
             assertNotNull(
-                    admin.vacuum.vacuumIfNeeded(Globals.ADMIN_DB_NAME, COLL, 0, 10, null, admin.fx.indexedRows()));
+                    admin.vacuum.vacuumIfNeeded(Globals.ADMIN_PROJECT_NAME, COLL, 0, 10, null, admin.fx.indexedRows()));
             final var compacted = Files.readAllBytes(admin.fx.page(0).toPath());
             power.powerLoss();
-            PowerLossFixture.restart(admin.fx.paths, Globals.ADMIN_DB_NAME, COLL);
+            PowerLossFixture.restart(admin.fx.paths, Globals.ADMIN_PROJECT_NAME, COLL);
             WalRedo.redoAll(admin.fx.paths);
 
             assertArrayEquals(compacted, Files.readAllBytes(admin.fx.page(0).toPath()));

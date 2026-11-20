@@ -90,7 +90,7 @@ public class SavePatchTest {
 
         final var bulk = SavePatch.bulkSaveOf(request, documents);
 
-        assertEquals("shop", bulk.getDatabaseName());
+        assertEquals("shop", bulk.getProjectName());
         assertEquals("orders", bulk.getCollectionName());
         assertEquals(3, bulk.getTriggerDepth());
         assertTrue(bulk.isBackgroundFollowOn());

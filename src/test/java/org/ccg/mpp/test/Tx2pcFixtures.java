@@ -21,7 +21,7 @@ public final class Tx2pcFixtures {
     }
 
     public static String collectionId() {
-        return Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        return Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     public static JsonObject document(String id) {
@@ -31,7 +31,7 @@ public final class Tx2pcFixtures {
     }
 
     public static AdminTransactionEntry saveOp(String txId, String clientId, String collName, String id) {
-        return new AdminTransactionEntry(txId, clientId, 0, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
+        return new AdminTransactionEntry(txId, clientId, 0, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT,
                 collName, document(id));
     }
 
@@ -51,7 +51,7 @@ public final class Tx2pcFixtures {
     }
 
     public static OperationStatus findStatus(String collName, String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, collName);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, collName);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }

@@ -17,9 +17,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 public class ResourceLockingEvictionRaceTest {
-    private static final String DB = "racedb";
+    private static final String PROJECT = "racedb";
     private static final String COLL = "racecoll";
-    private static final String COLL_ID = Cache.getCollectionIdentifier(DB, COLL);
+    private static final String COLL_ID = Cache.getCollectionIdentifier(PROJECT, COLL);
 
     private final ResourceLocking rl = new ResourceLocking();
 
@@ -62,8 +62,8 @@ public class ResourceLockingEvictionRaceTest {
         final var orphan = heldOrphan(COLL_ID);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                rl.lock(DB, COLL);
-                return rl.releaseWrite(DB, COLL);
+                rl.lock(PROJECT, COLL);
+                return rl.releaseWrite(PROJECT, COLL);
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
@@ -72,7 +72,7 @@ public class ResourceLockingEvictionRaceTest {
         replaceWithHeldLock(COLL_ID, orphan);
         Thread.sleep(200);
         assertFalse(contender.isDone(), "the contender must not proceed on the orphan while the mapped lock is held");
-        assertTrue(rl.releaseWrite(DB, COLL));
+        assertTrue(rl.releaseWrite(PROJECT, COLL));
         assertTrue(contender.get(5, TimeUnit.SECONDS), "the contender must end up holding the mapped lock");
     }
 
@@ -81,7 +81,7 @@ public class ResourceLockingEvictionRaceTest {
         final var orphan = heldOrphan(COLL_ID);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                return rl.tryLockWrite(DB, COLL, 300);
+                return rl.tryLockWrite(PROJECT, COLL, 300);
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
@@ -98,8 +98,8 @@ public class ResourceLockingEvictionRaceTest {
         final var orphan = heldOrphan(COLL_ID);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                rl.lockRead(DB, COLL);
-                rl.releaseRead(DB, COLL);
+                rl.lockRead(PROJECT, COLL);
+                rl.releaseRead(PROJECT, COLL);
                 return true;
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
@@ -109,40 +109,40 @@ public class ResourceLockingEvictionRaceTest {
         replaceWithHeldLock(COLL_ID, orphan);
         Thread.sleep(200);
         assertFalse(contender.isDone(), "a reader must not proceed on the orphan while the mapped writer holds it");
-        rl.releaseWrite(DB, COLL);
+        rl.releaseWrite(PROJECT, COLL);
         assertTrue(contender.get(5, TimeUnit.SECONDS));
     }
 
     @Test
-    public void test_database_barrier_exclusive_acquire_of_an_evicted_lock_waits_on_the_mapped_one() throws Exception {
-        final var orphan = heldOrphan(DB);
+    public void test_project_barrier_exclusive_acquire_of_an_evicted_lock_waits_on_the_mapped_one() throws Exception {
+        final var orphan = heldOrphan(PROJECT);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                return rl.tryLockDatabaseExclusive(DB, 300);
+                return rl.tryLockProjectExclusive(PROJECT, 300);
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
         });
         awaitQueued(orphan);
-        replaceWithHeldLock(DB, orphan);
+        replaceWithHeldLock(PROJECT, orphan);
         assertFalse(contender.get(5, TimeUnit.SECONDS));
     }
 
     @Test
-    public void test_database_barrier_shared_acquire_of_an_evicted_lock_succeeds_once_released() throws Exception {
-        final var orphan = heldOrphan(DB);
+    public void test_project_barrier_shared_acquire_of_an_evicted_lock_succeeds_once_released() throws Exception {
+        final var orphan = heldOrphan(PROJECT);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                final var acquired = rl.tryLockDatabaseShared(DB, 5000);
-                rl.releaseDatabaseShared(DB);
+                final var acquired = rl.tryLockProjectShared(PROJECT, 5000);
+                rl.releaseProjectShared(PROJECT);
                 return acquired;
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
         });
         awaitQueued(orphan);
-        replaceWithHeldLock(DB, orphan);
-        rl.releaseDatabaseExclusive(DB);
+        replaceWithHeldLock(PROJECT, orphan);
+        rl.releaseProjectExclusive(PROJECT);
         assertTrue(contender.get(5, TimeUnit.SECONDS));
     }
 
@@ -151,17 +151,17 @@ public class ResourceLockingEvictionRaceTest {
         final var orphan = heldOrphan(COLL_ID);
         final var contender = CompletableFuture.supplyAsync(() -> {
             try {
-                rl.lock(DB, COLL);
-                return rl.releaseWrite(DB, COLL);
+                rl.lock(PROJECT, COLL);
+                return rl.releaseWrite(PROJECT, COLL);
             } catch (InterruptedException e) {
                 throw new IllegalStateException(e);
             }
         });
         awaitQueued(orphan);
         replaceWithHeldLock(COLL_ID, orphan);
-        rl.releaseWrite(DB, COLL);
+        rl.releaseWrite(PROJECT, COLL);
         assertTrue(contender.get(5, TimeUnit.SECONDS));
-        rl.removeLock(DB, COLL);
+        rl.removeLock(PROJECT, COLL);
         assertNull(locks().get(COLL_ID));
     }
 
@@ -184,10 +184,10 @@ public class ResourceLockingEvictionRaceTest {
 
         private void holdUntilReleased() {
             try {
-                rl.lock(DB, COLL);
+                rl.lock(PROJECT, COLL);
                 acquired.countDown();
                 final var released = release.await(5, TimeUnit.SECONDS);
-                rl.releaseWrite(DB, COLL);
+                rl.releaseWrite(PROJECT, COLL);
                 if (!released) {
                     throw new IllegalStateException("the test never released the contender");
                 }
@@ -211,13 +211,13 @@ public class ResourceLockingEvictionRaceTest {
         final var hooked = new AcquiredDuringEviction();
         locks().put(COLL_ID, hooked);
 
-        rl.removeLock(DB, COLL);
+        rl.removeLock(PROJECT, COLL);
 
         try {
             assertTrue(hooked.acquiredInTime, "the contender must have acquired inside the window");
             assertSame(hooked, locks().get(COLL_ID),
                     "a lock acquired while the eviction decided must stay mapped, or its holder is unnamed");
-            assertFalse(rl.tryLockWrite(DB, COLL, 100),
+            assertFalse(rl.tryLockWrite(PROJECT, COLL, 100),
                     "a second writer must not get a fresh lock while the contender still holds the evicted one");
         } finally {
             hooked.release.countDown();
@@ -227,23 +227,23 @@ public class ResourceLockingEvictionRaceTest {
 
     @Test
     public void test_eviction_never_removes_a_lock_the_caller_holds() throws Exception {
-        rl.lock(DB, COLL);
+        rl.lock(PROJECT, COLL);
         final var held = locks().get(COLL_ID);
 
-        rl.removeLock(DB, COLL);
+        rl.removeLock(PROJECT, COLL);
 
         assertSame(held, locks().get(COLL_ID));
-        assertTrue(rl.releaseWrite(DB, COLL));
+        assertTrue(rl.releaseWrite(PROJECT, COLL));
     }
 
     @Test
     public void test_eviction_never_removes_a_read_held_lock() throws Exception {
-        rl.lockRead(DB, COLL);
+        rl.lockRead(PROJECT, COLL);
         final var held = locks().get(COLL_ID);
 
-        rl.removeLock(DB, COLL);
+        rl.removeLock(PROJECT, COLL);
 
         assertSame(held, locks().get(COLL_ID));
-        rl.releaseRead(DB, COLL);
+        rl.releaseRead(PROJECT, COLL);
     }
 }

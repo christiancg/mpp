@@ -40,7 +40,7 @@ public class CacheSkipSourceTest {
         TestUtils.standardInitialSetup();
         shippedPageSize = configuration.getMaxPageSize();
         TestUtils.setPrivateField(configuration, "maxPageSize", 1024L);
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var doc = new JsonObject();
@@ -48,15 +48,15 @@ public class CacheSkipSourceTest {
             doc.addProperty("payload", "value-" + i + "-".repeat(i % 7 * 10));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(objects);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             SaveOperationHelper.executeBulkSave(bulk);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @AfterEach
@@ -73,11 +73,11 @@ public class CacheSkipSourceTest {
     }
 
     private List<String> underReadLock(SkipRead read) throws Exception {
-        assertTrue(locks.tryLockRead(TestGlobals.DB, TestGlobals.COLL, 5_000));
+        assertTrue(locks.tryLockRead(TestGlobals.PROJECT, TestGlobals.COLL, 5_000));
         try {
             return read.ids();
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -86,20 +86,21 @@ public class CacheSkipSourceTest {
     }
 
     private long pageCount() {
-        return cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).size();
+        return cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).size();
     }
 
     @Test
     public void test_a_skip_under_the_lock_tiles_the_plain_scan_across_page_boundaries() throws Exception {
         assertTrue(pageCount() > 3, "the fixture must span several pages");
-        final var whole = underReadLock(() -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, 1)));
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        final var whole = underReadLock(
+                () -> ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, 1)));
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
         for (var skip = 1; skip <= DOCUMENTS + 2; skip += 7) {
             final var at = skip;
             final var skipped = underReadLock(
-                    () -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, at)));
+                    () -> ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, at)));
             assertEquals(whole.subList(Math.min(at - 1, whole.size()), whole.size()), skipped, "skip " + at);
-            assertFalse(cache.holdsWholeCollection(TestGlobals.DB, TestGlobals.COLL), "skip " + at + " admitted");
+            assertFalse(cache.holdsWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL), "skip " + at + " admitted");
         }
     }
 
@@ -107,17 +108,17 @@ public class CacheSkipSourceTest {
     public void test_a_skip_under_the_lock_never_reads_the_skipped_pages() throws Exception {
         final var fs = IocContainer.get(FileSystem.class);
         final var spy = Mockito.spy(fs);
-        final var firstPage = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var firstPage = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .mapToLong(AdminPageEntry::getPage).min().orElseThrow();
-        final var firstPageRows = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var firstPageRows = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(row -> row.getPage() == firstPage).count();
         TestUtils.setPrivateField(cache, "fs", spy);
         try {
-            final var skipped = underReadLock(
-                    () -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, firstPageRows + 1)));
+            final var skipped = underReadLock(() -> ids(
+                    cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, firstPageRows + 1)));
             assertEquals(DOCUMENTS - firstPageRows - 1, skipped.size());
-            verify(spy, never()).readWholeCollectionPage(eq(TestGlobals.DB), eq(TestGlobals.COLL), eq(firstPage));
-            verify(spy, Mockito.atLeastOnce()).readWholeCollectionPage(eq(TestGlobals.DB), eq(TestGlobals.COLL),
+            verify(spy, never()).readWholeCollectionPage(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), eq(firstPage));
+            verify(spy, Mockito.atLeastOnce()).readWholeCollectionPage(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL),
                     anyLong());
         } finally {
             TestUtils.setPrivateField(cache, "fs", fs);
@@ -126,9 +127,9 @@ public class CacheSkipSourceTest {
 
     @Test
     public void test_a_skip_without_the_lock_answers_like_a_plain_skip() throws Exception {
-        final var plain = ids(cache.streamCollection(TestGlobals.DB, TestGlobals.COLL).skip(37));
+        final var plain = ids(cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL).skip(37));
 
-        final var skipped = ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, 37));
+        final var skipped = ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, 37));
 
         assertEquals(plain, skipped);
         assertEquals(DOCUMENTS - 37, skipped.size());
@@ -136,36 +137,38 @@ public class CacheSkipSourceTest {
 
     @Test
     public void test_a_zero_skip_scans_everything_and_admits_the_collection() throws Exception {
-        final var all = underReadLock(() -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, 0)));
+        final var all = underReadLock(
+                () -> ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, 0)));
 
         assertEquals(DOCUMENTS, all.size());
-        assertTrue(cache.holdsWholeCollection(TestGlobals.DB, TestGlobals.COLL));
-        assertEquals(ids(cache.streamCollection(TestGlobals.DB, TestGlobals.COLL).skip(5)),
-                ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, 5)));
+        assertTrue(cache.holdsWholeCollection(TestGlobals.PROJECT, TestGlobals.COLL));
+        assertEquals(ids(cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL).skip(5)),
+                ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, 5)));
     }
 
     @Test
     public void pageSkipUsesPageRowCountsWithoutReadingPk() throws Exception {
-        final var whole = underReadLock(() -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, 1)));
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
-        cache.userCache().evictPkIndex(TestGlobals.DB, TestGlobals.COLL);
+        final var whole = underReadLock(
+                () -> ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, 1)));
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.userCache().evictPkIndex(TestGlobals.PROJECT, TestGlobals.COLL);
         final var userCache = cache.userCache();
         final var fs = IocContainer.get(FileSystem.class);
         final var spy = Mockito.spy(fs);
-        final var firstPage = cache.getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL).stream()
+        final var firstPage = cache.getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .mapToLong(AdminPageEntry::getPage).min().orElseThrow();
         TestUtils.setPrivateField(userCache, "fs", spy);
         TestUtils.setPrivateField(cache, "fs", spy);
         try {
             final var skipped = underReadLock(
-                    () -> ids(cache.streamCollectionSkipping(TestGlobals.DB, TestGlobals.COLL, DOCUMENTS / 2)));
+                    () -> ids(cache.streamCollectionSkipping(TestGlobals.PROJECT, TestGlobals.COLL, DOCUMENTS / 2)));
             assertEquals(whole.subList(DOCUMENTS / 2 - 1, whole.size()), skipped);
         } finally {
             TestUtils.setPrivateField(userCache, "fs", fs);
             TestUtils.setPrivateField(cache, "fs", fs);
         }
-        verify(spy, never()).readWholeCollectionPage(eq(TestGlobals.DB), eq(TestGlobals.COLL), eq(firstPage));
-        verify(spy, never()).readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL);
-        verify(spy, never()).pkRowsFor(eq(TestGlobals.DB), eq(TestGlobals.COLL), Mockito.anyCollection());
+        verify(spy, never()).readWholeCollectionPage(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), eq(firstPage));
+        verify(spy, never()).readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL);
+        verify(spy, never()).pkRowsFor(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL), Mockito.anyCollection());
     }
 }

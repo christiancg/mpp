@@ -30,7 +30,7 @@ public final class AdminRecordStore<T> {
     }
 
     public List<T> read(List<String> recordIds) throws IOException, InterruptedException {
-        locks.lock(Globals.ADMIN_DB_NAME, collName);
+        locks.lock(Globals.ADMIN_PROJECT_NAME, collName);
         try {
             final var result = new ArrayList<T>();
             for (var recordId : recordIds) {
@@ -45,7 +45,7 @@ public final class AdminRecordStore<T> {
             }
             return result;
         } finally {
-            locks.release(Globals.ADMIN_DB_NAME, collName);
+            locks.release(Globals.ADMIN_PROJECT_NAME, collName);
         }
     }
 

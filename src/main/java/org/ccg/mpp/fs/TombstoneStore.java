@@ -37,53 +37,55 @@ public final class TombstoneStore {
         this.writeAheadLog = writeAheadLog;
     }
 
-    public void append(String dbName, String collName, String id, long version) throws IOException {
-        appendAll(dbName, collName, List.of(id), List.of(version));
+    public void append(String projectName, String collName, String id, long version) throws IOException {
+        appendAll(projectName, collName, List.of(id), List.of(version));
     }
 
-    public void appendAll(String dbName, String collName, List<String> ids, List<Long> versions) throws IOException {
-        appendResident(paths.tombstoneFile(dbName, collName), ids, versions, true);
+    public void appendAll(String projectName, String collName, List<String> ids, List<Long> versions)
+            throws IOException {
+        appendResident(paths.tombstoneFile(projectName, collName), ids, versions, true);
     }
 
-    public PendingForce appendAllDeferred(String dbName, String collName, List<String> ids, List<Long> versions)
+    public PendingForce appendAllDeferred(String projectName, String collName, List<String> ids, List<Long> versions)
             throws IOException {
         if (ids.isEmpty()) {
             return PendingForce.NONE;
         }
-        final var file = paths.tombstoneFile(dbName, collName);
+        final var file = paths.tombstoneFile(projectName, collName);
         appendResident(file, ids, versions, false);
         return PendingForce.start(file.toPath());
     }
 
-    public PendingForce reserve(String dbName, String collName, List<String> ids, long version) throws IOException {
+    public PendingForce reserve(String projectName, String collName, List<String> ids, long version)
+            throws IOException {
         final var versions = Collections.nCopies(ids.size(), version);
-        if (ids.isEmpty() || writeAheadLog.openGroupOf(dbName, collName) == null) {
-            return appendAllDeferred(dbName, collName, ids, versions);
+        if (ids.isEmpty() || writeAheadLog.openGroupOf(projectName, collName) == null) {
+            return appendAllDeferred(projectName, collName, ids, versions);
         }
-        final var file = paths.tombstoneFile(dbName, collName);
+        final var file = paths.tombstoneFile(projectName, collName);
         appendResident(file, ids, versions, false);
         awaitingGroupForce.add(file.getAbsolutePath());
         return PendingForce.NONE;
     }
 
-    PendingForce startGroupForce(String dbName, String collName) {
+    PendingForce startGroupForce(String projectName, String collName) {
         if (awaitingGroupForce.isEmpty()) {
             return PendingForce.NONE;
         }
-        final var file = paths.tombstoneFile(dbName, collName);
+        final var file = paths.tombstoneFile(projectName, collName);
         return awaitingGroupForce.remove(file.getAbsolutePath())
                 ? PendingForce.start(file.toPath())
                 : PendingForce.NONE;
     }
 
-    boolean forcedBeside(PendingForce tombstones, boolean logForced, String dbName, String collName) {
+    boolean forcedBeside(PendingForce tombstones, boolean logForced, String projectName, String collName) {
         try {
             tombstones.await();
             return logForced;
         } catch (IOException e) {
-            logger.error("Could not force the delete tombstones of a write group on " + dbName + "|" + collName
+            logger.error("Could not force the delete tombstones of a write group on " + projectName + "|" + collName
                     + "; the group is taken back and its deletes fail", e);
-            final var group = writeAheadLog.openGroupOf(dbName, collName);
+            final var group = writeAheadLog.openGroupOf(projectName, collName);
             if (group != null) {
                 group.fail();
             }
@@ -91,8 +93,8 @@ public final class TombstoneStore {
         }
     }
 
-    public void retract(String dbName, String collName, String id, long version) throws IOException {
-        retract(paths.tombstoneFile(dbName, collName), id, version);
+    public void retract(String projectName, String collName, String id, long version) throws IOException {
+        retract(paths.tombstoneFile(projectName, collName), id, version);
     }
 
     public void appendAdmin(String key, long version) throws IOException {
@@ -105,23 +107,23 @@ public final class TombstoneStore {
         return ResidentAdminTombstones.read(paths.adminTombstoneFile());
     }
 
-    public Map<String, Long> read(String dbName, String collName) throws IOException {
-        final var file = paths.tombstoneFile(dbName, collName);
+    public Map<String, Long> read(String projectName, String collName) throws IOException {
+        final var file = paths.tombstoneFile(projectName, collName);
         final var held = heldBack(file);
         final var copy = residentOf(file).copy();
         copy.entrySet().removeIf(entry -> held.contains(new TombstoneRetract(entry.getKey(), entry.getValue())));
         return Collections.unmodifiableMap(copy);
     }
 
-    public long versionOf(String dbName, String collName, String id) throws IOException {
-        final var file = paths.tombstoneFile(dbName, collName);
+    public long versionOf(String projectName, String collName, String id) throws IOException {
+        final var file = paths.tombstoneFile(projectName, collName);
         final var held = heldBack(file);
         final var version = residentOf(file).versionOf(id);
         return held.contains(new TombstoneRetract(id, version)) ? 0L : version;
     }
 
-    public TombstoneView view(String dbName, String collName) throws IOException {
-        final var file = paths.tombstoneFile(dbName, collName);
+    public TombstoneView view(String projectName, String collName) throws IOException {
+        final var file = paths.tombstoneFile(projectName, collName);
         final var held = heldBack(file);
         final var view = residentOf(file).view();
         return held.isEmpty() ? view : view.without(held);
@@ -160,20 +162,20 @@ public final class TombstoneStore {
         }
     }
 
-    public long highestVersion(String dbName, String collName) throws IOException {
+    public long highestVersion(String projectName, String collName) throws IOException {
         var highest = 0L;
-        for (final var version : read(paths.tombstoneFile(dbName, collName)).values()) {
+        for (final var version : read(paths.tombstoneFile(projectName, collName)).values()) {
             highest = Math.max(highest, version);
         }
         return highest;
     }
 
-    public void compact(String dbName, String collName, long minVersionToKeep) throws IOException {
-        compact(paths.tombstoneFile(dbName, collName), minVersionToKeep);
+    public void compact(String projectName, String collName, long minVersionToKeep) throws IOException {
+        compact(paths.tombstoneFile(projectName, collName), minVersionToKeep);
     }
 
-    public void compactIfDue(String dbName, String collName, long minVersionToKeep) throws IOException {
-        final var file = paths.tombstoneFile(dbName, collName);
+    public void compactIfDue(String projectName, String collName, long minVersionToKeep) throws IOException {
+        final var file = paths.tombstoneFile(projectName, collName);
         final var resident = residentOf(file);
         final var oldest = resident.oldest();
         if (oldest != 0L && oldest < minVersionToKeep || resident.lineCount() > 2L * resident.size()) {

@@ -18,24 +18,24 @@ final class FailedForceRebuild {
     private static final String REBUILD_SUFFIX = ".repair";
 
     private final FilePaths paths;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final File log;
     private WalCodec.Decoded decoded;
 
-    private FailedForceRebuild(FilePaths paths, String dbName, String collName, File log) {
+    private FailedForceRebuild(FilePaths paths, String projectName, String collName, File log) {
         this.paths = paths;
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.log = log;
     }
 
-    static void rebuildFailed(FilePaths paths, String dbName, String collName, File log) throws IOException {
-        final var failed = ForceFailures.in(paths.collectionFolder(dbName, collName));
+    static void rebuildFailed(FilePaths paths, String projectName, String collName, File log) throws IOException {
+        final var failed = ForceFailures.in(paths.collectionFolder(projectName, collName));
         if (failed.isEmpty()) {
             return;
         }
-        final var rebuild = new FailedForceRebuild(paths, dbName, collName, log);
+        final var rebuild = new FailedForceRebuild(paths, projectName, collName, log);
         final var pages = rebuild.pageFiles();
         for (final var file : failed) {
             if (!file.isFile()) {
@@ -48,14 +48,14 @@ final class FailedForceRebuild {
 
     private Set<File> pageFiles() throws IOException {
         final var pages = new HashSet<File>();
-        for (final var page : DocumentPageStore.pageFileLengths(paths, dbName, collName).keySet()) {
-            pages.add(paths.collectionPage(dbName, collName, page).getAbsoluteFile());
+        for (final var page : DocumentPageStore.pageFileLengths(paths, projectName, collName).keySet()) {
+            pages.add(paths.collectionPage(projectName, collName, page).getAbsoluteFile());
         }
         return pages;
     }
 
     private boolean isPkIndex(File file) {
-        return file.equals(paths.pkIndexFile(dbName, collName).getAbsoluteFile());
+        return file.equals(paths.pkIndexFile(projectName, collName).getAbsoluteFile());
     }
 
     private static boolean isFieldIndexLog(File file) {
@@ -76,7 +76,7 @@ final class FailedForceRebuild {
                 copyAll(source, copy);
                 final var reapplied = reapplyLogged(file, copy);
                 SyncedWrites.content(copy, temp);
-                logger.warning("Rebuilt " + file.getName() + " of " + WriteAheadLog.subject(dbName, collName)
+                logger.warning("Rebuilt " + file.getName() + " of " + WriteAheadLog.subject(projectName, collName)
                         + " into a new file, re-applying " + reapplied + " logged change(s), because an earlier"
                         + " force of it failed and a retried force of the same file is not trusted");
             } catch (IOException | RuntimeException e) {
@@ -149,8 +149,8 @@ final class FailedForceRebuild {
 
     private File fileOf(WalChange change) {
         return (change.target() == WalTarget.PK_WRITE
-                ? paths.pkIndexFile(dbName, collName)
-                : paths.collectionPage(dbName, collName, change.page())).getAbsoluteFile();
+                ? paths.pkIndexFile(projectName, collName)
+                : paths.collectionPage(projectName, collName, change.page())).getAbsoluteFile();
     }
 
     private static void apply(FileChannel copy, WalChange change) throws IOException {

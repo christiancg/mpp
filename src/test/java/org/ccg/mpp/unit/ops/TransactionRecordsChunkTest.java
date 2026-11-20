@@ -33,7 +33,7 @@ public class TransactionRecordsChunkTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -55,8 +55,8 @@ public class TransactionRecordsChunkTest {
             final var payload = new JsonObject();
             payload.addProperty(Globals.PK_FIELD, "large-" + seq);
             payload.addProperty("filler", filler);
-            ops.add(new AdminTransactionEntry(txId, "client", seq, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
-                    TestGlobals.COLL, payload));
+            ops.add(new AdminTransactionEntry(txId, "client", seq, AdminTransactionEntry.OP_TYPE_SAVE,
+                    TestGlobals.PROJECT, TestGlobals.COLL, payload));
         }
         return ops;
     }
@@ -67,7 +67,7 @@ public class TransactionRecordsChunkTest {
         Mockito.doAnswer(invocation -> {
             records.add(invocation.<int[]>getArgument(2).length);
             return invocation.callRealMethod();
-        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_DB_NAME),
+        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_PROJECT_NAME),
                 ArgumentMatchers.eq(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME), ArgumentMatchers.any());
         useCache(spy);
         try {
@@ -83,7 +83,7 @@ public class TransactionRecordsChunkTest {
         final var txId = UUID.randomUUID().toString();
         final var ops = largeOps(txId);
         final var marker = TxCommitLog.localCommitMarker(txId, ops.stream().map(AdminTransactionEntry::get_id).toList(),
-                List.of(TestGlobals.DB + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL));
+                List.of(TestGlobals.PROJECT + Globals.COLL_IDENTIFIER_SEPARATOR + TestGlobals.COLL));
         final var inserts = new ArrayList<AdminTransactionEntry>();
         inserts.add(marker);
         inserts.addAll(ops);
@@ -116,7 +116,7 @@ public class TransactionRecordsChunkTest {
                 throw new IllegalStateException("the last record cannot be placed");
             }
             return invocation.callRealMethod();
-        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_DB_NAME),
+        }).when(spy).selectPagesForInsert(ArgumentMatchers.eq(Globals.ADMIN_PROJECT_NAME),
                 ArgumentMatchers.eq(Globals.ADMIN_TRANSACTIONS_COLLECTION_NAME), ArgumentMatchers.any());
         useCache(spy);
         try {
@@ -149,8 +149,8 @@ public class TransactionRecordsChunkTest {
         final var txId = UUID.randomUUID().toString();
         final var payload = new JsonObject();
         payload.addProperty(Globals.PK_FIELD, "small");
-        final var op = new AdminTransactionEntry(txId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
-                TestGlobals.COLL, payload);
+        final var op = new AdminTransactionEntry(txId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE,
+                TestGlobals.PROJECT, TestGlobals.COLL, payload);
         final var marker = TxCommitLog.localCommitMarker(txId, List.of(op.get_id()), List.of());
 
         final var records = recordSizesWhile(() -> {

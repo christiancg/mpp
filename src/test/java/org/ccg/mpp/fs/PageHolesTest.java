@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 
 public class PageHolesTest {
-    private static final String DB = "holesDb";
+    private static final String PROJECT = "holesProject";
     private static final String COLL = "holesColl";
 
     @TempDir
@@ -34,7 +34,7 @@ public class PageHolesTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        fx = new StorageFixture(tmp, DB, COLL);
+        fx = new StorageFixture(tmp, PROJECT, COLL);
         fx.seed(0, "a", "b", "c");
     }
 
@@ -43,7 +43,7 @@ public class PageHolesTest {
         try (var channel = FileChannel.open(fx.page(0).toPath(), StandardOpenOption.WRITE)) {
             PageHoles.blank(channel, row.getPosition(), row.getLength());
         }
-        PkRowWrites.deleteRows(fx.paths, fx.store, DB, COLL, List.of(id));
+        PkRowWrites.deleteRows(fx.paths, fx.store, PROJECT, COLL, List.of(id));
     }
 
     @Test
@@ -77,7 +77,7 @@ public class PageHolesTest {
     public void aHoleIsNeverParsedAsARecord() throws IOException {
         blank("b");
 
-        final var read = new DocumentPageStore(fx.paths).readWholeCollectionPage(DB, COLL, 0);
+        final var read = new DocumentPageStore(fx.paths).readWholeCollectionPage(PROJECT, COLL, 0);
 
         assertEquals(List.of("a", "c"), read.keySet().stream().sorted().toList());
         assertTrue(PageHoles.isHole(" x".getBytes(StandardCharsets.UTF_8), 0));
@@ -89,7 +89,8 @@ public class PageHolesTest {
     public void adoptionSkipsHoles() throws IOException {
         blank("c");
 
-        final var adopted = OrphanedPageRecords.adoptAll(fx.paths, new PkRowsSession(fx.store, DB, COLL), List.of(0L));
+        final var adopted = OrphanedPageRecords.adoptAll(fx.paths, new PkRowsSession(fx.store, PROJECT, COLL),
+                List.of(0L));
 
         assertTrue(adopted.isEmpty(), "a hole past the last indexed record is not an orphan");
         assertEquals(List.of("a", "b"), fx.indexedRows().stream().map(PkIndexEntry::getValue).toList());
@@ -99,7 +100,7 @@ public class PageHolesTest {
     public void pkRebuildSkipsHoles() throws IOException {
         blank("b");
 
-        final var plan = PkIndexRebuild.plan(fx.paths, fx.store, DB, COLL, List.of(0L));
+        final var plan = PkIndexRebuild.plan(fx.paths, fx.store, PROJECT, COLL, List.of(0L));
 
         assertEquals(List.of("a", "c"), plan.rows().stream().map(PkIndexEntry::getValue).sorted().toList());
         assertTrue(plan.vanished().isEmpty());
@@ -123,7 +124,7 @@ public class PageHolesTest {
         blank("b");
         blank("c");
 
-        assertTrue(new DocumentPageStore(fx.paths).readWholeCollectionPage(DB, COLL, 0).isEmpty());
+        assertTrue(new DocumentPageStore(fx.paths).readWholeCollectionPage(PROJECT, COLL, 0).isEmpty());
         assertTrue(PageLines.recordsOf(fx.page(0), 0).isEmpty());
     }
 

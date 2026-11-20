@@ -39,7 +39,7 @@ public class TransactionBufferInsertedFlagTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
     }
 
@@ -65,7 +65,7 @@ public class TransactionBufferInsertedFlagTest {
     }
 
     private SaveResponse save(String id, int value, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, value));
         request.set_id(id);
         final var response = processor.processMessage(request, clientId);
@@ -113,7 +113,7 @@ public class TransactionBufferInsertedFlagTest {
 
         final var client = newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var deletion = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var deletion = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         deletion.set_id("tx-revived");
         assertEquals(OperationStatus.OK, processor.processMessage(deletion, client).getStatus());
         assertTrue(save("tx-revived", 2, client).isInserted());
@@ -136,7 +136,7 @@ public class TransactionBufferInsertedFlagTest {
 
     @Test
     public void test_document_just_under_the_cap_without_an_id_is_refused_at_buffer_time() {
-        final var measured = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, documentJustUnderTheCap(10))
+        final var measured = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, documentJustUnderTheCap(10))
                 .byteSize();
         assertTrue(measured > Configuration.getInstance().getMaxEntrySize(),
                 "precondition: with a generated _id the document must exceed the cap");
@@ -144,7 +144,7 @@ public class TransactionBufferInsertedFlagTest {
         final var object = documentJustUnderTheCap(10);
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
 
         final var response = processor.processMessage(request, clientId);
@@ -157,7 +157,7 @@ public class TransactionBufferInsertedFlagTest {
         final var object = documentJustUnderTheCap(200);
         final var clientId = newClient();
         processor.processMessage(new StartTransactionRequest(), clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
 
         final var response = processor.processMessage(request, clientId);

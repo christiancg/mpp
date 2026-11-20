@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class SyncedWriteOrderTest {
-    private static final String DB = "orderDb";
+    private static final String PROJECT = "orderProject";
     private static final String COLL = "orderColl";
     private static final String PAGE = COLL + "-0.dat";
     private static final String PK = COLL + "-pk.idx";
@@ -41,7 +41,7 @@ public class SyncedWriteOrderTest {
     @BeforeEach
     public void setUp() throws Exception {
         recorder = RecordingForcer.install(PlatformSupport.directorySync());
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
         recorder.clear();
     }
@@ -61,7 +61,7 @@ public class SyncedWriteOrderTest {
     }
 
     private static List<String> filesOnly(List<String> forced) {
-        return forced.stream().filter(name -> !name.equals(COLL) && !name.equals(DB)).toList();
+        return forced.stream().filter(name -> !name.equals(COLL) && !name.equals(PROJECT)).toList();
     }
 
     private static List<String> writeAheadLogOnly() {
@@ -71,7 +71,7 @@ public class SyncedWriteOrderTest {
     @Test
     @RequiresDirectorySync
     public void test_insert_forces_the_marker_then_only_the_log() throws Exception {
-        new IndexMarkers(rf.fx.paths).markDirty(DB, COLL);
+        new IndexMarkers(rf.fx.paths).markDirty(PROJECT, COLL);
         rf.appender.insert(rf.entry("d", "new-d", 0), ReplacerFixture.line("d", "new-d"));
 
         assertEquals(List.of(COLL + "-indexes.dirty", WAL), filesOnly(recorder.forcedNames()));
@@ -108,7 +108,7 @@ public class SyncedWriteOrderTest {
     public void test_bulk_insert_forces_only_the_log_once() throws Exception {
         final var entries = new ArrayList<>(List.of(rf.entry("x", "x", 0), rf.entry("y", "y", 1)));
 
-        rf.appender.bulkInsert(DB, COLL, entries, DbEntry::getPage,
+        rf.appender.bulkInsert(PROJECT, COLL, entries, DbEntry::getPage,
                 entry -> ReplacerFixture.line(entry.get_id(), entry.get_id()));
 
         assertEquals(writeAheadLogOnly(), filesOnly(recorder.forcedNames()));
@@ -138,7 +138,7 @@ public class SyncedWriteOrderTest {
         rf.replace("b", "moved-b", 1, null);
         recorder.clear();
 
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
 
         final var forced = filesOnly(recorder.forcedNames());
         assertEquals(Set.of(PAGE, COLL + "-1.dat", PK), Set.copyOf(forced.subList(0, 3)), forced.toString());
@@ -149,10 +149,10 @@ public class SyncedWriteOrderTest {
     @RequiresDirectorySync
     public void test_a_checkpoint_of_an_empty_log_forces_nothing() throws Exception {
         final var log = new WriteAheadLog(rf.fx.paths);
-        log.checkpoint(DB, COLL);
+        log.checkpoint(PROJECT, COLL);
         recorder.clear();
 
-        log.checkpoint(DB, COLL);
+        log.checkpoint(PROJECT, COLL);
 
         assertEquals(List.of(), recorder.forced());
     }
@@ -165,7 +165,7 @@ public class SyncedWriteOrderTest {
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         recorder.clear();
 
-        rf.vacuum.vacuumIfNeeded(DB, COLL, 0, 10, PagePlacement.VACUUM_THEN_APPEND, null);
+        rf.vacuum.vacuumIfNeeded(PROJECT, COLL, 0, 10, PagePlacement.VACUUM_THEN_APPEND, null);
 
         final var files = filesOnly(recorder.forcedNames());
         assertEquals(Set.of(PAGE, INTENTS, COLL + "-0" + Globals.VACUUM_FILE_EXTENSION),
@@ -196,7 +196,7 @@ public class SyncedWriteOrderTest {
         });
         final var group = new ForceGroup();
         group.add(rf.fx.page(0).toPath());
-        group.add(rf.fx.paths.pkIndexFile(DB, COLL).toPath());
+        group.add(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
 
         group.force();
 
@@ -206,9 +206,9 @@ public class SyncedWriteOrderTest {
     @Test
     @RequiresDirectorySync
     public void test_atomic_rewrite_forces_tmp_before_the_move_and_the_folder_after() throws Exception {
-        final var schema = new File(rf.fx.paths.collectionFolder(DB, COLL), COLL + "-schema.json");
+        final var schema = new File(rf.fx.paths.collectionFolder(PROJECT, COLL), COLL + "-schema.json");
         MetadataFileStore.write(schema, "{}");
-        rf.fx.store.rewriteRows(DB, COLL, ArrayList::new);
+        rf.fx.store.rewriteRows(PROJECT, COLL, ArrayList::new);
 
         final var forced = recorder.forcedNames();
         assertInOrder(forced, schema.getName() + ".repair", COLL, PK + ".repair", COLL);
@@ -221,7 +221,7 @@ public class SyncedWriteOrderTest {
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         recorder.clear();
 
-        rf.vacuum.vacuumIfNeeded(DB, COLL, 0, 10, PagePlacement.VACUUM_THEN_APPEND, null);
+        rf.vacuum.vacuumIfNeeded(PROJECT, COLL, 0, 10, PagePlacement.VACUUM_THEN_APPEND, null);
 
         assertInOrder(recorder.forcedNames(), INTENTS, COLL);
         assertInOrder(recorder.forcedNames(), COLL + "-0" + Globals.VACUUM_FILE_EXTENSION, COLL);
@@ -230,7 +230,7 @@ public class SyncedWriteOrderTest {
     @Test
     @RequiresDirectorySync
     public void test_tombstone_append_is_forced() throws Exception {
-        new TombstoneStore(rf.fx.paths).append(DB, COLL, "gone", 7L);
+        new TombstoneStore(rf.fx.paths).append(PROJECT, COLL, "gone", 7L);
 
         assertTrue(recorder.forcedNames().stream().anyMatch(name -> name.contains(Globals.TOMBSTONE_FILE_NAME)),
                 recorder.forcedNames().toString());
@@ -239,37 +239,37 @@ public class SyncedWriteOrderTest {
     @Test
     @RequiresDirectorySync
     public void test_a_deferred_tombstone_batch_is_forced_once_before_await_returns() throws Exception {
-        final var pending = new TombstoneStore(rf.fx.paths).appendAllDeferred(DB, COLL, List.of("x", "y", "z"),
+        final var pending = new TombstoneStore(rf.fx.paths).appendAllDeferred(PROJECT, COLL, List.of("x", "y", "z"),
                 List.of(5L, 6L, 7L));
         pending.await();
 
         assertEquals(1,
                 recorder.forcedNames().stream().filter(name -> name.contains(Globals.TOMBSTONE_FILE_NAME)).count(),
                 recorder.forcedNames().toString());
-        assertEquals(3, Files.readAllLines(rf.fx.paths.tombstoneFile(DB, COLL).toPath()).size());
+        assertEquals(3, Files.readAllLines(rf.fx.paths.tombstoneFile(PROJECT, COLL).toPath()).size());
     }
 
     @Test
     @RequiresDirectorySync
     public void test_an_empty_deferred_tombstone_batch_writes_and_forces_nothing() throws Exception {
-        new TombstoneStore(rf.fx.paths).appendAllDeferred(DB, COLL, List.of(), List.of()).await();
+        new TombstoneStore(rf.fx.paths).appendAllDeferred(PROJECT, COLL, List.of(), List.of()).await();
 
         assertTrue(recorder.forcedNames().isEmpty(), recorder.forcedNames().toString());
-        assertFalse(rf.fx.paths.tombstoneFile(DB, COLL).exists());
+        assertFalse(rf.fx.paths.tombstoneFile(PROJECT, COLL).exists());
     }
 
     @Test
     @RequiresDirectorySync
     public void test_index_log_append_is_forced_before_the_marker_clear() throws Exception {
         final var markers = new IndexMarkers(rf.fx.paths);
-        markers.markDirty(DB, COLL);
-        final var folder = rf.fx.paths.collectionFolder(DB, COLL);
+        markers.markDirty(PROJECT, COLL);
+        final var folder = rf.fx.paths.collectionFolder(PROJECT, COLL);
         final var log = new File(folder, COLL + "-price-Number.idxlog");
         recorder.clear();
 
         FieldIndexLog.append(new File(folder, COLL + "-price-Number.idx"), log,
                 List.of(new IndexLogChange("1", List.of("a"), List.of())));
-        markers.clearDirty(DB, COLL);
+        markers.clearDirty(PROJECT, COLL);
 
         assertEquals(List.of(log.getName()),
                 recorder.forcedNames().stream().filter(name -> !name.equals(COLL)).toList());
@@ -279,21 +279,21 @@ public class SyncedWriteOrderTest {
     @RequiresDirectorySync
     public void test_intent_end_and_marker_clear_are_not_forced() throws Exception {
         final var markers = new IndexMarkers(rf.fx.paths);
-        markers.markDirty(DB, COLL);
-        final var intent = rf.fx.journal.begin(DB, COLL, List.of(new WriteIntent.Vacuum(0)));
+        markers.markDirty(PROJECT, COLL);
+        final var intent = rf.fx.journal.begin(PROJECT, COLL, List.of(new WriteIntent.Vacuum(0)));
         recorder.clear();
 
         rf.fx.journal.end(intent);
-        markers.clearDirty(DB, COLL);
+        markers.clearDirty(PROJECT, COLL);
 
         assertEquals(List.of(), recorder.forced());
-        assertEquals(0L, rf.fx.paths.intentLog(DB, COLL).length());
+        assertEquals(0L, rf.fx.paths.intentLog(PROJECT, COLL).length());
     }
 
     @Test
     @RequiresDirectorySync
-    public void test_drop_collection_forces_the_database_folder() {
-        final var collectionFolder = rf.fx.paths.collectionFolder(DB, COLL);
+    public void test_drop_collection_forces_the_project_folder() {
+        final var collectionFolder = rf.fx.paths.collectionFolder(PROJECT, COLL);
 
         assertTrue(FileTreeDeleter.delete(collectionFolder));
 
@@ -305,13 +305,13 @@ public class SyncedWriteOrderTest {
     @RequiresDirectorySync
     public void test_a_log_that_cannot_be_forced_fails_the_write_before_any_file_is_touched() throws Exception {
         final var pageBefore = Files.readAllBytes(rf.fx.page(0).toPath());
-        final var pkBefore = Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath());
+        final var pkBefore = Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
         recorder.failingFor(WAL);
 
         assertThrows(IOException.class,
                 () -> rf.appender.insert(rf.entry("d", "new-d", 0), ReplacerFixture.line("d", "new-d")));
 
         assertArrayEquals(pageBefore, Files.readAllBytes(rf.fx.page(0).toPath()));
-        assertArrayEquals(pkBefore, Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath()));
+        assertArrayEquals(pkBefore, Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath()));
     }
 }

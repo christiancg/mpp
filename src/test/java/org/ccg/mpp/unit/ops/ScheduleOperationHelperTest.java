@@ -40,7 +40,7 @@ public class ScheduleOperationHelperTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -57,28 +57,29 @@ public class ScheduleOperationHelperTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 100);
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerProject", 100);
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         registry.clear();
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, PROCEDURE, "return 1;"), ACTOR);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, PROCEDURE, "return 1;"),
+                ACTOR);
     }
 
     private static SaveScheduleRequest intervalRequest(String name) {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, name, PROCEDURE);
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, name, PROCEDURE);
         request.setIntervalMs(2000L);
         return request;
     }
 
     private static SaveScheduleRequest cronRequest(String name, String cron) {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, name, PROCEDURE);
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, name, PROCEDURE);
         request.setCron(cron);
         return request;
     }
@@ -136,21 +137,21 @@ public class ScheduleOperationHelperTest {
         request.setDescription("daily rollup");
         assertEquals(1L, save(request).getVersion());
 
-        final var stored = cache.getSchedule(TestGlobals.DB, "nightly");
+        final var stored = cache.getSchedule(TestGlobals.PROJECT, "nightly");
         assertNotNull(stored);
         assertEquals(PROCEDURE, stored.getProcedureName());
         assertEquals("0 3 * * *", stored.getCron());
         assertEquals(ACTOR, stored.getDefiner());
         assertEquals("daily rollup", stored.getDescription());
         assertEquals(1, stored.getArgs().get("days").asJsonNumber().getValue().intValue());
-        assertNotNull(registry.get(TestGlobals.DB, "nightly"));
+        assertNotNull(registry.get(TestGlobals.PROJECT, "nightly"));
     }
 
     @Test
     public void test_save_bumps_the_version() throws Exception {
         assertEquals(1L, save(intervalRequest("s")).getVersion());
         assertEquals(2L, save(intervalRequest("s")).getVersion());
-        assertEquals(2L, cache.getSchedule(TestGlobals.DB, "s").getVersion());
+        assertEquals(2L, cache.getSchedule(TestGlobals.PROJECT, "s").getVersion());
     }
 
     @Test
@@ -163,16 +164,16 @@ public class ScheduleOperationHelperTest {
     }
 
     @Test
-    public void test_save_rejects_an_unknown_database() throws Exception {
-        final var request = new SaveScheduleRequest("missingDb", "s", PROCEDURE);
+    public void test_save_rejects_an_unknown_project() throws Exception {
+        final var request = new SaveScheduleRequest("missingProject", "s", PROCEDURE);
         request.setIntervalMs(1000L);
         final var response = ScheduleOperationHelper.executeSave(request, ACTOR);
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
     public void test_save_rejects_an_unknown_procedure() throws Exception {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, "s", "nope");
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, "s", "nope");
         request.setIntervalMs(1000L);
         final var response = ScheduleOperationHelper.executeSave(request, ACTOR);
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), response.getErrorCode());
@@ -189,7 +190,7 @@ public class ScheduleOperationHelperTest {
     @Test
     public void test_save_rejects_neither_cron_nor_interval() throws Exception {
         final var response = ScheduleOperationHelper
-                .executeSave(new SaveScheduleRequest(TestGlobals.DB, "s", PROCEDURE), ACTOR);
+                .executeSave(new SaveScheduleRequest(TestGlobals.PROJECT, "s", PROCEDURE), ACTOR);
         assertEquals(ErrorCode.INVALID_SCHEDULE.getCode(), response.getErrorCode());
     }
 
@@ -197,7 +198,7 @@ public class ScheduleOperationHelperTest {
     public void test_save_rejects_a_malformed_cron() throws Exception {
         final var response = ScheduleOperationHelper.executeSave(cronRequest("s", "not a cron"), ACTOR);
         assertEquals(ErrorCode.INVALID_SCHEDULE.getCode(), response.getErrorCode());
-        assertNull(cache.getSchedule(TestGlobals.DB, "s"));
+        assertNull(cache.getSchedule(TestGlobals.PROJECT, "s"));
     }
 
     @Test
@@ -209,8 +210,8 @@ public class ScheduleOperationHelperTest {
     }
 
     @Test
-    public void test_save_rejects_past_the_database_cap() throws Exception {
-        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 1);
+    public void test_save_rejects_past_the_project_cap() throws Exception {
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerProject", 1);
         save(intervalRequest("one"));
         final var response = ScheduleOperationHelper.executeSave(intervalRequest("two"), ACTOR);
         assertEquals(ErrorCode.TOO_MANY_SCHEDULES.getCode(), response.getErrorCode());
@@ -232,42 +233,42 @@ public class ScheduleOperationHelperTest {
     @Test
     public void test_delete_is_idempotent_and_refreshes_the_registry() throws Exception {
         save(intervalRequest("s"));
-        assertNotNull(registry.get(TestGlobals.DB, "s"));
+        assertNotNull(registry.get(TestGlobals.PROJECT, "s"));
         assertEquals(OperationStatus.OK, ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "s"), ACTOR).getStatus());
-        assertNull(cache.getSchedule(TestGlobals.DB, "s"));
-        assertNull(registry.get(TestGlobals.DB, "s"));
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "s"), ACTOR).getStatus());
+        assertNull(cache.getSchedule(TestGlobals.PROJECT, "s"));
+        assertNull(registry.get(TestGlobals.PROJECT, "s"));
         assertEquals(OperationStatus.OK, ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "s"), ACTOR).getStatus());
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "s"), ACTOR).getStatus());
     }
 
     @Test
-    public void test_delete_rejects_an_unknown_database_and_a_disabled_feature() throws Exception {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest("missingDb", "s"), ACTOR).getErrorCode());
+    public void test_delete_rejects_an_unknown_project_and_a_disabled_feature() throws Exception {
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), ScheduleOperationHelper
+                .executeDelete(new DeleteScheduleRequest("missingProject", "s"), ACTOR).getErrorCode());
         TestUtils.setPrivateField(configuration, "schedulesEnabled", false);
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), ScheduleOperationHelper
-                .executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "s"), ACTOR).getErrorCode());
+                .executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "s"), ACTOR).getErrorCode());
     }
 
     @Test
     public void test_deleting_a_procedure_referenced_by_a_schedule_is_refused() throws Exception {
         save(intervalRequest("s"));
         final var response = ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, PROCEDURE), ACTOR);
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, PROCEDURE), ACTOR);
         assertEquals(ErrorCode.INVALID_SCHEDULE.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().contains("'s'"), response.getMessage());
-        assertNotNull(cache.getProcedure(TestGlobals.DB, PROCEDURE));
+        assertNotNull(cache.getProcedure(TestGlobals.PROJECT, PROCEDURE));
 
-        ScheduleOperationHelper.executeDelete(new DeleteScheduleRequest(TestGlobals.DB, "s"), ACTOR);
+        ScheduleOperationHelper.executeDelete(new DeleteScheduleRequest(TestGlobals.PROJECT, "s"), ACTOR);
         assertEquals(OperationStatus.OK, ProcedureOperationHelper
-                .executeDelete(new DeleteProcedureRequest(TestGlobals.DB, PROCEDURE), ACTOR).getStatus());
+                .executeDelete(new DeleteProcedureRequest(TestGlobals.PROJECT, PROCEDURE), ACTOR).getStatus());
     }
 
     @Test
     public void test_list_returns_summaries_with_next_run_at() throws Exception {
         save(cronRequest("nightly", "0 3 * * *"));
-        final var response = ScheduleOperationHelper.executeList(new ListSchedulesRequest(TestGlobals.DB));
+        final var response = ScheduleOperationHelper.executeList(new ListSchedulesRequest(TestGlobals.PROJECT));
         assertInstanceOf(ListSchedulesResponse.class, response);
         final var schedules = ((ListSchedulesResponse) response).getSchedules();
         assertEquals(1, schedules.size());
@@ -284,7 +285,7 @@ public class ScheduleOperationHelperTest {
         args.add("limit", new JsonNumber(7));
         request.setArgs(args);
         save(request);
-        final var list = new ListSchedulesRequest(TestGlobals.DB);
+        final var list = new ListSchedulesRequest(TestGlobals.PROJECT);
         list.setIncludeArgs(true);
 
         final var listed = ((ListSchedulesResponse) ScheduleOperationHelper.executeList(list)).getSchedules();
@@ -302,18 +303,18 @@ public class ScheduleOperationHelperTest {
         save(request);
 
         final var listed = ((ListSchedulesResponse) ScheduleOperationHelper
-                .executeList(new ListSchedulesRequest(TestGlobals.DB))).getSchedules();
+                .executeList(new ListSchedulesRequest(TestGlobals.PROJECT))).getSchedules();
 
         assertFalse(listed.getFirst().has("args"));
     }
 
     @Test
-    public void test_list_on_an_unknown_database_and_a_disabled_feature() throws Exception {
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(),
-                ScheduleOperationHelper.executeList(new ListSchedulesRequest("missingDb")).getErrorCode());
+    public void test_list_on_an_unknown_project_and_a_disabled_feature() throws Exception {
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(),
+                ScheduleOperationHelper.executeList(new ListSchedulesRequest("missingProject")).getErrorCode());
         TestUtils.setPrivateField(configuration, "schedulesEnabled", false);
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(),
-                ScheduleOperationHelper.executeList(new ListSchedulesRequest(TestGlobals.DB)).getErrorCode());
+                ScheduleOperationHelper.executeList(new ListSchedulesRequest(TestGlobals.PROJECT)).getErrorCode());
     }
 
 }

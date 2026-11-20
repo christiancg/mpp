@@ -36,7 +36,7 @@ public class ScriptRunHistoryCoalesceTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "scriptRunHistoryEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptRunHistoryKinds",
                 ConfigKey.SCRIPT_RUN_HISTORY_KINDS.defaultValue());
@@ -61,7 +61,7 @@ public class ScriptRunHistoryCoalesceTest {
     }
 
     private static ScriptRunRecord row(String runId) {
-        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, TestGlobals.DB, "job", "proc", null, null,
+        return new ScriptRunRecord(runId, ScriptRunKind.CALL_PROCEDURE, TestGlobals.PROJECT, "job", "proc", null, null,
                 "admin", "admin", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null,
                 null, false);
     }
@@ -71,7 +71,7 @@ public class ScriptRunHistoryCoalesceTest {
     }
 
     private boolean stored(String runId) {
-        return cache.getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME).get(runId) != null;
+        return cache.getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME).get(runId) != null;
     }
 
     @SuppressWarnings("BusyWait")
@@ -148,6 +148,7 @@ public class ScriptRunHistoryCoalesceTest {
             assertEquals(3L, ScriptRunHistory.getRecorded());
             assertEquals(1L, recorder.forcedNames().stream().filter(RUNS_LOG::equals).count());
         }
-        assertNotNull(cache.getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("joined-held"));
+        assertNotNull(
+                cache.getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME).get("joined-held"));
     }
 }

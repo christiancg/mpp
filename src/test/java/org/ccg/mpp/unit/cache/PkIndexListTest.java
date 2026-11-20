@@ -11,11 +11,11 @@ import org.ccg.mpp.data.PkIndexEntry;
 import org.junit.jupiter.api.Test;
 
 public class PkIndexListTest {
-    private static final String DB = "pkListDb";
+    private static final String PROJECT = "pkListProject";
     private static final String COLL = "pkListColl";
 
     private static PkIndexEntry row(String id) {
-        return new PkIndexEntry(DB, COLL, id, id.length(), 1, 0);
+        return new PkIndexEntry(PROJECT, COLL, id, id.length(), 1, 0);
     }
 
     private static List<PkIndexEntry> sortedRows(int count) {

@@ -40,7 +40,7 @@ public final class FieldIndexFolds {
     static void runAfterUnlock(List<DeferredFold> folds, AfterFold after) throws InterruptedException {
         for (final var fold : folds) {
             final var pending = fold.pending();
-            if (!rl.tryLockIndex(pending.dbName(), pending.collName(), pending.fieldName(),
+            if (!rl.tryLockIndex(pending.projectName(), pending.collName(), pending.fieldName(),
                     configuration.getTransactionLockTimeoutMs())) {
                 continue;
             }
@@ -50,11 +50,11 @@ public final class FieldIndexFolds {
                 after.folded(fold, outcome);
             } catch (IOException e) {
                 logger.warning("Could not fold the index log of "
-                        + Cache.getCollectionIdentifier(pending.dbName(), pending.collName()) + "."
+                        + Cache.getCollectionIdentifier(pending.projectName(), pending.collName()) + "."
                         + pending.fieldName() + " into its base: " + e.getMessage()
                         + ". Its changes stay logged and the next append retries the fold.");
             } finally {
-                rl.releaseIndex(pending.dbName(), pending.collName(), pending.fieldName());
+                rl.releaseIndex(pending.projectName(), pending.collName(), pending.fieldName());
             }
         }
     }
@@ -62,7 +62,7 @@ public final class FieldIndexFolds {
     static void settle(DeferredFold fold, PendingFold.Outcome outcome) {
         if (outcome == PendingFold.Outcome.EMPTIED) {
             final var pending = fold.pending();
-            cache.evictFieldIndex(pending.dbName(), pending.collName(), fold.identifier());
+            cache.evictFieldIndex(pending.projectName(), pending.collName(), fold.identifier());
         }
     }
 }

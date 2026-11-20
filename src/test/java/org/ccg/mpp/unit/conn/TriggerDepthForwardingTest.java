@@ -25,7 +25,7 @@ public class TriggerDepthForwardingTest {
 
     @Test
     public void test_a_client_supplied_triggerDepth_does_not_survive_forwarding() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"triggerDepth\":-2000000000,\"object\":{\"_id\":\"a\"}}";
         final var forwarded = sanitize(raw);
         assertFalse(forwarded.contains("triggerDepth"),
@@ -35,7 +35,7 @@ public class TriggerDepthForwardingTest {
 
     @Test
     public void test_an_escaped_triggerDepth_key_does_not_survive_forwarding() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"trigger\\u0044epth\":1,\"object\":{\"_id\":\"a\"}}";
         assertEquals(1, RequestParser.parseRequest(raw).getTriggerDepth());
         assertEquals(0, RequestParser.parseRequest(sanitize(raw)).getTriggerDepth());
@@ -43,31 +43,31 @@ public class TriggerDepthForwardingTest {
 
     @Test
     public void test_a_negative_escaped_triggerDepth_does_not_survive_forwarding() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"\\u0074riggerDepth\":-2000000000,\"object\":{\"_id\":\"a\"}}";
         assertEquals(0, RequestParser.parseRequest(sanitize(raw)).getTriggerDepth());
     }
 
     @Test
     public void test_a_body_without_a_depth_is_returned_unchanged() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"object\":{\"_id\":\"a\"}}";
         assertEquals(raw, sanitize(raw));
     }
 
     @Test
     public void test_a_zero_depth_body_is_returned_unchanged() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"triggerDepth\":0,\"object\":{\"_id\":\"a\"}}";
         assertEquals(raw, sanitize(raw));
     }
 
     @Test
     public void test_the_rest_of_the_body_survives_sanitisation() throws Exception {
-        final var raw = "{\"type\":\"SAVE\",\"databaseName\":\"db\",\"collectionName\":\"coll\","
+        final var raw = "{\"type\":\"SAVE\",\"projectName\":\"db\",\"collectionName\":\"coll\","
                 + "\"triggerDepth\":5,\"object\":{\"_id\":\"a\",\"value\":42}}";
         final var parsed = RequestParser.parseRequest(sanitize(raw));
-        assertEquals("db", parsed.getDatabaseName());
+        assertEquals("db", parsed.getProjectName());
         assertEquals("coll", parsed.getCollectionName());
     }
 

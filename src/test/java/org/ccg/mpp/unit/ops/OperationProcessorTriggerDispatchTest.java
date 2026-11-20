@@ -34,7 +34,7 @@ public class OperationProcessorTriggerDispatchTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -47,17 +47,17 @@ public class OperationProcessorTriggerDispatchTest {
     @BeforeEach
     void reset() throws Exception {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "audit", "export default () => 1;"));
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        processor.processMessage(new SaveProcedureRequest(TestGlobals.PROJECT, "audit", "export default () => 1;"));
     }
 
     private SaveTriggerRequest saveRequest() {
-        return new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "onInsert", List.of("CREATED"), "audit");
+        return new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "onInsert", List.of("CREATED"), "audit");
     }
 
     @Test
@@ -66,45 +66,46 @@ public class OperationProcessorTriggerDispatchTest {
         assertInstanceOf(SaveTriggerResponse.class, saved, saved.getMessage());
 
         final var listed = (ListTriggersResponse) processor
-                .processMessage(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL));
+                .processMessage(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL));
         assertEquals(1, listed.getTriggers().size());
         assertEquals("onInsert", listed.getTriggers().getFirst().get("name").asJsonString().getValue());
 
-        assertEquals(OperationStatus.OK, processor
-                .processMessage(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "onInsert")).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "onInsert"))
+                        .getStatus());
         final var afterDelete = (ListTriggersResponse) processor
-                .processMessage(new ListTriggersRequest(TestGlobals.DB, TestGlobals.COLL));
+                .processMessage(new ListTriggersRequest(TestGlobals.PROJECT, TestGlobals.COLL));
         assertTrue(afterDelete.getTriggers().isEmpty());
     }
 
     @Test
-    public void test_listing_the_whole_database_tags_each_trigger_with_its_collection() {
+    public void test_listing_the_whole_project_tags_each_trigger_with_its_collection() {
         processor.processMessage(saveRequest());
         final var listed = (ListTriggersResponse) processor
-                .processMessage(new ListTriggersRequest(TestGlobals.DB, null));
+                .processMessage(new ListTriggersRequest(TestGlobals.PROJECT, null));
         assertEquals(1, listed.getTriggers().size());
         assertEquals(TestGlobals.COLL, listed.getTriggers().getFirst().get("collectionName").asJsonString().getValue());
     }
 
     @Test
     public void test_saving_a_trigger_on_an_unknown_collection_is_refused() {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, "noSuchColl", "onInsert", List.of("CREATED"),
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, "noSuchColl", "onInsert", List.of("CREATED"),
                 "audit");
         final var response = processor.processMessage(request);
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
     public void test_deleting_a_trigger_on_an_unknown_collection_is_refused() {
         final var response = processor
-                .processMessage(new DeleteTriggerRequest(TestGlobals.DB, "noSuchColl", "onInsert"));
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+                .processMessage(new DeleteTriggerRequest(TestGlobals.PROJECT, "noSuchColl", "onInsert"));
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test
     public void test_saving_a_trigger_for_an_unknown_procedure_is_refused() {
-        final var request = new SaveTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "onInsert", List.of("CREATED"),
-                "missing");
+        final var request = new SaveTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "onInsert",
+                List.of("CREATED"), "missing");
         final var response = processor.processMessage(request);
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), response.getErrorCode());
     }
@@ -112,6 +113,6 @@ public class OperationProcessorTriggerDispatchTest {
     @Test
     public void test_deleting_a_trigger_that_is_not_there_is_idempotent() {
         assertEquals(OperationStatus.OK, processor
-                .processMessage(new DeleteTriggerRequest(TestGlobals.DB, TestGlobals.COLL, "absent")).getStatus());
+                .processMessage(new DeleteTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, "absent")).getStatus());
     }
 }

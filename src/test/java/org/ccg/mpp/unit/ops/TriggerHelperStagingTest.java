@@ -59,7 +59,7 @@ public class TriggerHelperStagingTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -77,7 +77,7 @@ public class TriggerHelperStagingTest {
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerThreads", 1);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         triggerExecutor.stop();
         TriggerTestSupport.consumeAllPendingRuns();
     }
@@ -96,7 +96,7 @@ public class TriggerHelperStagingTest {
             emit.call();
         } catch (Exception ignored) {
         }
-        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, DRAIN_MARKER,
+        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, DRAIN_MARKER,
                 "recalc", false, List.of(), USER, 0));
         try {
             assertTrue(drained.await(5, TimeUnit.SECONDS), "the drain marker was never dispatched");
@@ -108,7 +108,7 @@ public class TriggerHelperStagingTest {
     }
 
     private void install(Set<EventType> events, String mode) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(new TriggerDefinition("t",
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(new TriggerDefinition("t",
                 new LinkedHashSet<>(events), "recalc", mode, false, true, "owner", 1L, 1L, 1L, "owner")));
     }
 
@@ -120,7 +120,7 @@ public class TriggerHelperStagingTest {
     }
 
     private static SaveRequest saveRequest(String id) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         return request;
@@ -131,7 +131,7 @@ public class TriggerHelperStagingTest {
     }
 
     private long storedVersion(String id) throws Exception {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         return primaryKeyIndex.get(Collections.binarySearch(primaryKeyIndex, id)).getVersion();
     }
 
@@ -143,7 +143,7 @@ public class TriggerHelperStagingTest {
 
     private static OperationResponse runStaged(StagedTriggerRuns staged, Callable<OperationResponse> write)
             throws Exception {
-        return TriggerHelper.runStaged(staged, TestGlobals.DB, TestGlobals.COLL, USER, 0, write);
+        return TriggerHelper.runStaged(staged, TestGlobals.PROJECT, TestGlobals.COLL, USER, 0, write);
     }
 
     @Test
@@ -173,7 +173,7 @@ public class TriggerHelperStagingTest {
     @Test
     public void test_stage_save_assigns_an_id_to_an_object_without_one() throws Exception {
         install(Set.of(EventType.CREATED), TriggerDefinition.MODE_DOCUMENT);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(new JsonObject());
 
         TriggerHelper.stageSave(request, USER);
@@ -185,8 +185,8 @@ public class TriggerHelperStagingTest {
     public void test_stage_delete_records_the_captured_document_and_its_version() throws Exception {
         store("doomed");
         install(Set.of(EventType.DELETED), TriggerDefinition.MODE_DOCUMENT);
-        final var captured = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document("doomed"));
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var captured = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document("doomed"));
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("doomed");
 
         TriggerHelper.stageDelete(request, captured, USER);
@@ -267,7 +267,7 @@ public class TriggerHelperStagingTest {
     @Test
     public void test_a_partial_bulk_save_submits_and_keeps_only_the_committed_ids() throws Exception {
         install(Set.of(EventType.CREATED), TriggerDefinition.MODE_BATCH);
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(document("kept"), document("lost")));
         final var staged = TriggerHelper.stageBulkSave(bulk, USER);
         final var committed = new BulkSaveResponse("partial", List.of("kept"), List.of());

@@ -28,7 +28,7 @@ public class DocumentPageStoreStreamPagesTest extends FileSystemTestBase {
         final var data = new JsonObject();
         data.addProperty("_id", "doc" + page);
         data.addProperty("page", page);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.setPage(page);
         fs.insertIntoCollection(entry);
     }
@@ -39,7 +39,7 @@ public class DocumentPageStoreStreamPagesTest extends FileSystemTestBase {
             insertOnPage(page);
         }
         final List<Long> emitted = new ArrayList<>();
-        try (var pages = fs.streamPages(TestGlobals.DB, TestGlobals.COLL)) {
+        try (var pages = fs.streamPages(TestGlobals.PROJECT, TestGlobals.COLL)) {
             pages.forEach(page -> page.values()
                     .forEach(entry -> emitted.add(entry.getData().get("page").asJsonNumber().getValue().longValue())));
         }
@@ -49,7 +49,7 @@ public class DocumentPageStoreStreamPagesTest extends FileSystemTestBase {
 
     @Test
     public void stream_pages_on_a_missing_folder_is_empty() throws IOException {
-        try (var pages = fs.streamPages(TestGlobals.DB, "neverCreated")) {
+        try (var pages = fs.streamPages(TestGlobals.PROJECT, "neverCreated")) {
             assertEquals(0, pages.count());
         }
     }
@@ -74,15 +74,15 @@ public class DocumentPageStoreStreamPagesTest extends FileSystemTestBase {
     }
 
     private void consumeWithoutClosing() throws IOException {
-        fs.streamPages(TestGlobals.DB, TestGlobals.COLL).forEach(_ -> {
+        fs.streamPages(TestGlobals.PROJECT, TestGlobals.COLL).forEach(_ -> {
         });
     }
 
     private Map<String, DbEntry> pageWith(String content) throws IOException {
-        final var page = new java.io.File(TestGlobals.PATH + File.separator + TestGlobals.DB + File.separator
+        final var page = new java.io.File(TestGlobals.PATH + File.separator + TestGlobals.PROJECT + File.separator
                 + TestGlobals.COLL + File.separator + TestGlobals.COLL + "-7.dat");
         Files.writeString(page.toPath(), content, StandardCharsets.UTF_8);
-        return fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 7L);
+        return fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 7L);
     }
 
     @Test

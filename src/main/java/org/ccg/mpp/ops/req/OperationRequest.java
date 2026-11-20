@@ -6,7 +6,7 @@ import org.ccg.mpp.ops.OperationType;
 
 public class OperationRequest {
     private final OperationType type;
-    private final String databaseName;
+    private final String projectName;
     private final String collectionName;
     private boolean dirtyRead;
     // Carried on the request rather than in a ThreadLocal so the bound survives a cluster forward, where a
@@ -17,9 +17,9 @@ public class OperationRequest {
     public record SchemaCheck(Object payload, JsonObject schema, SchemaBudget budget) {
     }
 
-    public OperationRequest(OperationType type, String databaseName, String collectionName) {
+    public OperationRequest(OperationType type, String projectName, String collectionName) {
         this.type = type;
-        this.databaseName = databaseName;
+        this.projectName = projectName;
         this.collectionName = collectionName;
     }
 
@@ -51,8 +51,8 @@ public class OperationRequest {
         this.schemaCheck = schemaCheck;
     }
 
-    public String getDatabaseName() {
-        return databaseName;
+    public String getProjectName() {
+        return projectName;
     }
 
     public String getCollectionName() {

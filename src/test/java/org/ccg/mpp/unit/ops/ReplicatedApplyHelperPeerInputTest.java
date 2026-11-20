@@ -40,7 +40,7 @@ public class ReplicatedApplyHelperPeerInputTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origSkew = config.longValue(ConfigKey.CLUSTER_MAX_CLOCK_SKEW_MS);
         TestUtils.setPrivateField(config, "clusterMaxClockSkewMs", SKEW_MS);
         origClock = clock.current();
@@ -62,12 +62,12 @@ public class ReplicatedApplyHelperPeerInputTest {
     }
 
     private static ReplicationPayload upsert(String id, long version) {
-        return new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT, List.of(doc(id)), null,
-                List.of(Long.toString(version)));
+        return new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT, List.of(doc(id)),
+                null, List.of(Long.toString(version)));
     }
 
     private OperationStatus findStatus(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
@@ -88,7 +88,7 @@ public class ReplicatedApplyHelperPeerInputTest {
     }
 
     @Test
-    public void aTransactionTouchingAReservedDatabaseIsRefused() {
+    public void aTransactionTouchingAReservedProjectIsRefused() {
         final var payload = new TxReplicationPayload(List.of(upsert("ok1", clock.next()),
                 new ReplicationPayload("cluster", "nodes", ReplicationOp.UPSERT, List.of(doc("n1")), null)));
         assertFalse(ReplicatedTxApplyHelper.apply(payload, TestGlobals.APPLY_BUDGET_MS));
@@ -114,10 +114,10 @@ public class ReplicatedApplyHelperPeerInputTest {
     @Test
     public void aDeleteBeyondTheSkewAppendsNoTombstone() throws Exception {
         final var version = ahead(SKEW_MS * 10);
-        final var payload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.DELETE, null,
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.DELETE, null,
                 List.of("gone"), List.of(Long.toString(version)));
         assertFalse(ReplicatedApplyHelper.apply(payload, TestGlobals.APPLY_BUDGET_MS));
-        assertFalse(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).containsKey("gone"));
+        assertFalse(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("gone"));
     }
 
     @Test

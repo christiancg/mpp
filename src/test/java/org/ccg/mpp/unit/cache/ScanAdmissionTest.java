@@ -50,20 +50,20 @@ public class ScanAdmissionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalMaxMemory = config.getMaxMemoryBytes();
         originalMemoryManagement = TestUtils.getPrivateField(cache, "memoryManagement", MemoryManagement.class);
         for (final var id : IDS) {
             save(TestGlobals.COLL, id, "value-" + id);
         }
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private static void save(String collName, String id, String payload) throws Exception {
         final var object = new JsonObject();
         object.addProperty(Globals.PK_FIELD, id);
         object.addProperty("payload", payload);
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setObject(object);
         request.set_id(id);
         assertNotNull(SaveOperationHelper.executeSave(request));
@@ -78,11 +78,11 @@ public class ScanAdmissionTest {
     }
 
     private <T> T locked(ScanBody<T> body) throws Exception {
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             return body.run();
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -91,13 +91,13 @@ public class ScanAdmissionTest {
     }
 
     private List<String> scanned(Function<Stream<DbEntry>, Stream<DbEntry>> shape) throws IOException {
-        try (var stream = cache.streamCollection(TestGlobals.DB, TestGlobals.COLL)) {
+        try (var stream = cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL)) {
             return shape.apply(stream).map(DbEntry::get_id).toList();
         }
     }
 
     private Integer resident() {
-        final var cached = cache.userCache().getCachedCollection(TestGlobals.DB, TestGlobals.COLL);
+        final var cached = cache.userCache().getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         return cached == null ? null : cached.size();
     }
 
@@ -112,7 +112,7 @@ public class ScanAdmissionTest {
     public void test_a_locked_scan_drained_one_element_at_a_time_admits_too() throws Exception {
         final var drained = locked(() -> {
             final var ids = new ArrayList<String>();
-            try (var stream = cache.streamCollection(TestGlobals.DB, TestGlobals.COLL)) {
+            try (var stream = cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 stream.iterator().forEachRemaining(entry -> ids.add(entry.get_id()));
             }
             return ids;
@@ -125,7 +125,7 @@ public class ScanAdmissionTest {
     @Test
     public void test_a_scan_in_scan_order_admits_and_keeps_its_order() throws Exception {
         final var ordered = locked(() -> {
-            try (var stream = cache.streamCollectionInScanOrder(TestGlobals.DB, TestGlobals.COLL)) {
+            try (var stream = cache.streamCollectionInScanOrder(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 return stream.map(DbEntry::get_id).toList();
             }
         });
@@ -183,8 +183,8 @@ public class ScanAdmissionTest {
     @Test
     public void test_a_scan_that_disagrees_with_the_pk_index_does_not_admit() throws Exception {
         locked(() -> {
-            cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL)
-                    .add(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "zzz", 0, 1, 0));
+            cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL)
+                    .add(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "zzz", 0, 1, 0));
             return null;
         });
 
@@ -196,10 +196,10 @@ public class ScanAdmissionTest {
     @Test
     public void test_an_admitted_scan_serves_the_next_one_from_memory() throws Exception {
         locked(() -> scanned(Function.identity()));
-        final var admitted = cache.userCache().getCachedCollection(TestGlobals.DB, TestGlobals.COLL);
+        final var admitted = cache.userCache().getCachedCollection(TestGlobals.PROJECT, TestGlobals.COLL);
 
         final var again = locked(() -> {
-            try (var stream = cache.streamCollection(TestGlobals.DB, TestGlobals.COLL)) {
+            try (var stream = cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 return stream.toList();
             }
         });
@@ -227,7 +227,7 @@ public class ScanAdmissionTest {
         locked(() -> scanned(Function.identity()));
         assertNotNull(resident());
         final var bytes = cache.userCache().footprintBytes() - before;
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
         return bytes;
     }
 
@@ -245,13 +245,13 @@ public class ScanAdmissionTest {
     @Test
     public void test_a_drop_forgets_the_refusal() throws Exception {
         refuseAtTinyBudget();
-        DroppedCollections.forgetCollection(TestGlobals.DB, TestGlobals.COLL);
+        DroppedCollections.forgetCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         var spied = spiedMemory();
         locked(() -> scanned(Function.identity()));
         verify(spied, atLeastOnce()).admissionCheck(anyLong());
 
         TestUtils.setPrivateField(cache, "memoryManagement", originalMemoryManagement);
-        DroppedCollections.forgetDatabase(TestGlobals.DB);
+        DroppedCollections.forgetProject(TestGlobals.PROJECT);
         spied = spiedMemory();
         locked(() -> scanned(Function.identity()));
         verify(spied, atLeastOnce()).admissionCheck(anyLong());
@@ -263,12 +263,12 @@ public class ScanAdmissionTest {
         for (var i = 0; i < 4 * IDS.size(); i++) {
             save(TestGlobals.JOIN_COLL, "o" + i, "other-" + "z".repeat(40) + i);
         }
-        locks.lockRead(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         try {
-            try (var stream = cache.streamCollection(TestGlobals.DB, TestGlobals.JOIN_COLL)) {
+            try (var stream = cache.streamCollection(TestGlobals.PROJECT, TestGlobals.JOIN_COLL)) {
                 assertEquals(4L * IDS.size(), stream.count());
             }
-            assertNotNull(cache.userCache().getCachedCollection(TestGlobals.DB, TestGlobals.JOIN_COLL));
+            assertNotNull(cache.userCache().getCachedCollection(TestGlobals.PROJECT, TestGlobals.JOIN_COLL));
             final var collectionBytes = admittedBytes();
             TestUtils.setPrivateField(config, "maxMemoryBytes",
                     cache.userCache().footprintBytes() + collectionBytes / 2);
@@ -276,10 +276,10 @@ public class ScanAdmissionTest {
             locked(() -> scanned(Function.identity()));
             assertNull(resident());
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.JOIN_COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         }
 
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.JOIN_COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.JOIN_COLL);
         locked(() -> scanned(Function.identity()));
 
         assertEquals(IDS.size(), resident());
@@ -307,17 +307,17 @@ public class ScanAdmissionTest {
         locked(() -> scanned(Function.identity()));
         assertNull(resident());
 
-        assertTrue(locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL, 5_000L));
+        assertTrue(locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL, 5_000L));
         try {
             for (final var id : big) {
-                final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+                final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
                 request.set_id(id);
                 DeleteOperationHelper.executeDelete(request);
             }
         } finally {
-            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         }
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(IDS.size(), locked(() -> scanned(Function.identity())).size());
         assertEquals(IDS.size(), resident());
@@ -331,11 +331,11 @@ public class ScanAdmissionTest {
                 save(TestGlobals.COLL, id, "round" + round + "-" + id);
             }
         }
-        cache.userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        cache.userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
         final var spied = spiedMemory();
 
         final var payloads = locked(() -> {
-            try (var stream = cache.streamCollection(TestGlobals.DB, TestGlobals.COLL)) {
+            try (var stream = cache.streamCollection(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 return stream.map(entry -> entry.getData().get("payload").asJsonString().getValue()).sorted().toList();
             }
         });

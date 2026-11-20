@@ -32,7 +32,7 @@ final class GroupedBatch {
         DURABLE, TAKEN_BACK, UNKNOWN
     }
 
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String subject;
     private final List<GroupCommit.GroupedWrite> writes;
@@ -44,28 +44,28 @@ final class GroupedBatch {
     private int commitsStarted;
     private boolean settled;
 
-    private GroupedBatch(String dbName, String collName, List<GroupCommit.GroupedWrite> writes) {
-        this.dbName = dbName;
+    private GroupedBatch(String projectName, String collName, List<GroupCommit.GroupedWrite> writes) {
+        this.projectName = projectName;
         this.collName = collName;
-        this.subject = Cache.getCollectionIdentifier(dbName, collName);
+        this.subject = Cache.getCollectionIdentifier(projectName, collName);
         this.writes = writes;
         this.responses = new ArrayList<>(writes.size());
         this.stagedBy = new int[writes.size()];
     }
 
-    static void run(String dbName, String collName, List<GroupCommit.GroupedWrite> writes) {
+    static void run(String projectName, String collName, List<GroupCommit.GroupedWrite> writes) {
         if (writes.isEmpty()) {
             return;
         }
         try {
-            fs.openWriteGroup(dbName, collName);
+            fs.openWriteGroup(projectName, collName);
         } catch (IOException e) {
-            logger.warning("Could not open a write group on " + Cache.getCollectionIdentifier(dbName, collName)
+            logger.warning("Could not open a write group on " + Cache.getCollectionIdentifier(projectName, collName)
                     + "; its writes run one by one: " + e.getMessage());
             writes.forEach(write -> write.serve(write.runAlone()));
             return;
         }
-        new GroupedBatch(dbName, collName, writes).run();
+        new GroupedBatch(projectName, collName, writes).run();
     }
 
     private void run() {
@@ -104,7 +104,7 @@ final class GroupedBatch {
             return afterThrow(thrown);
         }
         try (var window = !clustered || forcedFirst
-                ? locks.openSettleWindow(dbName, collName)
+                ? locks.openSettleWindow(projectName, collName)
                 : SettleWindow.exclusive()) {
             try {
                 return settleInWindow(window, clustered, forcedFirst);
@@ -126,7 +126,7 @@ final class GroupedBatch {
             commitsStarted++;
             responses.add(writes.get(index).commit(commits.get(index)));
             if (reopenAfterRewrite()) {
-                if (!fs.forceGroupTombstones(dbName, collName)) {
+                if (!fs.forceGroupTombstones(projectName, collName)) {
                     unsure.set(durablePrefix, index + 1);
                 }
                 durablePrefix = index + 1;
@@ -185,8 +185,8 @@ final class GroupedBatch {
 
     private Settled settleAfterThrow() {
         try {
-            fs.forceGroupTombstones(dbName, collName);
-            return fs.settleWriteGroup(dbName, collName) ? Settled.DURABLE : Settled.TAKEN_BACK;
+            fs.forceGroupTombstones(projectName, collName);
+            return fs.settleWriteGroup(projectName, collName) ? Settled.DURABLE : Settled.TAKEN_BACK;
         } catch (Throwable thrown) {
             logger.error("Could not settle the write group of " + subject + " after its batch threw; its writes are"
                     + " answered with an unknown outcome", thrown);
@@ -194,25 +194,25 @@ final class GroupedBatch {
         }
     }
 
-    static void closeAfterThrow(String dbName, String collName) {
-        final var relocked = !locks.holdsCollectionLock(dbName, collName) && relock(dbName, collName);
-        if (!relocked && !locks.holdsCollectionLock(dbName, collName)) {
-            logger.error("Could not settle the write group of " + Cache.getCollectionIdentifier(dbName, collName)
+    static void closeAfterThrow(String projectName, String collName) {
+        final var relocked = !locks.holdsCollectionLock(projectName, collName) && relock(projectName, collName);
+        if (!relocked && !locks.holdsCollectionLock(projectName, collName)) {
+            logger.error("Could not settle the write group of " + Cache.getCollectionIdentifier(projectName, collName)
                     + " after its batch threw: the collection lock could not be taken back; the next write or"
                     + " checkpoint settles it");
             return;
         }
         try {
-            fs.settleWriteGroup(dbName, collName);
+            fs.settleWriteGroup(projectName, collName);
         } catch (IOException | RuntimeException e) {
-            logger.error("Could not settle the write group of " + Cache.getCollectionIdentifier(dbName, collName)
+            logger.error("Could not settle the write group of " + Cache.getCollectionIdentifier(projectName, collName)
                     + " after its batch threw", e);
         }
     }
 
-    private static boolean relock(String dbName, String collName) {
+    private static boolean relock(String projectName, String collName) {
         try {
-            locks.lock(dbName, collName);
+            locks.lock(projectName, collName);
             return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -222,7 +222,7 @@ final class GroupedBatch {
 
     private boolean reopenAfterRewrite() {
         try {
-            return fs.reopenWriteGroupIfEnded(dbName, collName);
+            return fs.reopenWriteGroupIfEnded(projectName, collName);
         } catch (IOException e) {
             logger.warning("Could not reopen the write group of " + subject + " after a page rewrite ended it; the"
                     + " rest of its writes are forced one by one: " + e.getMessage());
@@ -232,7 +232,7 @@ final class GroupedBatch {
 
     private boolean force() {
         try {
-            return fs.forceWriteGroup(dbName, collName);
+            return fs.forceWriteGroup(projectName, collName);
         } catch (IOException e) {
             logger.error("Could not force the write group of " + subject, e);
             return false;
@@ -241,7 +241,7 @@ final class GroupedBatch {
 
     private boolean settle() {
         try {
-            return fs.settleWriteGroup(dbName, collName);
+            return fs.settleWriteGroup(projectName, collName);
         } catch (IOException e) {
             logger.error("Could not settle the write group of " + subject, e);
             return false;
@@ -252,7 +252,7 @@ final class GroupedBatch {
         if (upsertIds.isEmpty() && deleteVersions.isEmpty()) {
             return;
         }
-        final var outcome = coordinator.replicateGroup(dbName, collName, upsertIds, deleteVersions);
+        final var outcome = coordinator.replicateGroup(projectName, collName, upsertIds, deleteVersions);
         if (outcome == ReplicationOutcome.NOT_CLUSTERED) {
             return;
         }
@@ -262,14 +262,14 @@ final class GroupedBatch {
     }
 
     private void forgetTakenBack() {
-        cache.evictCollection(dbName, collName);
+        cache.evictCollection(projectName, collName);
         try {
-            PageOccupancyReconciler.reconcileRows(dbName, collName);
+            PageOccupancyReconciler.reconcileRows(projectName, collName);
         } catch (InterruptedException e) {
-            DeferredWrites.reconcileRowsOnNextUse(dbName, collName);
+            DeferredWrites.reconcileRowsOnNextUse(projectName, collName);
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            DeferredWrites.reconcileRowsOnNextUse(dbName, collName);
+            DeferredWrites.reconcileRowsOnNextUse(projectName, collName);
             logger.warning("Could not reconcile the page rows of " + subject
                     + " after a failed write group; its next use retries: " + e.getMessage());
         }

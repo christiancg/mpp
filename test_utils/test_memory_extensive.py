@@ -17,7 +17,7 @@ PORT = int(os.environ.get("MEM_TEST_PORT", "8989"))
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = bu.PASSWORD
 
-DB = "mem_stress"
+PROJECT = "mem_stress"
 NUM_COLLECTIONS = int(os.environ.get("MEM_TEST_COLLECTIONS", "8"))
 DOCS_PER_COLLECTION = int(os.environ.get("MEM_TEST_DOCS", "10000"))
 PAYLOAD_BYTES = int(os.environ.get("MEM_TEST_PAYLOAD_BYTES", "768"))
@@ -32,7 +32,7 @@ LATENCY_BUDGET_MS = 3_000
 SAMPLED_LOAD_DOCS = int(os.environ.get("MEM_TEST_SAMPLED_LOAD_DOCS", "60000"))
 SAMPLED_LOAD_COLL = "sampled_load"
 SAMPLE_INTERVAL_S = 1.0
-DROP_DB = "mem_drops"
+DROP_PROJECT = "mem_drops"
 DROP_ROUNDS = 3
 DROP_COLLECTIONS = int(os.environ.get("MEM_TEST_DROP_COLLECTIONS", "500"))
 DROP_GROWTH_LIMIT = 0.02
@@ -69,7 +69,7 @@ def find_server_pid():
 
 
 def snapshot(c):
-    r = c.send({"type": "GET_DATABASE_STATS"})
+    r = c.send({"type": "GET_PROJECT_STATS"})
     return r.get("stats", {})
 
 
@@ -117,11 +117,11 @@ def short_name(class_name):
 
 def create_write_and_drop(c: Conn, coll):
     replies = [
-        c.send({"type": "CREATE_COLLECTION", "databaseName": DROP_DB, "collectionName": coll}),
-        c.send({"type": "SAVE", "databaseName": DROP_DB, "collectionName": coll,
+        c.send({"type": "CREATE_COLLECTION", "projectName": DROP_PROJECT, "collectionName": coll}),
+        c.send({"type": "SAVE", "projectName": DROP_PROJECT, "collectionName": coll,
                 "object": {"_id": "only", "v": 1}}),
-        c.send({"type": "FIND_BY_ID", "databaseName": DROP_DB, "collectionName": coll, "_id": "only"}),
-        c.send({"type": "DROP_COLLECTION", "databaseName": DROP_DB, "collectionName": coll}),
+        c.send({"type": "FIND_BY_ID", "projectName": DROP_PROJECT, "collectionName": coll, "_id": "only"}),
+        c.send({"type": "DROP_COLLECTION", "projectName": DROP_PROJECT, "collectionName": coll}),
     ]
     return all(reply.get("status") == "OK" for reply in replies)
 
@@ -131,8 +131,8 @@ def dropped_collections_release_memory(c: Conn, pid):
     if shutil.which("jcmd") is None:
         warn("jcmd is not on PATH — dropped-collection memory skipped")
         return
-    c.send({"type": "DROP_DATABASE", "databaseName": DROP_DB})
-    c.send({"type": "CREATE_DATABASE", "databaseName": DROP_DB})
+    c.send({"type": "DROP_PROJECT", "projectName": DROP_PROJECT})
+    c.send({"type": "CREATE_PROJECT", "projectName": DROP_PROJECT})
     rounds = []
     for round_number in range(DROP_ROUNDS):
         failed = [i for i in range(DROP_COLLECTIONS) if not create_write_and_drop(c, f"r{round_number}_c{i}")]
@@ -141,7 +141,7 @@ def dropped_collections_release_memory(c: Conn, pid):
         counts = class_instance_counts(pid, DROP_TRACKED_CLASSES)
         if counts is None:
             warn("jcmd could not read the server's class histogram — dropped-collection memory skipped")
-            c.send({"type": "DROP_DATABASE", "databaseName": DROP_DB})
+            c.send({"type": "DROP_PROJECT", "projectName": DROP_PROJECT})
             return
         print(f"  after round {round_number + 1}: "
               + ", ".join(f"{short_name(name)}={count}" for name, count in counts.items()))
@@ -150,7 +150,7 @@ def dropped_collections_release_memory(c: Conn, pid):
         second, third = rounds[1][name], rounds[2][name]
         check(f"{short_name(name)} instances grow < {DROP_GROWTH_LIMIT:.0%} between rounds 2 and 3",
               third <= second * (1 + DROP_GROWTH_LIMIT), detail=f"{second} -> {third}")
-    c.send({"type": "DROP_DATABASE", "databaseName": DROP_DB})
+    c.send({"type": "DROP_PROJECT", "projectName": DROP_PROJECT})
 
 
 def small_doc(i: int):
@@ -167,7 +167,7 @@ def small_doc(i: int):
 
 
 def count_query(c, operator):
-    return c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": ACCOUNTING_COLL,
+    return c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": ACCOUNTING_COLL,
                    "aggregationSteps": [{"type": "FILTER", "operator": operator}, {"type": "COUNT"}]},
                   timeout=120)
 
@@ -183,16 +183,16 @@ def accounting_accuracy(c: Conn, pid):
         return
     baseline_cache = snapshot(c).get("memory", {}).get("userCacheBytes", 0)
 
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": ACCOUNTING_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": ACCOUNTING_COLL})
     loaded = True
     for start in range(0, ACCOUNTING_DOCS, BULK_BATCH_SIZE):
         batch = [small_doc(i) for i in range(start, min(start + BULK_BATCH_SIZE, ACCOUNTING_DOCS))]
-        r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": ACCOUNTING_COLL,
+        r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": ACCOUNTING_COLL,
                     "objects": batch}, timeout=120)
         loaded = loaded and r.get("status") == "OK"
     check(f"{ACCOUNTING_DOCS} small docs loaded into {ACCOUNTING_COLL}", loaded)
     for fld in INDEXED_FIELDS:
-        r = c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": ACCOUNTING_COLL,
+        r = c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": ACCOUNTING_COLL,
                     "fieldName": fld}, timeout=120)
         check(f"CREATE_INDEX {ACCOUNTING_COLL}.{fld}", r.get("status") == "OK",
               detail=str(r) if r.get("status") != "OK" else "")
@@ -217,7 +217,7 @@ def accounting_accuracy(c: Conn, pid):
           low <= ratio <= high,
           detail="the cache's modelled heap matches what the documents and indexes really hold"
           if low <= ratio <= high else "THE CACHE ACCOUNTING DOES NOT TRACK REAL HEAP")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": ACCOUNTING_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": ACCOUNTING_COLL})
 
 
 def sample_cache_every_second(stop, samples):
@@ -236,9 +236,9 @@ def cache_stays_bounded_during_bulk_load(c: Conn, cap_bytes):
     if cap_bytes <= 0:
         warn("cap is 0 or unlimited — sampled bulk load skipped")
         return
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": SAMPLED_LOAD_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": SAMPLED_LOAD_COLL})
     for fld in INDEXED_FIELDS:
-        c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": SAMPLED_LOAD_COLL,
+        c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": SAMPLED_LOAD_COLL,
                 "fieldName": fld}, timeout=60)
     samples = []
     stop = threading.Event()
@@ -249,7 +249,7 @@ def cache_stays_bounded_during_bulk_load(c: Conn, cap_bytes):
         for start in range(0, SAMPLED_LOAD_DOCS, BULK_BATCH_SIZE):
             batch = [dict(small_doc(i), _id=f"load_{i:07d}")
                      for i in range(start, min(start + BULK_BATCH_SIZE, SAMPLED_LOAD_DOCS))]
-            r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": SAMPLED_LOAD_COLL,
+            r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": SAMPLED_LOAD_COLL,
                         "objects": batch}, timeout=120)
             loaded = loaded and r.get("status") == "OK"
     finally:
@@ -268,7 +268,7 @@ def cache_stays_bounded_during_bulk_load(c: Conn, cap_bytes):
           not over,
           detail="writes wake the sweep as soon as the cache is over its cap" if not over
           else f"samples over the bound (MB): {over}")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": SAMPLED_LOAD_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": SAMPLED_LOAD_COLL})
 
 
 DISPLACE_COLL = "displace"
@@ -286,7 +286,7 @@ def cache_bytes(c):
 def bulk_load(c, coll, docs):
     loaded = True
     for start in range(0, len(docs), BULK_BATCH_SIZE):
-        r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": coll,
+        r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": coll,
                     "objects": docs[start:start + BULK_BATCH_SIZE]}, timeout=120)
         loaded = loaded and r.get("status") == "OK"
     return loaded
@@ -294,7 +294,7 @@ def bulk_load(c, coll, docs):
 
 def indexed_ids(c, coll, steps, scan=False, analyze=False):
     pipeline = ([{"type": "SKIP", "skip": 0}] if scan else []) + steps
-    r = c.send({"type": "AGGREGATE", "databaseName": DB, "collectionName": coll, "aggregationSteps": pipeline,
+    r = c.send({"type": "AGGREGATE", "projectName": PROJECT, "collectionName": coll, "aggregationSteps": pipeline,
                 "analyze": analyze}, timeout=120)
     return sorted(row.get("_id") for row in r.get("results") or []), r
 
@@ -304,12 +304,12 @@ def test_hot_index_displaces_cold_index(c: Conn, cap_bytes):
     if cap_bytes <= 0:
         warn("cap is 0 or unlimited — same-tier displacement skipped")
         return
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": DISPLACE_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": DISPLACE_COLL})
     docs = [{"_id": f"dp_{i:06d}", "cold": f"c-{i:06d}", "hot": f"h-{i:06d}-" + "x" * DISPLACE_HOT_PAD}
             for i in range(DISPLACE_DOCS)]
     check(f"{DISPLACE_DOCS} docs loaded into {DISPLACE_COLL}", bulk_load(c, DISPLACE_COLL, docs))
     for fld in ("cold", "hot"):
-        r = c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": DISPLACE_COLL,
+        r = c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": DISPLACE_COLL,
                     "fieldName": fld}, timeout=120)
         check(f"CREATE_INDEX {DISPLACE_COLL}.{fld}", r.get("status") == "OK", detail=str(r))
     time.sleep(2)
@@ -333,7 +333,7 @@ def test_hot_index_displaces_cold_index(c: Conn, cap_bytes):
     print(f"  cache with the cold index {with_cold/1024/1024:.2f}MB, after the hot queries "
           f"{with_hot/1024/1024:.2f}MB, cap {cap_bytes/1024/1024:.2f}MB")
     before_drop = cache_bytes(c)
-    r = c.send({"type": "DROP_INDEX", "databaseName": DB, "collectionName": DISPLACE_COLL, "fieldName": "hot"})
+    r = c.send({"type": "DROP_INDEX", "projectName": PROJECT, "collectionName": DISPLACE_COLL, "fieldName": "hot"})
     freed = before_drop - cache_bytes(c)
     resident = r.get("status") == "OK" and freed >= DISPLACE_DOCS * DISPLACE_HOT_PAD
     check(f"dropping the hot index frees its resident list ({freed/1024:.0f}KB >= "
@@ -342,7 +342,7 @@ def test_hot_index_displaces_cold_index(c: Conn, cap_bytes):
           else f"THE HOT INDEX NEVER BECAME RESIDENT ({r})")
     check(f"userCacheBytes stays within the cap ({with_hot/1024/1024:.2f}MB)",
           with_hot <= cap_bytes * CACHE_CAP_TOLERANCE)
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": DISPLACE_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": DISPLACE_COLL})
 
 
 def test_refused_pk_filter_limit_point_scans(c: Conn, cap_bytes):
@@ -350,11 +350,11 @@ def test_refused_pk_filter_limit_point_scans(c: Conn, cap_bytes):
     if cap_bytes <= 0:
         warn("cap is 0 or unlimited — refused pk FILTER + LIMIT skipped")
         return
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REFUSED_PK_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REFUSED_PK_COLL})
     docs = [{"_id": f"rp_{i:07d}", "category": f"cat{i % 50}", "n": i} for i in range(REFUSED_PK_DOCS)]
     check(f"{REFUSED_PK_DOCS} docs loaded into {REFUSED_PK_COLL}", bulk_load(c, REFUSED_PK_COLL, docs))
     for fld in ("category", "n"):
-        r = c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": REFUSED_PK_COLL,
+        r = c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": REFUSED_PK_COLL,
                     "fieldName": fld}, timeout=120)
         check(f"CREATE_INDEX {REFUSED_PK_COLL}.{fld}", r.get("status") == "OK", detail=str(r))
     time.sleep(2)
@@ -383,11 +383,11 @@ def test_refused_pk_filter_limit_point_scans(c: Conn, cap_bytes):
           detail=str(top))
     check(f"userCacheBytes stays within the cap ({cache_bytes(c)/1024/1024:.2f}MB)",
           cache_bytes(c) <= cap_bytes * CACHE_CAP_TOLERANCE)
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": REFUSED_PK_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": REFUSED_PK_COLL})
 
 
 def refused_aggregate(c, steps, analyze=False):
-    request = {"type": "AGGREGATE", "databaseName": DB, "collectionName": REFUSED_INDEX_COLL,
+    request = {"type": "AGGREGATE", "projectName": PROJECT, "collectionName": REFUSED_INDEX_COLL,
                "aggregationSteps": steps}
     if analyze:
         request["analyze"] = True
@@ -404,17 +404,17 @@ def test_refused_index_answers_from_file(c: Conn, cap_bytes):
     if cap_bytes <= 0 or cap_bytes > REFUSED_INDEX_MAX_CAP:
         warn("cap is unlimited, disabled or larger than 64MB — the refused-index case needs a small cap; skipped")
         return
-    c.send({"type": "CREATE_COLLECTION", "databaseName": DB, "collectionName": REFUSED_INDEX_COLL})
+    c.send({"type": "CREATE_COLLECTION", "projectName": PROJECT, "collectionName": REFUSED_INDEX_COLL})
     loaded = True
     for start in range(0, REFUSED_INDEX_DOCS, 1000):
         batch = [{"_id": f"ref_{i:06d}", "email": refused_email(i), "n": i, "bucket": i % 50}
                  for i in range(start, min(start + 1000, REFUSED_INDEX_DOCS))]
-        r = c.send({"type": "BULK_SAVE", "databaseName": DB, "collectionName": REFUSED_INDEX_COLL,
+        r = c.send({"type": "BULK_SAVE", "projectName": PROJECT, "collectionName": REFUSED_INDEX_COLL,
                     "objects": batch}, timeout=120)
         loaded = loaded and r.get("status") == "OK"
     check(f"{REFUSED_INDEX_DOCS} docs loaded into {REFUSED_INDEX_COLL}", loaded)
     for fld in ("email", "n"):
-        r = c.send({"type": "CREATE_INDEX", "databaseName": DB, "collectionName": REFUSED_INDEX_COLL,
+        r = c.send({"type": "CREATE_INDEX", "projectName": PROJECT, "collectionName": REFUSED_INDEX_COLL,
                     "fieldName": fld}, timeout=120)
         check(f"CREATE_INDEX {REFUSED_INDEX_COLL}.{fld}", r.get("status") == "OK", detail=str(r))
     check("the sweep brings the bulk load's resident pk rows back under the cap before the queries",
@@ -455,20 +455,20 @@ def test_refused_index_answers_from_file(c: Conn, cap_bytes):
     used = snapshot(c).get("memory", {}).get("userCacheBytes", 0)
     check(f"userCacheBytes stays within cap*{CACHE_CAP_TOLERANCE} after the refused-index queries",
           used <= cap_bytes * CACHE_CAP_TOLERANCE, detail=f"{used} bytes against a {cap_bytes} byte cap")
-    c.send({"type": "DROP_COLLECTION", "databaseName": DB, "collectionName": REFUSED_INDEX_COLL})
+    c.send({"type": "DROP_COLLECTION", "projectName": PROJECT, "collectionName": REFUSED_INDEX_COLL})
 
 
 def setup(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
-    c.send({"type": "CREATE_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
+    c.send({"type": "CREATE_PROJECT", "projectName": PROJECT})
     for i in range(NUM_COLLECTIONS):
         c.send({"type": "CREATE_COLLECTION",
-                        "databaseName": DB,
+                        "projectName": PROJECT,
                         "collectionName": f"coll_{i}"})
 
 
 def teardown(c):
-    c.send({"type": "DROP_DATABASE", "databaseName": DB})
+    c.send({"type": "DROP_PROJECT", "projectName": PROJECT})
 
 
 def mass_insert(c: Conn, pid, rss_samples, cache_samples, heap_samples):
@@ -496,7 +496,7 @@ def mass_insert(c: Conn, pid, rss_samples, cache_samples, heap_samples):
                 "payload": rand_str(PAYLOAD_BYTES),
             })
             if len(batch) >= BULK_BATCH_SIZE:
-                r = c.send({"type": "BULK_SAVE", "databaseName": DB,
+                r = c.send({"type": "BULK_SAVE", "projectName": PROJECT,
                                     "collectionName": coll, "objects": batch})
                 if r.get("status") != "OK":
                     check(f"BULK_SAVE coll={coll}", False,
@@ -508,7 +508,7 @@ def mass_insert(c: Conn, pid, rss_samples, cache_samples, heap_samples):
                 probes += 1
                 if probes % 30 == 0:
                     t0 = time.perf_counter()
-                    c.send({"type": "LIST_DATABASES"})
+                    c.send({"type": "LIST_PROJECTS"})
                     max_probe_ms = max(max_probe_ms, (time.perf_counter() - t0) * 1000.0)
                 if probes % 10 == 0:
                     s = snapshot(c)
@@ -519,14 +519,14 @@ def mass_insert(c: Conn, pid, rss_samples, cache_samples, heap_samples):
                     if rss is not None:
                         rss_samples.append(rss)
         if batch:
-            c.send({"type": "BULK_SAVE", "databaseName": DB,
+            c.send({"type": "BULK_SAVE", "projectName": PROJECT,
                             "collectionName": coll, "objects": batch})
         print(f"    coll_{ci} done — {fmt_snap(snapshot(c), pid)}")
 
     elapsed = time.perf_counter() - t_start
     print(f"  inserted in {elapsed:.1f}s; max probe latency {max_probe_ms:.0f}ms")
     check(f"Server stayed responsive during inserts "
-          f"(max LIST_DATABASES probe = {max_probe_ms:.0f}ms < {LATENCY_BUDGET_MS}ms)",
+          f"(max LIST_PROJECTS probe = {max_probe_ms:.0f}ms < {LATENCY_BUDGET_MS}ms)",
           max_probe_ms < LATENCY_BUDGET_MS)
     return samples
 
@@ -536,7 +536,7 @@ def create_indexes(c: Conn, pid):
     for ci in range(NUM_COLLECTIONS):
         coll = f"coll_{ci}"
         for fld in INDEXED_FIELDS:
-            r = c.send({"type": "CREATE_INDEX", "databaseName": DB,
+            r = c.send({"type": "CREATE_INDEX", "projectName": PROJECT,
                                 "collectionName": coll, "fieldName": fld}, timeout=60)
             check(f"CREATE_INDEX {coll}.{fld}", r.get("status") == "OK",
                   detail=str(r) if r.get("status") != "OK" else "")
@@ -560,7 +560,7 @@ def mixed_workload(c: Conn, pid, rss_samples, cache_samples, heap_samples):
                                    "field": "category",
                                    "value": random.choice(categories)}},
                      {"type": "COUNT"}]
-            r = c.send({"type": "AGGREGATE", "databaseName": DB,
+            r = c.send({"type": "AGGREGATE", "projectName": PROJECT,
                                 "collectionName": coll,
                                 "aggregationSteps": steps})
             if r.get("status") != "OK":
@@ -571,18 +571,18 @@ def mixed_workload(c: Conn, pid, rss_samples, cache_samples, heap_samples):
                       "operator": {"fieldOperatorType": "GREATER_THAN",
                                    "field": "score", "value": lo}},
                      {"type": "LIMIT", "limit": 50}]
-            r = c.send({"type": "AGGREGATE", "databaseName": DB,
+            r = c.send({"type": "AGGREGATE", "projectName": PROJECT,
                                 "collectionName": coll,
                                 "aggregationSteps": steps})
             if r.get("status") != "OK":
                 warn(f"AGGREGATE range on {coll}.score", str(r))
         elif choice < 0.9:
-            c.send({"type": "AGGREGATE", "databaseName": DB,
+            c.send({"type": "AGGREGATE", "projectName": PROJECT,
                             "collectionName": coll,
                             "aggregationSteps": [{"type": "COUNT"}]})
         else:
             doc_id = f"{coll}_{random.randint(0, DOCS_PER_COLLECTION - 1):06d}"
-            c.send({"type": "FIND_BY_ID", "databaseName": DB,
+            c.send({"type": "FIND_BY_ID", "projectName": PROJECT,
                             "collectionName": coll, "_id": doc_id})
         dt = (time.perf_counter() - t0) * 1000.0
         max_op_ms = max(max_op_ms, dt)
@@ -607,7 +607,7 @@ def verify_correctness(c, samples):
     total = 0
     for coll, ids in samples.items():
         for doc_id in ids:
-            r = c.send({"type": "FIND_BY_ID", "databaseName": DB,
+            r = c.send({"type": "FIND_BY_ID", "projectName": PROJECT,
                                 "collectionName": coll, "_id": doc_id})
             total += 1
             if r.get("status") != "OK":

@@ -13,8 +13,9 @@ public final class AnalyzeContext {
     private long scriptInvocations;
     private long scriptNanos;
 
-    public static String fieldLockId(String dbName, String collName, String fieldName) {
-        return dbName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR + fieldName;
+    public static String fieldLockId(String projectName, String collName, String fieldName) {
+        return projectName + Globals.COLL_IDENTIFIER_SEPARATOR + collName + Globals.COLL_IDENTIFIER_SEPARATOR
+                + fieldName;
     }
 
     public void addScanned(long count) {

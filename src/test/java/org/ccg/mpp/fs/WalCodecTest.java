@@ -20,7 +20,7 @@ public class WalCodecTest {
     private static final byte[] PK_ROW = "a\u001f7\u001f12\u001f3\u001f9\n".getBytes(StandardCharsets.UTF_8);
 
     private static WalCheckpoint checkpoint() {
-        return new WalCheckpoint(1L, "walDb", "walColl", 42L, new TreeMap<>(Map.of(0L, 100L, 3L, 7L)));
+        return new WalCheckpoint(1L, "walProject", "walColl", 42L, new TreeMap<>(Map.of(0L, 100L, 3L, 7L)));
     }
 
     private static WalRecord record(long seq) {
@@ -113,7 +113,7 @@ public class WalCodecTest {
 
     @Test
     public void test_a_later_checkpoint_drops_the_records_before_it() {
-        final var later = new WalCheckpoint(5L, "walDb", "walColl", 50L, Map.of());
+        final var later = new WalCheckpoint(5L, "walProject", "walColl", 50L, Map.of());
 
         final var decoded = WalCodec
                 .decodeAll(log(WalCodec.encode(checkpoint()), WalCodec.encode(record(2L)), WalCodec.encode(later)));
@@ -148,7 +148,7 @@ public class WalCodecTest {
         final var kept = WalCodec.decodeAll(
                 log(WalCodec.encode(checkpoint()), WalCodec.encodeGroupBase(2L, 77L), WalCodec.encode(record(3L))));
         final var cleared = WalCodec.decodeAll(log(WalCodec.encode(checkpoint()), WalCodec.encodeGroupBase(2L, 77L),
-                WalCodec.encode(new WalCheckpoint(4L, "walDb", "walColl", 42L, new TreeMap<>()))));
+                WalCodec.encode(new WalCheckpoint(4L, "walProject", "walColl", 42L, new TreeMap<>()))));
 
         assertEquals(77L, kept.groupBase());
         assertEquals(1, kept.records().size());
@@ -161,7 +161,7 @@ public class WalCodecTest {
                 WalCodec.encodePending(2L, List.of("a", "ü-id")), WalCodec.encode(record(3L))));
         final var cleared = WalCodec
                 .decodeAll(log(WalCodec.encode(checkpoint()), WalCodec.encodePending(2L, List.of("a")),
-                        WalCodec.encode(new WalCheckpoint(4L, "walDb", "walColl", 42L, new TreeMap<>()))));
+                        WalCodec.encode(new WalCheckpoint(4L, "walProject", "walColl", 42L, new TreeMap<>()))));
 
         assertEquals(List.of("a", "ü-id"), kept.pendingIds());
         assertEquals(1, kept.framesSinceCheckpoint(), "pending ids are not a record");
@@ -194,8 +194,8 @@ public class WalCodecTest {
         assertFalse(decoded.rewrites().get(0L).skips(first, first.changes().get(1)), "pk.idx always replays");
         assertFalse(decoded.rewrites().get(0L).skips(decoded.records().get(1), blank));
         assertEquals(Map.of(),
-                WalCodec.decodeAll(
-                        log(bytes, WalCodec.encode(new WalCheckpoint(8L, "walDb", "walColl", 42L, new TreeMap<>()))))
+                WalCodec.decodeAll(log(bytes,
+                        WalCodec.encode(new WalCheckpoint(8L, "walProject", "walColl", 42L, new TreeMap<>()))))
                         .rewrites(),
                 "a checkpoint ends every barrier");
     }

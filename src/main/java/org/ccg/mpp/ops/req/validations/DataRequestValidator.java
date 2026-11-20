@@ -29,7 +29,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateSave(SaveRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true, true);
+        final var base = NameValidations.validateProjectAndColl(request, true, true);
         if (!base.isValid()) {
             return base;
         }
@@ -87,7 +87,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateBulkSave(BulkSaveRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true, true);
+        final var base = NameValidations.validateProjectAndColl(request, true, true);
         if (!base.isValid()) {
             return base;
         }
@@ -104,7 +104,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateFindById(FindByIdRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, false);
+        final var base = NameValidations.validateProjectAndColl(request, false);
         if (!base.isValid()) {
             return base;
         }
@@ -118,7 +118,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateDelete(DeleteRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true, true);
+        final var base = NameValidations.validateProjectAndColl(request, true, true);
         if (!base.isValid()) {
             return base;
         }
@@ -138,7 +138,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateAggregate(AggregateRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, false);
+        final var base = NameValidations.validateProjectAndColl(request, false);
         if (!base.isValid()) {
             return base;
         }
@@ -163,7 +163,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateCreateIndex(CreateIndexRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true);
+        final var base = NameValidations.validateProjectAndColl(request, true);
         if (!base.isValid()) {
             return base;
         }
@@ -211,7 +211,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateSaveSchema(SaveSchemaRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true, true);
+        final var base = NameValidations.validateProjectAndColl(request, true, true);
         if (!base.isValid()) {
             return base;
         }
@@ -222,7 +222,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateDropIndex(DropIndexRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true);
+        final var base = NameValidations.validateProjectAndColl(request, true);
         if (!base.isValid()) {
             return base;
         }
@@ -237,7 +237,7 @@ public final class DataRequestValidator {
     }
 
     static ValidationResult validateReindex(ReindexRequest request) {
-        final var base = NameValidations.validateDbAndColl(request, true);
+        final var base = NameValidations.validateProjectAndColl(request, true);
         if (!base.isValid()) {
             return base;
         }

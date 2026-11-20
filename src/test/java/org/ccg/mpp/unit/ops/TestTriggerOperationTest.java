@@ -41,7 +41,7 @@ public class TestTriggerOperationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -58,21 +58,21 @@ public class TestTriggerOperationTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "beforeHookInstructionBudget", 200_000L);
         TestUtils.setPrivateField(configuration, "beforeHookTimeoutMs", 2_000L);
-        fs.metadataFiles().deleteTriggers(TestGlobals.DB, TestGlobals.COLL);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        fs.metadataFiles().deleteTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
     }
 
     private void install(String procedure, String source, String timing) throws Exception {
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, procedure, source), ACTOR);
-        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.DB, TestGlobals.COLL));
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, procedure, source), ACTOR);
+        final var existing = new ArrayList<>(cache.getTriggersFor(TestGlobals.PROJECT, TestGlobals.COLL));
         existing.add(new TriggerDefinition("v", new LinkedHashSet<>(Set.of(new EventType[]{EventType.CREATED})),
                 procedure, TriggerDefinition.MODE_DOCUMENT, timing, false, true, ACTOR, 1L, 1L, 1L, ACTOR));
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, existing);
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, existing);
     }
 
     private static JsonObject document(String id) {
@@ -85,11 +85,11 @@ public class TestTriggerOperationTest {
 
     private org.ccg.mpp.ops.resp.OperationResponse test(String name, String event, JsonObject document) {
         return processor
-                .processMessage(new TestTriggerRequest(TestGlobals.DB, TestGlobals.COLL, name, event, document));
+                .processMessage(new TestTriggerRequest(TestGlobals.PROJECT, TestGlobals.COLL, name, event, document));
     }
 
     private JsonObject find() {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("x6");
         final var response = processor.processMessage(request);
         return response instanceof FindByIdResponse found ? found.getObject() : null;
@@ -175,8 +175,8 @@ public class TestTriggerOperationTest {
     @Test
     public void test_a_missing_procedure_reports_procedure_not_found() throws Exception {
         install("gone", "export default (d) => { };", TriggerDefinition.TIMING_BEFORE);
-        fs.metadataFiles().deleteProcedure(TestGlobals.DB, "gone");
-        cache.removeProceduresForDatabase(TestGlobals.DB);
+        fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, "gone");
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
         assertEquals(ErrorCode.PROCEDURE_NOT_FOUND.getCode(), test("v", "CREATED", document("x10")).getErrorCode());
     }
 
@@ -198,9 +198,9 @@ public class TestTriggerOperationTest {
 
     @Test
     public void test_an_unknown_collection_is_rejected() {
-        final var response = processor
-                .processMessage(new TestTriggerRequest(TestGlobals.DB, "missingColl", "v", "CREATED", document("x13")));
-        assertEquals(ErrorCode.DATABASE_NOT_FOUND.getCode(), response.getErrorCode());
+        final var response = processor.processMessage(
+                new TestTriggerRequest(TestGlobals.PROJECT, "missingColl", "v", "CREATED", document("x13")));
+        assertEquals(ErrorCode.PROJECT_NOT_FOUND.getCode(), response.getErrorCode());
     }
 
     @Test

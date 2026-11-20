@@ -10,14 +10,15 @@ import org.junit.jupiter.api.Test;
 public class PkIndexEntryTest {
     @Test
     public void test_to_file_entry_conversion() {
-        PkIndexEntry entry = new PkIndexEntry("testDB", "testCollection", "testValue", 123L, 456L, 0);
+        PkIndexEntry entry = new PkIndexEntry("testProject", "testCollection", "testValue", 123L, 456L, 0);
         String expected = line("testValue", "123", "456", "0", "0");
         assertEquals(expected, entry.toFileEntry());
     }
 
     @Test
     public void test_to_file_entry_includes_version() {
-        PkIndexEntry entry = new PkIndexEntry("testDB", "testCollection", "testValue", 123L, 456L, 0L, 1720000000000L);
+        PkIndexEntry entry = new PkIndexEntry("testProject", "testCollection", "testValue", 123L, 456L, 0L,
+                1720000000000L);
         assertEquals(line("testValue", "123", "456", "0", "1720000000000"), entry.toFileEntry());
     }
 
@@ -35,20 +36,20 @@ public class PkIndexEntryTest {
     @Test
     public void test_from_index_file_entry_with_empty_string() {
         String line = "";
-        assertThrows(Exception.class, () -> PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", line));
+        assertThrows(Exception.class, () -> PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", line));
     }
 
     @Test
     public void test_to_file_entry_delimits_with_the_unit_separator() {
-        PkIndexEntry entry = new PkIndexEntry("testDB", "testCollection", "testValue", 123L, 456L, 0);
+        PkIndexEntry entry = new PkIndexEntry("testProject", "testCollection", "testValue", 123L, 456L, 0);
         assertEquals(5, entry.toFileEntry().split(Globals.ID_SEPARATOR, -1).length);
     }
 
     @Test
     public void test_a_pipe_in_the_value_needs_no_escaping() {
-        PkIndexEntry entry = new PkIndexEntry("testDB", "testCollection", "my|custom|id", 100L, 50L, 2L);
+        PkIndexEntry entry = new PkIndexEntry("testProject", "testCollection", "my|custom|id", 100L, 50L, 2L);
         assertEquals(line("my|custom|id", "100", "50", "2", "0"), entry.toFileEntry());
-        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", entry.toFileEntry());
+        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", entry.toFileEntry());
         assertEquals("my|custom|id", parsed.getValue());
         assertEquals(100L, parsed.getPosition());
         assertEquals(50L, parsed.getLength());
@@ -67,11 +68,11 @@ public class PkIndexEntryTest {
 
     @Test
     public void test_a_unit_separator_in_the_value_round_trips() {
-        PkIndexEntry original = new PkIndexEntry("testDB", "testCollection", "a" + Globals.ID_SEPARATOR + "b", 200L,
-                75L, 1L, 9L);
+        PkIndexEntry original = new PkIndexEntry("testProject", "testCollection", "a" + Globals.ID_SEPARATOR + "b",
+                200L, 75L, 1L, 9L);
         String fileEntry = original.toFileEntry();
         assertEquals(5, fileEntry.split(Globals.ID_SEPARATOR, -1).length);
-        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", fileEntry);
+        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", fileEntry);
         assertEquals("a" + Globals.ID_SEPARATOR + "b", parsed.getValue());
         assertEquals(200L, parsed.getPosition());
         assertEquals(75L, parsed.getLength());
@@ -81,27 +82,28 @@ public class PkIndexEntryTest {
 
     @Test
     public void test_a_backslash_and_newline_in_the_value_round_trip() {
-        PkIndexEntry original = new PkIndexEntry("testDB", "testCollection", "a\\b\nc\rd", 1L, 2L, 3L, 4L);
-        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", original.toFileEntry());
+        PkIndexEntry original = new PkIndexEntry("testProject", "testCollection", "a\\b\nc\rd", 1L, 2L, 3L, 4L);
+        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", original.toFileEntry());
         assertEquals("a\\b\nc\rd", parsed.getValue());
     }
 
     @Test
     public void test_an_empty_value_round_trips() {
-        PkIndexEntry original = new PkIndexEntry("testDB", "testCollection", "", 1L, 2L, 3L, 4L);
-        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", original.toFileEntry());
+        PkIndexEntry original = new PkIndexEntry("testProject", "testCollection", "", 1L, 2L, 3L, 4L);
+        PkIndexEntry parsed = PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", original.toFileEntry());
         assertEquals("", parsed.getValue());
     }
 
     @Test
     public void test_a_line_in_the_old_pipe_grammar_is_rejected() {
-        assertThrows(Exception.class, () -> PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", "a|0|20|0|0"));
+        assertThrows(Exception.class,
+                () -> PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", "a|0|20|0|0"));
     }
 
     @Test
     public void test_a_line_missing_a_field_is_rejected() {
         String line = line("a", "0", "20", "0");
-        assertThrows(Exception.class, () -> PkIndexEntry.fromIndexFileEntry("testDB", "testCollection", line));
+        assertThrows(Exception.class, () -> PkIndexEntry.fromIndexFileEntry("testProject", "testCollection", line));
     }
 
     private static String line(String... fields) {
@@ -124,21 +126,21 @@ public class PkIndexEntryTest {
     @Test
     public void test_getters_and_setters() {
         PkIndexEntry entry = new PkIndexEntry("db", "coll", "val", 10L, 20L, 1L);
-        assertEquals("db", entry.getDatabaseName());
+        assertEquals("db", entry.getProjectName());
         assertEquals("coll", entry.getCollectionName());
         assertEquals("val", entry.getValue());
         assertEquals(10L, entry.getPosition());
         assertEquals(20L, entry.getLength());
         assertEquals(1L, entry.getPage());
 
-        entry.setDatabaseName("db2");
+        entry.setProjectName("project2");
         entry.setCollectionName("coll2");
         entry.setValue("val2");
         entry.setPosition(11L);
         entry.setLength(21L);
         entry.setPage(2L);
 
-        assertEquals("db2", entry.getDatabaseName());
+        assertEquals("project2", entry.getProjectName());
         assertEquals("coll2", entry.getCollectionName());
         assertEquals("val2", entry.getValue());
         assertEquals(11L, entry.getPosition());

@@ -30,7 +30,7 @@ public final class PageOccupancyReconciler {
     private static final int LIVE_BYTES = 1;
     private static final long[] NOTHING_LIVE = new long[2];
 
-    public record ReplayedCollection(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
+    public record ReplayedCollection(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
     }
 
     private PageOccupancyReconciler() {
@@ -39,8 +39,8 @@ public final class PageOccupancyReconciler {
     public static void reconcileAll() {
         healAdminPageTails();
         reconcileAdminRows();
-        for (final var dbEntry : List.copyOf(cache.getAllAdminDbEntries())) {
-            for (final var collName : cache.getCollectionNamesForDatabase(dbEntry.get_id())) {
+        for (final var dbEntry : List.copyOf(cache.getAllAdminProjectEntries())) {
+            for (final var collName : cache.getCollectionNamesForProject(dbEntry.get_id())) {
                 reconcileQuietly(dbEntry.get_id(), collName);
             }
         }
@@ -49,76 +49,76 @@ public final class PageOccupancyReconciler {
     public static void scheduleIndexCleanupFor(List<PkIndexEntry> completedDeletes) {
         final var byCollection = new LinkedHashMap<String, List<PkIndexEntry>>();
         for (final var deleted : completedDeletes) {
-            final var dbName = deleted.getDatabaseName();
+            final var projectName = deleted.getProjectName();
             final var collName = deleted.getCollectionName();
-            if (isAdminDatabase(dbName) || cache.getAdminCollectionEntry(dbName, collName) == null) {
+            if (isAdminProject(projectName) || cache.getAdminCollectionEntry(projectName, collName) == null) {
                 continue;
             }
-            byCollection.computeIfAbsent(Cache.getCollectionIdentifier(dbName, collName), _ -> new ArrayList<>())
+            byCollection.computeIfAbsent(Cache.getCollectionIdentifier(projectName, collName), _ -> new ArrayList<>())
                     .add(deleted);
         }
         for (final var rows : byCollection.values()) {
             final var first = rows.getFirst();
-            scheduleIndexRepairOf(first.getDatabaseName(), first.getCollectionName(), idsOf(rows));
+            scheduleIndexRepairOf(first.getProjectName(), first.getCollectionName(), idsOf(rows));
         }
     }
 
     public static List<ReplayedCollection> markReplayed(List<PkIndexEntry> written) {
         final var byCollection = new LinkedHashMap<String, List<PkIndexEntry>>();
         for (final var row : written) {
-            if (!isAdminDatabase(row.getDatabaseName())) {
+            if (!isAdminProject(row.getProjectName())) {
                 byCollection
-                        .computeIfAbsent(Cache.getCollectionIdentifier(row.getDatabaseName(), row.getCollectionName()),
+                        .computeIfAbsent(Cache.getCollectionIdentifier(row.getProjectName(), row.getCollectionName()),
                                 _ -> new ArrayList<>())
                         .add(row);
             }
         }
         final var replayed = new ArrayList<ReplayedCollection>(byCollection.size());
         for (final var rows : byCollection.values()) {
-            final var dbName = rows.getFirst().getDatabaseName();
+            final var projectName = rows.getFirst().getProjectName();
             final var collName = rows.getFirst().getCollectionName();
-            replayed.add(new ReplayedCollection(dbName, collName, rows,
-                    pendingIndexWrites.mark(dbName, collName, idsOf(rows))));
+            replayed.add(new ReplayedCollection(projectName, collName, rows,
+                    pendingIndexWrites.mark(projectName, collName, idsOf(rows))));
         }
         return replayed;
     }
 
     public static void scheduleIndexRepairFor(List<ReplayedCollection> replayed) {
         for (final var collection : replayed) {
-            final var dbName = collection.dbName();
+            final var projectName = collection.projectName();
             final var collName = collection.collName();
             final var ids = idsOf(collection.rows());
-            if (cache.getAdminCollectionEntry(dbName, collName) == null) {
-                pendingIndexWrites.clear(dbName, collName, ids, collection.generation());
+            if (cache.getAdminCollectionEntry(projectName, collName) == null) {
+                pendingIndexWrites.clear(projectName, collName, ids, collection.generation());
                 continue;
             }
-            submitRepair(dbName, collName, ids, collection.generation());
+            submitRepair(projectName, collName, ids, collection.generation());
         }
     }
 
-    public static void scheduleIndexRepairOf(String dbName, String collName, List<String> ids) {
+    public static void scheduleIndexRepairOf(String projectName, String collName, List<String> ids) {
         if (!ids.isEmpty()) {
-            submitRepair(dbName, collName, ids, pendingIndexWrites.markRecovered(dbName, collName, ids));
+            submitRepair(projectName, collName, ids, pendingIndexWrites.markRecovered(projectName, collName, ids));
         }
     }
 
-    private static void submitRepair(String dbName, String collName, List<String> ids, long generation) {
-        taskManager.submitMaintenance(new IndexRepairEvent(dbName, collName, ids,
-                CollectionIncarnation.current(dbName, collName), generation));
+    private static void submitRepair(String projectName, String collName, List<String> ids, long generation) {
+        taskManager.submitMaintenance(new IndexRepairEvent(projectName, collName, ids,
+                CollectionIncarnation.current(projectName, collName), generation));
     }
 
     private static List<String> idsOf(List<PkIndexEntry> rows) {
         return rows.stream().map(PkIndexEntry::getValue).toList();
     }
 
-    private static boolean isAdminDatabase(String dbName) {
-        return Globals.ADMIN_DB_NAME.equals(dbName) || Globals.ADMIN_PAGES_DB_NAME.equals(dbName);
+    private static boolean isAdminProject(String projectName) {
+        return Globals.ADMIN_PROJECT_NAME.equals(projectName) || Globals.ADMIN_PAGES_PROJECT_NAME.equals(projectName);
     }
 
     private static void healAdminPageTails() {
         for (final var collName : Globals.ADMIN_COLLECTION_NAMES) {
-            healQuietly(Globals.ADMIN_DB_NAME, collName);
-            healQuietly(Globals.ADMIN_PAGES_DB_NAME, pageRowCollectionOf(Globals.ADMIN_DB_NAME, collName));
+            healQuietly(Globals.ADMIN_PROJECT_NAME, collName);
+            healQuietly(Globals.ADMIN_PAGES_PROJECT_NAME, pageRowCollectionOf(Globals.ADMIN_PROJECT_NAME, collName));
         }
     }
 
@@ -126,31 +126,32 @@ public final class PageOccupancyReconciler {
         for (final var collName : Globals.ADMIN_COLLECTION_NAMES) {
             try {
                 if (reconcileAdminRows(collName)) {
-                    logger.warning("Rebuilt the page-occupancy metadata of " + Globals.ADMIN_DB_NAME + "|" + collName
+                    logger.warning("Rebuilt the page-occupancy metadata of " + Globals.ADMIN_PROJECT_NAME + "|"
+                            + collName
                             + " from its page files: they are written back, so an unclean stop leaves them behind");
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception e) {
-                logger.warning("Could not reconcile the page-occupancy metadata of " + Globals.ADMIN_DB_NAME + "|"
+                logger.warning("Could not reconcile the page-occupancy metadata of " + Globals.ADMIN_PROJECT_NAME + "|"
                         + collName + ": " + e.getMessage());
             }
         }
     }
 
     public static boolean reconcileAdminRows(String collName) throws Exception {
-        return reconcileRows(Globals.ADMIN_DB_NAME, collName);
+        return reconcileRows(Globals.ADMIN_PROJECT_NAME, collName);
     }
 
-    public static boolean reconcileRows(String dbName, String collName) throws Exception {
-        final var pages = fs.pageFileLengths(dbName, collName).keySet();
-        final var occupancy = occupancyByPage(fs.readWholePkIndexFile(dbName, collName));
-        final var rows = rowsByPage(cache.getAdminPageEntries(dbName, collName));
+    public static boolean reconcileRows(String projectName, String collName) throws Exception {
+        final var pages = fs.pageFileLengths(projectName, collName).keySet();
+        final var occupancy = occupancyByPage(fs.readWholePkIndexFile(projectName, collName));
+        final var rows = rowsByPage(cache.getAdminPageEntries(projectName, collName));
         if (agreesWithLiveBytes(rows, pages, occupancy) && countsAgree(rows, occupancy)) {
             return false;
         }
-        replaceRows(dbName, collName, pages, occupancy, rows);
+        replaceRows(projectName, collName, pages, occupancy, rows);
         return true;
     }
 
@@ -169,35 +170,35 @@ public final class PageOccupancyReconciler {
         return true;
     }
 
-    private static String pageRowCollectionOf(String dbName, String collName) {
-        return AdminPageEntry.pagesCollectionName(dbName, collName);
+    private static String pageRowCollectionOf(String projectName, String collName) {
+        return AdminPageEntry.pagesCollectionName(projectName, collName);
     }
 
-    private static void healQuietly(String dbName, String collName) {
+    private static void healQuietly(String projectName, String collName) {
         try {
-            fs.healTornPageTails(dbName, collName);
+            fs.healTornPageTails(projectName, collName);
         } catch (Exception e) {
-            logger.warning("Could not heal the page tails of " + dbName + "|" + collName + ": " + e.getMessage());
+            logger.warning("Could not heal the page tails of " + projectName + "|" + collName + ": " + e.getMessage());
         }
     }
 
-    private static void reconcileQuietly(String dbName, String collName) {
+    private static void reconcileQuietly(String projectName, String collName) {
         try {
-            if (reconcile(dbName, collName)) {
-                logger.warning("Rebuilt the page-occupancy metadata of " + dbName + "|" + collName
+            if (reconcile(projectName, collName)) {
+                logger.warning("Rebuilt the page-occupancy metadata of " + projectName + "|" + collName
                         + " from its page files: it no longer matched them, most likely after an unclean stop");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            logger.warning("Could not reconcile the page-occupancy metadata of " + dbName + "|" + collName + ": "
+            logger.warning("Could not reconcile the page-occupancy metadata of " + projectName + "|" + collName + ": "
                     + e.getMessage());
         }
     }
 
-    public static boolean reconcile(String dbName, String collName) throws Exception {
-        fs.healTornPageTails(Globals.ADMIN_PAGES_DB_NAME, pageRowCollectionOf(dbName, collName));
-        final var session = fs.pkRowsSession(dbName, collName);
+    public static boolean reconcile(String projectName, String collName) throws Exception {
+        fs.healTornPageTails(Globals.ADMIN_PAGES_PROJECT_NAME, pageRowCollectionOf(projectName, collName));
+        final var session = fs.pkRowsSession(projectName, collName);
         fs.healTornPageTails(session);
         final var retired = fs.retireDanglingPkEntries(session);
         if (!retired.isEmpty()) {
@@ -206,38 +207,38 @@ public final class PageOccupancyReconciler {
         }
         final var adopted = fs.adoptOrphanedRecords(session);
         if (!adopted.isEmpty()) {
-            scheduleIndexRepairOf(dbName, collName, adopted.stream().map(DbEntry::get_id).toList());
+            scheduleIndexRepairOf(projectName, collName, adopted.stream().map(DbEntry::get_id).toList());
         }
-        final var pages = fs.pageFileLengths(dbName, collName).keySet();
+        final var pages = fs.pageFileLengths(projectName, collName).keySet();
         final var occupancy = occupancyByPage(session.rows());
-        final var rows = rowsByPage(cache.getAdminPageEntries(dbName, collName));
+        final var rows = rowsByPage(cache.getAdminPageEntries(projectName, collName));
         if (adopted.isEmpty() && retired.isEmpty() && agreesWithLiveBytes(rows, pages, occupancy)
                 && countsAgree(rows, occupancy)) {
             return false;
         }
-        replaceRows(dbName, collName, pages, occupancy, rows);
+        replaceRows(projectName, collName, pages, occupancy, rows);
         return true;
     }
 
-    public static void rebuildRows(String dbName, String collName) throws Exception {
-        replaceRows(dbName, collName, fs.pageFileLengths(dbName, collName).keySet(),
-                occupancyByPage(fs.readWholePkIndexFile(dbName, collName)),
-                rowsByPage(cache.getAdminPageEntries(dbName, collName)));
+    public static void rebuildRows(String projectName, String collName) throws Exception {
+        replaceRows(projectName, collName, fs.pageFileLengths(projectName, collName).keySet(),
+                occupancyByPage(fs.readWholePkIndexFile(projectName, collName)),
+                rowsByPage(cache.getAdminPageEntries(projectName, collName)));
     }
 
-    private static void replaceRows(String dbName, String collName, Set<Long> pages, Map<Long, long[]> occupancy,
+    private static void replaceRows(String projectName, String collName, Set<Long> pages, Map<Long, long[]> occupancy,
             Map<Long, AdminPageEntry> rows) throws Exception {
         final var corrected = new ArrayList<AdminPageEntry>();
         for (final var page : pages) {
             final var live = occupancy.getOrDefault(page, NOTHING_LIVE);
-            corrected.add(row(dbName, collName, page, (int) live[ENTRY_COUNT], live[LIVE_BYTES]));
+            corrected.add(row(projectName, collName, page, (int) live[ENTRY_COUNT], live[LIVE_BYTES]));
         }
         for (final var page : rows.keySet()) {
             if (!pages.contains(page)) {
-                corrected.add(row(dbName, collName, page, 0, 0L));
+                corrected.add(row(projectName, collName, page, 0, 0L));
             }
         }
-        AdminPageHelper.replacePageEntries(dbName, collName, corrected);
+        AdminPageHelper.replacePageEntries(projectName, collName, corrected);
     }
 
     private static Map<Long, AdminPageEntry> rowsByPage(List<AdminPageEntry> rows) {
@@ -280,8 +281,8 @@ public final class PageOccupancyReconciler {
         return occupancy;
     }
 
-    private static AdminPageEntry row(String dbName, String collName, long page, int entryCount, long pageSize) {
-        final var entry = new AdminPageEntry(dbName, collName, page);
+    private static AdminPageEntry row(String projectName, String collName, long page, int entryCount, long pageSize) {
+        final var entry = new AdminPageEntry(projectName, collName, page);
         entry.setEntryCount(entryCount);
         entry.setPageSize(pageSize);
         return entry;

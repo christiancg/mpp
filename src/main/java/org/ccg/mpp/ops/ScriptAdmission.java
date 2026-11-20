@@ -9,25 +9,25 @@ import org.ccg.mpp.config.Configuration;
 public class ScriptAdmission {
     public static final String SCOPE_NODE = "node";
     public static final String SCOPE_USER = "user";
-    public static final String SCOPE_DATABASE = "database";
+    public static final String SCOPE_PROJECT = "project";
     private static final Configuration configuration = Configuration.getInstance();
 
     private volatile int capacity;
     private volatile long waitMs;
     private volatile Semaphore permits;
     private volatile int perUserCapacity;
-    private volatile int perDatabaseCapacity;
+    private volatile int perProjectCapacity;
     private final ConcurrentHashMap<String, SlicePool> userPermits = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, SlicePool> databasePermits = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, SlicePool> projectPermits = new ConcurrentHashMap<>();
     private final AtomicLong rejected = new AtomicLong();
     private final AtomicLong rejectedPerUser = new AtomicLong();
-    private final AtomicLong rejectedPerDatabase = new AtomicLong();
+    private final AtomicLong rejectedPerProject = new AtomicLong();
     private final AtomicLong waited = new AtomicLong();
 
     public ScriptAdmission() {
         this(configuration.getMaxConcurrentScripts(), configuration.getScriptQueueWaitMs());
         this.perUserCapacity = configuration.getMaxConcurrentScriptsPerUser();
-        this.perDatabaseCapacity = configuration.getMaxConcurrentScriptsPerDatabase();
+        this.perProjectCapacity = configuration.getMaxConcurrentScriptsPerProject();
     }
 
     public ScriptAdmission(int capacity, long waitMs) {
@@ -58,7 +58,7 @@ public class ScriptAdmission {
             return new SlicePool(limit, 0);
         }
 
-        static SlicePool forDatabase(int limit) {
+        static SlicePool forProject(int limit) {
             final var reserve = limit >= 2 ? 1 : 0;
             return new SlicePool(limit - reserve, reserve);
         }
@@ -105,18 +105,18 @@ public class ScriptAdmission {
 
     public final class Permit implements Admission, AutoCloseable {
         private final String username;
-        private final String database;
+        private final String project;
         private final boolean nodeWide;
         private final Slice userSlice;
-        private final Slice databaseSlice;
+        private final Slice projectSlice;
         private boolean closed;
 
-        private Permit(String username, String database, boolean nodeWide, Slice userSlice, Slice databaseSlice) {
+        private Permit(String username, String project, boolean nodeWide, Slice userSlice, Slice projectSlice) {
             this.username = username;
-            this.database = database;
+            this.project = project;
             this.nodeWide = nodeWide;
             this.userSlice = userSlice;
-            this.databaseSlice = databaseSlice;
+            this.projectSlice = projectSlice;
         }
 
         @Override
@@ -125,7 +125,7 @@ public class ScriptAdmission {
                 return;
             }
             closed = true;
-            giveBack(databasePermits, database, databaseSlice);
+            giveBack(projectPermits, project, projectSlice);
             giveBack(userPermits, username, userSlice);
             if (nodeWide) {
                 release();
@@ -133,8 +133,8 @@ public class ScriptAdmission {
         }
     }
 
-    public Admission acquire(String username, String database, boolean privileged) {
-        return switch (acquireSlices(username, database, privileged)) {
+    public Admission acquire(String username, String project, boolean privileged) {
+        return switch (acquireSlices(username, project, privileged)) {
             case Refusal refusal -> refusal;
             case Permit slices -> withNodePermit(slices);
         };
@@ -145,56 +145,56 @@ public class ScriptAdmission {
             slices.close();
             return new Refusal(SCOPE_NODE);
         }
-        return new Permit(slices.username, slices.database, permits != null, slices.userSlice, slices.databaseSlice);
+        return new Permit(slices.username, slices.project, permits != null, slices.userSlice, slices.projectSlice);
     }
 
-    public Admission acquireSlices(String username, String database) {
-        return acquireSlices(username, database, false);
+    public Admission acquireSlices(String username, String project) {
+        return acquireSlices(username, project, false);
     }
 
-    private Admission acquireSlices(String username, String database, boolean privileged) {
+    private Admission acquireSlices(String username, String project, boolean privileged) {
         final var userSlice = take(userPermits, username, perUserCapacity, false, privileged);
         if (!userSlice.taken()) {
             rejectedPerUser.incrementAndGet();
             return new Refusal(SCOPE_USER);
         }
-        final var databaseSlice = take(databasePermits, database, perDatabaseCapacity, true, privileged);
-        if (!databaseSlice.taken()) {
+        final var projectSlice = take(projectPermits, project, perProjectCapacity, true, privileged);
+        if (!projectSlice.taken()) {
             giveBack(userPermits, username, userSlice);
-            rejectedPerDatabase.incrementAndGet();
-            return new Refusal(SCOPE_DATABASE);
+            rejectedPerProject.incrementAndGet();
+            return new Refusal(SCOPE_PROJECT);
         }
-        return new Permit(username, database, false, userSlice, databaseSlice);
+        return new Permit(username, project, false, userSlice, projectSlice);
     }
 
-    public Admission acquireSlicesWithin(String username, String database, long waitMillis) {
+    public Admission acquireSlicesWithin(String username, String project, long waitMillis) {
         final var deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, waitMillis));
         final var userSlice = waitFor(userPermits, username, perUserCapacity, false, deadline);
         if (!userSlice.taken()) {
             rejectedPerUser.incrementAndGet();
             return new Refusal(SCOPE_USER);
         }
-        final var databaseSlice = waitFor(databasePermits, database, perDatabaseCapacity, true, deadline);
-        if (!databaseSlice.taken()) {
+        final var projectSlice = waitFor(projectPermits, project, perProjectCapacity, true, deadline);
+        if (!projectSlice.taken()) {
             giveBack(userPermits, username, userSlice);
-            rejectedPerDatabase.incrementAndGet();
-            return new Refusal(SCOPE_DATABASE);
+            rejectedPerProject.incrementAndGet();
+            return new Refusal(SCOPE_PROJECT);
         }
-        return new Permit(username, database, false, userSlice, databaseSlice);
+        return new Permit(username, project, false, userSlice, projectSlice);
     }
 
-    private static SlicePool newPool(int limit, boolean database) {
-        return database ? SlicePool.forDatabase(limit) : SlicePool.forUser(limit);
+    private static SlicePool newPool(int limit, boolean project) {
+        return project ? SlicePool.forProject(limit) : SlicePool.forUser(limit);
     }
 
-    private static Slice take(ConcurrentHashMap<String, SlicePool> pools, String key, int limit, boolean database,
+    private static Slice take(ConcurrentHashMap<String, SlicePool> pools, String key, int limit, boolean project,
             boolean privileged) {
         if (limit <= 0 || key == null) {
             return Slice.UNLIMITED;
         }
         final var taken = new Slice[]{Slice.REFUSED};
         pools.compute(key, (_, mapped) -> {
-            final var pool = mapped == null ? newPool(limit, database) : mapped;
+            final var pool = mapped == null ? newPool(limit, project) : mapped;
             final var slot = pool.take(privileged);
             if (slot != Slot.NONE) {
                 pool.users++;
@@ -205,14 +205,14 @@ public class ScriptAdmission {
         return taken[0];
     }
 
-    private static Slice waitFor(ConcurrentHashMap<String, SlicePool> pools, String key, int limit, boolean database,
+    private static Slice waitFor(ConcurrentHashMap<String, SlicePool> pools, String key, int limit, boolean project,
             long deadlineNanos) {
         if (limit <= 0 || key == null) {
             return Slice.UNLIMITED;
         }
         final var entered = new Slice[1];
         pools.compute(key, (_, mapped) -> {
-            final var pool = mapped == null ? newPool(limit, database) : mapped;
+            final var pool = mapped == null ? newPool(limit, project) : mapped;
             pool.users++;
             entered[0] = new Slice(pool, pool.take(false));
             return pool;
@@ -281,17 +281,17 @@ public class ScriptAdmission {
         reconfigure(newCapacity, newWaitMs, 0, 0);
     }
 
-    public void reconfigure(int newCapacity, long newWaitMs, int newPerUserCapacity, int newPerDatabaseCapacity) {
+    public void reconfigure(int newCapacity, long newWaitMs, int newPerUserCapacity, int newPerProjectCapacity) {
         capacity = newCapacity;
         waitMs = newWaitMs;
         permits = newCapacity > 0 ? new Semaphore(newCapacity, true) : null;
         perUserCapacity = newPerUserCapacity;
-        perDatabaseCapacity = newPerDatabaseCapacity;
+        perProjectCapacity = newPerProjectCapacity;
         userPermits.clear();
-        databasePermits.clear();
+        projectPermits.clear();
         rejected.set(0L);
         rejectedPerUser.set(0L);
-        rejectedPerDatabase.set(0L);
+        rejectedPerProject.set(0L);
         waited.set(0L);
     }
 
@@ -316,7 +316,7 @@ public class ScriptAdmission {
     }
 
     public int tenantPools() {
-        return userPermits.size() + databasePermits.size();
+        return userPermits.size() + projectPermits.size();
     }
 
     public long getRejected() {
@@ -331,15 +331,15 @@ public class ScriptAdmission {
         return perUserCapacity;
     }
 
-    public int perDatabaseCapacity() {
-        return perDatabaseCapacity;
+    public int perProjectCapacity() {
+        return perProjectCapacity;
     }
 
     public long getRejectedPerUser() {
         return rejectedPerUser.get();
     }
 
-    public long getRejectedPerDatabase() {
-        return rejectedPerDatabase.get();
+    public long getRejectedPerProject() {
+        return rejectedPerProject.get();
     }
 }

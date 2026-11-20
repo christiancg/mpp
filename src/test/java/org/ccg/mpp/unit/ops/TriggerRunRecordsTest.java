@@ -35,7 +35,7 @@ public class TriggerRunRecordsTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(Configuration.getInstance(), "triggerRunLogEnabled", true);
         TriggerTestSupport.consumeAllPendingRuns();
         recorder = RecordingForcer.install(true);
@@ -54,11 +54,11 @@ public class TriggerRunRecordsTest {
         for (var i = 0; i < ids; i++) {
             final var data = new JsonObject();
             data.add(Globals.PK_FIELD, new JsonString("an-id-long-enough-to-fill-a-record-quickly-" + i));
-            entries.add(DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data));
+            entries.add(DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data));
         }
         final var chunks = new ArrayList<AdminTriggerRunEntry>();
         final var runId = TriggerRunLog.recordStaged(
-                new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit", "recalc",
+                new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc",
                         EventType.CREATED, true, "alice", 0, System.currentTimeMillis(), entries),
                 Map.of(), chunks::add);
         assertNotNull(runId);

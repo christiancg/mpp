@@ -27,8 +27,8 @@ public class ProcedureSourceAuthorizationTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        AdminOperationHelper.updateDatabaseOwners(TestGlobals.DB, List.of(OWNER));
+        TestUtils.createTestProjectAndCollection();
+        AdminOperationHelper.updateProjectOwners(TestGlobals.PROJECT, List.of(OWNER));
     }
 
     @AfterAll
@@ -37,27 +37,27 @@ public class ProcedureSourceAuthorizationTest {
         TestUtils.standardTearDown();
     }
 
-    private static AdminUserEntry user(String name, boolean admin, PermissionLevel dbLevel,
+    private static AdminUserEntry user(String name, boolean admin, PermissionLevel projectLevel,
             ScriptPermissionLevel scriptLevel) {
-        final var dbPerms = new HashMap<String, PermissionLevel>();
-        if (dbLevel != null) {
-            dbPerms.put(TestGlobals.DB, dbLevel);
+        final var projectPerms = new HashMap<String, PermissionLevel>();
+        if (projectLevel != null) {
+            projectPerms.put(TestGlobals.PROJECT, projectLevel);
         }
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         if (scriptLevel != null) {
-            scriptPerms.put(TestGlobals.DB, scriptLevel);
+            scriptPerms.put(TestGlobals.PROJECT, scriptLevel);
         }
-        return new AdminUserEntry(name, "hash", admin, new HashSet<>(), dbPerms, new HashMap<>(), scriptPerms);
+        return new AdminUserEntry(name, "hash", admin, new HashSet<>(), projectPerms, new HashMap<>(), scriptPerms);
     }
 
     private static ListProceduresRequest list(boolean includeSource) {
-        final var request = new ListProceduresRequest(TestGlobals.DB);
+        final var request = new ListProceduresRequest(TestGlobals.PROJECT);
         request.setIncludeSource(includeSource);
         return request;
     }
 
     private static ListSchedulesRequest schedules(boolean includeArgs) {
-        final var request = new ListSchedulesRequest(TestGlobals.DB);
+        final var request = new ListSchedulesRequest(TestGlobals.PROJECT);
         request.setIncludeArgs(includeArgs);
         return request;
     }
@@ -109,13 +109,13 @@ public class ProcedureSourceAuthorizationTest {
 
     @Test
     public void test_may_read_procedure_source_follows_manage_ownership_and_admin() {
-        assertFalse(AuthorizationChecker.mayReadProcedureSource(null, TestGlobals.DB));
+        assertFalse(AuthorizationChecker.mayReadProcedureSource(null, TestGlobals.PROJECT));
         assertFalse(AuthorizationChecker.mayReadProcedureSource(
-                user("runner", false, PermissionLevel.READ_WRITE, ScriptPermissionLevel.RUN), TestGlobals.DB));
-        assertTrue(AuthorizationChecker
-                .mayReadProcedureSource(user("manager", false, null, ScriptPermissionLevel.MANAGE), TestGlobals.DB));
-        assertTrue(AuthorizationChecker.mayReadProcedureSource(user(OWNER, false, null, null), TestGlobals.DB));
-        assertTrue(AuthorizationChecker.mayReadProcedureSource(user("root", true, null, null), TestGlobals.DB));
+                user("runner", false, PermissionLevel.READ_WRITE, ScriptPermissionLevel.RUN), TestGlobals.PROJECT));
+        assertTrue(AuthorizationChecker.mayReadProcedureSource(
+                user("manager", false, null, ScriptPermissionLevel.MANAGE), TestGlobals.PROJECT));
+        assertTrue(AuthorizationChecker.mayReadProcedureSource(user(OWNER, false, null, null), TestGlobals.PROJECT));
+        assertTrue(AuthorizationChecker.mayReadProcedureSource(user("root", true, null, null), TestGlobals.PROJECT));
         assertFalse(AuthorizationChecker.mayReadProcedureSource(user(OWNER, false, null, null), "otherdb"));
         assertFalse(AuthorizationChecker
                 .mayReadProcedureSource(user("manager", false, null, ScriptPermissionLevel.MANAGE), "otherdb"));
@@ -123,10 +123,10 @@ public class ProcedureSourceAuthorizationTest {
 
     @Test
     public void test_owns_or_administers_admits_only_owners_and_admins() {
-        assertFalse(AuthorizationChecker.ownsOrAdministers(null, TestGlobals.DB));
+        assertFalse(AuthorizationChecker.ownsOrAdministers(null, TestGlobals.PROJECT));
         assertFalse(AuthorizationChecker.ownsOrAdministers(user("manager", false, null, ScriptPermissionLevel.MANAGE),
-                TestGlobals.DB));
-        assertTrue(AuthorizationChecker.ownsOrAdministers(user(OWNER, false, null, null), TestGlobals.DB));
+                TestGlobals.PROJECT));
+        assertTrue(AuthorizationChecker.ownsOrAdministers(user(OWNER, false, null, null), TestGlobals.PROJECT));
         assertTrue(AuthorizationChecker.ownsOrAdministers(user("root", true, null, null), "otherdb"));
         assertFalse(AuthorizationChecker.ownsOrAdministers(user(OWNER, false, null, null), "otherdb"));
     }

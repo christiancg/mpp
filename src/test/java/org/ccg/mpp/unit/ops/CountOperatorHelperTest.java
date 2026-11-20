@@ -52,7 +52,7 @@ public class CountOperatorHelperTest extends FilterResolutionSupport {
     }
 
     private static FastCount fastCountOf(FilterAggregationStep step) throws IOException {
-        return CountOperatorHelper.tryIndexOnlyCount(List.of(step, new CountAggregationStep()), TestGlobals.DB,
+        return CountOperatorHelper.tryIndexOnlyCount(List.of(step, new CountAggregationStep()), TestGlobals.PROJECT,
                 TestGlobals.COLL, PipelineContext.withoutScripts());
     }
 
@@ -61,12 +61,12 @@ public class CountOperatorHelperTest extends FilterResolutionSupport {
     }
 
     private void plantBetaIntoAlpha() throws IOException, InterruptedException {
-        locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+        locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, String.class).stream()
+            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, String.class).stream()
                     .filter(entry -> "Alpha".equals(entry.getValue())).findFirst().orElseThrow().getIds().add("c");
         } finally {
-            locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
@@ -135,11 +135,11 @@ public class CountOperatorHelperTest extends FilterResolutionSupport {
         final var query = in(new JsonString("alpha"), new JsonString("beta"));
         assertEquals(4L, countIn(fastCountOf(query)));
 
-        pending.markRecovered(TestGlobals.DB, TestGlobals.COLL, List.of("c"));
+        pending.markRecovered(TestGlobals.PROJECT, TestGlobals.COLL, List.of("c"));
         try {
             assertEquals(3, countOf(query), "a pending id sends the count down the set path that corrects it");
         } finally {
-            pending.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+            pending.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 }

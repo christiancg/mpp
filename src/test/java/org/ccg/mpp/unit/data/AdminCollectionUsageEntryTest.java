@@ -14,17 +14,17 @@ public class AdminCollectionUsageEntryTest {
 
     @Test
     public void test_construct_with_all_fields() {
-        final var entry = new AdminCollectionUsageEntry(AccessKind.COLLECTION, "myDb", "myColl", "myField", 42L,
+        final var entry = new AdminCollectionUsageEntry(AccessKind.COLLECTION, "myProject", "myColl", "myField", 42L,
                 1_000L);
         assertEquals(AccessKind.COLLECTION, entry.getKind());
-        assertEquals("myDb", entry.getDbName());
+        assertEquals("myProject", entry.getTargetProject());
         assertEquals("myColl", entry.getCollName());
         assertEquals("myField", entry.getIndexKey());
         assertEquals(42L, entry.getAccessCount());
         assertEquals(1_000L, entry.getLastAccessMillis());
-        assertEquals(Globals.ADMIN_DB_NAME, entry.getDatabaseName());
+        assertEquals(Globals.ADMIN_PROJECT_NAME, entry.getProjectName());
         assertEquals(Globals.ADMIN_COLLECTION_USAGE_NAME, entry.getCollectionName());
-        assertEquals(AdminCollectionUsageEntry.buildId("myDb", "myColl", "myField"), entry.get_id());
+        assertEquals(AdminCollectionUsageEntry.buildId("myProject", "myColl", "myField"), entry.get_id());
     }
 
     @Test
@@ -47,14 +47,14 @@ public class AdminCollectionUsageEntryTest {
         final var id = AdminCollectionUsageEntry.buildId("db", "coll", "field");
         data.add(Globals.PK_FIELD, new JsonString(id));
         data.add("kind", new JsonString(AccessKind.FIELD_INDEX.name()));
-        data.add("dbName", new JsonString("db"));
+        data.add("projectName", new JsonString("db"));
         data.add("collName", new JsonString("coll"));
         data.add("indexKey", new JsonString("field"));
         data.add("accessCount", new JsonString("7"));
         data.add("lastAccessMillis", new JsonString("123"));
         final var entry = AdminCollectionUsageEntry.fromJsonObject(data);
         assertEquals(AccessKind.FIELD_INDEX, entry.getKind());
-        assertEquals("db", entry.getDbName());
+        assertEquals("db", entry.getTargetProject());
         assertEquals("coll", entry.getCollName());
         assertEquals("field", entry.getIndexKey());
         assertEquals(7L, entry.getAccessCount());

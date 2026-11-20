@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 
 public class ListenRelocationDeferralTest {
     private static final String COLL = "relocatingColl";
-    private static final String KEY = Cache.getCollectionIdentifier(TestGlobals.DB, COLL);
+    private static final String KEY = Cache.getCollectionIdentifier(TestGlobals.PROJECT, COLL);
 
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
     private final ListenManager listenManager = IocContainer.get(ListenManager.class);
@@ -57,7 +57,7 @@ public class ListenRelocationDeferralTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(SaveOperationHelper.class, "taskManager",
                 BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(SaveOperationHelper.class, "taskManager", new RecordingTaskManager());
@@ -66,7 +66,7 @@ public class ListenRelocationDeferralTest {
         TestUtils.setPrivateField(config, "maxPageSize", 2000L);
         TestUtils.setPrivateField(config, "maxEntrySize", 100_000L);
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL)).getStatus());
         save("keep", "k".repeat(280));
         save("a", "small");
         heldBackAtEachEvent.clear();
@@ -82,7 +82,7 @@ public class ListenRelocationDeferralTest {
     }
 
     private static SaveRequest saveOf(String id, String value) {
-        final var request = new SaveRequest(TestGlobals.DB, COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, COLL);
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("v", new JsonString(value));

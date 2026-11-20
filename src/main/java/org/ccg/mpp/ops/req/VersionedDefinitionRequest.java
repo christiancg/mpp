@@ -6,8 +6,8 @@ public abstract class VersionedDefinitionRequest extends OperationRequest {
     private Boolean enabled;
     private Long ifVersion;
 
-    protected VersionedDefinitionRequest(OperationType type, String databaseName, String collectionName) {
-        super(type, databaseName, collectionName);
+    protected VersionedDefinitionRequest(OperationType type, String projectName, String collectionName) {
+        super(type, projectName, collectionName);
     }
 
     public boolean isEnabled() {

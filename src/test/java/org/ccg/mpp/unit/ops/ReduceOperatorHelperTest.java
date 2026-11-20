@@ -30,7 +30,7 @@ public class ReduceOperatorHelperTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -52,7 +52,7 @@ public class ReduceOperatorHelperTest {
     private static JsonObject fold(ReduceAggregationStep step, Stream<JsonObject> source) throws IOException {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var results = ReduceOperatorHelper
-                    .processReduceStep(step, source, TestGlobals.DB, TestGlobals.COLL, context).toList();
+                    .processReduceStep(step, source, TestGlobals.PROJECT, TestGlobals.COLL, context).toList();
             assertEquals(1, results.size());
             return results.getFirst();
         }
@@ -62,11 +62,11 @@ public class ReduceOperatorHelperTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
         object.add("payload", new JsonString(id));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         request.setObject(object);
         IocContainer.get(OperationProcessor.class).processMessage(request);
-        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.DB, TestGlobals.COLL, id, 0L);
+        IocContainer.get(PendingIndexWrites.class).clear(TestGlobals.PROJECT, TestGlobals.COLL, id, 0L);
     }
 
     private static ReduceAggregationStep idFold() {
@@ -77,7 +77,7 @@ public class ReduceOperatorHelperTest {
     private static String foldOverTheCollection() throws IOException {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var results = ReduceOperatorHelper
-                    .processReduceStep(idFold(), null, TestGlobals.DB, TestGlobals.COLL, context).toList();
+                    .processReduceStep(idFold(), null, TestGlobals.PROJECT, TestGlobals.COLL, context).toList();
             assertEquals(1, results.size());
             return results.getFirst().get("folded").asJsonString().getValue();
         }
@@ -90,7 +90,7 @@ public class ReduceOperatorHelperTest {
         }
 
         final var warm = foldOverTheCollection();
-        IocContainer.get(Cache.class).userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+        IocContainer.get(Cache.class).userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
         final var cold = foldOverTheCollection();
 
         assertEquals("|alpha|bravo|charlie|delta|echo|foxtrot", warm,
@@ -206,7 +206,7 @@ public class ReduceOperatorHelperTest {
     }
 
     private static String foldInsideTransaction(java.util.UUID client) {
-        final var request = new org.ccg.mpp.ops.req.AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new org.ccg.mpp.ops.req.AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(idFold()));
         final var response = IocContainer.get(OperationProcessor.class).processMessage(request, client);
         return ((org.ccg.mpp.ops.resp.AggregateResponse) response).getResults().getFirst().get("folded").asJsonString()
@@ -223,13 +223,13 @@ public class ReduceOperatorHelperTest {
         processor.processMessage(new org.ccg.mpp.ops.req.StartTransactionRequest(), client);
         final var buffered = new JsonObject();
         buffered.add(Globals.PK_FIELD, new JsonString("golf"));
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.set_id("golf");
         save.setObject(buffered);
         processor.processMessage(save, client);
         try {
             final var warm = foldInsideTransaction(client);
-            IocContainer.get(Cache.class).userCache().evictCollectionDocuments(TestGlobals.DB, TestGlobals.COLL);
+            IocContainer.get(Cache.class).userCache().evictCollectionDocuments(TestGlobals.PROJECT, TestGlobals.COLL);
             final var cold = foldInsideTransaction(client);
 
             assertEquals("|alpha|bravo|charlie|delta|echo|foxtrot|golf", warm,

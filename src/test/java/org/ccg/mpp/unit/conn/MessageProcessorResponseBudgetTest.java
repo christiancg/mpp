@@ -22,7 +22,7 @@ public class MessageProcessorResponseBudgetTest {
     private static final String ADMIN = "budget_admin";
     private static final long LIMIT = 1024L * 1024;
     private static final int LARGE_FIELD_CHARS = (int) Globals.RESPONSE_BUDGET_FLOOR_BYTES + 1000;
-    private static final String TARGET = "\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+    private static final String TARGET = "\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
             + TestGlobals.COLL + "\"";
     private final Configuration config = Configuration.getInstance();
     private final ResponseBudget budget = IocContainer.get(ResponseBudget.class);
@@ -32,7 +32,7 @@ public class MessageProcessorResponseBudgetTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(ADMIN);
         TestUtils.setPrivateField(config, "maxUnsentResponseBytes", String.valueOf(LIMIT));
         connection = new ScriptedConnection();
@@ -93,7 +93,7 @@ public class MessageProcessorResponseBudgetTest {
         exhaustTheBudget();
 
         assertOk(connection.exchange(findById("small")));
-        assertOk(connection.exchange("{\"type\":\"LIST_DATABASES\"}"));
+        assertOk(connection.exchange("{\"type\":\"LIST_PROJECTS\"}"));
     }
 
     @Test
@@ -143,11 +143,11 @@ public class MessageProcessorResponseBudgetTest {
 
     @Test
     public void aLargeListProceduresIsRefusable() throws Exception {
-        assertOk(connection.exchange("{\"type\":\"SAVE_PROCEDURE\",\"databaseName\":\"" + TestGlobals.DB
+        assertOk(connection.exchange("{\"type\":\"SAVE_PROCEDURE\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"name\":\"big\",\"script\":\"export const blob = '" + "p".repeat(LARGE_FIELD_CHARS) + "';\"}"));
         exhaustTheBudget();
 
-        final var listing = "{\"type\":\"LIST_PROCEDURES\",\"databaseName\":\"" + TestGlobals.DB
+        final var listing = "{\"type\":\"LIST_PROCEDURES\",\"projectName\":\"" + TestGlobals.PROJECT
                 + "\",\"includeSource\":true}";
         assertRefused(connection.exchange(listing));
 

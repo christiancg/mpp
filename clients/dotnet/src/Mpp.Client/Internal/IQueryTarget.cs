@@ -8,7 +8,7 @@ namespace Mpp.Client.Internal;
 
 internal interface IQueryTarget<out T>
 {
-    string Database { get; }
+    string Project { get; }
 
     string Collection { get; }
 

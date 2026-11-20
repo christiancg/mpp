@@ -5,17 +5,17 @@ Manual test playbook — send each JSON command to the server over TCP, one line
 Anything but `AUTHENTICATE` and `CLOSE_CONNECTION` before authenticating → `401-1`
 
 ```json
-{"type": "LIST_COLLECTIONS", "databaseName": "test"}
+{"type": "LIST_COLLECTIONS", "projectName": "test"}
 ```
 
-`LIST_DATABASES` is no longer public either → `401-1`
+`LIST_PROJECTS` is no longer public either → `401-1`
 
 ```json
-{"type": "LIST_DATABASES"}
+{"type": "LIST_PROJECTS"}
 ```
 
 ```json
-{"type":"LIST_DATABASES","status":"UNAUTHENTICATED","message":"Must authenticate first","errorCode":"401-1"}
+{"type":"LIST_PROJECTS","status":"UNAUTHENTICATED","message":"Must authenticate first","errorCode":"401-1"}
 ```
 
 A wrong password, or a user that does not exist → `401-3`
@@ -79,7 +79,7 @@ before authenticating, send any line of more than 65 536 bytes, for example
 ```
 
 A line much denser than real data (more than one JSON token per 4 bytes of the line limit, such as a
-`LIST_DATABASES` carrying a flat array of 20 000 ones before authenticating) is answered `400-43` instead, and the
+`LIST_PROJECTS` carrying a flat array of 20 000 ones before authenticating) is answered `400-43` instead, and the
 connection stays open. The parser stops before it reads `type`, so the reply's `type` is `null`:
 
 ```json
@@ -104,11 +104,11 @@ Any request other than `AUTHENTICATE` and `CLOSE_CONNECTION` sent before authent
 validated, so an invalid one gets the same answer as a valid one:
 
 ```json
-{"type": "SET_DATABASE_OWNERS", "databaseName": "test", "owners": ["nobody"]}
+{"type": "SET_PROJECT_OWNERS", "projectName": "test", "owners": ["nobody"]}
 ```
 
 ```json
-{"type": "SET_DATABASE_OWNERS", "status": "UNAUTHENTICATED", "message": "Must authenticate first", "errorCode": "401-1"}
+{"type": "SET_PROJECT_OWNERS", "status": "UNAUTHENTICATED", "message": "Must authenticate first", "errorCode": "401-1"}
 ```
 
 More than `maxUnauthenticatedConnectionsPerAddress` (16 by default) unauthenticated connections from one
@@ -121,7 +121,7 @@ connections from the same host and send nothing:
 
 `maxUnauthenticatedInvalidRequests` (5 by default) requests before authenticating that are not a
 successful `AUTHENTICATE` close the connection after the fifth answer: unparseable lines, requests answered
-`401-1` and failed attempts all count. Send `garbage` (or `{"type": "LIST_DATABASES"}`) five times on a
+`401-1` and failed attempts all count. Send `garbage` (or `{"type": "LIST_PROJECTS"}`) five times on a
 fresh connection.
 
 A connection that stops reading while its responses pile up past `clientOutboundQueueMaxBytes` (16Mb by
@@ -205,10 +205,10 @@ A non-admin `SET_PASSWORD` on another user → `403-1` whether or not that user 
 ```
 
 A user granted only one collection (`collectionPermissions: {"test|testCollection": "READ"}`) cannot list the
-database's procedures, schedules or collections by naming that collection → `403-1`:
+project's procedures, schedules or collections by naming that collection → `403-1`:
 
 ```json
-{"type": "LIST_PROCEDURES", "databaseName": "test", "collectionName": "testCollection", "includeSource": true}
+{"type": "LIST_PROCEDURES", "projectName": "test", "collectionName": "testCollection", "includeSource": true}
 ```
 
 More than `maxListensPerConnection` (64 by default) `LISTEN` registrations on one connection, or
@@ -282,7 +282,7 @@ is larger than `maxEntrySize` (`(doc) => 'x'.repeat(2000000)`), and a `JOIN` who
 larger than `maxEntrySize` (a key shared by a few thousand remote documents), indexed remote field or not:
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "orders", "aggregationSteps": [{"type": "JOIN", "joinCollection": "lines", "localField": "region", "remoteField": "region", "asField": "lines"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "orders", "aggregationSteps": [{"type": "JOIN", "joinCollection": "lines", "localField": "region", "remoteField": "region", "asField": "lines"}]}
 ```
 
 ```json
@@ -299,7 +299,7 @@ row of a large collection, or a `GROUP_BY` over a collection whose documents tak
 `GROUP_BY` followed directly by `COUNT` holds only the distinct values and still answers):
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "orders", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "big", "operator": {"type": "CONCAT", "operands": ["blob", "blob"]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "orders", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "big", "operator": {"type": "CONCAT", "operands": ["blob", "blob"]}}]}]}
 ```
 
 ```json
@@ -322,24 +322,24 @@ is parsed: `400-43` (`The command is not valid`).
 {"type": "SAVE_TRIGGER", "status": "ERROR", "message": "The collection has the maximum number of triggers (50)", "errorCode": "400-32"}
 ```
 
-`SAVE_SCHEDULE` by a user who already defines `scheduleMaxTotalPerUser` (500) schedules across every database →
+`SAVE_SCHEDULE` by a user who already defines `scheduleMaxTotalPerUser` (500) schedules across every project →
 `400-33`:
 
 ```json
 {"type": "SAVE_SCHEDULE", "status": "ERROR", "message": "The user has the maximum number of schedules (500)", "errorCode": "400-33"}
 ```
 
-`SAVE_PROCEDURE` creating one more procedure in a database that already holds `maxProceduresPerDatabase` (500) →
+`SAVE_PROCEDURE` creating one more procedure in a project that already holds `maxProceduresPerProject` (500) →
 `400-34`:
 
 ```json
-{"type": "SAVE_PROCEDURE", "status": "ERROR", "message": "The database has the maximum number of procedures (500)", "errorCode": "400-34"}
+{"type": "SAVE_PROCEDURE", "status": "ERROR", "message": "The project has the maximum number of procedures (500)", "errorCode": "400-34"}
 ```
 
 `SAVE_SCHEDULE` with an `intervalMs` below `scheduleMinIntervalMs` (1 000) → `400-35`:
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "tooFast", "procedureName": "recalcTotals", "intervalMs": 100}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "tooFast", "procedureName": "recalcTotals", "intervalMs": 100}
 ```
 
 ```json
@@ -350,31 +350,31 @@ A `cron` whose occurrences fall closer together than `scheduleMinIntervalMs` is 
 `scheduleMinIntervalMs=120000`, every minute (or two fires a minute apart) → `400-35`:
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyMinute", "procedureName": "recalcTotals", "cron": "* * * * *"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyMinute", "procedureName": "recalcTotals", "cron": "* * * * *"}
 ```
 
 ```json
 {"type": "SAVE_SCHEDULE", "status": "ERROR", "message": "The schedule interval is below the allowed minimum (120000 ms)", "errorCode": "400-35"}
 ```
 
-A trigger or schedule whose definer loses script `RUN` on the database (or, for a trigger, `READ` on its
+A trigger or schedule whose definer loses script `RUN` on the project (or, for a trigger, `READ` on its
 collection) is skipped the next time it fires and disabled: `LIST_TRIGGERS`/`LIST_SCHEDULES` then show it with
-`"enabled": false` and a `disabledReason` such as `definer 'bob' no longer holds script RUN on database 'test'`.
+`"enabled": false` and a `disabledReason` such as `definer 'bob' no longer holds script RUN on project 'test'`.
 Re-granting does not revive it; the owner re-saves it.
 
-A `MANAGE` user replacing or deleting a trigger or schedule installed by another user (not a database owner
+A `MANAGE` user replacing or deleting a trigger or schedule installed by another user (not a project owner
 or an admin) → `403-5`:
 
 ```json
-{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger or schedule belongs to another user; only that user, a database owner or an admin may change it", "errorCode": "403-5"}
+{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it", "errorCode": "403-5"}
 ```
 
-A user with `READ` on the database but not script `MANAGE` (nor ownership, nor admin) asking for procedure source
+A user with `READ` on the project but not script `MANAGE` (nor ownership, nor admin) asking for procedure source
 or schedule args → `403-6` (the same code covers both); the same request without `includeSource` (or
 `includeArgs`) answers the summary:
 
 ```json
-{"type": "LIST_PROCEDURES", "databaseName": "test", "includeSource": true}
+{"type": "LIST_PROCEDURES", "projectName": "test", "includeSource": true}
 ```
 
 ```json
@@ -382,7 +382,7 @@ or schedule args → `403-6` (the same code covers both); the same request witho
 ```
 
 ```json
-{"type": "LIST_SCHEDULES", "databaseName": "test", "includeArgs": true}
+{"type": "LIST_SCHEDULES", "projectName": "test", "includeArgs": true}
 ```
 
 ```json
@@ -393,93 +393,93 @@ That user's `RUN_SCRIPT` still runs an imported procedure, but cannot print it: 
 `"function recalc() { [native code] }"` instead of the source.
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import { recalc } from 'procedures/libTotals'; return String(recalc);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import { recalc } from 'procedures/libTotals'; return String(recalc);"}
 ```
 
-Create database
+Create project
 
 ```json
-{"type": "CREATE_DATABASE", "databaseName": "test"}
+{"type": "CREATE_PROJECT", "projectName": "test"}
 ```
 
 Creating it again → `409-2`
 
 ```json
-{"type": "CREATE_DATABASE", "databaseName": "test"}
+{"type": "CREATE_PROJECT", "projectName": "test"}
 ```
 
-List all databases
+List all projects
 
 ```json
-{"type": "LIST_DATABASES"}
+{"type": "LIST_PROJECTS"}
 ```
 
-Create a collection in that database
+Create a collection in that project
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "testCollection"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "testCollection"}
 ```
 
-A collection in a database that was never created → `404-4`, with nothing written to disk
+A collection in a project that was never created → `404-4`, with nothing written to disk
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "neverCreated", "collectionName": "orphan"}
+{"type": "CREATE_COLLECTION", "projectName": "neverCreated", "collectionName": "orphan"}
 ```
 
 A name that differs from an existing collection only by case → `409-11`, because on a case-insensitive
 disk both would share one folder
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "TESTCOLLECTION"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "TESTCOLLECTION"}
 ```
 
-The reserved database names `admin`, `admin_pages` and `cluster` cannot be created, in any case → `400-1`
+The reserved project names `admin`, `admin_pages` and `cluster` cannot be created, in any case → `400-1`
 
 ```json
-{"type": "CREATE_DATABASE", "databaseName": "cluster"}
+{"type": "CREATE_PROJECT", "projectName": "cluster"}
 ```
 
-List all collections of a database
+List all collections of a project
 
 ```json
-{"type": "LIST_COLLECTIONS", "databaseName": "test"}
+{"type": "LIST_COLLECTIONS", "projectName": "test"}
 ```
 
 Create a test object in collection
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "name": "test" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "name": "test" }}
 ```
 
 Create a test object in collection with specified id
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "name": "test with id", "_id": "1234" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "name": "test with id", "_id": "1234" }}
 ```
 
 Create a test object in collection with other field
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "otherField": "other field 1", "_id": "findme" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "otherField": "other field 1", "_id": "findme" }}
 ```
 
 Create a test object in collection with other field
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "thirdField": "third field" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "thirdField": "third field" }}
 ```
 
 Update an object
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "name": "test with id updated 1", "_id": "1234" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "name": "test with id updated 1", "_id": "1234" }}
 ```
 
 Refuse to overwrite: `failOnUpdate` on the id saved above → `409-18`, and `1234` keeps its body (the same request with
 a new `_id` is an ordinary insert)
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "failOnUpdate": true, "object": { "name": "never written", "_id": "1234" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "failOnUpdate": true, "object": { "name": "never written", "_id": "1234" }}
 ```
 
 ```json
@@ -489,62 +489,62 @@ a new `_id` is an ordinary insert)
 `failOnUpdate` beside a `condition` → `400-1`
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "failOnUpdate": true, "condition": {"fieldOperatorType": "EQUALS", "field": "name", "value": "test"}, "object": { "name": "x" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "failOnUpdate": true, "condition": {"fieldOperatorType": "EQUALS", "field": "name", "value": "test"}, "object": { "name": "x" }}
 ```
 
 Insert after update
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "test": "this was inserted after an update", "_id": "afterUpdate" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "test": "this was inserted after an update", "_id": "afterUpdate" }}
 ```
 
 Update that last one
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "test": "this was inserted after an update", "fieldAdded": "an added field", "_id": "afterUpdate" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "test": "this was inserted after an update", "fieldAdded": "an added field", "_id": "afterUpdate" }}
 ```
 
 Add a new one with same field
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"fieldAdded": "with other value" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"fieldAdded": "with other value" }}
 ```
 
 Add a new one with an array with one element
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"array": ["one"] }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"array": ["one"] }}
 ```
 
 Add a new one with an array with multiple elements
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"array": ["thing", "other thing", "third thing"] }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"array": ["thing", "other thing", "third thing"] }}
 ```
 
 Bulk save — insert several documents in one request (the response lists the inserted and updated ids)
 
 ```json
-{"type": "BULK_SAVE", "databaseName": "test", "collectionName": "testCollection", "objects": [{"_id": "bulk-a", "bulk": 1}, {"_id": "bulk-b", "bulk": 2}, {"bulk": 3}]}
+{"type": "BULK_SAVE", "projectName": "test", "collectionName": "testCollection", "objects": [{"_id": "bulk-a", "bulk": 1}, {"_id": "bulk-b", "bulk": 2}, {"bulk": 3}]}
 ```
 
 Bulk save again — an existing `_id` is an update, a new one an insert
 
 ```json
-{"type": "BULK_SAVE", "databaseName": "test", "collectionName": "testCollection", "objects": [{"_id": "bulk-a", "bulk": 11}, {"_id": "bulk-c", "bulk": 4}]}
+{"type": "BULK_SAVE", "projectName": "test", "collectionName": "testCollection", "objects": [{"_id": "bulk-a", "bulk": 11}, {"_id": "bulk-c", "bulk": 4}]}
 ```
 
 A repeated `_id` within one request is rejected → `400-3`
 
 ```json
-{"type": "BULK_SAVE", "databaseName": "test", "collectionName": "testCollection", "objects": [{"_id": "dup", "n": 1}, {"_id": "dup", "n": 2}]}
+{"type": "BULK_SAVE", "projectName": "test", "collectionName": "testCollection", "objects": [{"_id": "dup", "n": 1}, {"_id": "dup", "n": 2}]}
 ```
 
 A document larger than `maxEntrySize` (`1Mb` by default) → `400-2`, and nothing is written. To try it by hand,
 set `maxEntrySize=1Kb` in `mpp.cfg` and send a document whose `blob` alone is over a kilobyte:
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "too-big", "blob": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "too-big", "blob": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
 ```
 
 Update every document matching a condition (the same operator an AGGREGATE FILTER step takes): `object` is merged into
@@ -552,7 +552,7 @@ each match, its top-level fields added or replaced and every other field kept; t
 matching nothing is `OK` with `updatedCount` 0
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "condition": {"conjunctionType": "AND", "operators": [{"fieldOperatorType": "EQUALS", "field": "status", "value": "pending"}, {"fieldOperatorType": "SMALLER_THAN", "field": "total", "value": 100}]}, "object": {"status": "expired", "expiredBy": "sweeper"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "condition": {"conjunctionType": "AND", "operators": [{"fieldOperatorType": "EQUALS", "field": "status", "value": "pending"}, {"fieldOperatorType": "SMALLER_THAN", "field": "total", "value": 100}]}, "object": {"status": "expired", "expiredBy": "sweeper"}}
 ```
 
 ```json
@@ -563,7 +563,7 @@ A SAVE with both a `condition` and an `_id` (beside `object` or inside it), or w
 `object` → `400-1`
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "condition": {"fieldOperatorType": "EQUALS", "field": "status", "value": "pending"}, "object": {"_id": "1234", "status": "expired"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "condition": {"fieldOperatorType": "EQUALS", "field": "status", "value": "pending"}, "object": {"_id": "1234", "status": "expired"}}
 ```
 
 ```json
@@ -573,14 +573,14 @@ A SAVE with both a `condition` and an `_id` (beside `object` or inside it), or w
 Delete the one with id 1234
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "1234"}
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "1234"}
 ```
 
 Delete every document matching a condition (the same operator an AGGREGATE FILTER step takes); the reply carries
 `deletedCount`, and matching nothing is `OK` with `deletedCount` 0
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "condition": {"conjunctionType": "AND", "operators": [{"fieldOperatorType": "EQUALS", "field": "status", "value": "archived"}, {"fieldOperatorType": "SMALLER_THAN", "field": "total", "value": 100}]}}
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "condition": {"conjunctionType": "AND", "operators": [{"fieldOperatorType": "EQUALS", "field": "status", "value": "archived"}, {"fieldOperatorType": "SMALLER_THAN", "field": "total", "value": 100}]}}
 ```
 
 ```json
@@ -590,7 +590,7 @@ Delete every document matching a condition (the same operator an AGGREGATE FILTE
 A DELETE with both an `_id` and a `condition` (or with neither) → `400-1`
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "1234", "condition": {"fieldOperatorType": "EQUALS", "field": "status", "value": "archived"}}
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "1234", "condition": {"fieldOperatorType": "EQUALS", "field": "status", "value": "archived"}}
 ```
 
 ```json
@@ -600,13 +600,13 @@ A DELETE with both an `_id` and a `condition` (or with neither) → `400-1`
 Find by id
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "findme"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "findme"}
 ```
 
 Find by id deleted document
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "1234"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "1234"}
 ```
 
 `dirtyRead: true` skips the collection read lock, so the read never waits behind a writer — at the price of
@@ -614,32 +614,32 @@ possibly seeing a write that is still landing. `FIND_BY_ID`, `AGGREGATE`, `LIST_
 accept it.
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "findme", "dirtyRead": true}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "findme", "dirtyRead": true}
 ```
 
 A read of a collection that is not registered → `404-11`. That includes a differently-cased spelling of a
 real one; `AGGREGATE` and `LISTEN` answer the same way.
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "noSuchCollection", "_id": "findme"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "noSuchCollection", "_id": "findme"}
 ```
 
 Aggregation with filter step matching string
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "an added field"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "an added field"}}]}
 ```
 
 Aggregation with filter step not matching string
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "fieldAdded", "value": "an added field"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "fieldAdded", "value": "an added field"}}]}
 ```
 
 A filter nothing matches → `404-3`: an empty result is answered as `NOT_FOUND`, not as an empty list
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "no such value"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "no such value"}}]}
 ```
 
 `analyze: true` adds an `analyzeResult`: whether an index was used and which ones, how many documents were
@@ -647,308 +647,308 @@ scanned, the locks taken, script invocations and their time, how long it took, a
 it, an empty result is `OK` rather than `404-3`, since the analysis is still worth returning.
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "analyze": true, "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "no such value"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "analyze": true, "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "fieldAdded", "value": "no such value"}}]}
 ```
 
 Insert numeric one to be searched for
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 5 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 5 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 10 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 10 }}
 ```
 
 Aggregation with filter matching a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}}]}
 ```
 
 Aggregation with filter not a matching a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aNumber", "value": 5}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aNumber", "value": 5}}]}
 ```
 
 Aggregation with filter smaller than a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 7}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 7}}]}
 ```
 
 Aggregation with filter smaller than equals a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 5}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 5}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 4}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 4}}]}
 ```
 
 Aggregation with filter greater than a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}}]}
 ```
 
 Aggregation with filter greater than equals a number
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 11}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 11}}]}
 ```
 
 Insert boolean one to be searched for
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aBoolean": true }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aBoolean": true }}
 ```
 
 Aggregation with filter equals a boolean
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true}}]}
 ```
 
 Aggregation with filter not equals a boolean
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aBoolean", "value": false}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aBoolean", "value": false}}]}
 ```
 
 Insert string one to be searched for
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "hola" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "hola" }}
 ```
 
 Aggregation with filter in
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": ["hola", "frescas"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": ["hola", "frescas"]}}]}
 ```
 
 Aggregation with filter nin
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_IN", "field": "aString", "value": ["asd", "frescas"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_IN", "field": "aString", "value": ["asd", "frescas"]}}]}
 ```
 
 `null` in an `IN` list matches a field that is explicitly `null`, as `EQUALS null` does. A document missing
 the field matches neither `IN` nor `NOT_IN`.
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "nullString", "aString": null}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "nullString", "aString": null}}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": [null, "hola"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": [null, "hola"]}}]}
 ```
 
 Aggregation with filter contains
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "la"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "la"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "holaa"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "holaa"}}]}
 ```
 
 AND
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "hola", "aNumber":10 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "hola", "aNumber":10 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "la"},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "CONTAINS", "field": "aString", "value": "la"},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
 ```
 
 OR
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"OR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"OR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
 ```
 
 XOR
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"XOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"XOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"XOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"XOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
 ```
 
 NOR
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aBoolean", "value": true},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NOR","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
 ```
 
 NAND
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NAND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"NAND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "hola"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 10}]}}]}
 ```
 
 Group by
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "otra cosa", "aNumber":12 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "otra cosa", "aNumber":12 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aNumber"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aNumber"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}},{"type": "GROUP_BY", "fieldName": "aNumber"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}},{"type": "GROUP_BY", "fieldName": "aNumber"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aString"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aString"}]}
 ```
 
 Skip
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SKIP", "skip": 7}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SKIP", "skip": 7}]}
 ```
 
 Limit
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "LIMIT", "limit": 2}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "LIMIT", "limit": 2}]}
 ```
 
 Count
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "COUNT"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "COUNT"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}},{"type": "COUNT"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}},{"type": "COUNT"}]}
 ```
 
 Distinct
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": "aNumber"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": "aNumber"}]}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "otra cosa", "aNumber":12 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "otra cosa", "aNumber":12 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "otra cosa"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 12}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "EQUALS", "field": "aString", "value": "otra cosa"},{"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 12}]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": null}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": null}]}
 ```
 
 Sort
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending":true}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending":true}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending":false}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending":false}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aString", "ascending":true}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aString", "ascending":true}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aString", "ascending":false}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aString", "ascending":false}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aDatetime", "ascending":false}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aDatetime", "ascending":false}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aDatetime", "ascending":true}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aDatetime", "ascending":true}]}
 ```
 
 Add nested objects
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "anObject": { "nested": 7 } }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "anObject": { "nested": 7 } }}
 ```
 
 nested object
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "anObject.nested", "ascending":false}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "anObject.nested", "ascending":false}]}
 ```
 
 Nested objects
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "anObject.nested", "value": 7}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "anObject.nested", "value": 7}}]}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "anObject": { "that": {"is":{"deeply":{"nested":{"value":2}}}}}}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "anObject": { "that": {"is":{"deeply":{"nested":{"value":2}}}}}}}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "anObject.that.is.deeply.nested.value", "value": 2}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "anObject.that.is.deeply.nested.value", "value": 2}}]}
 ```
 
 Join
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "joinMe"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "joinMe"}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": { "joinField": 5, "anotherField": "hi", "anotherOne": 123 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": { "joinField": 5, "anotherField": "hi", "anotherOne": 123 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": { "joinField": 10, "anotherField": "frescas", "anotherOne": 4234 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": { "joinField": 10, "anotherField": "frescas", "anotherOne": 4234 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": { "joinField": 12, "anotherField": "birras", "anotherOne": 5435 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": { "joinField": 12, "anotherField": "birras", "anotherOne": 5435 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": { "joinField": 5, "anotherField": "hola", "anotherOne": 645654 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": { "joinField": 5, "anotherField": "hola", "anotherOne": 645654 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": { "joinField": 10, "anotherField": "asdasd", "anotherOne": 2 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": { "joinField": 10, "anotherField": "asdasd", "anotherOne": 2 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}},{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "aNumber", "value": 5}},{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
 ```
 
 Map
@@ -956,65 +956,65 @@ Map
 Add field "average" → type "AVG"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "average", "condition": null, "operator": {"type":"AVG", "operands": ["aNumber", 20]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "average", "condition": null, "operator": {"type":"AVG", "operands": ["aNumber", 20]}}]}]}
 ```
 
 Add field "sum" → type "SUM"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "sum", "condition": null, "operator": {"type":"SUM", "operands": ["aNumber", 100]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "sum", "condition": null, "operator": {"type":"SUM", "operands": ["aNumber", 100]}}]}]}
 ```
 
 Add field "subs" → type "SUBS"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "subs", "condition": null, "operator": {"type":"SUBS", "operands": ["aNumber", 100]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "subs", "condition": null, "operator": {"type":"SUBS", "operands": ["aNumber", 100]}}]}]}
 ```
 
 Add field "max" → type "MAX"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "max", "condition": null, "operator": {"type":"MAX", "operands": ["aNumber", 7]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "max", "condition": null, "operator": {"type":"MAX", "operands": ["aNumber", 7]}}]}]}
 ```
 
 Add field "min" → type "MIN"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "min", "condition": null, "operator": {"type":"MIN", "operands": ["aNumber", 7]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "min", "condition": null, "operator": {"type":"MIN", "operands": ["aNumber", 7]}}]}]}
 ```
 
 Add field "multiply" → type "MULTIPLY"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "multiply", "condition": null, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 2]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "multiply", "condition": null, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 2]}}]}]}
 ```
 
 Add field "divided" → type "DIVIDE"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "divided", "condition": null, "operator": {"type":"DIVIDE", "operands": ["aNumber", 2]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "divided", "condition": null, "operator": {"type":"DIVIDE", "operands": ["aNumber", 2]}}]}]}
 ```
 
 Add field "powered" → type "POW"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "powered", "condition": null, "operator": {"type":"POW", "operands": ["aNumber", 2]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "powered", "condition": null, "operator": {"type":"POW", "operands": ["aNumber", 2]}}]}]}
 ```
 
 Add field "rooted" → type "ROOT"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "rooted", "condition": null, "operator": {"type":"ROOT", "operands": ["aNumber", 2]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "rooted", "condition": null, "operator": {"type":"ROOT", "operands": ["aNumber", 2]}}]}]}
 ```
 
 Add field "absolute" → type "ABS"
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": -3 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": -3 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "absolute", "condition": null, "operator": {"type":"ABS", "operand": "aNumber"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "absolute", "condition": null, "operator": {"type":"ABS", "operand": "aNumber"}}]}]}
 ```
 
 Add field "size" → type "SIZE"
@@ -1022,23 +1022,23 @@ Add field "size" → type "SIZE"
 array
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "anArray": ["this", "is", "an", "array"] }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "anArray": ["this", "is", "an", "array"] }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "size", "condition": null, "operator": {"type":"SIZE", "operand": "anArray"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "size", "condition": null, "operator": {"type":"SIZE", "operand": "anArray"}}]}]}
 ```
 
 string
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "size", "condition": null, "operator": {"type":"SIZE", "operand": "aString"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "size", "condition": null, "operator": {"type":"SIZE", "operand": "aString"}}]}]}
 ```
 
 Add field "concatenated" → type "CONCAT"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "concatenated", "condition": null, "operator": {"type":"CONCAT", "operands": ["aString", 73, "-birras", false, "aNumber"]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "concatenated", "condition": null, "operator": {"type":"CONCAT", "operands": ["aString", 73, "-birras", false, "aNumber"]}}]}]}
 ```
 
 Add field "cast" → type "CAST"
@@ -1046,107 +1046,107 @@ Add field "cast" → type "CAST"
 number to string
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aNumber", "toType": "STRING"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aNumber", "toType": "STRING"}}]}]}
 ```
 
 boolean to string
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aBoolean", "toType": "STRING"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aBoolean", "toType": "STRING"}}]}]}
 ```
 
 string to number
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "13.48" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "13.48" }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aString", "toType": "NUMBER"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aString", "toType": "NUMBER"}}]}]}
 ```
 
 string to boolean
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "true" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "true" }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aString", "toType": "BOOLEAN"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aString", "toType": "BOOLEAN"}}]}]}
 ```
 
 number to boolean
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 0 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 0 }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aNumber", "toType": "BOOLEAN"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "casted", "condition": null, "operator": {"type":"CAST", "fieldName": "aNumber", "toType": "BOOLEAN"}}]}]}
 ```
 
 Add field "total" with a script → type "SCRIPT" (needs scriptsEnabled and the caller's scriptPermissions)
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "total", "condition": null, "operator": {"type":"SCRIPT", "script": "export default (doc) => doc.aNumber * 2;"}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "total", "condition": null, "operator": {"type":"SCRIPT", "script": "export default (doc) => doc.aNumber * 2;"}}]}]}
 ```
 
 Filter with a script predicate
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"script": "export default (doc) => doc.aNumber > 5;"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"script": "export default (doc) => doc.aNumber > 5;"}}]}
 ```
 
 Fold the stream into a single document → step "REDUCE" (optional "initialValue" and "resultField", the latter defaulting to "value")
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "REDUCE", "resultField": "total", "initialValue": 0, "script": "export default (acc, doc) => acc + doc.aNumber;"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "REDUCE", "resultField": "total", "initialValue": 0, "script": "export default (acc, doc) => acc + doc.aNumber;"}]}
 ```
 
 Add field "addedAfterMap" with condition "AND" → type "MULTIPLY"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "addedAfterMap", "condition": {"conjunctionType":"AND","operators": [{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 3]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "addedAfterMap", "condition": {"conjunctionType":"AND","operators": [{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 3]}}]}]}
 ```
 
 Add field "addedAfterMap" with condition "OR" → type "MULTIPLY"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "addedAfterMap", "condition": {"conjunctionType":"OR","operators": [{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 3]}}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "addedAfterMap", "condition": {"conjunctionType":"OR","operators": [{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 7}]}, "operator": {"type":"MULTIPLY", "operands": ["aNumber", 3]}}]}]}
 ```
 
 Remove field "aString"
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "aString", "condition": null}]}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "MAP", "operators": [{"fieldName": "aString", "condition": null}]}]}
 ```
 
-Create database and collection to be dropped
+Create project and collection to be dropped
 
 ```json
-{"type": "CREATE_DATABASE", "databaseName": "dropMe"}
+{"type": "CREATE_PROJECT", "projectName": "dropMe"}
 ```
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "dropMe", "collectionName": "dropMeCollection"}
+{"type": "CREATE_COLLECTION", "projectName": "dropMe", "collectionName": "dropMeCollection"}
 ```
 
 add one document to collection
 
 ```json
-{"type": "SAVE", "databaseName": "dropMe", "collectionName": "dropMeCollection", "object": { "name": "test" }}
+{"type": "SAVE", "projectName": "dropMe", "collectionName": "dropMeCollection", "object": { "name": "test" }}
 ```
 
 Drop collection
 
 ```json
-{"type": "DROP_COLLECTION", "databaseName": "dropMe", "collectionName": "dropMeCollection"}
+{"type": "DROP_COLLECTION", "projectName": "dropMe", "collectionName": "dropMeCollection"}
 ```
 
-Drop database
+Drop project
 
 ```json
-{"type": "DROP_DATABASE", "databaseName": "dropMe"}
+{"type": "DROP_PROJECT", "projectName": "dropMe"}
 ```
 
 Indexes
@@ -1154,45 +1154,45 @@ Indexes
 Create index
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "this is a string" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "this is a string" }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 15 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 15 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": true }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": true }}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aString"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aString"}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 14 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 14 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 10.10 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 10.10 }}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aBoolean"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aBoolean"}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aNumber": 12 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aNumber": 12 }}
 ```
 
 An index on a collection that does not exist → `404-11`, rather than an `OK` for an index that would never exist
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "noSuchCollection", "fieldName": "aNumber"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "noSuchCollection", "fieldName": "aNumber"}
 ```
 
 Several indexes in one request: `fieldNames` builds every listed field that is not indexed yet in one pass over the
@@ -1200,34 +1200,34 @@ collection, skipping (not rebuilding) the ones already indexed; the message name
 beside it, and their union is indexed.
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": ["aString", "aNumber", "aBoolean"]}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": ["aString", "aNumber", "aBoolean"]}
 ```
 
 An empty `fieldNames` → `400-1`
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": []}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": []}
 ```
 
 One invalid name refuses the whole request before anything is built → `400-1` (and a pair of names that differ only by
 case → `409-11`, building neither)
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": ["aDatetime", "a b"]}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": ["aDatetime", "a b"]}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": ["aTime", "ATIME"]}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": ["aTime", "ATIME"]}
 ```
 
 Drop index
 
 ```json
-{"type": "DROP_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aString"}
+{"type": "DROP_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aString"}
 ```
 
 ```json
-{"type": "DROP_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
+{"type": "DROP_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
 ```
 
 Reindex — rebuild field indexes from the documents, the repair for an index left stale by a failed
@@ -1235,21 +1235,21 @@ background update. Naming the fields rebuilds only those; omitting `fieldNames` 
 registered index on the collection.
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
 ```
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": ["aNumber"]}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": ["aNumber"]}
 ```
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection"}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection"}
 ```
 
 A field with no registered index → `404-6`
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection", "fieldNames": ["neverIndexed"]}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection", "fieldNames": ["neverIndexed"]}
 ```
 
 `"primaryKey": true` rebuilds the collection's `pk.idx` from its page files, then its page-occupancy rows. On
@@ -1258,19 +1258,19 @@ indexes catch up in the background for any id the rebuild found or dropped. When
 read, every registered field index is rebuilt too and every entry is at version 0.
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection", "primaryKey": true}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection", "primaryKey": true}
 ```
 
 Adding `fieldNames` also rebuilds those fields
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection", "primaryKey": true, "fieldNames": ["aNumber"]}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection", "primaryKey": true, "fieldNames": ["aNumber"]}
 ```
 
 A field with no registered index → `404-6`, before `pk.idx` is touched
 
 ```json
-{"type": "REINDEX", "databaseName": "test", "collectionName": "testCollection", "primaryKey": true, "fieldNames": ["neverIndexed"]}
+{"type": "REINDEX", "projectName": "test", "collectionName": "testCollection", "primaryKey": true, "fieldNames": ["neverIndexed"]}
 ```
 
 A page holding a line that is not a record, an `_id` twice (on one page or two), or a torn last record →
@@ -1281,137 +1281,137 @@ appending a copy of a record to its page while the server is stopped.
 Update index with new entry
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "new thing" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "new thing" }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 10 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 10 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 10, "_id": "thisis-10" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 10, "_id": "thisis-10" }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "ten", "_id": "thisis-10" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "ten", "_id": "thisis-10" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-10" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-10" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 7 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 7 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 7, "_id": "thisis-7" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 7, "_id": "thisis-7" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-7" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-7" }
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "188c2ba1-a28c-40fa-a7e2-70e3b3cd5652" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "188c2ba1-a28c-40fa-a7e2-70e3b3cd5652" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 15 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 15 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 15, "_id": "thisis-15" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 15, "_id": "thisis-15" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-15" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-15" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 11 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 11 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 11, "_id": "thisis-11" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 11, "_id": "thisis-11" }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": "this is now a string 11", "_id": "thisis-11" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": "this is now a string 11", "_id": "thisis-11" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-11" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-11" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 13 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 13 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 13, "_id": "thisis-13" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 13, "_id": "thisis-13" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-13" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-13" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 14}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 14}}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": 14, "_id": "thisis-14" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": 14, "_id": "thisis-14" }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "thisis-14" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "thisis-14" }
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "aString": true }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "aString": true }}
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "55882e3b-a401-4a16-bea1-6477fdb36762" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "55882e3b-a401-4a16-bea1-6477fdb36762" }
 ```
 
 ```json
-{"type": "DELETE", "databaseName": "test", "collectionName": "testCollection", "_id": "294dba55-bdbf-44c5-9f51-e44a2fa8aa5a" }
+{"type": "DELETE", "projectName": "test", "collectionName": "testCollection", "_id": "294dba55-bdbf-44c5-9f51-e44a2fa8aa5a" }
 ```
 
 Search with index
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": ["hola", "frescas"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "IN", "field": "aString", "value": ["hola", "frescas"]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_IN", "field": "aString", "value": ["asd", "frescas"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_IN", "field": "aString", "value": ["asd", "frescas"]}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 0}}, {"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 10}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 0}}, {"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aNumber", "value": 10}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "IN", "field": "aString", "value": ["AAA", "BBB"]},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 500}]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"conjunctionType":"AND","operators": [{"fieldOperatorType": "IN", "field": "aString", "value": ["AAA", "BBB"]},{"fieldOperatorType": "GREATER_THAN", "field": "aNumber", "value": 500}]}}]}
 ```
 
 Close connection
@@ -1432,7 +1432,7 @@ transaction is buffered and answers `OK`; only its `COMMIT_TRANSACTION` is held 
 open. Reads are never held back, and the same write succeeds once the queue drains.
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "held", "aNumber": 1}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "held", "aNumber": 1}}
 ```
 
 ```json
@@ -1447,28 +1447,28 @@ Re-authenticate after reconnecting
 {"type": "AUTHENTICATE", "username": "admin", "password": "Tst-Admin-9xQ2mV"}
 ```
 
-Create a non-admin user with read-write access to one database, allowed to run scripts on it
+Create a non-admin user with read-write access to one project, allowed to run scripts on it
 
 ```json
-{"type": "CREATE_USER", "username": "Alice", "password": "secret1234", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
+{"type": "CREATE_USER", "username": "Alice", "password": "secret1234", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
 ```
 
 Create a read-only user scoped to a single collection
 
 ```json
-{"type": "CREATE_USER", "username": "readonly", "password": "readonly1234", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {"test|testCollection": "READ"}, "scriptPermissions": {}}
+{"type": "CREATE_USER", "username": "readonly", "password": "readonly1234", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {"test|testCollection": "READ"}, "scriptPermissions": {}}
 ```
 
-Create a user that can create and drop databases
+Create a user that can create and drop projects
 
 ```json
-{"type": "CREATE_USER", "username": "dbadmin", "password": "dbadmin1234", "admin": false, "globalPermissions": ["CREATE_DATABASE", "DROP_DATABASE"], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
+{"type": "CREATE_USER", "username": "dbadmin", "password": "dbadmin1234", "admin": false, "globalPermissions": ["CREATE_PROJECT", "DROP_PROJECT"], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
 ```
 
 A user that already exists → `409-1`
 
 ```json
-{"type": "CREATE_USER", "username": "readonly", "password": "readonly1234", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {"test|testCollection": "READ"}, "scriptPermissions": {}}
+{"type": "CREATE_USER", "username": "readonly", "password": "readonly1234", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {"test|testCollection": "READ"}, "scriptPermissions": {}}
 ```
 
 A `LIST_USERS` filter that matches nobody → `404-5`
@@ -1480,13 +1480,13 @@ A `LIST_USERS` filter that matches nobody → `404-5`
 Grant Alice admin rights and update her permissions (an admin needs no script grant)
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "Alice", "admin": true, "globalPermissions": ["CREATE_DATABASE", "DROP_DATABASE"], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
+{"type": "CHANGE_PERMISSIONS", "username": "Alice", "admin": true, "globalPermissions": ["CREATE_PROJECT", "DROP_PROJECT"], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
 ```
 
 Downgrade Alice back to a regular user, keeping her script grant on `test`
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "Alice", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
+{"type": "CHANGE_PERMISSIONS", "username": "Alice", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
 ```
 
 Authenticate as Alice
@@ -1537,18 +1537,18 @@ Back to admin
 {"type": "AUTHENTICATE", "username": "admin", "password": "Tst-Admin-9xQ2mV"}
 ```
 
-Database owners — an owner has full access to the database and may drop it. Admin only; the list
+Project owners — an owner has full access to the project and may drop it. Admin only; the list
 replaces the current owners outright.
 
 ```json
-{"type": "SET_DATABASE_OWNERS", "databaseName": "test", "owners": ["Alice"]}
+{"type": "SET_PROJECT_OWNERS", "projectName": "test", "owners": ["Alice"]}
 ```
 
 ```json
-{"type": "LIST_DATABASES"}
+{"type": "LIST_PROJECTS"}
 ```
 
-A non-admin lists only the databases they own or hold a database, collection or script grant on. As Alice,
+A non-admin lists only the projects they own or hold a project, collection or script grant on. As Alice,
 who now owns `test`:
 
 ```json
@@ -1556,14 +1556,14 @@ who now owns `test`:
 ```
 
 ```json
-{"type": "LIST_DATABASES"}
+{"type": "LIST_PROJECTS"}
 ```
 
 ```json
-{"type":"LIST_DATABASES","status":"OK","message":"Ok","databases":["test"]}
+{"type":"LIST_PROJECTS","status":"OK","message":"Ok","projects":["test"]}
 ```
 
-Back to admin, who lists every database
+Back to admin, who lists every project
 
 ```json
 {"type": "AUTHENTICATE", "username": "admin", "password": "Tst-Admin-9xQ2mV"}
@@ -1572,19 +1572,19 @@ Back to admin, who lists every database
 An unknown user cannot be made an owner → `400-1`
 
 ```json
-{"type": "SET_DATABASE_OWNERS", "databaseName": "test", "owners": ["nobody"]}
+{"type": "SET_PROJECT_OWNERS", "projectName": "test", "owners": ["nobody"]}
 ```
 
 Clear the owners again
 
 ```json
-{"type": "SET_DATABASE_OWNERS", "databaseName": "test", "owners": []}
+{"type": "SET_PROJECT_OWNERS", "projectName": "test", "owners": []}
 ```
 
 The last admin can be neither demoted → `400-5`
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "admin", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
+{"type": "CHANGE_PERMISSIONS", "username": "admin", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {}}
 ```
 
 nor deleted → `400-4`
@@ -1622,139 +1622,139 @@ Delete dbadmin
 Scripts (`RUN_SCRIPT`)
 
 Scripting is on by default; with `scriptsEnabled=false` in `mpp.cfg` every `RUN_SCRIPT` below is
-refused with `403-2`. A script is scoped to the request's `databaseName` and may use any collection in
-it; `db.name` is that database, so a script never hardcodes it.
+refused with `403-2`. A script is scoped to the request's `projectName` and may use any collection in
+it; `db.name` is that project, so a script never hardcodes it.
 
 Simplest script — the top-level `return` value comes back in `result`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 1 + 1;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 1 + 1;"}
 ```
 
 Console output is returned in `logs` (newest `scriptMaxLogLines` lines)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "console.log('hello from the script');\nconsole.log('and again');\nreturn 'done';"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "console.log('hello from the script');\nconsole.log('and again');\nreturn 'done';"}
 ```
 
 Arguments — the optional `args` object is read through `import args from "args"`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import args from \"args\";\nreturn args.name + ' is ' + args.age;", "args": {"name": "Alice", "age": 30}}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import args from \"args\";\nreturn args.name + ' is ' + args.age;", "args": {"name": "Alice", "age": 30}}
 ```
 
 Read a document by id
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nreturn db.findById(db.name, 'testCollection', 'findme');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nreturn db.findById(db.name, 'testCollection', 'findme');"}
 ```
 
 Run an aggregation pipeline from a script
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nconst pipeline = [{ type: 'FILTER', operator: { fieldOperatorType: 'GREATER_THAN_EQUALS', field: 'aNumber', value: 10 } }];\nconst rows = db.aggregate(db.name, 'testCollection', pipeline);\nconsole.log(`matched ${rows.length} documents`);\nreturn rows.length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nconst pipeline = [{ type: 'FILTER', operator: { fieldOperatorType: 'GREATER_THAN_EQUALS', field: 'aNumber', value: 10 } }];\nconst rows = db.aggregate(db.name, 'testCollection', pipeline);\nconsole.log(`matched ${rows.length} documents`);\nreturn rows.length;"}
 ```
 
-List the collections of the scoped database
+List the collections of the scoped project
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nreturn db.listCollections(db.name);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nreturn db.listCollections(db.name);"}
 ```
 
 Save a document and read it back
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ndb.save(db.name, 'testCollection', { _id: 'scripted-1', scripted: true, aNumber: 42 });\nreturn db.findById(db.name, 'testCollection', 'scripted-1');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ndb.save(db.name, 'testCollection', { _id: 'scripted-1', scripted: true, aNumber: 42 });\nreturn db.findById(db.name, 'testCollection', 'scripted-1');"}
 ```
 
 Bulk save — returns the inserted and updated ids
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nreturn db.bulkSave(db.name, 'testCollection', [{ _id: 'bulk-1', n: 1 }, { _id: 'bulk-2', n: 2 }]);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nreturn db.bulkSave(db.name, 'testCollection', [{ _id: 'bulk-1', n: 1 }, { _id: 'bulk-2', n: 2 }]);"}
 ```
 
 Delete a document (deleting one that is not there is a no-op)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ndb.delete(db.name, 'testCollection', 'scripted-1');\ndb.delete(db.name, 'testCollection', 'never-existed');\nreturn db.findById(db.name, 'testCollection', 'scripted-1') === null;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ndb.delete(db.name, 'testCollection', 'scripted-1');\ndb.delete(db.name, 'testCollection', 'never-existed');\nreturn db.findById(db.name, 'testCollection', 'scripted-1') === null;"}
 ```
 
 Update every document matching a condition and read how many changed
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nreturn db.updateWhere(db.name, 'testCollection', { fieldOperatorType: 'EQUALS', field: 'from', value: 'script' }, { touched: true });"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nreturn db.updateWhere(db.name, 'testCollection', { fieldOperatorType: 'EQUALS', field: 'from', value: 'script' }, { touched: true });"}
 ```
 
 Delete every document matching a condition and read how many went
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\nreturn db.deleteWhere(db.name, 'testCollection', { fieldOperatorType: 'EQUALS', field: 'from', value: 'script' });"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\nreturn db.deleteWhere(db.name, 'testCollection', { fieldOperatorType: 'EQUALS', field: 'from', value: 'script' });"}
 ```
 
 Transaction spanning two collections — both writes commit together
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ndb.transaction(() => {\n    db.save(db.name, 'testCollection', { _id: 'tx-1', from: 'transaction' });\n    db.save(db.name, 'joinMe', { _id: 'tx-2', joinField: 99 });\n});\nreturn 'committed';"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ndb.transaction(() => {\n    db.save(db.name, 'testCollection', { _id: 'tx-1', from: 'transaction' });\n    db.save(db.name, 'joinMe', { _id: 'tx-2', joinField: 99 });\n});\nreturn 'committed';"}
 ```
 
 A throw inside the callback rolls the whole transaction back
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ntry {\n    db.transaction(() => {\n        db.save(db.name, 'testCollection', { _id: 'tx-rolled-back', from: 'transaction' });\n        throw new Error('abort');\n    });\n} catch (e) {\n    return { message: e.message, written: db.findById(db.name, 'testCollection', 'tx-rolled-back') !== null };\n}"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ntry {\n    db.transaction(() => {\n        db.save(db.name, 'testCollection', { _id: 'tx-rolled-back', from: 'transaction' });\n        throw new Error('abort');\n    });\n} catch (e) {\n    return { message: e.message, written: db.findById(db.name, 'testCollection', 'tx-rolled-back') !== null };\n}"}
 ```
 
 Named exports are the result when there is no top-level `return`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "export const total = 3;\nexport const label = 'exported';"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "export const total = 3;\nexport const label = 'exported';"}
 ```
 
-A failed database operation throws into the script and can be caught
+A failed project operation throws into the script and can be caught
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ntry {\n    db.save(db.name, 'neverCreatedCollection', { _id: 'x' });\n    return 'wrote';\n} catch (e) {\n    return { caught: e instanceof Error, message: e.message };\n}"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ntry {\n    db.save(db.name, 'neverCreatedCollection', { _id: 'x' });\n    return 'wrote';\n} catch (e) {\n    return { caught: e instanceof Error, message: e.message };\n}"}
 ```
 
-A script cannot leave its database — not even `admin` (caught inside the script)
+A script cannot leave its project — not even `admin` (caught inside the script)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import db from \"db\";\ntry {\n    return db.findById('admin', 'users', 'admin');\n} catch (e) {\n    return e.message;\n}"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import db from \"db\";\ntry {\n    return db.findById('admin', 'users', 'admin');\n} catch (e) {\n    return e.message;\n}"}
 ```
 
 An uncaught throw fails the run with `400-9` (`logs` are still returned)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "console.log('before the throw');\nthrow new TypeError('boom');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "console.log('before the throw');\nthrow new TypeError('boom');"}
 ```
 
 A syntax error also fails with `400-9`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "function ("}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "function ("}
 ```
 
 A tight loop exhausts `scriptInstructionBudget` → `400-11`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "while (true) {}"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "while (true) {}"}
 ```
 
 Waiting past `scriptTimeoutMs` → `408-1`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (async () => { await new Promise(r => setTimeout(r, 60000)); return 'never'; })();"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (async () => { await new Promise(r => setTimeout(r, 60000)); return 'never'; })();"}
 ```
 
 A returned promise that never settles → `400-20`, rather than a silent `null`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return new Promise(() => {});"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return new Promise(() => {});"}
 ```
 
 Allocating past `scriptMaxMemoryBytes` (`64Mb` by default) → `400-12`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "const parts = [];\nwhile (true) { parts.push('x'.repeat(1000000)); }"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "const parts = [];\nwhile (true) { parts.push('x'.repeat(1000000)); }"}
 ```
 
 Native recursion over deeply nested data stops at 256 levels with a catchable RangeError → `400-9`,
@@ -1762,27 +1762,27 @@ Native recursion over deeply nested data stops at 256 levels with a catchable Ra
 `flat(Infinity)` and `String()` of nested arrays)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return JSON.parse('['.repeat(20000) + ']'.repeat(20000)).length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return JSON.parse('['.repeat(20000) + ']'.repeat(20000)).length;"}
 ```
 
 … and the script may catch it (answers `"RangeError"`)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "let a = [];\nfor (let i = 0; i < 20000; i++) { a = [a]; }\ntry { JSON.stringify(a); } catch (e) { return e.name; }"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "let a = [];\nfor (let i = 0; i < 20000; i++) { a = [a]; }\ntry { JSON.stringify(a); } catch (e) { return e.name; }"}
 ```
 
 A builtin scanning a sparse array is charged about one instruction per element → `400-11`,
 `"message": "ScriptLimitError: Script exceeded its instruction budget"`, in well under the timeout
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return new Array(2 ** 32 - 1).indexOf(1);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return new Array(2 ** 32 - 1).indexOf(1);"}
 ```
 
 A BigInt result over 2^24 bits is refused before it is computed → `400-9`,
 `"message": "RangeError: Maximum BigInt size exceeded"`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return String(3n ** 100000000n).length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return String(3n ** 100000000n).length;"}
 ```
 
 A `procedures/<name>` import whose name the wire would refuse (`..`, a backslash, under 3 or over 64
@@ -1790,7 +1790,7 @@ characters) never resolves → `400-9`, `"message": "Error: Cannot find module '
 (the same answer as an unknown procedure)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import x from 'procedures/..';\nreturn x;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import x from 'procedures/..';\nreturn x;"}
 ```
 
 `fetch` with the shipped `scriptFetchAllowlist=*` reaches public hosts only. Loopback, private, link-local
@@ -1799,18 +1799,18 @@ literal → `400-9`, `"message": "TypeError: fetch: host not allowed"`. Listing 
 (`scriptFetchAllowlist=*,127.0.0.1`) is what re-opens it.
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (await fetch('http://169.254.169.254/latest/meta-data/')).status;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (await fetch('http://169.254.169.254/latest/meta-data/')).status;"}
 ```
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (await fetch('http://localhost:8989/')).status;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (await fetch('http://localhost:8989/')).status;"}
 ```
 
 Any other network failure is the bare `fetch failed`, with no host, port or cause → `400-9`,
 `"message": "TypeError: fetch failed"` (with `scriptFetchAllowlist=127.0.0.1` so the closed port is reachable)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (await fetch('http://127.0.0.1:1/')).status;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (await fetch('http://127.0.0.1:1/')).status;"}
 ```
 
 More than `scriptFetchMaxConcurrent` (default `8`) fetches in flight in one run: the extra one rejects with the
@@ -1818,13 +1818,13 @@ catchable `TypeError: fetch: too many concurrent requests` (answers `["fetch: to
 when the other eight are still pending, e.g. against a slow allowlisted host)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "const all = Array.from({ length: 9 }, () => fetch('https://example.com/'));\nconst outcomes = await Promise.allSettled(all);\nreturn outcomes.filter(o => o.status === 'rejected').map(o => o.reason.message);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "const all = Array.from({ length: 9 }, () => fetch('https://example.com/'));\nconst outcomes = await Promise.allSettled(all);\nreturn outcomes.filter(o => o.status === 'rejected').map(o => o.reason.message);"}
 ```
 
 A result larger than `scriptMaxResultBytes` (`16Mb` by default) → `400-15`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 'x'.repeat(17000000);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 'x'.repeat(17000000);"}
 ```
 
 An array-like whose `length` is above `scriptMaxArrayLength` (`16777216` by default) handed to `apply`,
@@ -1832,14 +1832,14 @@ An array-like whose `length` is above `scriptMaxArrayLength` (`16777216` by defa
 abort is not catchable)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return Math.max.apply(null, { length: 2 ** 30 });"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return Math.max.apply(null, { length: 2 ** 30 });"}
 ```
 
 Growing an array to a huge dense length (`a.length = N`, `a[N - 1] = x`), a shared string saved through `db.save`
 many times over, or an indented `JSON.stringify` of a deep tree is charged before it allocates → `400-12`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "const a = []; a.length = 1 << 24; return a.length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "const a = []; a.length = 1 << 24; return a.length;"}
 ```
 
 The same holds for the holes a builtin pads past an array's dense end (`fill`, `copyWithin`, `splice`, `map`
@@ -1847,11 +1847,11 @@ over a sparse array-like), every value `JSON.parse` builds, BigInt results of an
 `x++`…) and BigInt text (`String(x)`, `x.toString()`), and the output of `encodeURIComponent`/`escape` → `400-12`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "const a = []; a[2 ** 24] = 1; a.fill(1, 2 ** 24 - 1, 2 ** 24); return a.length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "const a = []; a[2 ** 24] = 1; a.fill(1, 2 ** 24 - 1, 2 ** 24); return a.length;"}
 ```
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return JSON.parse('[' + '[],'.repeat(3200000) + '[]]').length;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return JSON.parse('[' + '[],'.repeat(3200000) + '[]]').length;"}
 ```
 
 A locale argument resolves to the closest locale the JDK ships: private-use subtags and extensions are dropped
@@ -1859,33 +1859,33 @@ A locale argument resolves to the closest locale the JDK ships: private-use subt
 `"message": "RangeError: Incorrect locale information provided"`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (1234.5).toLocaleString('de-DE-x-anything');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (1234.5).toLocaleString('de-DE-x-anything');"}
 ```
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return (1).toLocaleString('en_US@@');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return (1).toLocaleString('en_US@@');"}
 ```
 
 A source larger than `scriptMaxSourceBytes` (`256Kb` by default) → `400-10`, before anything is parsed. The
 same cap refuses a `SAVE_PROCEDURE` and a pipeline `SCRIPT` operator. To try it by hand, set
 `scriptMaxSourceBytes=1Kb` in `mpp.cfg` and send any script over a kilobyte.
 
-Unknown database → `404-4`
+Unknown project → `404-4`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "nosuchdb", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "nosuchproject", "script": "return 1;"}
 ```
 
-The reserved `admin` database cannot be scripted → `400-1`
+The reserved `admin` project cannot be scripted → `400-1`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "admin", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "admin", "script": "return 1;"}
 ```
 
 A missing or blank `script` → `400-1`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test"}
+{"type": "RUN_SCRIPT", "projectName": "test"}
 ```
 
 Not allowed while a transaction is open on the connection → `409-6`
@@ -1895,34 +1895,34 @@ Not allowed while a transaction is open on the connection → `409-6`
 ```
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 1;"}
 ```
 
 ```json
 {"type": "ROLLBACK_TRANSACTION"}
 ```
 
-Per-database script permissions
+Per-project script permissions
 
-Admins may script any database and database owners the databases they own. Anybody else needs a grant
-for that specific database in `scriptPermissions`; an absent entry or an explicit `false` is a denial.
+Admins may script any project and project owners the projects they own. Anybody else needs a grant
+for that specific project in `scriptPermissions`; an absent entry or an explicit `false` is a denial.
 
-A second database, to show that a grant does not carry over
+A second project, to show that a grant does not carry over
 
 ```json
-{"type": "CREATE_DATABASE", "databaseName": "test2"}
+{"type": "CREATE_PROJECT", "projectName": "test2"}
 ```
 
 A user allowed to script `test` only (read access to the data, script grant on `test`)
 
 ```json
-{"type": "CREATE_USER", "username": "scripter", "password": "scripter1234", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE", "test2": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
+{"type": "CREATE_USER", "username": "scripter", "password": "scripter1234", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE", "test2": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true}}
 ```
 
 A user with data access but no script grant at all
 
 ```json
-{"type": "CREATE_USER", "username": "noscripts", "password": "noscripts1234", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}
+{"type": "CREATE_USER", "username": "noscripts", "password": "noscripts1234", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}
 ```
 
 Authenticate as scripter
@@ -1931,16 +1931,16 @@ Authenticate as scripter
 {"type": "AUTHENTICATE", "username": "scripter", "password": "scripter1234"}
 ```
 
-Allowed on the granted database
+Allowed on the granted project
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 'scripter ran this';"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 'scripter ran this';"}
 ```
 
 Refused on `test2` despite having READ_WRITE there → `403-1`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test2", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "test2", "script": "return 1;"}
 ```
 
 Authenticate as noscripts
@@ -1952,7 +1952,7 @@ Authenticate as noscripts
 Refused everywhere → `403-1`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 1;"}
 ```
 
 Back to admin
@@ -1967,31 +1967,31 @@ revokes every script grant the user had.
 Revoke scripter's grant
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}
+{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {}}
 ```
 
-Grant it again, on both databases this time
+Grant it again, on both projects this time
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE", "test2": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true, "test2": true}}
+{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE", "test2": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": true, "test2": true}}
 ```
 
 An explicit `false` is a denial, not a grant
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": false}}
+{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": false}}
 ```
 
-A grant naming the reserved `admin` database is rejected → `400-1`
+A grant naming the reserved `admin` project is rejected → `400-1`
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"admin": true}}
+{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"admin": true}}
 ```
 
 A non-boolean grant value is rejected → `400-1`
 
 ```json
-{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"test": "READ"}}
+{"type": "CHANGE_PERMISSIONS", "username": "scripter", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"test": "READ"}}
 ```
 
 Script grants show up in `LIST_USERS`
@@ -2015,7 +2015,7 @@ Clean up
 Clean up
 
 ```json
-{"type": "DROP_DATABASE", "databaseName": "test2"}
+{"type": "DROP_PROJECT", "projectName": "test2"}
 ```
 
 Running scripts: visibility and cancellation (admin only)
@@ -2037,10 +2037,10 @@ Nothing running yet — an empty `scripts` list
 On connection A, a script that runs for a minute (leave it waiting)
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "export default new Promise(r => setTimeout(() => r('done'), 60000));"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "export default new Promise(r => setTimeout(() => r('done'), 60000));"}
 ```
 
-On connection B, the run now appears — `runId`, the `node` executing it, its `kind`, the `database`, the
+On connection B, the run now appears — `runId`, the `node` executing it, its `kind`, the `project`, the
 `username` whose authority it runs with, and `ageMs`. On a standalone server `node` reads `local`; in a
 cluster it is the executing node's `host:clusterPort`.
 
@@ -2051,13 +2051,13 @@ cluster it is the executing node's `host:clusterPort`.
 While it runs, admission is also visible. With `maxConcurrentScripts=1` in `mpp.cfg`, a second script on
 connection B waits `scriptQueueWaitMs` (250 ms by default) for a permit and is then refused → `503-6`. The
 message names the limit that refused it; `maxConcurrentScriptsPerUser` (4 by default) and
-`maxConcurrentScriptsPerDatabase` (8 by default) refuse the same way, without waiting. A fifth concurrent script
+`maxConcurrentScriptsPerProject` (8 by default) refuse the same way, without waiting. A fifth concurrent script
 by the same user answers `503-6` with `(user limit)` at once, even while node-wide permits are free. The
-last per-database slot is kept for the database's owners and admins: with 7 scripts of ordinary users running
-in `test`, an eighth ordinary one answers `503-6` with `(database limit)` while the owner's still runs.
+last per-project slot is kept for the project's owners and admins: with 7 scripts of ordinary users running
+in `test`, an eighth ordinary one answers `503-6` with `(project limit)` while the owner's still runs.
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return 1;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return 1;"}
 ```
 
 Stop it, using the `runId` from that listing. Connection A's `RUN_SCRIPT` then answers `408-2`, and the
@@ -2092,7 +2092,7 @@ Cancellation is not catchable and skips `finally`. Run this on connection A and 
 answers `408-2`, not `"caught"`, and the `finally` block never runs.
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "try {\n    while (true) {}\n} catch (e) {\n    return 'caught';\n} finally {\n    console.log('this never runs');\n}"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "try {\n    while (true) {}\n} catch (e) {\n    return 'caught';\n} finally {\n    console.log('this never runs');\n}"}
 ```
 
 A `CALL_PROCEDURE`, a trigger run and a scheduled run are listed the same way, with `kind` set to
@@ -2101,8 +2101,8 @@ sections below install those; `name` is `null` for an ad-hoc `RUN_SCRIPT`). Canc
 drops it: its pending run record is consumed, so startup recovery will not replay it — the one place the
 exactly-once trigger guarantee is deliberately waived.
 
-Both operations are admin-only: any non-admin — even a database owner holding a `MANAGE` script grant —
-gets `403-1`. The counters `running` and `cancelled` in `GET_DATABASE_STATS` report the same numbers per
+Both operations are admin-only: any non-admin — even a project owner holding a `MANAGE` script grant —
+gets `403-1`. The counters `running` and `cancelled` in `GET_PROJECT_STATS` report the same numbers per
 node.
 
 Recorded trigger runs: listing and resolving (admin only)
@@ -2158,39 +2158,39 @@ gives for a run that has already finished. A missing `runId` or an unknown `deci
 Run history
 
 Unless `scriptRunHistoryEnabled=false`, a finished run is recorded in the reserved `script_runs`
-collection of the database it ran against. It is an ordinary collection to read — and refused to write.
+collection of the project it ran against. It is an ordinary collection to read — and refused to write.
 
 What ran, newest first
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "script_runs", "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": false}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "script_runs", "aggregationSteps": [{"type": "SORT", "fieldName": "startedAt", "ascending": false}]}
 ```
 
 Only the failures
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "script_runs", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "outcome", "value": "error"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "script_runs", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "outcome", "value": "error"}}]}
 ```
 
 Writing one by hand is refused — the collection is the server's → `400-1`
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "script_runs", "object": {"_id": "forged", "outcome": "ok"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "script_runs", "object": {"_id": "forged", "outcome": "ok"}}
 ```
 
-Get memory & schema stats (heap usage, cache usage vs cap, OS free RAM, totals across databases/collections, plus per-collection page/index/entry breakdown) — the full report as an admin
+Get memory & schema stats (heap usage, cache usage vs cap, OS free RAM, totals across projects/collections, plus per-collection page/index/entry breakdown) — the full report as an admin
 
 ```json
-{"type": "GET_DATABASE_STATS"}
+{"type": "GET_PROJECT_STATS"}
 ```
 
-The same request as any other authenticated user answers `OK` with only what that user can see: the databases
-`LIST_DATABASES` shows them, the collections they own or hold `READ` on, and `totals` over that view (no `userCount`);
+The same request as any other authenticated user answers `OK` with only what that user can see: the projects
+`LIST_PROJECTS` shows them, the collections they own or hold `READ` on, and `totals` over that view (no `userCount`);
 `memory`, `inDoubtTransactions`, `triggers`, `schedules` and `scripts` are left out. A user with only a script grant
-sees the database with an empty `collections`, and one with no grant at all gets an empty `databases`
+sees the project with an empty `collections`, and one with no grant at all gets an empty `projects`
 
 ```json
-{"type": "GET_DATABASE_STATS", "status": "OK", "message": "Ok", "stats": {"totals": {"databaseCount": 1, "collectionCount": 1, "indexCount": 0, "pageCount": 1, "entryCount": 3, "sizeBytes": 120}, "databases": [{"name": "test", "collectionCount": 1, "indexCount": 0, "pageCount": 1, "entryCount": 3, "sizeBytes": 120, "collections": [{"name": "testCollection", "indexCount": 0, "indexes": [], "pageCount": 1, "entryCount": 3, "sizeBytes": 120}]}]}}
+{"type": "GET_PROJECT_STATS", "status": "OK", "message": "Ok", "stats": {"totals": {"projectCount": 1, "collectionCount": 1, "indexCount": 0, "pageCount": 1, "entryCount": 3, "sizeBytes": 120}, "projects": [{"name": "test", "collectionCount": 1, "indexCount": 0, "pageCount": 1, "entryCount": 3, "sizeBytes": 120, "collections": [{"name": "testCollection", "indexCount": 0, "indexes": [], "pageCount": 1, "entryCount": 3, "sizeBytes": 120}]}]}}
 ```
 
 Ask which build the node runs and whether it is ready — `SERVER_INFO` is answered before `AUTHENTICATE` too, and
@@ -2209,21 +2209,21 @@ Before authenticating, only the state
 As any authenticated user, the build too (`version` is `dev` when the server does not run from a packaged jar)
 
 ```json
-{"type": "SERVER_INFO", "status": "OK", "message": "Ok", "server": {"state": "READY", "version": "1.0-SNAPSHOT", "protocolVersion": 1, "storageFormatVersion": 1, "startedAtMs": 1762790400000, "uptimeMs": 5231}}
+{"type": "SERVER_INFO", "status": "OK", "message": "Ok", "server": {"state": "READY", "version": "1.0-SNAPSHOT", "protocolVersion": 2, "storageFormatVersion": 2, "startedAtMs": 1762790400000, "uptimeMs": 5231}}
 ```
 
 As an admin, the node as well (`nodeId`, `aliveMembers` and `expectedSize` only when clustering is on); an internal
 failure answers `500-35`
 
 ```json
-{"type": "SERVER_INFO", "status": "OK", "message": "Ok", "server": {"state": "READY", "version": "1.0-SNAPSHOT", "protocolVersion": 1, "storageFormatVersion": 1, "startedAtMs": 1762790400000, "uptimeMs": 5231, "node": {"clusterEnabled": false, "syncWrites": true, "tlsEnabled": false}}}
+{"type": "SERVER_INFO", "status": "OK", "message": "Ok", "server": {"state": "READY", "version": "1.0-SNAPSHOT", "protocolVersion": 2, "storageFormatVersion": 2, "startedAtMs": 1762790400000, "uptimeMs": 5231, "node": {"clusterEnabled": false, "syncWrites": true, "tlsEnabled": false}}}
 ```
 
-Snapshots, what `--dump` reads a database through. Open one, change the collection from a second connection, and the
+Snapshots, what `--dump` reads a project through. Open one, change the collection from a second connection, and the
 snapshot still reads what was there when it opened:
 
 ```json
-{"type": "START_SNAPSHOT", "databaseName": "test"}
+{"type": "START_SNAPSHOT", "projectName": "test"}
 ```
 
 ```json
@@ -2234,7 +2234,7 @@ From another connection update one document, delete another and save a new one, 
 connection (`afterId` is the previous page's `lastId`; leave it out for the first page):
 
 ```json
-{"type": "READ_SNAPSHOT", "databaseName": "test", "collectionName": "testCollection", "snapshotId": "6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10", "limit": 2}
+{"type": "READ_SNAPSHOT", "projectName": "test", "collectionName": "testCollection", "snapshotId": "6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10", "limit": 2}
 ```
 
 ```json
@@ -2245,7 +2245,7 @@ The updated and the deleted documents come back as they were, the new one never 
 `limit` while `done` is `false`. Release it when done:
 
 ```json
-{"type": "RELEASE_SNAPSHOT", "databaseName": "test", "snapshotId": "6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10"}
+{"type": "RELEASE_SNAPSHOT", "projectName": "test", "snapshotId": "6f1c0d2e-4b7a-4c1e-9f3a-2d5e8b7c6a10"}
 ```
 
 The same id from another connection, or after the release, an idle `snapshotIdleTimeoutMs` (5 minutes) or a restart
@@ -2264,7 +2264,7 @@ the writes themselves answer `OK`, and every read of the snapshot until it is re
 ```
 
 A `START_SNAPSHOT` past `snapshotMaxOpen` (4) open snapshots on the node → `503-22` (retryable); one while a transaction
-on another connection holds a collection of the database for longer than `transactionLockTimeoutMs` → `409-5`; a `START_SNAPSHOT` or
+on another connection holds a collection of the project for longer than `transactionLockTimeoutMs` → `409-5`; a `START_SNAPSHOT` or
 `READ_SNAPSHOT` on a collection fenced by an unfinished commit → `503-18` without waiting out that timeout; any of the
 three inside a transaction → `409-6`.
 
@@ -2275,94 +2275,94 @@ three inside a transaction → `409-6`.
 Custom types
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "_id": "aTimeTest", "aTime": "#time(12:00:00)" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "_id": "aTimeTest", "aTime": "#time(12:00:00)" }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aTime", "value": "#time(12:00:01)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aTime", "value": "#time(12:00:01)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aTime", "value": "#time(11:59:59)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aTime", "value": "#time(11:59:59)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aTime", "value": "#time(12:00:01)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aTime", "value": "#time(12:00:01)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aTime", "value": "#time(12:00:00)"}}]}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aTime"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aTime"}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "_id": "aTimeTest", "aTime": 12 }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "_id": "aTimeTest", "aTime": 12 }}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "_id": "aDatetimeTest", "aDatetime": "#datetime(2024-07-12T12:00:00)" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "_id": "aDatetimeTest", "aDatetime": "#datetime(2024-07-12T12:00:00)" }}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:01)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "NOT_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:01)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aDatetime", "value": "#datetime(2024-07-12T11:59:59)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN", "field": "aDatetime", "value": "#datetime(2024-07-12T11:59:59)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "GREATER_THAN_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:01)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:01)"}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator":{"fieldOperatorType": "SMALLER_THAN_EQUALS", "field": "aDatetime", "value": "#datetime(2024-07-12T12:00:00)"}}]}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aDatetime"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aDatetime"}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": { "_id": "aDatetimeTest", "aDatetime": "#time(12:00:00)" }}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": { "_id": "aDatetimeTest", "aDatetime": "#time(12:00:00)" }}
 ```
 
 Geo points are `#geo(latitude,longitude)`. `distance` compares the distance in metres to a target point;
 `within` keeps points inside a polygon given as its corners in order.
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "geo-near", "location": "#geo(40.0,-74.0)"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "geo-near", "location": "#geo(40.0,-74.0)"}}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "geo-far", "location": "#geo(41.0,-74.0)"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "geo-far", "location": "#geo(41.0,-74.0)"}}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "distance", "field": "location", "value": "#geo(40.001,-74.0)", "comparator": "SMALLER_THAN", "distance": 1000}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "distance", "field": "location", "value": "#geo(40.001,-74.0)", "comparator": "SMALLER_THAN", "distance": 1000}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "within", "field": "location", "polygon": ["#geo(39.9,-74.1)", "#geo(39.9,-73.9)", "#geo(40.1,-73.9)", "#geo(40.1,-74.1)"]}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "within", "field": "location", "polygon": ["#geo(39.9,-74.1)", "#geo(39.9,-73.9)", "#geo(40.1,-73.9)", "#geo(40.1,-74.1)"]}}]}
 ```
 
 Vectors are `#vector(...)`. `nearest` returns the `k` documents most similar to the query by cosine
@@ -2370,19 +2370,19 @@ similarity. It is an approximate search by default, so it can miss a document a 
 `exact: true` scans every document instead.
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "vec-a", "embedding": "#vector(1.0,0.0)"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "vec-a", "embedding": "#vector(1.0,0.0)"}}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "vec-b", "embedding": "#vector(0.0,1.0)"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "vec-b", "embedding": "#vector(0.0,1.0)"}}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "nearest", "field": "embedding", "value": "#vector(0.9,0.1)", "k": 1}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "nearest", "field": "embedding", "value": "#vector(0.9,0.1)", "k": 1}}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "nearest", "field": "embedding", "value": "#vector(0.9,0.1)", "k": 1, "exact": true}}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"customOperatorName": "nearest", "field": "embedding", "value": "#vector(0.9,0.1)", "k": 1, "exact": true}}]}
 ```
 
 Index-backed aggregations
@@ -2390,70 +2390,70 @@ Index-backed aggregations
 The `GROUP_BY`, `JOIN`, `SORT`, and `DISTINCT` steps use a field index when one exists on the step's field and the step is the first step in the pipeline. Create an index on the field, then run the step as the only step to exercise the index path (the same commands return the same results with or without the index — the index just makes them faster).
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "testCollection", "fieldName": "aNumber"}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": "aNumber"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "DISTINCT", "fieldName": "aNumber"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aNumber"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "GROUP_BY", "fieldName": "aNumber"}]}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending": true}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "SORT", "fieldName": "aNumber", "ascending": true}]}
 ```
 
 ```json
-{"type": "CREATE_INDEX", "databaseName": "test", "collectionName": "joinMe", "fieldName": "joinField"}
+{"type": "CREATE_INDEX", "projectName": "test", "collectionName": "joinMe", "fieldName": "joinField"}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "JOIN", "joinCollection": "joinMe", "localField": "aNumber", "remoteField": "joinField", "asField": "joined"}]}
 ```
 
 Schema validation
 
 A collection may carry one draft-2020-12 JSON Schema. It is checked before the write commits, so a
-non-compliant document is rejected rather than stored. Admin or database owner only.
+non-compliant document is rejected rather than stored. Admin or project owner only.
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "people"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "people"}
 ```
 
 ```json
-{"type": "SAVE_SCHEMA", "databaseName": "test", "collectionName": "people", "schema": {"type": "object", "required": ["name", "age"], "properties": {"name": {"type": "string", "minLength": 1}, "age": {"type": "integer", "minimum": 0}}, "additionalProperties": false}}
+{"type": "SAVE_SCHEMA", "projectName": "test", "collectionName": "people", "schema": {"type": "object", "required": ["name", "age"], "properties": {"name": {"type": "string", "minLength": 1}, "age": {"type": "integer", "minimum": 0}}, "additionalProperties": false}}
 ```
 
 A compliant document is stored
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p1", "name": "Alice", "age": 30}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p1", "name": "Alice", "age": 30}}
 ```
 
 A non-compliant one is refused → `400-7`
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p2", "name": "", "age": -1}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p2", "name": "", "age": -1}}
 ```
 
 An unknown property is refused too, since `additionalProperties` is false → `400-7`
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p3", "name": "Bob", "age": 40, "extra": true}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p3", "name": "Bob", "age": 40, "extra": true}}
 ```
 
 `BULK_SAVE` is validated the same way → `400-7`
 
 ```json
-{"type": "BULK_SAVE", "databaseName": "test", "collectionName": "people", "objects": [{"name": "Carol", "age": 20}, {"name": "Dave"}]}
+{"type": "BULK_SAVE", "projectName": "test", "collectionName": "people", "objects": [{"name": "Carol", "age": 20}, {"name": "Dave"}]}
 ```
 
 A schema that is not itself valid is refused → `400-8`
 
 ```json
-{"type": "SAVE_SCHEMA", "databaseName": "test", "collectionName": "people", "schema": {"type": "not-a-type"}}
+{"type": "SAVE_SCHEMA", "projectName": "test", "collectionName": "people", "schema": {"type": "not-a-type"}}
 ```
 
 A schema the server cannot read never lets a write through unvalidated: every `SAVE` and `BULK_SAVE` to the
@@ -2464,13 +2464,13 @@ Validation is bounded by `schemaValidationBudget` (5000000 steps by default). Re
 `pattern` backtracks catastrophically on a long run of `x` that does not end in `y`
 
 ```json
-{"type": "SAVE_SCHEMA", "databaseName": "test", "collectionName": "people", "schema": {"type": "object", "properties": {"name": {"type": "string", "pattern": "(x+x+)+y"}}}}
+{"type": "SAVE_SCHEMA", "projectName": "test", "collectionName": "people", "schema": {"type": "object", "properties": {"name": {"type": "string", "pattern": "(x+x+)+y"}}}}
 ```
 
 A cheap document that matches still saves
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p4", "name": "xxy"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p4", "name": "xxy"}}
 ```
 
 A name of 120 `x` followed by `!` exhausts the budget and is refused at once (a longer one used to run for
@@ -2479,7 +2479,7 @@ same `SAVE` inside a transaction (the transaction stays open) are refused the sa
 returning it is refused with `400-21`, naming the budget
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p5", "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx!"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p5", "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx!"}}
 ```
 
 ```json
@@ -2491,7 +2491,7 @@ is unchanged. Each level of this chain references the next one twice, so it doub
 are past the limit, 12 would be accepted
 
 ```json
-{"type": "SAVE_SCHEMA", "databaseName": "test", "collectionName": "people", "schema": {"$ref": "#/$defs/d0", "$defs": {"d0": {"allOf": [{"$ref": "#/$defs/d1"}, {"$ref": "#/$defs/d1"}]}, "d1": {"allOf": [{"$ref": "#/$defs/d2"}, {"$ref": "#/$defs/d2"}]}, "d2": {"allOf": [{"$ref": "#/$defs/d3"}, {"$ref": "#/$defs/d3"}]}, "d3": {"allOf": [{"$ref": "#/$defs/d4"}, {"$ref": "#/$defs/d4"}]}, "d4": {"allOf": [{"$ref": "#/$defs/d5"}, {"$ref": "#/$defs/d5"}]}, "d5": {"allOf": [{"$ref": "#/$defs/d6"}, {"$ref": "#/$defs/d6"}]}, "d6": {"allOf": [{"$ref": "#/$defs/d7"}, {"$ref": "#/$defs/d7"}]}, "d7": {"allOf": [{"$ref": "#/$defs/d8"}, {"$ref": "#/$defs/d8"}]}, "d8": {"allOf": [{"$ref": "#/$defs/d9"}, {"$ref": "#/$defs/d9"}]}, "d9": {"allOf": [{"$ref": "#/$defs/d10"}, {"$ref": "#/$defs/d10"}]}, "d10": {"allOf": [{"$ref": "#/$defs/d11"}, {"$ref": "#/$defs/d11"}]}, "d11": {"allOf": [{"$ref": "#/$defs/d12"}, {"$ref": "#/$defs/d12"}]}, "d12": {"allOf": [{"$ref": "#/$defs/d13"}, {"$ref": "#/$defs/d13"}]}, "d13": {"allOf": [{"$ref": "#/$defs/d14"}, {"$ref": "#/$defs/d14"}]}, "d14": {"allOf": [{"$ref": "#/$defs/d15"}, {"$ref": "#/$defs/d15"}]}, "d15": {"allOf": [{"$ref": "#/$defs/d16"}, {"$ref": "#/$defs/d16"}]}, "d16": {"allOf": [{"$ref": "#/$defs/d17"}, {"$ref": "#/$defs/d17"}]}, "d17": {"type": "object"}}}}
+{"type": "SAVE_SCHEMA", "projectName": "test", "collectionName": "people", "schema": {"$ref": "#/$defs/d0", "$defs": {"d0": {"allOf": [{"$ref": "#/$defs/d1"}, {"$ref": "#/$defs/d1"}]}, "d1": {"allOf": [{"$ref": "#/$defs/d2"}, {"$ref": "#/$defs/d2"}]}, "d2": {"allOf": [{"$ref": "#/$defs/d3"}, {"$ref": "#/$defs/d3"}]}, "d3": {"allOf": [{"$ref": "#/$defs/d4"}, {"$ref": "#/$defs/d4"}]}, "d4": {"allOf": [{"$ref": "#/$defs/d5"}, {"$ref": "#/$defs/d5"}]}, "d5": {"allOf": [{"$ref": "#/$defs/d6"}, {"$ref": "#/$defs/d6"}]}, "d6": {"allOf": [{"$ref": "#/$defs/d7"}, {"$ref": "#/$defs/d7"}]}, "d7": {"allOf": [{"$ref": "#/$defs/d8"}, {"$ref": "#/$defs/d8"}]}, "d8": {"allOf": [{"$ref": "#/$defs/d9"}, {"$ref": "#/$defs/d9"}]}, "d9": {"allOf": [{"$ref": "#/$defs/d10"}, {"$ref": "#/$defs/d10"}]}, "d10": {"allOf": [{"$ref": "#/$defs/d11"}, {"$ref": "#/$defs/d11"}]}, "d11": {"allOf": [{"$ref": "#/$defs/d12"}, {"$ref": "#/$defs/d12"}]}, "d12": {"allOf": [{"$ref": "#/$defs/d13"}, {"$ref": "#/$defs/d13"}]}, "d13": {"allOf": [{"$ref": "#/$defs/d14"}, {"$ref": "#/$defs/d14"}]}, "d14": {"allOf": [{"$ref": "#/$defs/d15"}, {"$ref": "#/$defs/d15"}]}, "d15": {"allOf": [{"$ref": "#/$defs/d16"}, {"$ref": "#/$defs/d16"}]}, "d16": {"allOf": [{"$ref": "#/$defs/d17"}, {"$ref": "#/$defs/d17"}]}, "d17": {"type": "object"}}}}
 ```
 
 ```json
@@ -2514,17 +2514,17 @@ properties, each with its own `pattern` (build it in a script)
 {"type": "SAVE_SCHEMA", "status": "ERROR", "message": "The schema has more regular expressions than allowed: it has more than 256 patterns", "errorCode": "400-39"}
 ```
 
-`CREATE_COLLECTION` in a database that already holds `maxCollectionsPerDatabase` (default 1 000) collections →
+`CREATE_COLLECTION` in a project that already holds `maxCollectionsPerProject` (default 1 000) collections →
 `400-40`. Re-creating a collection that already exists is always allowed:
 
 ```json
-{"type": "CREATE_COLLECTION", "status": "ERROR", "message": "The database has the maximum number of collections (1000)", "errorCode": "400-40"}
+{"type": "CREATE_COLLECTION", "status": "ERROR", "message": "The project has the maximum number of collections (1000)", "errorCode": "400-40"}
 ```
 
-`CREATE_DATABASE` when the server already holds `maxDatabases` (default 1 000) user databases → `400-41`:
+`CREATE_PROJECT` when the server already holds `maxProjects` (default 1 000) user projects → `400-41`:
 
 ```json
-{"type": "CREATE_DATABASE", "status": "ERROR", "message": "The server has the maximum number of databases (1000)", "errorCode": "400-41"}
+{"type": "CREATE_PROJECT", "status": "ERROR", "message": "The server has the maximum number of projects (1000)", "errorCode": "400-41"}
 ```
 
 `CREATE_INDEX` on a collection that already holds `maxIndexesPerCollection` (default 64) field indexes → `400-42`.
@@ -2566,19 +2566,19 @@ any runaway loop → `408-1` after `scriptTimeoutMs` with the shipped defaults (
 first; regex work costs one instruction per 64 matcher steps), instead of running unbounded
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "return /(x+x+)+y/.test('x'.repeat(800) + '!');"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "return /(x+x+)+y/.test('x'.repeat(800) + '!');"}
 ```
 
 Read the schema back — `READ` on the collection is enough
 
 ```json
-{"type": "GET_SCHEMA", "databaseName": "test", "collectionName": "people"}
+{"type": "GET_SCHEMA", "projectName": "test", "collectionName": "people"}
 ```
 
 A collection that does not exist → `404-11`; a user without access to the collection → `403-1`
 
 ```json
-{"type": "GET_SCHEMA", "databaseName": "test", "collectionName": "ghosts"}
+{"type": "GET_SCHEMA", "projectName": "test", "collectionName": "ghosts"}
 ```
 
 ```json
@@ -2588,17 +2588,17 @@ A collection that does not exist → `404-11`; a user without access to the coll
 Remove the schema — idempotent, so sending it twice still returns OK
 
 ```json
-{"type": "DELETE_SCHEMA", "databaseName": "test", "collectionName": "people"}
+{"type": "DELETE_SCHEMA", "projectName": "test", "collectionName": "people"}
 ```
 
 ```json
-{"type": "DELETE_SCHEMA", "databaseName": "test", "collectionName": "people"}
+{"type": "DELETE_SCHEMA", "projectName": "test", "collectionName": "people"}
 ```
 
 With no schema, `GET_SCHEMA` → `404-12`
 
 ```json
-{"type": "GET_SCHEMA", "databaseName": "test", "collectionName": "people"}
+{"type": "GET_SCHEMA", "projectName": "test", "collectionName": "people"}
 ```
 
 ```json
@@ -2608,7 +2608,7 @@ With no schema, `GET_SCHEMA` → `404-12`
 The write that was refused above now succeeds
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "people", "object": {"_id": "p2", "name": "", "age": -1}}
+{"type": "SAVE", "projectName": "test", "collectionName": "people", "object": {"_id": "p2", "name": "", "age": -1}}
 ```
 
 Live queries (`LISTEN`)
@@ -2619,41 +2619,41 @@ arrive unsolicited, so read the socket after each write below rather than expect
 request.
 
 ```json
-{"type": "LISTEN", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "watched", "value": true}}]}
+{"type": "LISTEN", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"fieldOperatorType": "EQUALS", "field": "watched", "value": true}}]}
 ```
 
 This write changes the result set, so a push follows
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "watch-1", "watched": true}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "watch-1", "watched": true}}
 ```
 
 So does this one
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "watch-2", "watched": true}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "watch-2", "watched": true}}
 ```
 
 This one does not match the filter, so nothing is pushed
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "watch-3", "watched": false}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "watch-3", "watched": false}}
 ```
 
 An empty pipeline watches the whole collection. The array is required, so omitting it is `400-1`.
 
 ```json
-{"type": "LISTEN", "databaseName": "test", "collectionName": "joinMe", "aggregationSteps": []}
+{"type": "LISTEN", "projectName": "test", "collectionName": "joinMe", "aggregationSteps": []}
 ```
 
 ```json
-{"type": "LISTEN", "databaseName": "test", "collectionName": "joinMe"}
+{"type": "LISTEN", "projectName": "test", "collectionName": "joinMe"}
 ```
 
 A script anywhere in a `LISTEN` pipeline → `400-19`, since it would run again on every write
 
 ```json
-{"type": "LISTEN", "databaseName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"script": "export default (doc) => doc.aNumber > 5;"}}]}
+{"type": "LISTEN", "projectName": "test", "collectionName": "testCollection", "aggregationSteps": [{"type": "FILTER", "operator": {"script": "export default (doc) => doc.aNumber > 5;"}}]}
 ```
 
 Cancel a subscription (use a `listenId` from a response above). Once its answer arrives, nothing more is pushed
@@ -2671,19 +2671,19 @@ An unknown id → `404-7`
 
 A listen the server ends on its own is told so with one final frame, `410-1`, after which nothing more is
 pushed for that `listenId`. That happens when a collection it reads (its own or a `JOIN` target) is dropped,
-when its database is dropped, or when the listening user loses read access. Listen on a scratch collection,
+when its project is dropped, or when the listening user loses read access. Listen on a scratch collection,
 then drop it from another connection:
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "listenDropped"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "listenDropped"}
 ```
 
 ```json
-{"type": "LISTEN", "databaseName": "test", "collectionName": "listenDropped", "aggregationSteps": []}
+{"type": "LISTEN", "projectName": "test", "collectionName": "listenDropped", "aggregationSteps": []}
 ```
 
 ```json
-{"type": "DROP_COLLECTION", "databaseName": "test", "collectionName": "listenDropped"}
+{"type": "DROP_COLLECTION", "projectName": "test", "collectionName": "listenDropped"}
 ```
 
 The listening connection receives:
@@ -2708,17 +2708,17 @@ transaction is refused inside it too → `403-1`.
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "tx-commit-1", "committed": true}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "tx-commit-1", "committed": true}}
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "joinMe", "object": {"_id": "tx-commit-2", "joinField": 77}}
+{"type": "SAVE", "projectName": "test", "collectionName": "joinMe", "object": {"_id": "tx-commit-2", "joinField": 77}}
 ```
 
 A read inside the transaction sees its own buffered write
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "tx-commit-1"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "tx-commit-1"}
 ```
 
 Commit — both collections are written together
@@ -2728,7 +2728,7 @@ Commit — both collections are written together
 ```
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "joinMe", "_id": "tx-commit-2"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "joinMe", "_id": "tx-commit-2"}
 ```
 
 Rollback discards everything buffered
@@ -2738,7 +2738,7 @@ Rollback discards everything buffered
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "tx-discarded", "committed": false}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "tx-discarded", "committed": false}}
 ```
 
 ```json
@@ -2748,7 +2748,7 @@ Rollback discards everything buffered
 Nothing was written → `404-2`
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "tx-discarded"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "tx-discarded"}
 ```
 
 Starting a second transaction on the same connection → `409-3`
@@ -2780,7 +2780,7 @@ transaction is aborted. This needs two connections. On connection A:
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "tx-lock-a", "holder": "A"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "tx-lock-a", "holder": "A"}}
 ```
 
 On connection B, the same collection → `409-5` after the timeout
@@ -2790,14 +2790,14 @@ On connection B, the same collection → `409-5` after the timeout
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "tx-lock-b", "holder": "B"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "tx-lock-b", "holder": "B"}}
 ```
 
 B's transaction is now unusable: anything but `COMMIT_TRANSACTION`, `ROLLBACK_TRANSACTION` and
 `CLOSE_CONNECTION` → `409-9`, and a `COMMIT_TRANSACTION` answers `409-9` too and ends it
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "findme"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "findme"}
 ```
 
 ```json
@@ -2824,7 +2824,7 @@ is served normally. Start a transaction and buffer a write
 ```
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "tx-idle", "holder": "idle"}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "tx-idle", "holder": "idle"}}
 ```
 
 wait more than 30 s, then send any request, for example the same `SAVE` again. The answer:
@@ -2877,125 +2877,125 @@ A decision other than commit/abort → `400-1`
 
 Stored procedures
 
-A named script, stored with its database and called by name. Installing one needs admin, database
-ownership, or `scriptPermissions` of `MANAGE` on that database; calling one needs `RUN`. Changing one
+A named script, stored with its project and called by name. Installing one needs admin, project
+ownership, or `scriptPermissions` of `MANAGE` on that project; calling one needs `RUN`. Changing one
 that another user's trigger, before hook or schedule runs is refused with `403-4` (see Triggers). The source is
 parsed at save time, so a broken body is refused here rather than on somebody else's first call.
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "recalcTotals", "script": "import db from \"db\";\nimport args from \"args\";\nconst o = db.findById(db.name, 'testCollection', args.id);\nreturn o === null ? 0 : o.aNumber * 2;", "description": "doubles aNumber"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "recalcTotals", "script": "import db from \"db\";\nimport args from \"args\";\nconst o = db.findById(db.name, 'testCollection', args.id);\nreturn o === null ? 0 : o.aNumber * 2;", "description": "doubles aNumber"}
 ```
 
 Call it — the response carries `result`, `logs` and `logsTruncated`, like `RUN_SCRIPT`
 
 ```json
-{"type": "CALL_PROCEDURE", "databaseName": "test", "procedureName": "recalcTotals", "args": {"id": "findme"}}
+{"type": "CALL_PROCEDURE", "projectName": "test", "procedureName": "recalcTotals", "args": {"id": "findme"}}
 ```
 
 List them — metadata only (`sourceHash` only for callers with script `MANAGE`, ownership or admin)
 
 ```json
-{"type": "LIST_PROCEDURES", "databaseName": "test"}
+{"type": "LIST_PROCEDURES", "projectName": "test"}
 ```
 
 `includeSource` adds the body (needs script `MANAGE`, ownership or admin; `READ` alone answers `403-6`)
 
 ```json
-{"type": "LIST_PROCEDURES", "databaseName": "test", "includeSource": true}
+{"type": "LIST_PROCEDURES", "projectName": "test", "includeSource": true}
 ```
 
 Re-saving replaces the procedure and bumps its `version`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "recalcTotals", "script": "import args from \"args\";\nreturn 'version two saw ' + args.id;"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "recalcTotals", "script": "import args from \"args\";\nreturn 'version two saw ' + args.id;"}
 ```
 
 ```json
-{"type": "CALL_PROCEDURE", "databaseName": "test", "procedureName": "recalcTotals", "args": {"id": "findme"}}
+{"type": "CALL_PROCEDURE", "projectName": "test", "procedureName": "recalcTotals", "args": {"id": "findme"}}
 ```
 
 `ifVersion` is optimistic concurrency — a stale value is refused with `409-8`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "recalcTotals", "script": "return 1;", "ifVersion": 99}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "recalcTotals", "script": "return 1;", "ifVersion": 99}
 ```
 
 `ifVersion: 0` requires that the procedure does not exist yet → `409-8`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "recalcTotals", "script": "return 1;", "ifVersion": 0}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "recalcTotals", "script": "return 1;", "ifVersion": 0}
 ```
 
 A body that does not parse is refused at save time → `400-13`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "brokenProc", "script": "return (;"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "brokenProc", "script": "return (;"}
 ```
 
 A disabled procedure is not callable → `404-8`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "disabledProc", "script": "return 1;", "enabled": false}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "disabledProc", "script": "return 1;", "enabled": false}
 ```
 
 ```json
-{"type": "CALL_PROCEDURE", "databaseName": "test", "procedureName": "disabledProc", "args": {}}
+{"type": "CALL_PROCEDURE", "projectName": "test", "procedureName": "disabledProc", "args": {}}
 ```
 
 Calling one that was never installed → `404-8`
 
 ```json
-{"type": "CALL_PROCEDURE", "databaseName": "test", "procedureName": "neverInstalled", "args": {}}
+{"type": "CALL_PROCEDURE", "projectName": "test", "procedureName": "neverInstalled", "args": {}}
 ```
 
 Importing a stored procedure as a module — a library is a procedure that `export`s instead of
-returning, imported with `procedures/<name>` (only this database's, and only if it is enabled)
+returning, imported with `procedures/<name>` (only this project's, and only if it is enabled)
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "money", "script": "export function cents(n) { return Math.round(n * 100); }"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "money", "script": "export function cents(n) { return Math.round(n * 100); }"}
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "totalCents", "script": "import { cents } from \"procedures/money\";\nimport args from \"args\";\nreturn cents(args.amount);"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "totalCents", "script": "import { cents } from \"procedures/money\";\nimport args from \"args\";\nreturn cents(args.amount);"}
 ```
 
 ```json
-{"type": "CALL_PROCEDURE", "databaseName": "test", "procedureName": "totalCents", "args": {"amount": 12.345}}
+{"type": "CALL_PROCEDURE", "projectName": "test", "procedureName": "totalCents", "args": {"amount": 12.345}}
 ```
 
 Installing a procedure whose import does not resolve is refused → `400-18` (so libraries go in first)
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "brokenImport", "script": "import { nope } from \"procedures/absent\";\nexport const x = nope;"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "brokenImport", "script": "import { nope } from \"procedures/absent\";\nexport const x = nope;"}
 ```
 
 A script may import one too
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import { cents } from \"procedures/money\";\nreturn cents(3.5);"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import { cents } from \"procedures/money\";\nreturn cents(3.5);"}
 ```
 
 An unknown module is a catchable error, so the specifier can be probed → `Cannot find module 'procedures/nope'`
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "try { await import(\"procedures/nope\"); return 'resolved'; } catch (e) { return e.message; }"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "try { await import(\"procedures/nope\"); return 'resolved'; } catch (e) { return e.message; }"}
 ```
 
 A procedure written with a top-level `return` is callable but imports as `undefined` — only `export`ed
 bindings cross a module boundary
 
 ```json
-{"type": "RUN_SCRIPT", "databaseName": "test", "script": "import lib from \"procedures/totalCents\";\nreturn typeof lib;"}
+{"type": "RUN_SCRIPT", "projectName": "test", "script": "import lib from \"procedures/totalCents\";\nreturn typeof lib;"}
 ```
 
 Delete — idempotent, so sending it twice still returns OK
 
 ```json
-{"type": "DELETE_PROCEDURE", "databaseName": "test", "name": "disabledProc"}
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "disabledProc"}
 ```
 
 ```json
-{"type": "DELETE_PROCEDURE", "databaseName": "test", "name": "disabledProc"}
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "disabledProc"}
 ```
 
 Triggers
@@ -3009,138 +3009,138 @@ ownership, or `MANAGE` together with `READ_WRITE` on the collection. Set `trigge
 The procedure a trigger will call — its `args` carry the event, the document and who wrote it
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "auditLog"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "auditLog"}
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "auditWrite", "script": "import db from \"db\";\nimport args from \"args\";\ndb.save(db.name, 'auditLog', { _id: args.id + '-' + args.firedAt, event: args.event, by: args.actingUser, definer: args.definer });\nreturn 'audited';"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "auditWrite", "script": "import db from \"db\";\nimport args from \"args\";\ndb.save(db.name, 'auditLog', { _id: args.id + '-' + args.firedAt, event: args.event, by: args.actingUser, definer: args.definer });\nreturn 'audited';"}
 ```
 
 Install it on the collection
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "auditWrites", "events": ["CREATED", "UPDATED", "DELETED"], "procedureName": "auditWrite", "mode": "document", "allowCascade": false, "enabled": true}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "auditWrites", "events": ["CREATED", "UPDATED", "DELETED"], "procedureName": "auditWrite", "mode": "document", "allowCascade": false, "enabled": true}
 ```
 
 This write fires it — check `auditLog` a moment later
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "triggered-1", "n": 1}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "triggered-1", "n": 1}}
 ```
 
 ```json
-{"type": "AGGREGATE", "databaseName": "test", "collectionName": "auditLog", "aggregationSteps": [{"type": "COUNT"}]}
+{"type": "AGGREGATE", "projectName": "test", "collectionName": "auditLog", "aggregationSteps": [{"type": "COUNT"}]}
 ```
 
 Batch mode — one run for a whole `BULK_SAVE`, with `documents` instead of `id`/`document`
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "auditBatch", "script": "import db from \"db\";\nimport args from \"args\";\ndb.save(db.name, 'auditLog', { _id: 'batch-' + args.firedAt, count: args.documents.length });\nreturn 'audited';"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "auditBatch", "script": "import db from \"db\";\nimport args from \"args\";\ndb.save(db.name, 'auditLog', { _id: 'batch-' + args.firedAt, count: args.documents.length });\nreturn 'audited';"}
 ```
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "joinMe", "name": "auditBatchWrites", "events": ["CREATED"], "procedureName": "auditBatch", "mode": "batch"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "joinMe", "name": "auditBatchWrites", "events": ["CREATED"], "procedureName": "auditBatch", "mode": "batch"}
 ```
 
 ```json
-{"type": "BULK_SAVE", "databaseName": "test", "collectionName": "joinMe", "objects": [{"joinField": 1}, {"joinField": 2}]}
+{"type": "BULK_SAVE", "projectName": "test", "collectionName": "joinMe", "objects": [{"joinField": 1}, {"joinField": 2}]}
 ```
 
 A **before** trigger runs synchronously, before the write, and may veto it or replace the document
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "normalizeOrder", "script": "export default function (doc, ctx) {\n  if (doc.qty < 0) { throw new Error('qty must not be negative'); }\n  if (ctx.event === 'DELETED') { return; }\n  return { ...doc, total: doc.qty * 10 };\n}"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "normalizeOrder", "script": "export default function (doc, ctx) {\n  if (doc.qty < 0) { throw new Error('qty must not be negative'); }\n  if (ctx.event === 'DELETED') { return; }\n  return { ...doc, total: doc.qty * 10 };\n}"}
 ```
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "events": ["CREATED", "UPDATED"], "procedureName": "normalizeOrder", "timing": "before"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "events": ["CREATED", "UPDATED"], "procedureName": "normalizeOrder", "timing": "before"}
 ```
 
 The stored document carries the computed field — no polling, the hook ran before the commit
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "beforeHooked", "qty": 3}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "beforeHooked", "qty": 3}}
 ```
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "testCollection", "_id": "beforeHooked"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "testCollection", "_id": "beforeHooked"}
 ```
 
 A document the hook throws on is refused → `400-21`, and nothing is written
 
 ```json
-{"type": "SAVE", "databaseName": "test", "collectionName": "testCollection", "object": {"_id": "beforeRejected", "qty": -1}}
+{"type": "SAVE", "projectName": "test", "collectionName": "testCollection", "object": {"_id": "beforeRejected", "qty": -1}}
 ```
 
 `batch` mode and `allowCascade` are meaningless for a before trigger (it has no `db`) → `400-14`
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "badBefore", "events": ["CREATED"], "procedureName": "normalizeOrder", "timing": "before", "mode": "batch"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "badBefore", "events": ["CREATED"], "procedureName": "normalizeOrder", "timing": "before", "mode": "batch"}
 ```
 
 Try one against a document without writing anything — `decision` is `accept`, `replace` or `reject`
 
 ```json
-{"type": "TEST_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "event": "CREATED", "document": {"_id": "dryRun", "qty": 4}}
+{"type": "TEST_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "event": "CREATED", "document": {"_id": "dryRun", "qty": 4}}
 ```
 
 ```json
-{"type": "TEST_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "event": "CREATED", "document": {"_id": "dryRun", "qty": -1}}
+{"type": "TEST_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "normalizeOrder", "event": "CREATED", "document": {"_id": "dryRun", "qty": -1}}
 ```
 
 A name with no trigger on that collection → `404-9`
 
 ```json
-{"type": "TEST_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "noSuchTrigger", "event": "CREATED", "document": {"_id": "dryRun", "qty": 4}}
+{"type": "TEST_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "noSuchTrigger", "event": "CREATED", "document": {"_id": "dryRun", "qty": 4}}
 ```
 
 Only a before trigger can be tested, because only it is directly callable → `400-14`
 
 ```json
-{"type": "TEST_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "auditWrites", "event": "CREATED", "document": {"_id": "dryRun"}}
+{"type": "TEST_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "auditWrites", "event": "CREATED", "document": {"_id": "dryRun"}}
 ```
 
-List them — omit `collectionName` to list every trigger in the database
+List them — omit `collectionName` to list every trigger in the project
 
 ```json
-{"type": "LIST_TRIGGERS", "databaseName": "test", "collectionName": "testCollection"}
+{"type": "LIST_TRIGGERS", "projectName": "test", "collectionName": "testCollection"}
 ```
 
 ```json
-{"type": "LIST_TRIGGERS", "databaseName": "test"}
+{"type": "LIST_TRIGGERS", "projectName": "test"}
 ```
 
 A trigger pointing at a procedure that does not exist → `404-8`
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "danglingTrigger", "events": ["CREATED"], "procedureName": "neverInstalled"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "danglingTrigger", "events": ["CREATED"], "procedureName": "neverInstalled"}
 ```
 
 No events, or an unknown one → `400-14`
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "noEvents", "events": [], "procedureName": "auditWrite"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "noEvents", "events": [], "procedureName": "auditWrite"}
 ```
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "badEvent", "events": ["EXPLODED"], "procedureName": "auditWrite"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "badEvent", "events": ["EXPLODED"], "procedureName": "auditWrite"}
 ```
 
 Deleting a procedure a trigger still references is refused → `400-14`
 
 ```json
-{"type": "DELETE_PROCEDURE", "databaseName": "test", "name": "auditWrite"}
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "auditWrite"}
 ```
 
 A procedure bound by another definer's trigger is protected. Two users with `MANAGE` on `test`: one
-with `READ_WRITE` on the database, one with no data grant at all
+with `READ_WRITE` on the project, one with no data grant at all
 
 ```json
-{"type": "CREATE_USER", "username": "procmanager", "password": "procmanager1234", "admin": false, "globalPermissions": [], "databasePermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": "MANAGE"}}
+{"type": "CREATE_USER", "username": "procmanager", "password": "procmanager1234", "admin": false, "globalPermissions": [], "projectPermissions": {"test": "READ_WRITE"}, "collectionPermissions": {}, "scriptPermissions": {"test": "MANAGE"}}
 ```
 
 ```json
-{"type": "CREATE_USER", "username": "scriptsonly", "password": "scriptsonly1234", "admin": false, "globalPermissions": [], "databasePermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"test": "MANAGE"}}
+{"type": "CREATE_USER", "username": "scriptsonly", "password": "scriptsonly1234", "admin": false, "globalPermissions": [], "projectPermissions": {}, "collectionPermissions": {}, "scriptPermissions": {"test": "MANAGE"}}
 ```
 
 ```json
@@ -3148,28 +3148,28 @@ with `READ_WRITE` on the database, one with no data grant at all
 ```
 
 `auditWrites` was installed by `admin`, so overwriting, disabling or deleting the procedure it runs as
-`admin` is refused for anyone but `admin`, a database owner or another admin → `403-4`. The same holds
+`admin` is refused for anyone but `admin`, a project owner or another admin → `403-4`. The same holds
 for any procedure `auditWrite` imports, and for a procedure a before hook or a schedule names
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "auditWrite", "script": "return 1;"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "auditWrite", "script": "return 1;"}
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a database owner or an admin may change it", "errorCode": "403-4"}
+{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
 `DELETE_PROCEDURE` answers `403-4` before the `400-14` reference refusal
 
 ```json
-{"type": "DELETE_PROCEDURE", "databaseName": "test", "name": "auditWrite"}
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "auditWrite"}
 ```
 
 ```json
-{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a database owner or an admin may change it", "errorCode": "403-4"}
+{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
-`MANAGE` without `READ_WRITE` on the collection (no entry, and no database grant) cannot install a
+`MANAGE` without `READ_WRITE` on the collection (no entry, and no project grant) cannot install a
 trigger there → `403-1`; `DELETE_TRIGGER` and `TEST_TRIGGER` answer the same
 
 ```json
@@ -3177,7 +3177,7 @@ trigger there → `403-1`; `DELETE_TRIGGER` and `TEST_TRIGGER` answer the same
 ```
 
 ```json
-{"type": "SAVE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "sneakyHook", "events": ["CREATED"], "procedureName": "auditWrite", "timing": "before"}
+{"type": "SAVE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "sneakyHook", "events": ["CREATED"], "procedureName": "auditWrite", "timing": "before"}
 ```
 
 ```json
@@ -3201,15 +3201,15 @@ Back to admin, and remove the two users
 Delete — idempotent, so sending it twice still returns OK
 
 ```json
-{"type": "DELETE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "auditWrites"}
+{"type": "DELETE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "auditWrites"}
 ```
 
 ```json
-{"type": "DELETE_TRIGGER", "databaseName": "test", "collectionName": "testCollection", "name": "auditWrites"}
+{"type": "DELETE_TRIGGER", "projectName": "test", "collectionName": "testCollection", "name": "auditWrites"}
 ```
 
 ```json
-{"type": "DELETE_TRIGGER", "databaseName": "test", "collectionName": "joinMe", "name": "auditBatchWrites"}
+{"type": "DELETE_TRIGGER", "projectName": "test", "collectionName": "joinMe", "name": "auditBatchWrites"}
 ```
 
 Scheduled procedures
@@ -3220,123 +3220,123 @@ may open its own `db.transaction`. Delivery is
 at-most-once per due instant: missed runs while the node was down are skipped, not caught up.
 
 ```json
-{"type": "CREATE_COLLECTION", "databaseName": "test", "collectionName": "heartbeat"}
+{"type": "CREATE_COLLECTION", "projectName": "test", "collectionName": "heartbeat"}
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "databaseName": "test", "name": "beat", "script": "import db from \"db\";\nimport args from \"args\";\nconst prev = db.findById(db.name, 'heartbeat', 'beats');\nconst n = prev === null ? 1 : prev.n + 1;\ndb.save(db.name, 'heartbeat', { _id: 'beats', n: n, label: args.label });\nreturn n;"}
+{"type": "SAVE_PROCEDURE", "projectName": "test", "name": "beat", "script": "import db from \"db\";\nimport args from \"args\";\nconst prev = db.findById(db.name, 'heartbeat', 'beats');\nconst n = prev === null ? 1 : prev.n + 1;\ndb.save(db.name, 'heartbeat', { _id: 'beats', n: n, label: args.label });\nreturn n;"}
 ```
 
 Every two seconds — `heartbeat` climbs from the next tick on, so the read below is `404-2` until the
 first run lands
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 2000, "args": {"label": "interval"}}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 2000, "args": {"label": "interval"}}
 ```
 
 ```json
-{"type": "FIND_BY_ID", "databaseName": "test", "collectionName": "heartbeat", "_id": "beats"}
+{"type": "FIND_BY_ID", "projectName": "test", "collectionName": "heartbeat", "_id": "beats"}
 ```
 
 Every night at 03:00, in the configured `scriptTimeZone`, with its own run timeout
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "nightlyRollup", "procedureName": "beat", "cron": "0 3 * * *", "args": {"label": "nightly"}, "timeoutMs": 60000, "description": "daily rollup"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "nightlyRollup", "procedureName": "beat", "cron": "0 3 * * *", "args": {"label": "nightly"}, "timeoutMs": 60000, "description": "daily rollup"}
 ```
 
 Other cron forms — every 15 minutes, weekday mornings, the first of every month
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyQuarterHour", "procedureName": "beat", "cron": "*/15 * * * *", "args": {"label": "quarter"}}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyQuarterHour", "procedureName": "beat", "cron": "*/15 * * * *", "args": {"label": "quarter"}}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "weekdayMornings", "procedureName": "beat", "cron": "30 8 * * MON-FRI", "args": {"label": "weekday"}}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "weekdayMornings", "procedureName": "beat", "cron": "30 8 * * MON-FRI", "args": {"label": "weekday"}}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "monthly", "procedureName": "beat", "cron": "0 0 1 * *", "args": {"label": "monthly"}}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "monthly", "procedureName": "beat", "cron": "0 0 1 * *", "args": {"label": "monthly"}}
 ```
 
 List them — `nextRunAt` and `owner` are this node's view; `args` is omitted
 
 ```json
-{"type": "LIST_SCHEDULES", "databaseName": "test"}
+{"type": "LIST_SCHEDULES", "projectName": "test"}
 ```
 
 `includeArgs` returns each full definition, `args` included (needs script `MANAGE`, ownership or admin; `READ`
 alone answers `403-6`)
 
 ```json
-{"type": "LIST_SCHEDULES", "databaseName": "test", "includeArgs": true}
+{"type": "LIST_SCHEDULES", "projectName": "test", "includeArgs": true}
 ```
 
 Re-saving replaces the schedule and bumps its `version`; `ifVersion` is refused when stale → `409-8`
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "args": {"label": "slower"}}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "args": {"label": "slower"}}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "ifVersion": 99}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "ifVersion": 99}
 ```
 
 Disable one without deleting it
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "enabled": false}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds", "procedureName": "beat", "intervalMs": 5000, "enabled": false}
 ```
 
 Exactly one of `cron` and `intervalMs` is required → `400-16`
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "neither", "procedureName": "beat"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "neither", "procedureName": "beat"}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "both", "procedureName": "beat", "cron": "0 3 * * *", "intervalMs": 1000}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "both", "procedureName": "beat", "cron": "0 3 * * *", "intervalMs": 1000}
 ```
 
 A malformed cron is refused at save time → `400-16`
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "badCron", "procedureName": "beat", "cron": "not a cron"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "badCron", "procedureName": "beat", "cron": "not a cron"}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "badCron", "procedureName": "beat", "cron": "99 * * * *"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "badCron", "procedureName": "beat", "cron": "99 * * * *"}
 ```
 
 A step past the 32-bit range is refused the same way, while the largest 32-bit step is valid and fires once per
 range (here at minute 0):
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "badCron", "procedureName": "beat", "cron": "*/2147483648 * * * *"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "badCron", "procedureName": "beat", "cron": "*/2147483648 * * * *"}
 ```
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "hugeStep", "procedureName": "beat", "cron": "*/2147483647 * * * *"}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "hugeStep", "procedureName": "beat", "cron": "*/2147483647 * * * *"}
 ```
 
 A procedure that does not exist → `404-8`
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "dangling", "procedureName": "neverInstalled", "intervalMs": 1000}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "dangling", "procedureName": "neverInstalled", "intervalMs": 1000}
 ```
 
 Deleting a procedure a schedule still references is refused → `400-16`
 
 ```json
-{"type": "DELETE_PROCEDURE", "databaseName": "test", "name": "beat"}
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "beat"}
 ```
 
-A database holding `scheduleMaxPerDatabase` schedules (100 by default) refuses a new one → `400-17`.
-Re-saving one it already holds is still allowed. To try it by hand, set `scheduleMaxPerDatabase=1` in
+A project holding `scheduleMaxPerProject` schedules (100 by default) refuses a new one → `400-17`.
+Re-saving one it already holds is still allowed. To try it by hand, set `scheduleMaxPerProject=1` in
 `mpp.cfg` before running this section: `everyTwoSeconds` is then the only schedule it can hold, the other
 saves above are refused, and so is this one.
 
 ```json
-{"type": "SAVE_SCHEDULE", "databaseName": "test", "name": "oneTooMany", "procedureName": "beat", "intervalMs": 60000}
+{"type": "SAVE_SCHEDULE", "projectName": "test", "name": "oneTooMany", "procedureName": "beat", "intervalMs": 60000}
 ```
 
 The schedule counters appear in the stats, beside `triggers.pendingRuns` (the trigger-run records still held),
@@ -3344,33 +3344,33 @@ The schedule counters appear in the stats, beside `triggers.pendingRuns` (the tr
 events the write backlog gate counts; `maintenance`: queued usage-profile flushes and cleanups, never more than two)
 
 ```json
-{"type": "GET_DATABASE_STATS"}
+{"type": "GET_PROJECT_STATS"}
 ```
 
 Delete — idempotent, so sending it twice still returns OK
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds"}
 ```
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "everyTwoSeconds"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "everyTwoSeconds"}
 ```
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "nightlyRollup"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "nightlyRollup"}
 ```
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "everyQuarterHour"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "everyQuarterHour"}
 ```
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "weekdayMornings"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "weekdayMornings"}
 ```
 
 ```json
-{"type": "DELETE_SCHEDULE", "databaseName": "test", "name": "monthly"}
+{"type": "DELETE_SCHEDULE", "projectName": "test", "name": "monthly"}
 ```
 
 Answers only a cluster gives
@@ -3451,7 +3451,7 @@ An unknown action (anything but `PAUSE`, `HALT`, `DROP` or `FAIL`) → `400-1`
 With `faultInjectionEnabled=true`, waiting on a point nothing reaches → `408-3`
 
 ```json
-{"type": "ARM_FAULT", "point": "WRITE_OWNERSHIP_RECHECKED", "action": "PAUSE", "match": "mydb|mycoll"}
+{"type": "ARM_FAULT", "point": "WRITE_OWNERSHIP_RECHECKED", "action": "PAUSE", "match": "myproject|mycoll"}
 ```
 
 ```json

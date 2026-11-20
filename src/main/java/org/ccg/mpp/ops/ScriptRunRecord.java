@@ -3,7 +3,7 @@ package org.ccg.mpp.ops;
 import java.util.List;
 import org.ccg.mpp.simplejs.host.ScriptRunMetrics;
 
-public record ScriptRunRecord(String runId, ScriptRunKind kind, String database, String name, String procedure,
+public record ScriptRunRecord(String runId, ScriptRunKind kind, String project, String name, String procedure,
         String collection, String event, String username, String actingUser, long startedAt, long durationMs,
         int attempt, String outcome, String errorName, String errorMessage, List<String> stack,
         ScriptRunMetrics metrics, List<String> logs, boolean logsTruncated) {

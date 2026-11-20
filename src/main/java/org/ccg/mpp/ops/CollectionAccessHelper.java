@@ -11,18 +11,18 @@ public final class CollectionAccessHelper {
     private CollectionAccessHelper() {
     }
 
-    public static void recordCollectionAccess(String dbName, String collName) {
-        recordAccess(AccessKind.COLLECTION, dbName, collName);
+    public static void recordCollectionAccess(String projectName, String collName) {
+        recordAccess(AccessKind.COLLECTION, projectName, collName);
     }
 
-    public static void recordPkIndexAccess(String dbName, String collName) {
-        recordAccess(AccessKind.PK_INDEX, dbName, collName);
+    public static void recordPkIndexAccess(String projectName, String collName) {
+        recordAccess(AccessKind.PK_INDEX, projectName, collName);
     }
 
-    private static void recordAccess(AccessKind kind, String dbName, String collName) {
-        if (Globals.ADMIN_DB_NAME.equals(dbName)) {
+    private static void recordAccess(AccessKind kind, String projectName, String collName) {
+        if (Globals.ADMIN_PROJECT_NAME.equals(projectName)) {
             return;
         }
-        memoryManagement.recordAccess(kind, dbName, collName, null);
+        memoryManagement.recordAccess(kind, projectName, collName, null);
     }
 }

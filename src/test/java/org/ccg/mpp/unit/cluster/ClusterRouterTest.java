@@ -82,11 +82,11 @@ public class ClusterRouterTest {
     }
 
     private RunScriptRequest runScript() {
-        return new RunScriptRequest(TestGlobals.DB, "return 1;", null);
+        return new RunScriptRequest(TestGlobals.PROJECT, "return 1;", null);
     }
 
     private SaveRequest save() {
-        return new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        return new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     @Test
@@ -103,16 +103,16 @@ public class ClusterRouterTest {
     @Test
     public void test_admin_op_is_refused_when_no_coordinator_can_be_resolved() throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", true);
-        final var response = router.forward(new CreateCollectionRequest(TestGlobals.DB, TestGlobals.COLL), "{}", false,
-                null, null);
+        final var response = router.forward(new CreateCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL), "{}",
+                false, null, null);
         assertNotNull(response, "a coordinated admin op must not be applied locally when it cannot replicate");
         assertTrue(response.contains("503-9"), response);
     }
 
     @Test
-    public void test_null_for_admin_database() throws Exception {
+    public void test_null_for_admin_project() throws Exception {
         TestUtils.setPrivateField(config, "clusterEnabled", true);
-        assertNull(router.forward(new SaveRequest(Globals.ADMIN_DB_NAME, "databases"), "{}", false, null, null));
+        assertNull(router.forward(new SaveRequest(Globals.ADMIN_PROJECT_NAME, "projects"), "{}", false, null, null));
     }
 
     @Test
@@ -144,8 +144,8 @@ public class ClusterRouterTest {
     public void test_call_procedure_falls_back_to_local_when_the_target_is_unreachable() throws Exception {
         routableMembership();
         final var fallbacksBefore = scriptPlacement.getForwardFallbacks();
-        assertNull(
-                router.forward(new CallProcedureRequest(TestGlobals.DB, "proc", null), "{}", false, "someuser", null));
+        assertNull(router.forward(new CallProcedureRequest(TestGlobals.PROJECT, "proc", null), "{}", false, "someuser",
+                null));
         assertEquals(fallbacksBefore + 1, scriptPlacement.getForwardFallbacks());
     }
 
@@ -158,18 +158,18 @@ public class ClusterRouterTest {
     }
 
     @Test
-    public void test_the_scoped_database_reaches_placement() throws Exception {
+    public void test_the_scoped_project_reaches_placement() throws Exception {
         routableMembership();
         final var recorder = new RecordingPlacement();
         TestUtils.setPrivateField(router, "scriptPlacement", recorder);
         try {
             assertNull(router.forward(runScript(), "{}", false, "someuser", null));
-            assertNull(router.forward(new CallProcedureRequest(TestGlobals.DB, "proc", null), "{}", false, "someuser",
-                    null));
+            assertNull(router.forward(new CallProcedureRequest(TestGlobals.PROJECT, "proc", null), "{}", false,
+                    "someuser", null));
         } finally {
             TestUtils.setPrivateField(router, "scriptPlacement", scriptPlacement);
         }
-        assertEquals(List.of(TestGlobals.DB, TestGlobals.DB), recorder.databases);
+        assertEquals(List.of(TestGlobals.PROJECT, TestGlobals.PROJECT), recorder.projects);
     }
 
     @Test
@@ -182,11 +182,11 @@ public class ClusterRouterTest {
 
     // Answers null so the run stays local: what is under test is the argument, not the placement decision.
     private static final class RecordingPlacement extends ScriptPlacement {
-        private final List<String> databases = new ArrayList<>();
+        private final List<String> projects = new ArrayList<>();
 
         @Override
-        public NodeInfo choose(String databaseName) {
-            databases.add(databaseName);
+        public NodeInfo choose(String projectName) {
+            projects.add(projectName);
             return null;
         }
     }

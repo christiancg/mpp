@@ -15,7 +15,7 @@ import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.req.DropCollectionRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
 import org.ccg.mpp.utils.ReflectionUtils;
@@ -30,7 +30,7 @@ public class DropLockEvictionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -44,42 +44,44 @@ public class DropLockEvictionTest {
         });
     }
 
-    private void touch(String dbName, String collName) throws InterruptedException {
-        locks.lock(dbName, collName);
-        locks.release(dbName, collName);
+    private void touch(String projectName, String collName) throws InterruptedException {
+        locks.lock(projectName, collName);
+        locks.release(projectName, collName);
     }
 
     @Test
     public void test_drop_evicts_admin_pages_and_collection_names_locks() throws Exception {
-        final var pagesKey = Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_DB_NAME,
-                AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL));
-        final var namesKey = Cache.getCollectionIdentifier(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
-        touch(Globals.ADMIN_PAGES_DB_NAME, AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL));
-        touch(TestGlobals.DB, Globals.COLLECTION_NAMES_LOCK);
+        final var pagesKey = Cache.getCollectionIdentifier(Globals.ADMIN_PAGES_PROJECT_NAME,
+                AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL));
+        final var namesKey = Cache.getCollectionIdentifier(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
+        touch(Globals.ADMIN_PAGES_PROJECT_NAME,
+                AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL));
+        touch(TestGlobals.PROJECT, Globals.COLLECTION_NAMES_LOCK);
         assertTrue(lockMap().containsKey(pagesKey));
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
 
         assertFalse(lockMap().containsKey(pagesKey), "the dropped collection's admin_pages lock is evicted");
-        assertFalse(lockMap().containsKey(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
-        assertTrue(lockMap().containsKey(namesKey), "the database still has collections to name");
+        assertFalse(lockMap().containsKey(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
+        assertTrue(lockMap().containsKey(namesKey), "the project still has collections to name");
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(TestGlobals.DB)).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new DropProjectRequest(TestGlobals.PROJECT)).getStatus());
 
-        assertFalse(lockMap().containsKey(namesKey), "the dropped database's collection-names lock is evicted");
-        assertFalse(lockMap().containsKey(TestGlobals.DB));
+        assertFalse(lockMap().containsKey(namesKey), "the dropped project's collection-names lock is evicted");
+        assertFalse(lockMap().containsKey(TestGlobals.PROJECT));
     }
 
     @Test
     public void test_drop_forgets_the_admin_pages_identifier() {
-        final var pagesColl = AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL);
-        final var remembered = Cache.canonicalNames(Globals.ADMIN_PAGES_DB_NAME, pagesColl);
+        final var pagesColl = AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var remembered = Cache.canonicalNames(Globals.ADMIN_PAGES_PROJECT_NAME, pagesColl);
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, TestGlobals.COLL)).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, TestGlobals.COLL)).getStatus());
 
-        assertNotSame(remembered, Cache.canonicalNames(Globals.ADMIN_PAGES_DB_NAME, pagesColl),
+        assertNotSame(remembered, Cache.canonicalNames(Globals.ADMIN_PAGES_PROJECT_NAME, pagesColl),
                 "removing the page-row lock looks the identifier up again, so the drop forgets it afterwards");
     }
 }

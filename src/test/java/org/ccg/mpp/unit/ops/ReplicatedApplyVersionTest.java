@@ -37,7 +37,7 @@ public class ReplicatedApplyVersionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -54,19 +54,19 @@ public class ReplicatedApplyVersionTest {
     }
 
     private boolean applyUpsert(String id, String value, long version) {
-        return ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        return ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.UPSERT, List.of(doc(id, value)), null, List.of(Long.toString(version))),
                 TestGlobals.APPLY_BUDGET_MS);
     }
 
     private boolean applyDelete(long version) {
-        return ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        return ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.DELETE, null, List.of("a"), List.of(Long.toString(version))),
                 TestGlobals.APPLY_BUDGET_MS);
     }
 
     private OperationResponse find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request);
     }
@@ -80,14 +80,14 @@ public class ReplicatedApplyVersionTest {
     }
 
     private void bulkSave() {
-        final var request = new org.ccg.mpp.ops.req.BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new org.ccg.mpp.ops.req.BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObjects(List.of(doc("a", "bulk")));
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private long storedVersion() throws Exception {
         return IocContainer.get(org.ccg.mpp.cache.Cache.class)
-                .getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+                .getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(entry -> entry.getValue().equals("a")).findFirst().orElseThrow().getVersion();
     }
 
@@ -101,7 +101,7 @@ public class ReplicatedApplyVersionTest {
 
         assertTrue(applyUpsert("b", "old", 100L));
         assertTrue(ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                         List.of(doc("b", "bulk")), null, List.of(Long.toString(shipped))),
                 TestGlobals.APPLY_BUDGET_MS));
         assertEquals("bulk", valueOf("b"));
@@ -110,7 +110,7 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_a_null_version_in_the_list_is_applied_as_unversioned() {
         assertTrue(ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                         List.of(doc("n", "unversioned")), null, java.util.Collections.singletonList(null)),
                 TestGlobals.APPLY_BUDGET_MS));
         assertEquals("unversioned", valueOf("n"));
@@ -136,7 +136,7 @@ public class ReplicatedApplyVersionTest {
         assertTrue(applyUpsert("b", "seed", 100L));
 
         assertTrue(ReplicatedApplyHelper.apply(
-                new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+                new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                         List.of(doc("a", "stale"), doc("b", "fresh")), null, List.of("150", "300")),
                 TestGlobals.APPLY_BUDGET_MS));
 
@@ -150,7 +150,7 @@ public class ReplicatedApplyVersionTest {
         assertTrue(applyDelete(100L));
 
         assertEquals(OperationStatus.OK, find("a").getStatus(), "the newer document must survive an older delete");
-        assertEquals(100L, fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).get("a"));
+        assertEquals(100L, fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).get("a"));
     }
 
     @Test
@@ -174,7 +174,7 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_an_upsert_older_than_a_local_tombstone_is_refused() {
         assertTrue(applyUpsert("t", "live", 100L));
-        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.DELETE, null, List.of("t"), List.of("200")), TestGlobals.APPLY_BUDGET_MS));
         assertNull(valueOf("t"));
 
@@ -189,7 +189,7 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_an_upsert_newer_than_a_local_tombstone_is_applied() {
         assertTrue(applyUpsert("u", "live", 100L));
-        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL,
+        assertTrue(ReplicatedApplyHelper.apply(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL,
                 ReplicationOp.DELETE, null, List.of("u"), List.of("200")), TestGlobals.APPLY_BUDGET_MS));
 
         assertTrue(applyUpsert("u", "rewritten", 300L));
@@ -205,18 +205,18 @@ public class ReplicatedApplyVersionTest {
 
     private void create(String collName) {
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, collName)).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, collName)).getStatus());
     }
 
     private OperationStatus findStatus(String collName, String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, collName);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, collName);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
 
     private static ReplicationPayload upsert(String collName, long incarnation, String id) {
-        final var payload = new ReplicationPayload(TestGlobals.DB, collName, ReplicationOp.UPSERT, List.of(idOnly(id)),
-                null, List.of("100"));
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, collName, ReplicationOp.UPSERT,
+                List.of(idOnly(id)), null, List.of("100"));
         payload.setIncarnationValue(incarnation);
         return payload;
     }
@@ -224,7 +224,7 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_an_upsert_of_the_current_incarnation_applies() {
         create("incCurrent");
-        final var incarnation = CollectionIncarnation.current(TestGlobals.DB, "incCurrent");
+        final var incarnation = CollectionIncarnation.current(TestGlobals.PROJECT, "incCurrent");
 
         assertTrue(ReplicatedApplyHelper.apply(upsert("incCurrent", incarnation, "a"), TestGlobals.APPLY_BUDGET_MS));
         assertEquals(OperationStatus.OK, findStatus("incCurrent", "a"));
@@ -233,7 +233,7 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_an_upsert_of_another_incarnation_is_refused() {
         create("incOther");
-        final var incarnation = CollectionIncarnation.current(TestGlobals.DB, "incOther");
+        final var incarnation = CollectionIncarnation.current(TestGlobals.PROJECT, "incOther");
 
         assertFalse(ReplicatedApplyHelper.apply(upsert("incOther", incarnation + 1, "a"), TestGlobals.APPLY_BUDGET_MS));
         assertEquals(OperationStatus.NOT_FOUND, findStatus("incOther", "a"));
@@ -242,9 +242,8 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_a_stamped_upsert_to_an_unregistered_collection_writes_nothing() {
         assertFalse(ReplicatedApplyHelper.apply(upsert("incNeverCreated", 42L, "a"), TestGlobals.APPLY_BUDGET_MS));
-        assertFalse(new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + "incNeverCreated")
-                .exists());
+        assertFalse(new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
+                + "incNeverCreated").exists());
     }
 
     @Test
@@ -258,29 +257,29 @@ public class ReplicatedApplyVersionTest {
     @Test
     public void test_a_delete_of_another_incarnation_is_refused() throws Exception {
         create("incDelete");
-        final var incarnation = CollectionIncarnation.current(TestGlobals.DB, "incDelete");
+        final var incarnation = CollectionIncarnation.current(TestGlobals.PROJECT, "incDelete");
         assertTrue(ReplicatedApplyHelper.apply(upsert("incDelete", incarnation, "kept"), TestGlobals.APPLY_BUDGET_MS));
 
-        final var delete = new ReplicationPayload(TestGlobals.DB, "incDelete", ReplicationOp.DELETE, null,
+        final var delete = new ReplicationPayload(TestGlobals.PROJECT, "incDelete", ReplicationOp.DELETE, null,
                 List.of("kept"), List.of("200"));
         delete.setIncarnationValue(incarnation + 1);
 
         assertFalse(ReplicatedApplyHelper.apply(delete, TestGlobals.APPLY_BUDGET_MS));
         assertEquals(OperationStatus.OK, findStatus("incDelete", "kept"));
-        assertFalse(fs.tombstones().read(TestGlobals.DB, "incDelete").containsKey("kept"));
+        assertFalse(fs.tombstones().read(TestGlobals.PROJECT, "incDelete").containsKey("kept"));
     }
 
     @Test
     public void test_a_payload_built_before_a_drop_and_recreate_does_not_seed_the_new_collection() {
         create("incRecreated");
-        final var before = CollectionIncarnation.current(TestGlobals.DB, "incRecreated");
+        final var before = CollectionIncarnation.current(TestGlobals.PROJECT, "incRecreated");
         final var stale = upsert("incRecreated", before, "dead");
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DropCollectionRequest(TestGlobals.DB, "incRecreated")).getStatus());
+                processor.processMessage(new DropCollectionRequest(TestGlobals.PROJECT, "incRecreated")).getStatus());
         create("incRecreated");
 
-        assertNotEquals(before, CollectionIncarnation.current(TestGlobals.DB, "incRecreated"));
+        assertNotEquals(before, CollectionIncarnation.current(TestGlobals.PROJECT, "incRecreated"));
         assertFalse(ReplicatedApplyHelper.apply(stale, TestGlobals.APPLY_BUDGET_MS));
         assertEquals(OperationStatus.NOT_FOUND, findStatus("incRecreated", "dead"),
                 "a pre-drop document applied into the new incarnation is replicated cluster-wide from there");

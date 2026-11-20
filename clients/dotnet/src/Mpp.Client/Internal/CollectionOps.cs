@@ -16,17 +16,17 @@ namespace Mpp.Client.Internal;
 
 internal sealed class CollectionOps<T> : IQueryTarget<T>
 {
-    public CollectionOps(ClientContext context, string database, string collection, IDocumentCodec<T> codec)
+    public CollectionOps(ClientContext context, string project, string collection, IDocumentCodec<T> codec)
     {
         Context = context;
-        Database = Names.Database(database);
+        Project = Names.Project(project);
         Collection = Names.Collection(collection);
         Codec = codec;
     }
 
     public ClientContext Context { get; }
 
-    public string Database { get; }
+    public string Project { get; }
 
     public string Collection { get; }
 
@@ -36,14 +36,14 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
 
     public async Task<SaveResult> SaveAsync(T value, CancellationToken ct)
     {
-        var reply = await SendAsync(Operation.Save, RequestEncoder.Save(Database, Collection, Encode(value)), ct)
+        var reply = await SendAsync(Operation.Save, RequestEncoder.Save(Project, Collection, Encode(value)), ct)
             .ConfigureAwait(false);
         return new SaveResult(ResponseDecoder.TextOf(reply["_id"]), ResponseDecoder.BooleanOf(reply["inserted"], false));
     }
 
     public async Task<SaveResult> InsertAsync(T value, CancellationToken ct)
     {
-        var reply = await SendAsync(Operation.Save, RequestEncoder.Insert(Database, Collection, Encode(value)), ct)
+        var reply = await SendAsync(Operation.Save, RequestEncoder.Insert(Project, Collection, Encode(value)), ct)
             .ConfigureAwait(false);
         return new SaveResult(ResponseDecoder.TextOf(reply["_id"]), ResponseDecoder.BooleanOf(reply["inserted"], false));
     }
@@ -51,14 +51,14 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
     public async Task<BulkSaveResult> SaveAllAsync(IEnumerable<T> values, CancellationToken ct)
     {
         var encoded = values.Select(Encode).ToList();
-        var reply = await SendAsync(Operation.BulkSave, RequestEncoder.BulkSave(Database, Collection, encoded), ct)
+        var reply = await SendAsync(Operation.BulkSave, RequestEncoder.BulkSave(Project, Collection, encoded), ct)
             .ConfigureAwait(false);
         return new BulkSaveResult(ResponseDecoder.Strings(reply["inserted"]), ResponseDecoder.Strings(reply["updated"]));
     }
 
     public async Task<T?> FindByIdAsync(string id, bool dirtyRead, CancellationToken ct)
     {
-        var request = RequestEncoder.FindById(Database, Collection, Names.DocumentId(id), dirtyRead);
+        var request = RequestEncoder.FindById(Project, Collection, Names.DocumentId(id), dirtyRead);
         try
         {
             var found = ResponseDecoder.DocumentOf(await SendAsync(Operation.FindById, request, ct).ConfigureAwait(false), "object");
@@ -71,13 +71,13 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
     }
 
     public async Task DeleteAsync(string id, CancellationToken ct) =>
-        await SendAsync(Operation.Delete, RequestEncoder.Delete(Database, Collection, Names.DocumentId(id)), ct)
+        await SendAsync(Operation.Delete, RequestEncoder.Delete(Project, Collection, Names.DocumentId(id)), ct)
             .ConfigureAwait(false);
 
     public async Task<long> DeleteWhereAsync(Filter condition, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(condition);
-        var reply = await SendAsync(Operation.Delete, Context.Encoder.DeleteWhere(Database, Collection, condition), ct)
+        var reply = await SendAsync(Operation.Delete, Context.Encoder.DeleteWhere(Project, Collection, condition), ct)
             .ConfigureAwait(false);
         return ResponseDecoder.WholeOf(reply["deletedCount"]) ?? 0;
     }
@@ -92,7 +92,7 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
     {
         ArgumentNullException.ThrowIfNull(condition);
         ArgumentNullException.ThrowIfNull(patch);
-        var request = Context.Encoder.SaveWhere(Database, Collection, condition, EncodePatch(patch));
+        var request = Context.Encoder.SaveWhere(Project, Collection, condition, EncodePatch(patch));
         var reply = await SendAsync(Operation.Save, request, ct).ConfigureAwait(false);
         return ResponseDecoder.WholeOf(reply["updatedCount"]) ?? 0;
     }
@@ -105,7 +105,7 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
 
     public async Task<IReadOnlyList<Document>> AggregateAsync(ImmutableArray<PipelineStep> steps, bool dirtyRead, CancellationToken ct)
     {
-        var request = Context.Encoder.Aggregate(Database, Collection, steps, dirtyRead, false);
+        var request = Context.Encoder.Aggregate(Project, Collection, steps, dirtyRead, false);
         try
         {
             return ResponseDecoder.Documents(await SendAsync(Operation.Aggregate, request, ct).ConfigureAwait(false), "results");
@@ -118,7 +118,7 @@ internal sealed class CollectionOps<T> : IQueryTarget<T>
 
     public async Task<AnalyzeResult> AnalyzeAsync(ImmutableArray<PipelineStep> steps, bool dirtyRead, CancellationToken ct)
     {
-        var reply = await SendAsync(Operation.Aggregate, Context.Encoder.Aggregate(Database, Collection, steps, dirtyRead, true), ct)
+        var reply = await SendAsync(Operation.Aggregate, Context.Encoder.Aggregate(Project, Collection, steps, dirtyRead, true), ct)
             .ConfigureAwait(false);
         return new AnalyzeResult(
             ResponseDecoder.Documents(reply, "results"),

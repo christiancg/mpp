@@ -6,11 +6,11 @@ const it = serverIt({ transactionIdleTimeoutMs: "4000" });
 let accounts: Collection<Document, Stored<Document>>;
 
 beforeAll(async () => {
-    const database = it.client.database("tx_it");
-    await database.create();
-    await database.collection("accounts").create();
-    await database.collection("ledger").create();
-    accounts = database.collection("accounts");
+    const project = it.client.project("tx_it");
+    await project.create();
+    await project.collection("accounts").create();
+    await project.collection("ledger").create();
+    accounts = project.collection("accounts");
 });
 
 describe("transactions", () => {

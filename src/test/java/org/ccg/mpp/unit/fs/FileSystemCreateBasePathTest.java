@@ -45,14 +45,14 @@ public class FileSystemCreateBasePathTest {
     }
 
     @Test
-    public void test_database_and_collection_directories_are_owner_only(@TempDir Path tmp) throws Exception {
+    public void test_project_and_collection_directories_are_owner_only(@TempDir Path tmp) throws Exception {
         assumeTrue(OwnerOnlyFiles.supported());
         final var base = tmp.resolve("db");
         TestUtils.setPrivateField(config, "filePath", base.toString());
         final var fs = new FileSystem();
         fs.createBaseDbPath();
-        fs.createAdminDatabase();
-        assertTrue(fs.createDatabaseFolder("ownerdb"));
+        fs.createAdminProject();
+        assertTrue(fs.createProjectFolder("ownerdb"));
         assertTrue(fs.createCollectionFile("ownerdb", "ownercoll"));
         fs.metadataFiles().writeProcedure("ownerdb", "ownerproc", "{}");
 
@@ -62,7 +62,7 @@ public class FileSystemCreateBasePathTest {
             assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(folder)),
                     folder.toString());
         }
-        assertTrue(fs.createDatabaseFolder("ownerdb"));
+        assertTrue(fs.createProjectFolder("ownerdb"));
     }
 
     @Test

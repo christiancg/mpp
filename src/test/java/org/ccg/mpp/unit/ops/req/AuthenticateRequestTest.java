@@ -28,9 +28,9 @@ public class AuthenticateRequestTest {
     }
 
     @Test
-    public void test_database_name_null() {
+    public void test_project_name_null() {
         final var req = new AuthenticateRequest();
-        assertNull(req.getDatabaseName());
+        assertNull(req.getProjectName());
     }
 
     @Test

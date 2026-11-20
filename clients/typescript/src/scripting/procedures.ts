@@ -7,17 +7,17 @@ import type { ProcedureDefinition, ProcedureInfo } from "./definitions.js";
 
 export class Procedures {
     readonly #context: ClientContext;
-    readonly #database: string;
+    readonly #project: string;
 
-    constructor(context: ClientContext, database: string) {
+    constructor(context: ClientContext, project: string) {
         this.#context = context;
-        this.#database = database;
+        this.#project = project;
     }
 
     async save(definition: ProcedureDefinition): Promise<number> {
         const reply = await this.#context.channel.send(
             "SAVE_PROCEDURE",
-            this.#context.scripts.saveProcedure(this.#database, definition),
+            this.#context.scripts.saveProcedure(this.#project, definition),
         );
         return numberOf(reply.version) ?? 0;
     }
@@ -25,14 +25,14 @@ export class Procedures {
     async delete(name: string): Promise<void> {
         await this.#context.channel.send(
             "DELETE_PROCEDURE",
-            this.#context.scripts.deleteProcedure(this.#database, name),
+            this.#context.scripts.deleteProcedure(this.#project, name),
         );
     }
 
     async list(includeSource?: boolean): Promise<ProcedureInfo[]> {
         const reply = await this.#context.channel.send(
             "LIST_PROCEDURES",
-            this.#context.scripts.listProcedures(this.#database, includeSource),
+            this.#context.scripts.listProcedures(this.#project, includeSource),
         );
         return documents(reply, "procedures").map(procedure);
     }
@@ -41,7 +41,7 @@ export class Procedures {
         return scriptResult(
             await this.#context.channel.send(
                 "CALL_PROCEDURE",
-                this.#context.scripts.callProcedure(this.#database, name, args),
+                this.#context.scripts.callProcedure(this.#project, name, args),
             ),
         );
     }

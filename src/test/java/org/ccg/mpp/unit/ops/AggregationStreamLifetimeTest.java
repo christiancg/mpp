@@ -44,10 +44,10 @@ public class AggregationStreamLifetimeTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createTestJoinCollection();
         processor = new OperationProcessor();
-        assertNull(IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL),
+        assertNull(IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL),
                 "the collection must have no page metadata, or the scan never takes the folder-scan fallback"
                         + " that holds an open directory handle");
     }
@@ -104,7 +104,7 @@ public class AggregationStreamLifetimeTest {
     }
 
     private void aggregate(List<BaseAggregationStep> steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(steps);
         final var response = processor.processMessage(request);
         assertTrue(response.getStatus() == OperationStatus.OK || response.getStatus() == OperationStatus.NOT_FOUND,

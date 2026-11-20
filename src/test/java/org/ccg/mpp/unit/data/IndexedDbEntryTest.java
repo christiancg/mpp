@@ -19,14 +19,14 @@ public class IndexedDbEntryTest {
         jsonObject.addProperty("key", "value");
         IndexedDbEntry indexedDbEntry = new IndexedDbEntry();
         indexedDbEntry.set_id("123");
-        indexedDbEntry.setDatabaseName("testDB");
+        indexedDbEntry.setProjectName("testProject");
         indexedDbEntry.setCollectionName("testCollection");
         indexedDbEntry.setData(jsonObject);
 
         DbEntry dbEntry = indexedDbEntry.toDbEntry();
 
         assertEquals("123", dbEntry.get_id());
-        assertEquals("testDB", dbEntry.getDatabaseName());
+        assertEquals("testProject", dbEntry.getProjectName());
         assertEquals("testCollection", dbEntry.getCollectionName());
         assertEquals(jsonObject, dbEntry.getData());
     }
@@ -35,14 +35,14 @@ public class IndexedDbEntryTest {
     public void test_handle_null_values() {
         IndexedDbEntry indexedDbEntry = new IndexedDbEntry();
         indexedDbEntry.set_id("123");
-        indexedDbEntry.setDatabaseName(null);
+        indexedDbEntry.setProjectName(null);
         indexedDbEntry.setCollectionName(null);
         indexedDbEntry.setData(null);
 
         DbEntry dbEntry = indexedDbEntry.toDbEntry();
 
         assertEquals("123", dbEntry.get_id());
-        assertNull(dbEntry.getDatabaseName());
+        assertNull(dbEntry.getProjectName());
         assertNull(dbEntry.getCollectionName());
         assertNull(dbEntry.getData());
     }
@@ -73,7 +73,7 @@ public class IndexedDbEntryTest {
     public void test_convert_to_db_entry_with_matching_id() {
         IndexedDbEntry indexedDbEntry = new IndexedDbEntry();
         indexedDbEntry.set_id("12345");
-        indexedDbEntry.setDatabaseName("testDatabase");
+        indexedDbEntry.setProjectName("testProject");
         indexedDbEntry.setCollectionName("testCollection");
         JsonObject data = new JsonObject();
         data.addProperty("key", "value");
@@ -82,7 +82,7 @@ public class IndexedDbEntryTest {
         DbEntry dbEntry = indexedDbEntry.toDbEntry();
 
         assertEquals("12345", dbEntry.get_id());
-        assertEquals("testDatabase", dbEntry.getDatabaseName());
+        assertEquals("testProject", dbEntry.getProjectName());
         assertEquals("testCollection", dbEntry.getCollectionName());
         assertEquals(data, dbEntry.getData());
     }
@@ -91,7 +91,7 @@ public class IndexedDbEntryTest {
     public void test_handle_null_id_in_indexed_db_entry() {
         IndexedDbEntry indexedDbEntry = new IndexedDbEntry();
         indexedDbEntry.set_id(null);
-        indexedDbEntry.setDatabaseName("testDatabase");
+        indexedDbEntry.setProjectName("testProject");
         indexedDbEntry.setCollectionName("testCollection");
         JsonObject data = new JsonObject();
         data.addProperty("key", "value");
@@ -100,7 +100,7 @@ public class IndexedDbEntryTest {
         DbEntry dbEntry = indexedDbEntry.toDbEntry();
 
         assertNull(dbEntry.get_id());
-        assertEquals("testDatabase", dbEntry.getDatabaseName());
+        assertEquals("testProject", dbEntry.getProjectName());
         assertEquals("testCollection", dbEntry.getCollectionName());
         assertEquals(data, dbEntry.getData());
     }
@@ -109,16 +109,16 @@ public class IndexedDbEntryTest {
     public void test_getters() {
         IndexedDbEntry indexedDbEntry = new IndexedDbEntry();
         indexedDbEntry.set_id("123");
-        indexedDbEntry.setDatabaseName("testDatabase");
+        indexedDbEntry.setProjectName("testProject");
         indexedDbEntry.setCollectionName("testCollection");
-        final var pkIndexEntry = new PkIndexEntry("testDatabase", "testCollection", "123", 0, 1, 0);
+        final var pkIndexEntry = new PkIndexEntry("testProject", "testCollection", "123", 0, 1, 0);
         indexedDbEntry.setIndex(pkIndexEntry);
         JsonObject data = new JsonObject();
         data.addProperty("key", "value");
         indexedDbEntry.setData(data);
 
         assertEquals("123", indexedDbEntry.get_id());
-        assertEquals("testDatabase", indexedDbEntry.getDatabaseName());
+        assertEquals("testProject", indexedDbEntry.getProjectName());
         assertEquals("testCollection", indexedDbEntry.getCollectionName());
         assertEquals(data, indexedDbEntry.getData());
         assertEquals(pkIndexEntry, indexedDbEntry.getIndex());
@@ -141,12 +141,12 @@ public class IndexedDbEntryTest {
     public void test_equals_symmetric() {
         IndexedDbEntry entry1 = new IndexedDbEntry();
         entry1.set_id("id1");
-        entry1.setDatabaseName("db");
+        entry1.setProjectName("db");
         entry1.setCollectionName("coll");
 
         IndexedDbEntry entry2 = new IndexedDbEntry();
         entry2.set_id("id1");
-        entry2.setDatabaseName("db");
+        entry2.setProjectName("db");
         entry2.setCollectionName("coll");
 
         assertEquals(entry1, entry2);
@@ -180,11 +180,11 @@ public class IndexedDbEntryTest {
     public void test_hashCode_same_values_equal() {
         IndexedDbEntry entry1 = new IndexedDbEntry();
         entry1.set_id("id1");
-        entry1.setDatabaseName("db");
+        entry1.setProjectName("db");
 
         IndexedDbEntry entry2 = new IndexedDbEntry();
         entry2.set_id("id1");
-        entry2.setDatabaseName("db");
+        entry2.setProjectName("db");
 
         assertEquals(entry1.hashCode(), entry2.hashCode());
     }

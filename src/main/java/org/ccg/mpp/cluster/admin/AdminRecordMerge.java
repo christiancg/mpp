@@ -177,7 +177,7 @@ public final class AdminRecordMerge {
             }
         }
         return switch (key.kind()) {
-            case DATABASE -> DatabaseRecordApplier.install(record);
+            case PROJECT -> ProjectRecordApplier.install(record);
             case COLLECTION -> CollectionRecordApplier.install(record);
             case USER -> UserRecordApplier.install(record);
             case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE -> DefinitionRecordApplier.install(record);
@@ -204,8 +204,8 @@ public final class AdminRecordMerge {
 
     private static AdminRecordKey caseVariantOf(AdminRecordKey key) {
         return switch (key.kind()) {
-            case DATABASE -> DatabaseRecordApplier.caseVariantOf(key.dbName());
-            case COLLECTION -> CollectionRecordApplier.caseVariantOf(key.dbName(), key.name());
+            case PROJECT -> ProjectRecordApplier.caseVariantOf(key.projectName());
+            case COLLECTION -> CollectionRecordApplier.caseVariantOf(key.projectName(), key.name());
             default -> null;
         };
     }
@@ -216,7 +216,7 @@ public final class AdminRecordMerge {
 
     private static boolean remove(AdminRecord record, boolean live) throws Exception {
         return switch (record.key().kind()) {
-            case DATABASE -> DatabaseRecordApplier.remove(record, live);
+            case PROJECT -> ProjectRecordApplier.remove(record, live);
             case COLLECTION -> CollectionRecordApplier.remove(record, live);
             case USER -> UserRecordApplier.remove(record);
             case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE -> DefinitionRecordApplier.remove(record);
@@ -225,28 +225,28 @@ public final class AdminRecordMerge {
 
     private static Parent parentOf(AdminRecordKey key, long version, Map<String, Long> tombstones) {
         return switch (key.kind()) {
-            case DATABASE, USER -> Parent.LIVE;
-            case COLLECTION, PROCEDURE, SCHEDULE -> database(key.dbName(), version, tombstones);
+            case PROJECT, USER -> Parent.LIVE;
+            case COLLECTION, PROCEDURE, SCHEDULE -> project(key.projectName(), version, tombstones);
             case SCHEMA, TRIGGERS -> collection(key, version, tombstones);
         };
     }
 
-    private static Parent database(String dbName, long version, Map<String, Long> tombstones) {
-        if (diedAtOrAfter(AdminRecordKey.database(dbName), version, tombstones)) {
+    private static Parent project(String projectName, long version, Map<String, Long> tombstones) {
+        if (diedAtOrAfter(AdminRecordKey.project(projectName), version, tombstones)) {
             return Parent.DEAD;
         }
-        return cache.getAdminDbEntry(dbName) != null ? Parent.LIVE : Parent.UNKNOWN;
+        return cache.getAdminProjectEntry(projectName) != null ? Parent.LIVE : Parent.UNKNOWN;
     }
 
     private static Parent collection(AdminRecordKey key, long version, Map<String, Long> tombstones) {
-        final var database = database(key.dbName(), version, tombstones);
-        if (database != Parent.LIVE) {
-            return database;
+        final var project = project(key.projectName(), version, tombstones);
+        if (project != Parent.LIVE) {
+            return project;
         }
-        if (diedAtOrAfter(AdminRecordKey.collection(key.dbName(), key.name()), version, tombstones)) {
+        if (diedAtOrAfter(AdminRecordKey.collection(key.projectName(), key.name()), version, tombstones)) {
             return Parent.DEAD;
         }
-        return cache.getAdminCollectionEntry(key.dbName(), key.name()) != null ? Parent.LIVE : Parent.UNKNOWN;
+        return cache.getAdminCollectionEntry(key.projectName(), key.name()) != null ? Parent.LIVE : Parent.UNKNOWN;
     }
 
     private static boolean diedAtOrAfter(AdminRecordKey parent, long version, Map<String, Long> tombstones) {

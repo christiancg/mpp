@@ -38,7 +38,7 @@ public class TriggerRunLogStagingTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -56,12 +56,12 @@ public class TriggerRunLogStagingTest {
     private static DbEntry idEntry(String id) {
         final var data = new JsonObject();
         data.add(Globals.PK_FIELD, new JsonString(id));
-        return DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        return DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
     }
 
     private static TriggerRunLog.TriggerRunDescriptor descriptor(EventType type, List<DbEntry> entries) {
-        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.DB, TestGlobals.COLL, "audit", "recalc", type, true,
-                "alice", 0, System.currentTimeMillis(), entries);
+        return new TriggerRunLog.TriggerRunDescriptor(TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc", type,
+                true, "alice", 0, System.currentTimeMillis(), entries);
     }
 
     private static List<DbEntry> entriesSpanningSeveralChunks() {
@@ -142,7 +142,7 @@ public class TriggerRunLogStagingTest {
 
     @Test
     public void test_record_deterministic_replaces_existing_chunks_of_that_run() throws Exception {
-        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.CREATED, null);
         TriggerRunLog.recordDeterministic(descriptor(EventType.CREATED, entriesSpanningSeveralChunks()), TX_ID, runId);
         assertTrue(TriggerRunLog.recordIdsFor(runId).size() > 1);
@@ -157,31 +157,31 @@ public class TriggerRunLogStagingTest {
 
     @Test
     public void test_deterministic_run_id_is_stable_and_distinct_per_trigger_type_and_id() {
-        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.CREATED, "a");
 
-        assertEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        assertEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.CREATED, "a"));
-        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.CREATED, "b"));
-        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.UPDATED, "a"));
-        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "other",
+        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "other",
                 EventType.CREATED, "a"));
-        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "audit",
+        assertNotEquals(runId, TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "audit",
                 EventType.CREATED, null));
     }
 
     @Test
-    public void test_deterministic_run_id_is_distinct_per_database_and_collection() {
-        final var runId = TriggerRunLog.deterministicRunId(TX_ID, "db1", "coll1", "audit", EventType.CREATED, "a");
+    public void test_deterministic_run_id_is_distinct_per_project_and_collection() {
+        final var runId = TriggerRunLog.deterministicRunId(TX_ID, "project1", "coll1", "audit", EventType.CREATED, "a");
 
         assertNotEquals(runId,
-                TriggerRunLog.deterministicRunId(TX_ID, "db1", "coll2", "audit", EventType.CREATED, "a"));
+                TriggerRunLog.deterministicRunId(TX_ID, "project1", "coll2", "audit", EventType.CREATED, "a"));
         assertNotEquals(runId,
-                TriggerRunLog.deterministicRunId(TX_ID, "db2", "coll1", "audit", EventType.CREATED, "a"));
-        assertNotEquals(TriggerRunLog.deterministicRunId(TX_ID, "db1", "coll1", "audit", EventType.DELETED, null),
-                TriggerRunLog.deterministicRunId(TX_ID, "db1", "coll2", "audit", EventType.DELETED, null));
+                TriggerRunLog.deterministicRunId(TX_ID, "project2", "coll1", "audit", EventType.CREATED, "a"));
+        assertNotEquals(TriggerRunLog.deterministicRunId(TX_ID, "project1", "coll1", "audit", EventType.DELETED, null),
+                TriggerRunLog.deterministicRunId(TX_ID, "project1", "coll2", "audit", EventType.DELETED, null));
     }
 
     @Test
@@ -247,7 +247,7 @@ public class TriggerRunLogStagingTest {
 
     @Test
     public void test_record_deterministic_stamps_tx_id_on_every_chunk() throws Exception {
-        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.DB, TestGlobals.COLL, "stamped",
+        final var runId = TriggerRunLog.deterministicRunId(TX_ID, TestGlobals.PROJECT, TestGlobals.COLL, "stamped",
                 EventType.CREATED, null);
         TriggerRunLog.recordDeterministic(descriptor(EventType.CREATED, entriesSpanningSeveralChunks()), TX_ID, runId);
 

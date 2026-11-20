@@ -43,18 +43,18 @@ public class GeoSpatialIndexHelperTest {
 
     private static void seedGeoIndex() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var cache = IocContainer.get(Cache.class);
         for (var i = 0; i < 40; i++) {
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("g" + i));
             object.add("location", new JsonGeo("#geo(40." + i + ",-74.0)"));
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
             entry.set_id("g" + i);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
         }
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "location");
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("location"));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "location");
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("location"));
     }
 
     private static CustomOperator withinRadius() {
@@ -71,9 +71,9 @@ public class GeoSpatialIndexHelperTest {
         seedGeoIndex();
         try {
             final var operator = withinRadius();
-            IndexRaceSupport.readWhileTheIndexerChurns(TestGlobals.DB, TestGlobals.COLL, "location", JsonGeo.class,
-                    () -> assertNotNull(GeoSpatialIndexHelper.candidateIds(operator, TestGlobals.DB, TestGlobals.COLL,
-                            ReadObserver.NONE)));
+            IndexRaceSupport.readWhileTheIndexerChurns(TestGlobals.PROJECT, TestGlobals.COLL, "location", JsonGeo.class,
+                    () -> assertNotNull(GeoSpatialIndexHelper.candidateIds(operator, TestGlobals.PROJECT,
+                            TestGlobals.COLL, ReadObserver.NONE)));
         } finally {
             TestUtils.standardTearDown();
         }
@@ -93,19 +93,19 @@ public class GeoSpatialIndexHelperTest {
     @Test
     public void test_within_polygon_candidate_set_includes_a_point_just_across_the_antimeridian() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         try {
             final var cache = IocContainer.get(Cache.class);
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("dateline"));
             object.add("location", new JsonGeo("#geo(0.0,178.0)"));
-            final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, object);
+            final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, object);
             entry.set_id("dateline");
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-            IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "location");
-            cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of("location"));
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+            IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "location");
+            cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of("location"));
 
-            final var candidates = GeoSpatialIndexHelper.candidateIds(withinAntimeridianPolygon(), TestGlobals.DB,
+            final var candidates = GeoSpatialIndexHelper.candidateIds(withinAntimeridianPolygon(), TestGlobals.PROJECT,
                     TestGlobals.COLL, ReadObserver.NONE);
 
             assertNotNull(candidates);

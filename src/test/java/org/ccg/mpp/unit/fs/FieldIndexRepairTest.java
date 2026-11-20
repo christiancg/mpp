@@ -19,16 +19,16 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
     private static final String FIELD = "score";
 
     private File indexFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.INDEX_FILE_NAME_SEPARATOR
                 + FIELD + Globals.INDEX_FILE_NAME_SEPARATOR + Globals.INDEX_TYPE_NUMBER + Globals.INDEX_FILE_EXTENSION);
     }
 
     private void writeIndexWithATornLine() throws Exception {
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, FIELD,
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                 java.util.Map.of(Number.class,
-                        List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, 1.0, Set.of("a")),
-                                new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, 2.0, Set.of("b")))));
+                        List.of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, 1.0, Set.of("a")),
+                                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, 2.0, Set.of("b")))));
         final var file = indexFile();
         Files.writeString(file.toPath(),
                 Files.readString(file.toPath(), StandardCharsets.UTF_8) + "not-an-entry" + Globals.NEWLINE,
@@ -39,7 +39,7 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
     public void test_a_torn_line_is_healed_and_the_survivors_are_kept() throws Exception {
         writeIndexWithATornLine();
 
-        final var entries = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        final var entries = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Number.class);
 
         assertEquals(2, entries.size());
         final var healed = Files.readString(indexFile().toPath(), StandardCharsets.UTF_8);
@@ -57,7 +57,7 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
             Thread.ofPlatform().start(() -> {
                 try {
                     start.await();
-                    final var entries = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD,
+                    final var entries = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD,
                             Number.class);
                     assertEquals(2, entries.size());
                 } catch (Throwable t) {
@@ -73,7 +73,7 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
         assertNull(failure.get(),
                 "the repair writes through a temp path derived from the target, so two unlocked repairs"
                         + " truncated each other's file and one read failed outright");
-        final var entries = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        final var entries = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Number.class);
         assertEquals(2, entries.size(), "neither repair may lose a surviving entry");
     }
 
@@ -85,7 +85,7 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
                 "a|0|20|0|0" + Globals.NEWLINE + "b|20|20|0|0" + Globals.NEWLINE);
         final var before = java.nio.file.Files.readAllBytes(file.toPath());
 
-        final var read = fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        final var read = fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Number.class);
 
         assertNull(read, "a file this loader cannot read at all must be declined, not answered from");
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(file.toPath()),
@@ -96,23 +96,23 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
     public void test_a_field_index_named_id_is_refused_and_leaves_the_pk_index_alone() throws Exception {
         final var data = new org.ccg.mpp.ejson.elements.JsonObject();
         data.addProperty("name", "test");
-        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("kept");
         fs.insertIntoCollection(entry);
-        final var pkFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-pk.idx");
+        final var pkFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-pk.idx");
         final var before = java.nio.file.Files.readAllBytes(pkFile.toPath());
 
-        assertNull(fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, Globals.PK_FIELD, String.class),
+        assertNull(fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, Globals.PK_FIELD, String.class),
                 "the field-index reader must never resolve the pk index");
 
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(pkFile.toPath()));
-        assertEquals(1, fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).size());
+        assertEquals(1, fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).size());
     }
 
     @Test
     public void test_a_field_index_named_tombstones_is_refused() throws Exception {
-        assertNull(fs.readWholeFieldIndexFiles(TestGlobals.DB, TestGlobals.COLL, Globals.TOMBSTONE_FILE_NAME,
+        assertNull(fs.readWholeFieldIndexFiles(TestGlobals.PROJECT, TestGlobals.COLL, Globals.TOMBSTONE_FILE_NAME,
                 String.class));
     }
 
@@ -120,15 +120,15 @@ public class FieldIndexRepairTest extends FileSystemTestBase {
     public void test_a_field_index_write_named_id_is_refused() throws Exception {
         final var data = new org.ccg.mpp.ejson.elements.JsonObject();
         data.addProperty("name", "test");
-        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = org.ccg.mpp.data.DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.set_id("kept");
         fs.insertIntoCollection(entry);
-        final var pkFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
-                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-pk.idx");
+        final var pkFile = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-pk.idx");
         final var before = java.nio.file.Files.readAllBytes(pkFile.toPath());
 
-        fs.writeIndexFile(TestGlobals.DB, TestGlobals.COLL, Globals.PK_FIELD, java.util.Map.of(String.class,
-                List.of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "x", Set.of("y")))));
+        fs.writeIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, Globals.PK_FIELD, java.util.Map.of(String.class,
+                List.of(new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "x", Set.of("y")))));
 
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(pkFile.toPath()));
     }

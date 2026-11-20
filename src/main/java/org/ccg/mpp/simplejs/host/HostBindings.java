@@ -6,7 +6,7 @@ import org.ccg.mpp.ejson.elements.JsonObject;
 public interface HostBindings {
     JsonObject args();
 
-    DatabaseAccess database();
+    ProjectAccess project();
 
     Consumer<String> console();
 

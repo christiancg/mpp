@@ -1,14 +1,14 @@
 # AsyncCollection
 
-One collection of a database, typed by how it maps documents: `AsyncCollection[T, R]` saves `T` and reads `R`.
+One collection of a project, typed by how it maps documents: `AsyncCollection[T, R]` saves `T` and reads `R`.
 
 A collection must exist before its first write: a save into a missing one is refused with `404-11`.
 
 The sync class `Collection` has the same members; its methods block and return the value directly.
 
-## database_name
+## project_name
 
-The database the collection belongs to.
+The project the collection belongs to.
 
 ## name
 

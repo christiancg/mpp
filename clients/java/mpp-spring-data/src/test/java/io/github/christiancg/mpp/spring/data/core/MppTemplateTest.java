@@ -49,7 +49,7 @@ public class MppTemplateTest {
         final var saved = template.save(Widget.of(null, "bolt", 2));
         final var request = stack.next("SAVE");
         assertEquals(saved.code(), request.get("object").get("_id").asString());
-        assertEquals("shop", request.get("databaseName").asString());
+        assertEquals("shop", request.get("projectName").asString());
         assertEquals("widgets", request.get("collectionName").asString());
         final var all = template.saveAll(List.of(Widget.of("a", "x", 1), Widget.of(null, "y", 2)));
         assertEquals(2, stack.next("BULK_SAVE").get("objects").size());
@@ -87,7 +87,7 @@ public class MppTemplateTest {
         assertEquals(5, template.count(Widget.class, Filters.field("name").eq("bolt")));
         stack.results("[" + ROW + "]");
         assertTrue(template.exists(Widget.class, null));
-        assertEquals("shop", template.getMappingContext().defaultDatabase());
+        assertEquals("shop", template.getMappingContext().defaultProject());
         assertSame(stack.client, template.getClient());
         assertEquals("ok", template.execute(client -> "ok"));
     }

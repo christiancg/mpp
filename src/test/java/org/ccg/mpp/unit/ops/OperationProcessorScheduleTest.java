@@ -13,9 +13,9 @@ import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.OperationType;
-import org.ccg.mpp.ops.req.CreateDatabaseRequest;
+import org.ccg.mpp.ops.req.CreateProjectRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
-import org.ccg.mpp.ops.req.DropDatabaseRequest;
+import org.ccg.mpp.ops.req.DropProjectRequest;
 import org.ccg.mpp.ops.req.ListSchedulesRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
@@ -38,7 +38,7 @@ public class OperationProcessorScheduleTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -55,24 +55,24 @@ public class OperationProcessorScheduleTest {
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         TestUtils.setPrivateField(configuration, "schedulesEnabled", true);
         TestUtils.setPrivateField(configuration, "scriptMaxSourceBytes", 262_144L);
-        TestUtils.setPrivateField(configuration, "scheduleMaxPerDatabase", 100);
+        TestUtils.setPrivateField(configuration, "scheduleMaxPerProject", 100);
         TestUtils.setPrivateField(configuration, "scriptTimeZone", "UTC");
-        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteSchedule(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listScheduleNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteSchedule(TestGlobals.PROJECT, name);
         }
-        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.DB)) {
-            fs.metadataFiles().deleteProcedure(TestGlobals.DB, name);
+        for (final var name : fs.metadataFiles().listProcedureNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteProcedure(TestGlobals.PROJECT, name);
         }
-        cache.removeSchedulesForDatabase(TestGlobals.DB);
-        cache.removeProceduresForDatabase(TestGlobals.DB);
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
-        IocContainer.get(CompiledProcedureCache.class).invalidateDatabase(TestGlobals.DB);
+        cache.removeSchedulesForProject(TestGlobals.PROJECT);
+        cache.removeProceduresForProject(TestGlobals.PROJECT);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
+        IocContainer.get(CompiledProcedureCache.class).invalidateProject(TestGlobals.PROJECT);
         registry.clear();
-        processor.processMessage(new SaveProcedureRequest(TestGlobals.DB, "job", "return 1;"));
+        processor.processMessage(new SaveProcedureRequest(TestGlobals.PROJECT, "job", "return 1;"));
     }
 
     private static SaveScheduleRequest saveRequest() {
-        final var request = new SaveScheduleRequest(TestGlobals.DB, "nightly", "job");
+        final var request = new SaveScheduleRequest(TestGlobals.PROJECT, "nightly", "job");
         request.setIntervalMs(60_000L);
         return request;
     }
@@ -80,11 +80,12 @@ public class OperationProcessorScheduleTest {
     @Test
     public void test_dispatches_save_list_and_delete() {
         assertInstanceOf(SaveScheduleResponse.class, processor.processMessage(saveRequest()));
-        final var listed = (ListSchedulesResponse) processor.processMessage(new ListSchedulesRequest(TestGlobals.DB));
+        final var listed = (ListSchedulesResponse) processor
+                .processMessage(new ListSchedulesRequest(TestGlobals.PROJECT));
         assertEquals(1, listed.getSchedules().size());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new DeleteScheduleRequest(TestGlobals.DB, "nightly")).getStatus());
-        assertNull(cache.getSchedule(TestGlobals.DB, "nightly"));
+                processor.processMessage(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly")).getStatus());
+        assertNull(cache.getSchedule(TestGlobals.PROJECT, "nightly"));
     }
 
     @Test
@@ -92,9 +93,9 @@ public class OperationProcessorScheduleTest {
         TestUtils.setPrivateField(configuration, "schedulesEnabled", false);
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(), processor.processMessage(saveRequest()).getErrorCode());
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(),
-                processor.processMessage(new DeleteScheduleRequest(TestGlobals.DB, "nightly")).getErrorCode());
+                processor.processMessage(new DeleteScheduleRequest(TestGlobals.PROJECT, "nightly")).getErrorCode());
         assertEquals(ErrorCode.SCRIPTS_DISABLED.getCode(),
-                processor.processMessage(new ListSchedulesRequest(TestGlobals.DB)).getErrorCode());
+                processor.processMessage(new ListSchedulesRequest(TestGlobals.PROJECT)).getErrorCode());
     }
 
     @Test
@@ -105,16 +106,16 @@ public class OperationProcessorScheduleTest {
     }
 
     @Test
-    public void test_drop_database_removes_schedules() throws Exception {
-        final var dbName = "scheddropdb";
-        assertEquals(OperationStatus.OK, processor.processMessage(new CreateDatabaseRequest(dbName)).getStatus());
-        processor.processMessage(new SaveProcedureRequest(dbName, "job", "return 1;"));
-        final var request = new SaveScheduleRequest(dbName, "nightly", "job");
+    public void test_drop_project_removes_schedules() throws Exception {
+        final var projectName = "scheddropdb";
+        assertEquals(OperationStatus.OK, processor.processMessage(new CreateProjectRequest(projectName)).getStatus());
+        processor.processMessage(new SaveProcedureRequest(projectName, "job", "return 1;"));
+        final var request = new SaveScheduleRequest(projectName, "nightly", "job");
         request.setIntervalMs(60_000L);
         assertInstanceOf(SaveScheduleResponse.class, processor.processMessage(request));
 
-        assertEquals(OperationStatus.OK, processor.processMessage(new DropDatabaseRequest(dbName)).getStatus());
-        assertTrue(fs.metadataFiles().listScheduleNames(dbName).isEmpty());
-        assertNull(cache.getSchedule(dbName, "nightly"));
+        assertEquals(OperationStatus.OK, processor.processMessage(new DropProjectRequest(projectName)).getStatus());
+        assertTrue(fs.metadataFiles().listScheduleNames(projectName).isEmpty());
+        assertNull(cache.getSchedule(projectName, "nightly"));
     }
 }

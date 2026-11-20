@@ -31,7 +31,7 @@ public class ScriptPlacement {
         this.random = random;
     }
 
-    public NodeInfo choose(String databaseName) {
+    public NodeInfo choose(String projectName) {
         if (!clusterConfig.isEnabled() || !clusterConfig.scriptRoutingEnabled()) {
             return null;
         }
@@ -43,7 +43,7 @@ public class ScriptPlacement {
         if (eligible.size() <= 1) {
             return null;
         }
-        final var chosen = betterOfTwoSamples(eligible, ownershipShares(databaseName));
+        final var chosen = betterOfTwoSamples(eligible, ownershipShares(projectName));
         return chosen.getNodeId().equals(self.getNodeId()) ? null : chosen;
     }
 
@@ -85,17 +85,17 @@ public class ScriptPlacement {
         return eligible;
     }
 
-    private Map<String, Double> ownershipShares(String databaseName) {
-        if (databaseName == null) {
+    private Map<String, Double> ownershipShares(String projectName) {
+        if (projectName == null) {
             return Map.of();
         }
-        final var collections = cache.getCollectionNamesForDatabase(databaseName);
+        final var collections = cache.getCollectionNamesForProject(projectName);
         if (collections == null || collections.isEmpty()) {
             return Map.of();
         }
         final var counts = new HashMap<String, Integer>();
         for (final var collName : collections) {
-            final var owner = ownershipManager.ownerFor(databaseName, collName);
+            final var owner = ownershipManager.ownerFor(projectName, collName);
             if (owner != null) {
                 counts.merge(owner, 1, Integer::sum);
             }

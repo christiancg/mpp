@@ -50,7 +50,7 @@ public class BeforeHookReplacementDepthTest {
     @BeforeEach
     void reset() throws Exception {
         BeforeHookTestSupport.reset();
-        processor.processMessage(new DeleteSchemaRequest(TestGlobals.DB, TestGlobals.COLL));
+        processor.processMessage(new DeleteSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private static void installNestingHook(int wraps) throws Exception {
@@ -61,14 +61,14 @@ public class BeforeHookReplacementDepthTest {
     }
 
     private static BeforeHookOutcome run(String id) {
-        try (var hooks = BeforeHookContext.open(TestGlobals.DB, TestGlobals.COLL, EventType.CREATED,
+        try (var hooks = BeforeHookContext.open(TestGlobals.PROJECT, TestGlobals.COLL, EventType.CREATED,
                 BeforeHookTestSupport.ACTOR)) {
             return hooks.apply(BeforeHookTestSupport.document(id), id, OperationType.SAVE);
         }
     }
 
     private JsonObject find(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse found ? found.getObject() : null;
     }
@@ -106,7 +106,7 @@ public class BeforeHookReplacementDepthTest {
 
     @Test
     public void test_a_too_deep_replacement_is_refused_before_the_schema_runs() throws Exception {
-        processor.processMessage(new SaveSchemaRequest(TestGlobals.DB, TestGlobals.COLL,
+        processor.processMessage(new SaveSchemaRequest(TestGlobals.PROJECT, TestGlobals.COLL,
                 eJson.fromJson("{\"type\":\"object\",\"required\":[\"absent\"]}", JsonObject.class)));
         installNestingHook(200);
 
@@ -121,7 +121,7 @@ public class BeforeHookReplacementDepthTest {
         installNestingHook(200);
         final var client = BeforeHookTestSupport.newClient();
         processor.processMessage(new StartTransactionRequest(), client);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(BeforeHookTestSupport.document("tx-deep"));
         request.set_id("tx-deep");
 
@@ -134,7 +134,7 @@ public class BeforeHookReplacementDepthTest {
     @Test
     public void test_a_too_deep_replacement_is_refused_standalone() throws Exception {
         installNestingHook(200);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(BeforeHookTestSupport.document("solo-deep"));
         request.set_id("solo-deep");
 

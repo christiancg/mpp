@@ -38,7 +38,7 @@ public class ReplicationIntegrationTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.start();
     }
 
@@ -52,7 +52,7 @@ public class ReplicationIntegrationTest {
     @Test
     public void test_replicate_message_applies_over_socket() throws Exception {
         final var message = new ClusterMessage(null, ClusterMessageType.REPLICATE, SECRET, node("peer", 1), null);
-        message.setReplication(new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        message.setReplication(new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("s1")), null));
         final var ack = pool.request(cluster.serverAddress(), message, 3000);
         assertEquals(ClusterMessageType.REPLICATE_ACK, ack.getType());
@@ -62,7 +62,7 @@ public class ReplicationIntegrationTest {
     @Test
     public void test_broadcast_single_node_is_immediately_met() throws Exception {
         cluster.configureMembership(1, node("self", 19990));
-        final var payload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("b1")), null);
         assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcast(payload));
     }
@@ -70,7 +70,7 @@ public class ReplicationIntegrationTest {
     @Test
     public void test_broadcast_reaches_quorum_with_a_reachable_peer() throws Exception {
         cluster.configureMembership(2, node("self", 19990), node("peer", cluster.serverPort()));
-        final var payload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.UPSERT,
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.UPSERT,
                 List.of(doc("b2")), null);
         assertEquals(ReplicationOutcome.QUORUM_MET, replicator.broadcast(payload));
         assertEquals(OperationStatus.OK, findStatus("b2"));
@@ -79,7 +79,7 @@ public class ReplicationIntegrationTest {
     @Test
     public void test_broadcast_times_out_when_peer_unreachable() throws Exception {
         cluster.configureMembership(2, node("self", 19990), node("peer", 1));
-        final var payload = new ReplicationPayload(TestGlobals.DB, TestGlobals.COLL, ReplicationOp.DELETE, null,
+        final var payload = new ReplicationPayload(TestGlobals.PROJECT, TestGlobals.COLL, ReplicationOp.DELETE, null,
                 List.of("nope"));
         assertEquals(ReplicationOutcome.TIMEOUT, replicator.broadcast(payload));
     }

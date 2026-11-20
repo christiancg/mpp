@@ -14,36 +14,36 @@ import org.junit.jupiter.api.Test;
 public class FileSystemHashIndexTest extends FileSystemTestBase {
     @Test
     public void test_hash_index_write_empty_list_is_noop() throws IOException {
-        fs.writeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, "payload", IndexKind.OBJECT, List.of());
-        assertNull(fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, "payload", IndexKind.OBJECT));
+        fs.writeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, "payload", IndexKind.OBJECT, List.of());
+        assertNull(fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, "payload", IndexKind.OBJECT));
     }
 
     @Test
     public void test_hash_index_update_insert_then_remove() throws IOException {
         String fieldName = "payload";
 
-        FieldIndexEntry<String> inserted = new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "cccc3333",
+        FieldIndexEntry<String> inserted = new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "cccc3333",
                 new HashSet<>(Set.of("id1")));
-        fs.writeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List.of(inserted));
-        var index = fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT);
+        fs.writeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List.of(inserted));
+        var index = fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT);
         assertNotNull(index);
         assertEquals(1, index.size());
 
-        fs.appendIndexLog(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT.label(), List.of(), List.of(),
-                false);
-        assertNull(fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT));
+        fs.appendIndexLog(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT.label(), List.of(),
+                List.of(), false);
+        assertNull(fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT));
     }
 
     @Test
     public void test_drop_index_removes_hash_index_files() throws IOException {
         String fieldName = "payload";
-        fs.writeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List
-                .of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "dddd4444", new HashSet<>(Set.of("a")))));
-        fs.writeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.ARRAY, List
-                .of(new FieldIndexEntry<>(TestGlobals.DB, TestGlobals.COLL, "eeee5555", new HashSet<>(Set.of("b")))));
+        fs.writeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT, List.of(
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "dddd4444", new HashSet<>(Set.of("a")))));
+        fs.writeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.ARRAY, List.of(
+                new FieldIndexEntry<>(TestGlobals.PROJECT, TestGlobals.COLL, "eeee5555", new HashSet<>(Set.of("b")))));
 
-        assertTrue(fs.dropIndex(TestGlobals.DB, TestGlobals.COLL, fieldName));
-        assertNull(fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.OBJECT));
-        assertNull(fs.readWholeHashIndexFile(TestGlobals.DB, TestGlobals.COLL, fieldName, IndexKind.ARRAY));
+        assertTrue(fs.dropIndex(TestGlobals.PROJECT, TestGlobals.COLL, fieldName));
+        assertNull(fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.OBJECT));
+        assertNull(fs.readWholeHashIndexFile(TestGlobals.PROJECT, TestGlobals.COLL, fieldName, IndexKind.ARRAY));
     }
 }

@@ -44,10 +44,10 @@ internal static class Descriptors
         Text(row, "_id"),
         row.GetBoolean("admin") ?? false,
         List(row, "globalPermissions"),
-        row.GetDocument("databasePermissions") ?? Document.Empty,
+        row.GetDocument("projectPermissions") ?? Document.Empty,
         row.GetDocument("collectionPermissions") ?? Document.Empty,
         row.GetDocument("scriptPermissions") ?? Document.Empty,
-        List(row, "ownedDatabases"),
+        List(row, "ownedProjects"),
         row);
 
     public static TransactionInfo Transaction(Document row) => new(
@@ -62,7 +62,7 @@ internal static class Descriptors
         Text(row, "runId"),
         row.GetString("node"),
         Text(row, "kind"),
-        row.GetString("database"),
+        row.GetString("project"),
         row.GetString("name"),
         row.GetString("username"),
         Whole(row, "ageMs"),
@@ -71,7 +71,7 @@ internal static class Descriptors
     public static TriggerRun TriggerRun(Document row) => new(
         Text(row, "runId"),
         Text(row, "status"),
-        row.GetString("database"),
+        row.GetString("project"),
         row.GetString("collection"),
         row.GetString("trigger"),
         row.GetString("procedure"),

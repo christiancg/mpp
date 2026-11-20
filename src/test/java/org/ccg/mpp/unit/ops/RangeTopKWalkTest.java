@@ -41,7 +41,7 @@ public class RangeTopKWalkTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < CROWD; i++) {
             documents.add(TopKFixture.document(String.format("a%04d", i), 0, 1));
@@ -51,7 +51,7 @@ public class RangeTopKWalkTest {
         }
         fixture.createIndexedOnTs(documents);
         final var created = IocContainer.get(OperationProcessor.class)
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, "region"));
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, "region"));
         assertEquals(OperationStatus.OK, created.getStatus(), created.getMessage());
         fixture.drain();
     }

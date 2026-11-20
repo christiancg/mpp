@@ -27,10 +27,10 @@ public class IndexHelperNumericValueTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
-        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL),
-                new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "1", 0, 100, 0));
+        cache.putAdminCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL),
+                new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "1", 0, 100, 0));
     }
 
     @AfterEach
@@ -42,20 +42,20 @@ public class IndexHelperNumericValueTest {
         final var obj = new JsonObject();
         obj.addProperty(Globals.PK_FIELD, id);
         obj.addProperty(FIELD, bucket);
-        cache.addEntryToCache(TestGlobals.DB, TestGlobals.COLL,
-                DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj));
+        cache.addEntryToCache(TestGlobals.PROJECT, TestGlobals.COLL,
+                DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj));
     }
 
     private void indexAll(List<String> ids) throws IOException, InterruptedException {
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, FIELD);
-        cache.getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL).setIndexes(Set.of(FIELD));
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, FIELD);
+        cache.getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL).setIndexes(Set.of(FIELD));
         for (final var id : ids) {
-            IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, id);
+            IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, id);
         }
     }
 
     private List<FieldIndexEntry<Number>> index() throws IOException {
-        return cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, FIELD, Number.class);
+        return cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, FIELD, Number.class);
     }
 
     private Set<String> idsFor(double value) throws IOException {
@@ -141,7 +141,7 @@ public class IndexHelperNumericValueTest {
         assertEquals(Set.copyOf(ids), idsFor(5d));
 
         save("m1", 9);
-        IndexHelper.updateIndexes(TestGlobals.DB, TestGlobals.COLL, "m1");
+        IndexHelper.updateIndexes(TestGlobals.PROJECT, TestGlobals.COLL, "m1");
 
         assertEquals(Set.of("m0", "m2"), idsFor(5d));
         assertEquals(Set.of("m1"), idsFor(9d));

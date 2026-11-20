@@ -12,7 +12,7 @@ import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.data.auth.PermissionLevel;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -35,7 +35,7 @@ abstract class AdminRecordTestBase {
     @BeforeEach
     public void setUpAdminRecords() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         origEnabled = config.isClusterEnabled();
         TestUtils.setPrivateField(config, "clusterEnabled", true);
     }
@@ -53,37 +53,37 @@ abstract class AdminRecordTestBase {
         return body;
     }
 
-    protected AdminRecord database(String dbName, long version, String... owners) {
-        return new AdminRecord(AdminRecordKey.database(dbName), version,
-                bodyOf(new AdminDbEntry(dbName, new ArrayList<>(), new ArrayList<>(List.of(owners)))));
+    protected AdminRecord project(String projectName, long version, String... owners) {
+        return new AdminRecord(AdminRecordKey.project(projectName), version,
+                bodyOf(new AdminProjectEntry(projectName, new ArrayList<>(), new ArrayList<>(List.of(owners)))));
     }
 
-    protected AdminRecord collection(String dbName, String collName, long version, String... indexes) {
-        return collection(dbName, collName, version, 0L, indexes);
+    protected AdminRecord collection(String projectName, String collName, long version, String... indexes) {
+        return collection(projectName, collName, version, 0L, indexes);
     }
 
-    protected AdminRecord collection(String dbName, String collName, long version, long incarnation,
+    protected AdminRecord collection(String projectName, String collName, long version, long incarnation,
             String... indexes) {
-        final var entry = new AdminCollEntry(dbName, collName, Set.of(indexes));
+        final var entry = new AdminCollEntry(projectName, collName, Set.of(indexes));
         entry.setIncarnation(incarnation);
-        return new AdminRecord(AdminRecordKey.collection(dbName, collName), version, bodyOf(entry));
+        return new AdminRecord(AdminRecordKey.collection(projectName, collName), version, bodyOf(entry));
     }
 
     protected AdminRecord user(String username, long version) {
         return user(username, version, new HashMap<>());
     }
 
-    protected AdminRecord user(String username, long version, Map<String, PermissionLevel> databaseGrants) {
+    protected AdminRecord user(String username, long version, Map<String, PermissionLevel> projectGrants) {
         return new AdminRecord(AdminRecordKey.user(username), version, bodyOf(
-                new AdminUserEntry(username, "hash-" + username, false, Set.of(), databaseGrants, new HashMap<>())));
+                new AdminUserEntry(username, "hash-" + username, false, Set.of(), projectGrants, new HashMap<>())));
     }
 
-    protected AdminRecord procedure(String dbName, String name, long version) {
+    protected AdminRecord procedure(String projectName, String name, long version) {
         final var body = new JsonObject();
         body.addProperty("name", name);
         body.addProperty("source", "return 1;");
         body.addProperty("writeVersion", Long.toString(version));
-        return new AdminRecord(AdminRecordKey.procedure(dbName, name), version, body);
+        return new AdminRecord(AdminRecordKey.procedure(projectName, name), version, body);
     }
 
     protected AdminRecord schema(String collName, long version) {
@@ -92,7 +92,7 @@ abstract class AdminRecordTestBase {
         final var body = new JsonObject();
         body.add("schema", schema);
         body.addProperty("writeVersion", Long.toString(version));
-        return new AdminRecord(AdminRecordKey.schema(TestGlobals.DB, collName), version, body);
+        return new AdminRecord(AdminRecordKey.schema(TestGlobals.PROJECT, collName), version, body);
     }
 
     protected static AdminRecord tombstone(AdminRecordKey key, long version) {

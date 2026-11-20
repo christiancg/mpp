@@ -66,12 +66,12 @@ public class AdminRecordMergeUserTest extends AdminRecordTestBase {
         AdminRecordMerge.apply(List.of(userWithHash("gina", "hash-one", clock.next(), new HashMap<>())), true);
         final var session = connectAs("gina");
 
-        AdminRecordMerge.apply(
-                List.of(userWithHash("gina", "hash-one", clock.next(), Map.of(TestGlobals.DB, PermissionLevel.READ))),
+        AdminRecordMerge.apply(List
+                .of(userWithHash("gina", "hash-one", clock.next(), Map.of(TestGlobals.PROJECT, PermissionLevel.READ))),
                 true);
 
         assertEquals(PermissionLevel.READ,
-                cache.getAdminUserEntry("gina").getDatabasePermissions().get(TestGlobals.DB));
+                cache.getAdminUserEntry("gina").getProjectPermissions().get(TestGlobals.PROJECT));
         assertEquals("gina", clientTracker.getAuthenticatedUsername(session));
     }
 

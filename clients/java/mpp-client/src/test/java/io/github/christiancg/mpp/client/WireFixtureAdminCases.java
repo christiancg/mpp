@@ -35,9 +35,9 @@ final class WireFixtureAdminCases {
     }
 
     private static void ddl(Map<String, Consumer<Recorder>> cases) {
-        cases.put("ddl.list_databases", r -> r.channel.send(null, r.encoder.listDatabases()));
-        cases.put("ddl.create_database", r -> r.shop.create());
-        cases.put("ddl.drop_database", r -> r.shop.drop());
+        cases.put("ddl.list_projects", r -> r.channel.send(null, r.encoder.listProjects()));
+        cases.put("ddl.create_project", r -> r.shop.create());
+        cases.put("ddl.drop_project", r -> r.shop.drop());
         cases.put("ddl.list_collections", r -> r.shop.listCollections());
         cases.put("ddl.create_collection", r -> r.orders.create());
         cases.put("ddl.drop_collection", r -> r.orders.drop());
@@ -52,8 +52,8 @@ final class WireFixtureAdminCases {
         cases.put("schema.get", r -> r.orders.schema().get());
         cases.put("schema.delete", r -> r.orders.schema().delete());
         cases.put("info.server_info", r -> r.channel.send(null, r.encoder.serverInfo()));
-        cases.put("info.database_stats_all", r -> r.channel.send(null, r.encoder.databaseStats()));
-        cases.put("info.database_stats_one", r -> r.shop.stats());
+        cases.put("info.project_stats_all", r -> r.channel.send(null, r.encoder.projectStats()));
+        cases.put("info.project_stats_one", r -> r.shop.stats());
         cases.put("info.close_connection", r -> r.channel.send(null, r.encoder.closeConnection()));
     }
 
@@ -94,7 +94,7 @@ final class WireFixtureAdminCases {
                 .builder("rollup", "rollup").events(TriggerEvent.CREATED).mode(TriggerMode.BATCH).build()));
         cases.put("scripting.delete_trigger", r -> r.orders.triggers().delete("audit"));
         cases.put("scripting.list_triggers_collection", r -> r.orders.triggers().list());
-        cases.put("scripting.list_triggers_database", r -> r.shop.listTriggers());
+        cases.put("scripting.list_triggers_project", r -> r.shop.listTriggers());
         cases.put("scripting.test_trigger",
                 r -> r.orders.triggers().test("normalize", TriggerEvent.CREATED, Document.of("_id", "o-1", "qty", 2)));
         cases.put("scripting.save_schedule_cron",
@@ -120,18 +120,18 @@ final class WireFixtureAdminCases {
     private static void users(Map<String, Consumer<Recorder>> cases) {
         cases.put("users.authenticate", r -> r.channel.send(null, r.encoder.authenticate("alice", "Secret-1234")));
         cases.put("users.create", r -> r.admin.users().create("bob", "Secret-1234",
-                Permissions.builder().admin(false).global(GlobalPermission.CREATE_DATABASE)
-                        .database("shop", DataPermission.READ_WRITE).collection("shop", "orders", DataPermission.READ)
+                Permissions.builder().admin(false).global(GlobalPermission.CREATE_PROJECT)
+                        .project("shop", DataPermission.READ_WRITE).collection("shop", "orders", DataPermission.READ)
                         .scripts("shop", ScriptPermission.MANAGE).build()));
         cases.put("users.create_minimal", r -> r.admin.users().create("bob", "Secret-1234"));
         cases.put("users.delete", r -> r.admin.users().delete("bob"));
         cases.put("users.change_permissions", r -> r.admin.users().changePermissions("bob", Permissions.builder()
-                .database("shop", DataPermission.READ).scripts("shop", ScriptPermission.RUN).build()));
+                .project("shop", DataPermission.READ).scripts("shop", ScriptPermission.RUN).build()));
         cases.put("users.set_password_own",
                 r -> r.channel.send(null, r.scripts.setPassword("alice", "Secret-1234", "Secret-5678")));
         cases.put("users.set_password_admin", r -> r.admin.users().setPassword("bob", "Secret-5678"));
         cases.put("users.list", r -> r.admin.users().list());
         cases.put("users.list_filtered", r -> r.admin.users().list(field("admin").eq(true)));
-        cases.put("users.set_database_owners", r -> r.shop.setOwners(List.of("alice", "bob")));
+        cases.put("users.set_project_owners", r -> r.shop.setOwners(List.of("alice", "bob")));
     }
 }

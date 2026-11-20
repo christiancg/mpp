@@ -30,10 +30,11 @@ public class ProcedureListingTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         saveUser(RUNNER, ScriptPermissionLevel.RUN);
         saveUser(MANAGER, ScriptPermissionLevel.MANAGE);
-        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.DB, "listed", "return 1;"), MANAGER);
+        ProcedureOperationHelper.executeSave(new SaveProcedureRequest(TestGlobals.PROJECT, "listed", "return 1;"),
+                MANAGER);
     }
 
     @AfterEach
@@ -44,13 +45,13 @@ public class ProcedureListingTest {
 
     private static void saveUser(String name, ScriptPermissionLevel scriptLevel) throws Exception {
         AdminOperationHelper.saveUserEntry(new AdminUserEntry(name, "h", false, Set.of(),
-                new HashMap<>(Map.of(TestGlobals.DB, PermissionLevel.READ)), new HashMap<>(),
-                new HashMap<>(Map.of(TestGlobals.DB, scriptLevel))));
+                new HashMap<>(Map.of(TestGlobals.PROJECT, PermissionLevel.READ)), new HashMap<>(),
+                new HashMap<>(Map.of(TestGlobals.PROJECT, scriptLevel))));
     }
 
     private static JsonObject onlySummaryFor(String actingUser) {
         final var response = assertInstanceOf(ListProceduresResponse.class,
-                ProcedureOperationHelper.executeList(new ListProceduresRequest(TestGlobals.DB), actingUser));
+                ProcedureOperationHelper.executeList(new ListProceduresRequest(TestGlobals.PROJECT), actingUser));
         assertEquals(1, response.getProcedures().size());
         return response.getProcedures().getFirst();
     }

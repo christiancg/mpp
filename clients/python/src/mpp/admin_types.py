@@ -13,8 +13,8 @@ class DataPermission(StrEnum):
 
 
 class GlobalPermission(StrEnum):
-    CREATE_DATABASE = "CREATE_DATABASE"
-    DROP_DATABASE = "DROP_DATABASE"
+    CREATE_PROJECT = "CREATE_PROJECT"
+    DROP_PROJECT = "DROP_PROJECT"
 
 
 class ScriptPermission(StrEnum):
@@ -43,13 +43,13 @@ class TriggerRunDecision(StrEnum):
 class Permissions:
     admin: bool = False
     global_permissions: Sequence[GlobalPermission] = ()
-    databases: Mapping[str, DataPermission] = field(default_factory=dict)
+    projects: Mapping[str, DataPermission] = field(default_factory=dict)
     collections: Mapping[str, DataPermission] = field(default_factory=dict)
     scripts: Mapping[str, ScriptPermission] = field(default_factory=dict)
 
 
-def collection_key(database: str, collection: str) -> str:
-    return f"{database}|{collection}"
+def collection_key(project: str, collection: str) -> str:
+    return f"{project}|{collection}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +57,10 @@ class UserInfo:
     username: str
     admin: bool
     global_permissions: tuple[str, ...]
-    database_permissions: Document
+    project_permissions: Document
     collection_permissions: Document
     script_permissions: Document
-    owned_databases: tuple[str, ...]
+    owned_projects: tuple[str, ...]
     raw: Document
 
 
@@ -79,7 +79,7 @@ class ScriptRun:
     run_id: str
     node: str | None
     kind: str
-    database: str | None
+    project: str | None
     name: str | None
     username: str | None
     age_ms: float
@@ -90,7 +90,7 @@ class ScriptRun:
 class TriggerRun:
     run_id: str
     status: str
-    database: str | None
+    project: str | None
     collection: str | None
     trigger: str | None
     procedure: str | None

@@ -180,7 +180,7 @@ class AppendDefectTest(unittest.TestCase):
 
     def setUp(self):
         self.scratch = tempfile.mkdtemp(prefix="mpp-crosscheck-test-")
-        self.folder = os.path.join(self.scratch, crosscheck.AT_POWER_LOSS, "db", "durability_db", "pl2")
+        self.folder = os.path.join(self.scratch, crosscheck.AT_POWER_LOSS, "db", "durability_project", "pl2")
         os.makedirs(self.folder)
 
     def tearDown(self):

@@ -41,7 +41,7 @@ abstract class VersionedReplaySupport {
     protected final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     protected final HybridClock clock = IocContainer.get(HybridClock.class);
     protected final FileSystem fs = IocContainer.get(FileSystem.class);
-    protected final String collId = Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+    protected final String collId = Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
 
     @BeforeAll
     static void setUp() throws Exception {
@@ -56,7 +56,7 @@ abstract class VersionedReplaySupport {
 
     @BeforeEach
     void freshCollection() throws Exception {
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         clock.observe(clock.next());
     }
 
@@ -78,7 +78,7 @@ abstract class VersionedReplaySupport {
     }
 
     protected static SaveRequest saveRequest(JsonObject document) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         request.set_id(document.get(Globals.PK_FIELD).asJsonString().getValue());
         return request;
@@ -93,13 +93,13 @@ abstract class VersionedReplaySupport {
     }
 
     protected static void bufferDelete(Transaction transaction, String id) {
-        final var delete = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var delete = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         delete.set_id(id);
         TransactionOperationHelper.bufferDelete(delete, transaction);
     }
 
     protected static void bufferBulkSave(Transaction transaction, JsonObject... documents) {
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         bulk.setObjects(List.of(documents));
         TransactionOperationHelper.bufferBulkSave(bulk, transaction);
     }
@@ -115,27 +115,27 @@ abstract class VersionedReplaySupport {
         final var ops = new ArrayList<>(AdminOperationHelper.readTransactionOps(opIds));
         ops.sort(Comparator.comparingLong(AdminTransactionEntry::getSeq));
         final var applier = new VersionedApply(IocContainer.get(ListenManager.class));
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             for (final var op : ops.subList(0, count)) {
                 applier.apply(op);
             }
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     protected void foreignWrite(String id, String value) throws Exception {
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             SaveOperationHelper.executeSave(saveRequest(document(id, value)));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 
     protected String valueOf(String id) throws Exception {
-        final var found = cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, Set.of(id));
+        final var found = cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, Set.of(id));
         return found.isEmpty() ? null : found.getFirst().getData().get("value").asJsonString().getValue();
     }
 
@@ -150,7 +150,7 @@ abstract class VersionedReplaySupport {
 
     protected AdminTransactionEntry preparedOp(String dtxId, int seq, String opType, JsonObject payload)
             throws Exception {
-        final var op = new AdminTransactionEntry(dtxId, "client", seq, opType, TestGlobals.DB, TestGlobals.COLL,
+        final var op = new AdminTransactionEntry(dtxId, "client", seq, opType, TestGlobals.PROJECT, TestGlobals.COLL,
                 payload);
         op.setVersions(List.of(clock.next()));
         AdminOperationHelper.saveTransactionOp(op);

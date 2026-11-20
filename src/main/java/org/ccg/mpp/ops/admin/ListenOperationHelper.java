@@ -57,18 +57,18 @@ public final class ListenOperationHelper {
 
     private static OperationResponse registerReserved(ListenRequest listenRequest, UUID clientId, String username,
             long retainedBytes) {
-        final var dbName = listenRequest.getDatabaseName();
+        final var projectName = listenRequest.getProjectName();
         final var collName = listenRequest.getCollectionName();
-        final var aggReq = new AggregateRequest(dbName, collName);
+        final var aggReq = new AggregateRequest(projectName, collName);
         aggReq.setAggregationSteps(listenRequest.getAggregationSteps());
-        final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.LISTEN, dbName,
+        final var notRegistered = CollectionReadinessGuard.precheckRead(OperationType.LISTEN, projectName,
                 AggregationOperationHelper.aggregateCollections(aggReq));
         if (notRegistered != null) {
             return notRegistered;
         }
         return OperationLocks.withReadLocks(false, AggregationOperationHelper.aggregateLockSet(aggReq),
                 OperationType.LISTEN, ErrorCode.ERROR_LISTEN, () -> {
-                    final var unregistered = CollectionReadinessGuard.checkRead(OperationType.LISTEN, dbName,
+                    final var unregistered = CollectionReadinessGuard.checkRead(OperationType.LISTEN, projectName,
                             AggregationOperationHelper.aggregateCollections(aggReq));
                     if (unregistered != null) {
                         return unregistered;
@@ -76,10 +76,10 @@ public final class ListenOperationHelper {
                     final var results = AggregationOperationHelper.processAggregation(aggReq);
                     final var ordered = ResultHasher.ordersResults(listenRequest.getAggregationSteps());
                     final var initialHash = ResultHasher.hash(results, ordered);
-                    final var dirtyReq = new AggregateRequest(dbName, collName);
+                    final var dirtyReq = new AggregateRequest(projectName, collName);
                     dirtyReq.setAggregationSteps(listenRequest.getAggregationSteps());
                     dirtyReq.setDirtyRead(true);
-                    CollectionAccessHelper.recordCollectionAccess(dbName, collName);
+                    CollectionAccessHelper.recordCollectionAccess(projectName, collName);
                     final var listenId = listenManager.register(clientId, username, dirtyReq, initialHash,
                             retainedBytes);
                     return new ListenResponse(listenId.toString(), results, initialHash, false);

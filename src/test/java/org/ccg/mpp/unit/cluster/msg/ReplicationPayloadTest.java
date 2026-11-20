@@ -33,7 +33,7 @@ public class ReplicationPayloadTest {
         final var parsedPayload = parsed.getReplication();
 
         assertEquals(ClusterMessageType.REPLICATE, parsed.getType());
-        assertEquals("db", parsedPayload.getDbName());
+        assertEquals("db", parsedPayload.getProjectName());
         assertEquals("coll", parsedPayload.getCollName());
         assertEquals(ReplicationOp.UPSERT, parsedPayload.getOp());
         assertEquals(2, parsedPayload.getDocuments().size());
@@ -53,12 +53,12 @@ public class ReplicationPayloadTest {
     @Test
     public void test_setters() {
         final var payload = new ReplicationPayload();
-        payload.setDbName("d");
+        payload.setProjectName("d");
         payload.setCollName("c");
         payload.setOp(ReplicationOp.UPSERT);
         payload.setDocuments(List.of(doc("1")));
         payload.setIds(List.of("1"));
-        assertEquals("d", payload.getDbName());
+        assertEquals("d", payload.getProjectName());
         assertEquals("c", payload.getCollName());
         assertEquals(ReplicationOp.UPSERT, payload.getOp());
         assertEquals(1, payload.getDocuments().size());
@@ -79,7 +79,7 @@ public class ReplicationPayloadTest {
 
     @Test
     public void test_a_payload_without_an_incarnation_reads_as_unknown() {
-        final var parsed = eJson.fromJson("{\"dbName\":\"db\",\"collName\":\"coll\",\"op\":\"DELETE\"}",
+        final var parsed = eJson.fromJson("{\"projectName\":\"db\",\"collName\":\"coll\",\"op\":\"DELETE\"}",
                 ReplicationPayload.class);
 
         assertEquals(0L, parsed.incarnationValue());

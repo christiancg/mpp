@@ -7,7 +7,7 @@ reply arrives, so `poolSize` bounds how many requests run at once. Close it with
 
 ```ts
 await using client = await MppClient.connect({ credentials: { username: "admin", password } });
-const orders = client.database("shop").collection("orders");
+const orders = client.project("shop").collection("orders");
 ```
 
 ## settings
@@ -22,16 +22,16 @@ Opens one connection, authenticates it and returns the client. Further connectio
 @returns the connected client
 @throws ConnectionLostError when no host accepts the connection, or AuthenticationError when the login is refused
 
-## database
+## project
 
-Names a database. Nothing is sent until a method of the returned object is called.
+Names a project. Nothing is sent until a method of the returned object is called.
 
 @param name 3-64 characters from `A-Z a-z 0-9 _ -`
-@returns the database
+@returns the project
 
-## listDatabases
+## listProjects
 
-@returns the names of the databases the user can see
+@returns the names of the projects the user can see
 
 ## serverInfo
 
@@ -39,7 +39,7 @@ Asks the server which build it runs and whether it is ready.
 
 @returns the server's state, version and the raw reply
 
-## databaseStats
+## projectStats
 
 @returns the server-wide statistics document
 

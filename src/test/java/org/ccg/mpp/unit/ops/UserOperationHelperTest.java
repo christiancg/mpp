@@ -55,7 +55,7 @@ public class UserOperationHelperTest {
         createReq.setUsername("test_user");
         createReq.setPassword(password);
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -72,7 +72,7 @@ public class UserOperationHelperTest {
         req.setUsername("new_user");
         req.setPassword("password123");
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
 
         final var resp = UserOperationHelper.processCreateUser(req);
@@ -86,7 +86,7 @@ public class UserOperationHelperTest {
         req.setUsername("duplicate");
         req.setPassword("password123");
         req.setGlobalPermissions(new HashSet<>());
-        req.setDatabasePermissions(new HashMap<>());
+        req.setProjectPermissions(new HashMap<>());
         req.setCollectionPermissions(new HashMap<>());
 
         UserOperationHelper.processCreateUser(req);
@@ -101,7 +101,7 @@ public class UserOperationHelperTest {
         createReq.setUsername("userToDelete");
         createReq.setPassword("password123");
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -128,7 +128,7 @@ public class UserOperationHelperTest {
         createReq.setUsername("permChangeUser");
         createReq.setPassword("password123");
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
 
@@ -136,7 +136,7 @@ public class UserOperationHelperTest {
         changeReq.setUsername("permChangeUser");
         changeReq.setAdmin(true);
         changeReq.setGlobalPermissions(new HashSet<>());
-        changeReq.setDatabasePermissions(new HashMap<>());
+        changeReq.setProjectPermissions(new HashMap<>());
         changeReq.setCollectionPermissions(new HashMap<>());
 
         final var resp = UserOperationHelper.processChangePermissions(changeReq, new RestampedRecords());
@@ -156,13 +156,13 @@ public class UserOperationHelperTest {
     }
 
     @Test
-    public void test_create_user_persists_per_database_script_permission() {
+    public void test_create_user_persists_per_project_script_permission() {
         final var request = new CreateUserRequest();
         request.setUsername("scriptgrantee");
         request.setPassword("password123");
         request.setAdmin(false);
         request.setGlobalPermissions(new HashSet<>());
-        request.setDatabasePermissions(new HashMap<>());
+        request.setProjectPermissions(new HashMap<>());
         request.setCollectionPermissions(new HashMap<>());
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         scriptPerms.put("mydb", ScriptPermissionLevel.RUN);
@@ -181,7 +181,7 @@ public class UserOperationHelperTest {
         create.setPassword("password123");
         create.setAdmin(false);
         create.setGlobalPermissions(new HashSet<>());
-        create.setDatabasePermissions(new HashMap<>());
+        create.setProjectPermissions(new HashMap<>());
         create.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(create);
         assertFalse(cache.getAdminUserEntry("scriptchanged").canRunScripts("mydb"));
@@ -190,7 +190,7 @@ public class UserOperationHelperTest {
         change.setUsername("scriptchanged");
         change.setAdmin(false);
         change.setGlobalPermissions(new HashSet<>());
-        change.setDatabasePermissions(new HashMap<>());
+        change.setProjectPermissions(new HashMap<>());
         change.setCollectionPermissions(new HashMap<>());
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         scriptPerms.put("mydb", ScriptPermissionLevel.RUN);
@@ -207,7 +207,7 @@ public class UserOperationHelperTest {
         create.setPassword("password123");
         create.setAdmin(false);
         create.setGlobalPermissions(new HashSet<>());
-        create.setDatabasePermissions(new HashMap<>());
+        create.setProjectPermissions(new HashMap<>());
         create.setCollectionPermissions(new HashMap<>());
         final var scriptPerms = new HashMap<String, ScriptPermissionLevel>();
         scriptPerms.put("mydb", ScriptPermissionLevel.RUN);
@@ -240,7 +240,7 @@ public class UserOperationHelperTest {
         createReq.setUsername("sessionUser");
         createReq.setPassword("password123");
         createReq.setGlobalPermissions(new HashSet<>());
-        createReq.setDatabasePermissions(new HashMap<>());
+        createReq.setProjectPermissions(new HashMap<>());
         createReq.setCollectionPermissions(new HashMap<>());
         UserOperationHelper.processCreateUser(createReq);
         final var clientTracker = IocContainer.get(ClientTracker.class);

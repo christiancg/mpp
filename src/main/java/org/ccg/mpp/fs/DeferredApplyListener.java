@@ -6,22 +6,22 @@ import org.ccg.mpp.data.PkIndexEntry;
 public interface DeferredApplyListener {
     DeferredApplyListener NONE = new DeferredApplyListener() {
         @Override
-        public long replaying(String dbName, String collName, List<PkIndexEntry> rows) {
+        public long replaying(String projectName, String collName, List<PkIndexEntry> rows) {
             return 0L;
         }
 
         @Override
-        public void replayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
+        public void replayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
         }
 
         @Override
-        public void notReplayed(String dbName, String collName, List<PkIndexEntry> rows, long generation) {
+        public void notReplayed(String projectName, String collName, List<PkIndexEntry> rows, long generation) {
         }
     };
 
-    long replaying(String dbName, String collName, List<PkIndexEntry> rows);
+    long replaying(String projectName, String collName, List<PkIndexEntry> rows);
 
-    void replayed(String dbName, String collName, List<PkIndexEntry> rows, long generation);
+    void replayed(String projectName, String collName, List<PkIndexEntry> rows, long generation);
 
-    void notReplayed(String dbName, String collName, List<PkIndexEntry> rows, long generation);
+    void notReplayed(String projectName, String collName, List<PkIndexEntry> rows, long generation);
 }

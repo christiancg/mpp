@@ -16,18 +16,18 @@ public class PkIndexEntry extends CollectionScopedEntry implements Comparable<St
     private long page;
     private long version;
 
-    public PkIndexEntry(String databaseName, String collectionName, String value, long position, long length,
+    public PkIndexEntry(String projectName, String collectionName, String value, long position, long length,
             long page) {
-        this(databaseName, collectionName, value, position, length, page, 0L);
+        this(projectName, collectionName, value, position, length, page, 0L);
     }
 
     public PkIndexEntry detachedCopy() {
-        return new PkIndexEntry(databaseName, collectionName, value, position, length, page, version);
+        return new PkIndexEntry(projectName, collectionName, value, position, length, page, version);
     }
 
-    public PkIndexEntry(String databaseName, String collectionName, String value, long position, long length, long page,
+    public PkIndexEntry(String projectName, String collectionName, String value, long position, long length, long page,
             long version) {
-        super(databaseName, collectionName);
+        super(projectName, collectionName);
         this.value = value;
         this.position = position;
         this.length = length;
@@ -40,12 +40,12 @@ public class PkIndexEntry extends CollectionScopedEntry implements Comparable<St
                 + Globals.ID_SEPARATOR + page + Globals.ID_SEPARATOR + version;
     }
 
-    public static PkIndexEntry fromIndexFileEntry(String databaseName, String collectionName, String line) {
+    public static PkIndexEntry fromIndexFileEntry(String projectName, String collectionName, String line) {
         final var bytes = line.replace("\r", "").replace("\n", "").getBytes(StandardCharsets.UTF_8);
-        return fromIndexFileBytes(databaseName, collectionName, bytes, 0, bytes.length);
+        return fromIndexFileBytes(projectName, collectionName, bytes, 0, bytes.length);
     }
 
-    public static PkIndexEntry fromIndexFileBytes(String databaseName, String collectionName, byte[] line, int start,
+    public static PkIndexEntry fromIndexFileBytes(String projectName, String collectionName, byte[] line, int start,
             int end) {
         final var valueEnd = nextSeparator(line, start, end);
         final var positionEnd = nextSeparator(line, valueEnd + 1, end);
@@ -55,7 +55,7 @@ public class PkIndexEntry extends CollectionScopedEntry implements Comparable<St
             throw new IllegalArgumentException("A PK index line must hold " + FIELD_COUNT + " separated fields");
         }
         final var value = new String(line, start, valueEnd - start, StandardCharsets.UTF_8);
-        return new PkIndexEntry(databaseName, collectionName, FieldIndexEntry.unescapeIndexToken(value),
+        return new PkIndexEntry(projectName, collectionName, FieldIndexEntry.unescapeIndexToken(value),
                 parseLong(line, valueEnd + 1, positionEnd), parseLong(line, positionEnd + 1, lengthEnd),
                 parseLong(line, lengthEnd + 1, pageEnd), parseLong(line, pageEnd + 1, end));
     }
@@ -166,18 +166,18 @@ public class PkIndexEntry extends CollectionScopedEntry implements Comparable<St
         if (!(o instanceof PkIndexEntry that))
             return false;
         return position == that.position && length == that.length && page == that.page
-                && Objects.equals(databaseName, that.databaseName)
-                && Objects.equals(collectionName, that.collectionName) && Objects.equals(value, that.value);
+                && Objects.equals(projectName, that.projectName) && Objects.equals(collectionName, that.collectionName)
+                && Objects.equals(value, that.value);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(databaseName, collectionName, value, position, length, page);
+        return Objects.hash(projectName, collectionName, value, position, length, page);
     }
 
     @Override
     public String toString() {
-        return "PkIndexEntry(databaseName=" + databaseName + ", collectionName=" + collectionName + ", value=" + value
+        return "PkIndexEntry(projectName=" + projectName + ", collectionName=" + collectionName + ", value=" + value
                 + ", position=" + position + ", length=" + length + ", page=" + page + ")";
     }
 }

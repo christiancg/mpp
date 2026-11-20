@@ -1,6 +1,6 @@
 import { Admin } from "./admin/admin.js";
 import type { ServerInfo } from "./admin/types.js";
-import { Database } from "./database.js";
+import { Project } from "./project.js";
 import type { Document } from "./document.js";
 import { MppError } from "./errors/errors.js";
 import type { ClientContext } from "./internal/client-context.js";
@@ -73,13 +73,13 @@ export class MppClient implements AsyncDisposable {
         return connectClient(settings, {});
     }
 
-    database(name: string): Database {
-        return new Database(this.#context, name);
+    project(name: string): Project {
+        return new Project(this.#context, name);
     }
 
-    async listDatabases(): Promise<string[]> {
-        const reply = await this.#context.channel.send("LIST_DATABASES", this.#context.encoder.listDatabases());
-        return strings(reply.databases);
+    async listProjects(): Promise<string[]> {
+        const reply = await this.#context.channel.send("LIST_PROJECTS", this.#context.encoder.listProjects());
+        return strings(reply.projects);
     }
 
     async serverInfo(): Promise<ServerInfo> {
@@ -87,8 +87,8 @@ export class MppClient implements AsyncDisposable {
         return server(document(reply, "server") ?? {});
     }
 
-    async databaseStats(): Promise<Document> {
-        const reply = await this.#context.channel.send("GET_DATABASE_STATS", this.#context.encoder.databaseStats());
+    async projectStats(): Promise<Document> {
+        const reply = await this.#context.channel.send("GET_PROJECT_STATS", this.#context.encoder.projectStats());
         return document(reply, "stats") ?? {};
     }
 

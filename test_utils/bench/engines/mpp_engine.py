@@ -2,7 +2,8 @@ import json
 import socket
 from typing import Optional
 
-from engines.base import COLLECTION, DATABASE, INDEXED_FIELDS, Engine
+from engines.base import COLLECTION, INDEXED_FIELDS, Engine
+from engines.base import DATABASE as PROJECT
 
 USERNAME = "admin"
 PASSWORD = "Bench-Admin-7kP4wZ"
@@ -53,7 +54,7 @@ class MppEngine(Engine):
         return response
 
     def _request(self, kind: str, **fields) -> dict:
-        return self._send({"type": kind, "databaseName": DATABASE, "collectionName": COLLECTION, **fields})
+        return self._send({"type": kind, "projectName": PROJECT, "collectionName": COLLECTION, **fields})
 
     def _aggregate(self, *steps: dict) -> list:
         response = self._ok(self._request("AGGREGATE", aggregationSteps=list(steps)), "NO_RESULTS")
@@ -64,7 +65,7 @@ class MppEngine(Engine):
         return int(rows[0]["count"]) if rows else 0
 
     def setup(self) -> None:
-        self._ok(self._send({"type": "CREATE_DATABASE", "databaseName": DATABASE}))
+        self._ok(self._send({"type": "CREATE_PROJECT", "projectName": PROJECT}))
         self._ok(self._request("CREATE_COLLECTION"))
         for field in INDEXED_FIELDS:
             self._ok(self._request("CREATE_INDEX", fieldName=field))

@@ -31,7 +31,7 @@ public class AggregationSortBoundedTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cache = IocContainer.get(Cache.class);
     }
 
@@ -46,24 +46,24 @@ public class AggregationSortBoundedTest {
         if (value != null) {
             obj.add(FIELD, value);
         }
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     private void insertNumber(String id, double value) throws IOException {
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString(id));
         obj.addProperty(FIELD, value);
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, obj);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, obj);
         entry.set_id(id);
-        TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
-        cache.updatePageSizeInMemory(TestGlobals.DB, TestGlobals.COLL, 0, 100);
+        TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
+        cache.updatePageSizeInMemory(TestGlobals.PROJECT, TestGlobals.COLL, 0, 100);
     }
 
     private List<String> run(BaseAggregationStep... steps) throws IOException {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(steps));
         return AggregationOperationHelper.processAggregation(request).stream()
                 .map(o -> o.get(Globals.PK_FIELD).asJsonString().getValue()).toList();
@@ -164,8 +164,8 @@ public class AggregationSortBoundedTest {
         assertEquals(count, sorted.size());
         var previous = Double.NEGATIVE_INFINITY;
         for (final var id : sorted) {
-            final var value = cache.getEntriesByIds(TestGlobals.DB, TestGlobals.COLL, java.util.Set.of(id)).getFirst()
-                    .getData().get(FIELD).asJsonNumber().getValue().doubleValue();
+            final var value = cache.getEntriesByIds(TestGlobals.PROJECT, TestGlobals.COLL, java.util.Set.of(id))
+                    .getFirst().getData().get(FIELD).asJsonNumber().getValue().doubleValue();
             assertTrue(value >= previous, "the parallel sort must produce a non-decreasing sequence");
             previous = value;
         }

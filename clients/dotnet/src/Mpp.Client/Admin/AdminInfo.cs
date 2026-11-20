@@ -6,10 +6,10 @@ public sealed record UserInfo(
     string Username,
     bool IsAdmin,
     IReadOnlyList<string> GlobalPermissions,
-    Document DatabasePermissions,
+    Document ProjectPermissions,
     Document CollectionPermissions,
     Document ScriptPermissions,
-    IReadOnlyList<string> OwnedDatabases,
+    IReadOnlyList<string> OwnedProjects,
     Document Raw);
 
 public sealed record TransactionInfo(
@@ -24,7 +24,7 @@ public sealed record ScriptRun(
     string RunId,
     string? Node,
     string Kind,
-    string? Database,
+    string? Project,
     string? Name,
     string? Username,
     long AgeMs,
@@ -33,7 +33,7 @@ public sealed record ScriptRun(
 public sealed record TriggerRun(
     string RunId,
     string Status,
-    string? Database,
+    string? Project,
     string? Collection,
     string? Trigger,
     string? Procedure,

@@ -38,8 +38,8 @@ public class QueueDrainTest {
     }
 
     private static TriggerEvent event(String name) {
-        return new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, name, "proc", false, List.of(),
-                "alice", 0, null);
+        return new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, name, "proc", false,
+                List.of(), "alice", 0, null);
     }
 
     @Test

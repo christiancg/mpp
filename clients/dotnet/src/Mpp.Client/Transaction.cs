@@ -25,16 +25,16 @@ public sealed class Transaction : IAsyncDisposable
 
     public bool IsOpen => Volatile.Read(ref _finished) == 0;
 
-    public TransactionCollection<T> Collection<T>(string database, string collection, IDocumentCodec<T>? codec = null)
+    public TransactionCollection<T> Collection<T>(string project, string collection, IDocumentCodec<T>? codec = null)
     {
         RequireOpen();
-        return new TransactionCollection<T>(new CollectionOps<T>(_context, database, collection, codec ?? new JsonCodec<T>(_context.Json)));
+        return new TransactionCollection<T>(new CollectionOps<T>(_context, project, collection, codec ?? new JsonCodec<T>(_context.Json)));
     }
 
-    public TransactionCollection<Document> Collection(string database, string collection)
+    public TransactionCollection<Document> Collection(string project, string collection)
     {
         RequireOpen();
-        return new TransactionCollection<Document>(new CollectionOps<Document>(_context, database, collection, IdentityCodec.Instance));
+        return new TransactionCollection<Document>(new CollectionOps<Document>(_context, project, collection, IdentityCodec.Instance));
     }
 
     public Task CommitAsync(CancellationToken ct = default) =>

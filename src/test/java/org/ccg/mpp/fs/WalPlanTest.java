@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class WalPlanTest {
-    private static final String DB = "planDb";
+    private static final String PROJECT = "planProject";
     private static final String COLL = "planColl";
 
     @TempDir
@@ -31,7 +31,7 @@ public class WalPlanTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         rf.fx.seed(0, "a", "b", "c");
     }
 
@@ -48,7 +48,7 @@ public class WalPlanTest {
     }
 
     private File log() {
-        return rf.fx.paths.writeAheadLog(DB, COLL);
+        return rf.fx.paths.writeAheadLog(PROJECT, COLL);
     }
 
     private WalCodec.Decoded decodedLog() throws IOException {
@@ -58,21 +58,21 @@ public class WalPlanTest {
     @Test
     public void test_a_write_that_cannot_be_applied_is_taken_back_and_aborted_in_the_log() throws Exception {
         final var page = Files.readAllBytes(rf.fx.page(0).toPath());
-        final var pk = Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath());
+        final var pk = Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath());
         final var records = decodedLog().records().size();
         makeReadOnly(rf.fx.page(0));
 
         assertThrows(IOException.class, () -> rf.replace("b", "new-b", 0, PagePlacement.APPEND));
 
         assertArrayEquals(page, Files.readAllBytes(rf.fx.page(0).toPath()));
-        assertArrayEquals(pk, Files.readAllBytes(rf.fx.paths.pkIndexFile(DB, COLL).toPath()));
+        assertArrayEquals(pk, Files.readAllBytes(rf.fx.paths.pkIndexFile(PROJECT, COLL).toPath()));
         assertEquals(records, decodedLog().records().size(), "the aborted record is not replayed");
     }
 
     @Test
     public void test_an_aborted_write_removes_the_page_file_it_created() throws Exception {
         final var created = rf.fx.page(1);
-        makeReadOnly(rf.fx.paths.pkIndexFile(DB, COLL));
+        makeReadOnly(rf.fx.paths.pkIndexFile(PROJECT, COLL));
 
         assertThrows(IOException.class, () -> rf.replace("b", "new-b", 1, PagePlacement.APPEND));
 
@@ -87,7 +87,7 @@ public class WalPlanTest {
         assertTrue(readOnly.setWritable(true, true));
 
         rf.replace("b", "newer-b", 0, PagePlacement.APPEND);
-        WalRedo.replay(rf.fx.paths, DB, COLL, decodedLog());
+        WalRedo.replay(rf.fx.paths, PROJECT, COLL, decodedLog());
 
         assertEquals(StorageFixture.record("b", "newer-b"), rf.fx.readAt(rf.fx.indexed("b")));
         assertTrue(rf.fx.everyRowReadsItsOwnRecord());
@@ -128,7 +128,7 @@ public class WalPlanTest {
         rf.replace("b", "moved-b", 1, null);
         assertTrue(readOnly.setWritable(true, true));
 
-        new WriteAheadLog(rf.fx.paths).checkpoint(DB, COLL);
+        new WriteAheadLog(rf.fx.paths).checkpoint(PROJECT, COLL);
 
         assertTrue(rf.fx.readAt(old).isBlank());
         assertEquals(List.of(), decodedLog().records());
@@ -138,7 +138,7 @@ public class WalPlanTest {
     public void test_a_four_megabyte_record_is_written_in_chunks_and_replays_identically() throws Exception {
         final var line = ReplacerFixture.line("big", "x".repeat(4 * 1024 * 1024));
         final var lengthBefore = rf.fx.page(0).length();
-        final var plan = new WalPlan(rf.fx.paths, rf.fx.store, DB, COLL);
+        final var plan = new WalPlan(rf.fx.paths, rf.fx.store, PROJECT, COLL);
         final var offset = plan.append(0, line);
         plan.commit();
         final var written = Files.readAllBytes(rf.fx.page(0).toPath());
@@ -149,7 +149,7 @@ public class WalPlanTest {
         try (var page = FileChannel.open(rf.fx.page(0).toPath(), StandardOpenOption.WRITE)) {
             page.truncate(lengthBefore);
         }
-        WalRedo.replay(rf.fx.paths, DB, COLL, decodedLog());
+        WalRedo.replay(rf.fx.paths, PROJECT, COLL, decodedLog());
 
         assertArrayEquals(written, Files.readAllBytes(rf.fx.page(0).toPath()));
     }
@@ -158,7 +158,7 @@ public class WalPlanTest {
     public void test_a_failed_pk_write_takes_back_a_multi_chunk_page_slice() throws Exception {
         final var page = Files.readAllBytes(rf.fx.page(0).toPath());
         final var records = decodedLog().records().size();
-        makeReadOnly(rf.fx.paths.pkIndexFile(DB, COLL));
+        makeReadOnly(rf.fx.paths.pkIndexFile(PROJECT, COLL));
 
         assertThrows(IOException.class,
                 () -> rf.replace("b", "y".repeat(3 * ChunkedChannelWrites.CHUNK_BYTES), 0, PagePlacement.APPEND));
@@ -171,14 +171,14 @@ public class WalPlanTest {
     public void test_an_empty_plan_writes_nothing() throws Exception {
         final var before = Files.readAllBytes(log().toPath());
 
-        new WalPlan(rf.fx.paths, rf.fx.store, DB, COLL).commit();
+        new WalPlan(rf.fx.paths, rf.fx.store, PROJECT, COLL).commit();
 
         assertArrayEquals(before, Files.readAllBytes(log().toPath()));
     }
 
     @Test
     public void test_one_record_carries_every_line_of_a_page_as_one_change() throws Exception {
-        final var plan = new WalPlan(rf.fx.paths, rf.fx.store, DB, COLL);
+        final var plan = new WalPlan(rf.fx.paths, rf.fx.store, PROJECT, COLL);
         final var first = plan.append(0, ReplacerFixture.line("x", "x"));
         final var second = plan.append(0, ReplacerFixture.line("y", "y"));
         plan.commit();

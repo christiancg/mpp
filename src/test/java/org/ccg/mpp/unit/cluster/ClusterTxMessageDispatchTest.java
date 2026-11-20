@@ -54,7 +54,7 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
         final var commitResponse = new AtomicReference<ClusterMessage>();
         final Thread commit;
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             commit = Thread.ofVirtual().start(() -> {
                 try {
@@ -77,7 +77,7 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
             assertTrue(commitDone.await(REPLY_DELIVERY_MS, TimeUnit.MILLISECONDS),
                     "the commit must have already given up on its own budget for the lane to reach the snapshot");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         commit.join();
@@ -93,7 +93,7 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
         seedPreparedSlice(dtxId, "aborttx-busy");
         final var address = cluster.serverAddress();
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             final var started = System.currentTimeMillis();
             final var response = pool.request(address, txResolutionRequest(ClusterMessageType.ABORT_TX, dtxId), 5000L);
@@ -102,7 +102,7 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
             assertEquals(ClusterMessageType.ABORT_TX_ACK, response.getType());
             assertTrue(elapsed < 2000, "an abort takes no collection lock, so it must not wait on one");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         assertFalse(Tx2pcLog.isPrepared(dtxId), "the marker must be resolved once the abort completes");
     }
@@ -113,9 +113,9 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("into-a-missing-collection"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "coordinator", 0,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, "missing-coll", obj));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, "missing-coll", obj));
         Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:5000", List.of("127.0.0.1:5000"),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, "missing-coll")));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, "missing-coll")));
 
         final var response = pool.request(cluster.serverAddress(),
                 txResolutionRequest(ClusterMessageType.COMMIT_TX, dtxId), 10000L);
@@ -133,16 +133,16 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
         final var obj = new JsonObject();
         obj.add(Globals.PK_FIELD, new JsonString("lane-retry"));
         AdminOperationHelper.saveTransactionOp(new AdminTransactionEntry(dtxId, "coordinator", 0,
-                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB, "lane-coll", obj));
+                AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.PROJECT, "lane-coll", obj));
         Tx2pcLog.recordParticipantPrepared(dtxId, "127.0.0.1:5000", List.of("127.0.0.1:5000"),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
         final var first = pool.request(cluster.serverAddress(),
                 txResolutionRequest(ClusterMessageType.COMMIT_TX, dtxId), 10000L);
         assertEquals(ClusterMessageType.ERROR, first.getType());
         pool.closeAll();
 
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, "lane-coll")).getStatus());
+                processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, "lane-coll")).getStatus());
         final var freshConnection = new PeerConnectionPool();
         try {
             final var retried = freshConnection.request(cluster.serverAddress(),
@@ -160,9 +160,9 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
     private boolean lockableFromAnotherThread() throws InterruptedException {
         final var acquired = new AtomicBoolean();
         Thread.ofVirtual().start(() -> {
-            if (locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL)) {
+            if (locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL)) {
                 acquired.set(true);
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }).join(5000);
         return acquired.get();
@@ -267,8 +267,8 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
     }
 
     private String rawSaveRequest() {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"forwardtx-slow\",\"v\":1}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"forwardtx-slow\",\"v\":1}}";
     }
 
     @Test

@@ -30,11 +30,11 @@ public class UserCacheIndexPublishTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         save("doc-1", "alpha", "first");
         save("doc-2", "beta", "second");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "name");
-        IndexHelper.createIndex(TestGlobals.DB, TestGlobals.COLL, "label");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "name");
+        IndexHelper.createIndex(TestGlobals.PROJECT, TestGlobals.COLL, "label");
     }
 
     @AfterEach
@@ -44,7 +44,7 @@ public class UserCacheIndexPublishTest {
     }
 
     private void save(String id, String name, String label) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var object = new JsonObject();
         object.add("_id", new JsonString(id));
         object.add("name", new JsonString(name));
@@ -59,15 +59,15 @@ public class UserCacheIndexPublishTest {
     }
 
     private int cachedSlotsForCollection() throws Exception {
-        final var slots = fieldIndexMap().get(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        final var slots = fieldIndexMap().get(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
         return slots == null ? 0 : slots.size();
     }
 
     @Test
     public void test_two_fields_admitted_concurrently_both_stay_cached() throws Exception {
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "name");
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "label");
-        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "name");
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "label");
+        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
         final var ready = new CountDownLatch(2);
         final var go = new CountDownLatch(1);
 
@@ -87,12 +87,12 @@ public class UserCacheIndexPublishTest {
     private Thread admittingThread(String field, CountDownLatch ready, CountDownLatch go) {
         return new Thread(() -> {
             try {
-                locks.lockRead(TestGlobals.DB, TestGlobals.COLL);
+                locks.lockRead(TestGlobals.PROJECT, TestGlobals.COLL);
                 ready.countDown();
                 if (go.await(5, TimeUnit.SECONDS)) {
-                    cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, field, String.class);
+                    cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, field, String.class);
                 }
-                locks.releaseRead(TestGlobals.DB, TestGlobals.COLL);
+                locks.releaseRead(TestGlobals.PROJECT, TestGlobals.COLL);
             } catch (Exception e) {
                 Thread.currentThread().interrupt();
             }
@@ -101,10 +101,10 @@ public class UserCacheIndexPublishTest {
 
     @Test
     public void test_a_reader_without_the_collection_lock_does_not_publish() throws Exception {
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "name");
-        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "name");
+        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        final var entries = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "name",
+        final var entries = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "name",
                 String.class);
 
         assertNotNull(entries, "the reader is still answered from disk");
@@ -113,21 +113,22 @@ public class UserCacheIndexPublishTest {
 
     @Test
     public void test_a_probe_for_an_uncached_field_does_not_create_a_collection_map() throws Exception {
-        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+        fieldIndexMap().remove(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
 
-        assertNull(cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "absent", String.class));
+        assertNull(
+                cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "absent", String.class));
 
-        assertNull(fieldIndexMap().get(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+        assertNull(fieldIndexMap().get(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     @Test
     public void test_a_locked_reader_still_publishes_the_field_index() throws Exception {
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "name");
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "name");
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "name", String.class);
+            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "name", String.class);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         assertTrue(cachedSlotsForCollection() > 0,
@@ -136,18 +137,18 @@ public class UserCacheIndexPublishTest {
 
     @Test
     public void test_a_lock_free_read_still_answers_the_same_entries_as_a_locked_one() throws Exception {
-        cache.evictFieldIndexAllTypes(TestGlobals.DB, TestGlobals.COLL, "name");
-        final var unlocked = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "name",
+        cache.evictFieldIndexAllTypes(TestGlobals.PROJECT, TestGlobals.COLL, "name");
+        final var unlocked = cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "name",
                 String.class);
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             assertEquals(
-                    cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, "name", String.class)
+                    cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, "name", String.class)
                             .size(),
                     unlocked.size(), "refusing to publish must not change what the lock-free reader is answered");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
     }
 }

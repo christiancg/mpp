@@ -55,15 +55,15 @@ public class OverlayReadTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "scriptsEnabled", true);
         for (var i = 0; i < 20; i++) {
             final var document = document("d" + i, i % 4);
             document.add("embedding", new JsonVector("#vector(" + (10.0 - i) + "," + (double) i + ")"));
             save(document, null);
         }
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "grp")).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "grp")).getStatus());
         client = BeforeHookTestSupport.newClient();
     }
 
@@ -83,7 +83,7 @@ public class OverlayReadTest {
     }
 
     private void save(JsonObject document, UUID clientId) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         final var response = clientId == null
                 ? processor.processMessage(request)
@@ -92,7 +92,7 @@ public class OverlayReadTest {
     }
 
     private void delete(String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request, client).getStatus());
     }
@@ -102,7 +102,7 @@ public class OverlayReadTest {
     }
 
     private OperationResponse run(boolean inTransaction, boolean analyze, BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAnalyze(analyze);
         request.setAggregationSteps(List.of(steps));
         return inTransaction ? processor.processMessage(request, client) : processor.processMessage(request);

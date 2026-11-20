@@ -23,7 +23,7 @@ public class PageAppendSeparatorTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -36,13 +36,13 @@ public class PageAppendSeparatorTest {
         final var data = new JsonObject();
         data.addProperty(Globals.PK_FIELD, id);
         data.addProperty("v", id + "-value");
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, data);
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, data);
         entry.setPage(0L);
         return entry;
     }
 
     private static File pageFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-0" + Globals.DB_FILE_EXTENSION);
     }
 
@@ -54,7 +54,7 @@ public class PageAppendSeparatorTest {
     }
 
     private PkIndexEntry pkOf(String id) throws IOException {
-        return fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL).stream()
+        return fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .filter(entry -> entry.getValue().equals(id)).findFirst().orElseThrow();
     }
 
@@ -65,7 +65,7 @@ public class PageAppendSeparatorTest {
 
         fs.insertIntoCollection(entry("second"));
 
-        final var page = fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0L);
+        final var page = fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0L);
         assertEquals(List.of("first", "second"), page.keySet().stream().sorted().toList(),
                 "a scan must see both records, not only the first of a glued line");
         assertEquals("second", fs.getById(pkOf("second").detachedCopy()).get_id());
@@ -77,9 +77,9 @@ public class PageAppendSeparatorTest {
         fs.insertIntoCollection(entry("first"));
         dropTrailingLineEnd();
 
-        fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, List.of(entry("second"), entry("third")));
+        fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, List.of(entry("second"), entry("third")));
 
-        final var page = fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0L);
+        final var page = fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0L);
         assertEquals(List.of("first", "second", "third"), page.keySet().stream().sorted().toList());
         assertEquals("third", fs.getById(pkOf("third").detachedCopy()).get_id());
     }
@@ -99,10 +99,10 @@ public class PageAppendSeparatorTest {
         final var lengthBefore = pageFile().length();
         dropTrailingLineEnd();
 
-        fs.healTornPageTails(TestGlobals.DB, TestGlobals.COLL);
+        fs.healTornPageTails(TestGlobals.PROJECT, TestGlobals.COLL);
 
         assertEquals(lengthBefore, pageFile().length());
         assertEquals(List.of("first"),
-                List.copyOf(fs.readWholeCollectionPage(TestGlobals.DB, TestGlobals.COLL, 0L).keySet()));
+                List.copyOf(fs.readWholeCollectionPage(TestGlobals.PROJECT, TestGlobals.COLL, 0L).keySet()));
     }
 }

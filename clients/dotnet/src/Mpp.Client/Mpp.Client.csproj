@@ -11,7 +11,7 @@
     <PackageProjectUrl>https://github.com/christiancg/mpp/tree/main/clients/dotnet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/christiancg/mpp.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>mpp;database;nosql;client;linq</PackageTags>
+    <PackageTags>mpp;project;nosql;client;linq</PackageTags>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EnablePackageValidation>true</EnablePackageValidation>

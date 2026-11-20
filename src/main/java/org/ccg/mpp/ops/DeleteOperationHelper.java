@@ -40,38 +40,38 @@ public final class DeleteOperationHelper {
     }
 
     public static OperationResponse executeDelete(DeleteRequest deleteRequest, DirtySink sink) throws Exception {
-        final var dbName = deleteRequest.getDatabaseName();
+        final var projectName = deleteRequest.getProjectName();
         final var collName = deleteRequest.getCollectionName();
         final var id = deleteRequest.get_id();
-        final var pkRows = cache.pkRowsForWriter(dbName, collName, List.of(id));
+        final var pkRows = cache.pkRowsForWriter(projectName, collName, List.of(id));
         final var idxEntry = pkRows.row(id);
         if (idxEntry == null) {
             return new OperationResponse(OperationType.DELETE, "Entry with id " + id + " not found",
                     ErrorCode.ENTRY_NOT_FOUND);
         }
-        final var entryToBeDeleted = onPage(cache.getById(dbName, collName, idxEntry), idxEntry.getPage());
+        final var entryToBeDeleted = onPage(cache.getById(projectName, collName, idxEntry), idxEntry.getPage());
         final var deletedRef = EntityRef.of(entryToBeDeleted,
-                PriorIndexedValues.of(PriorIndexedValues.fieldsOf(dbName, collName), entryToBeDeleted));
-        final var pendingGeneration = pendingIndexWrites.mark(dbName, collName, entryToBeDeleted.get_id());
-        pendingIndexWrites.writeWhilePending(dbName, collName, List.of(entryToBeDeleted.get_id()), pendingGeneration,
-                () -> {
-                    fs.deleteFromCollection(idxEntry, pkRows.vacuumRows(), cache.pageOccupancy(dbName, collName));
+                PriorIndexedValues.of(PriorIndexedValues.fieldsOf(projectName, collName), entryToBeDeleted));
+        final var pendingGeneration = pendingIndexWrites.mark(projectName, collName, entryToBeDeleted.get_id());
+        pendingIndexWrites.writeWhilePending(projectName, collName, List.of(entryToBeDeleted.get_id()),
+                pendingGeneration, () -> {
+                    fs.deleteFromCollection(idxEntry, pkRows.vacuumRows(), cache.pageOccupancy(projectName, collName));
                     return null;
                 });
-        cache.updatePageSizeInMemory(dbName, collName, idxEntry.getPage(), -idxEntry.getLength(), -1);
+        cache.updatePageSizeInMemory(projectName, collName, idxEntry.getPage(), -idxEntry.getLength(), -1);
         pkRows.remove(id);
-        cache.evictEntry(dbName, collName, entryToBeDeleted.get_id());
-        taskManager.submitBackgroundTask(new EntityEvent(EventType.DELETED, dbName, collName, deletedRef,
-                CollectionIncarnation.current(dbName, collName), pendingGeneration));
-        sink.markDirty(dbName, collName);
-        CollectionAccessHelper.recordCollectionAccess(dbName, collName);
+        cache.evictEntry(projectName, collName, entryToBeDeleted.get_id());
+        taskManager.submitBackgroundTask(new EntityEvent(EventType.DELETED, projectName, collName, deletedRef,
+                CollectionIncarnation.current(projectName, collName), pendingGeneration));
+        sink.markDirty(projectName, collName);
+        CollectionAccessHelper.recordCollectionAccess(projectName, collName);
         return new DeleteResponse("Entry with id " + id + " deleted successfully");
     }
 
-    public static List<String> executeBulkDelete(String dbName, String collName, List<String> ids, DirtySink sink,
+    public static List<String> executeBulkDelete(String projectName, String collName, List<String> ids, DirtySink sink,
             boolean populateCache) throws Exception {
         final var distinctIds = new LinkedHashSet<>(ids);
-        final var pkRows = cache.pkRowsForWriter(dbName, collName, distinctIds);
+        final var pkRows = cache.pkRowsForWriter(projectName, collName, distinctIds);
         final var rows = rowsOf(pkRows, distinctIds);
         if (rows.isEmpty()) {
             return List.of();
@@ -80,38 +80,38 @@ public final class DeleteOperationHelper {
         for (final var row : rows) {
             deletedIds.add(row.getValue());
         }
-        final var priors = PriorIndexedValues.ofRows(PriorIndexedValues.fieldsOf(dbName, collName), rows, List.of());
-        final var pendingGeneration = pendingIndexWrites.mark(dbName, collName, deletedIds);
-        pendingIndexWrites.writeWhilePending(dbName, collName, deletedIds, pendingGeneration,
-                () -> fs.writeBatch(dbName, collName, List.of(), DbEntry::getPage, _ -> null, rows));
+        final var priors = PriorIndexedValues.ofRows(PriorIndexedValues.fieldsOf(projectName, collName), rows,
+                List.of());
+        final var pendingGeneration = pendingIndexWrites.mark(projectName, collName, deletedIds);
+        pendingIndexWrites.writeWhilePending(projectName, collName, deletedIds, pendingGeneration,
+                () -> fs.writeBatch(projectName, collName, List.of(), DbEntry::getPage, _ -> null, rows));
         final var freed = new TreeMap<Long, long[]>();
         for (final var row : rows) {
             final var page = freed.computeIfAbsent(row.getPage(), _ -> new long[2]);
             page[0] += row.getLength();
             page[1]++;
         }
-        freed.forEach((page, bytesAndRows) -> cache.updatePageSizeInMemory(dbName, collName, page, -bytesAndRows[0],
-                (int) -bytesAndRows[1]));
+        freed.forEach((page, bytesAndRows) -> cache.updatePageSizeInMemory(projectName, collName, page,
+                -bytesAndRows[0], (int) -bytesAndRows[1]));
         final var primaryKeyIndex = pkRows.editable();
         if (primaryKeyIndex != null) {
             PkIndexEdits.removeAll(primaryKeyIndex, deletedIds);
         }
         for (final var id : deletedIds) {
-            cache.evictEntry(dbName, collName, id);
+            cache.evictEntry(projectName, collName, id);
         }
-        fs.vacuumPagesAfterDelete(dbName, collName, freed.keySet(), pkRows.vacuumRows(),
-                cache.pageOccupancy(dbName, collName));
-        final var incarnation = CollectionIncarnation.current(dbName, collName);
+        fs.vacuumPagesAfterDelete(projectName, collName, freed.keySet(), pkRows.vacuumRows(),
+                cache.pageOccupancy(projectName, collName));
+        final var incarnation = CollectionIncarnation.current(projectName, collName);
         for (final var row : rows) {
-            taskManager
-                    .submitBackgroundTask(new EntityEvent(EventType.DELETED, dbName, collName,
-                            new EntityRef(row.getValue(), row.getPage(), row.getLength(), 0L,
-                                    priors == null ? null : priors.get(row.getValue())),
-                            incarnation, pendingGeneration));
+            taskManager.submitBackgroundTask(new EntityEvent(
+                    EventType.DELETED, projectName, collName, new EntityRef(row.getValue(), row.getPage(),
+                            row.getLength(), 0L, priors == null ? null : priors.get(row.getValue())),
+                    incarnation, pendingGeneration));
         }
-        sink.markDirty(dbName, collName);
+        sink.markDirty(projectName, collName);
         if (populateCache) {
-            CollectionAccessHelper.recordCollectionAccess(dbName, collName);
+            CollectionAccessHelper.recordCollectionAccess(projectName, collName);
         }
         return deletedIds;
     }
@@ -131,7 +131,7 @@ public final class DeleteOperationHelper {
         if (entry.getPage() == page) {
             return entry;
         }
-        final var copy = DbEntry.fromJsonObject(entry.getDatabaseName(), entry.getCollectionName(), entry.getData());
+        final var copy = DbEntry.fromJsonObject(entry.getProjectName(), entry.getCollectionName(), entry.getData());
         copy.set_id(entry.get_id());
         copy.setPage(page);
         copy.setVersion(entry.getVersion());

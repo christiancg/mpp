@@ -1,0 +1,42 @@
+package org.ccg.mpp.simplejs.host;
+
+import java.time.ZoneId;
+import java.util.Locale;
+import java.util.function.Consumer;
+import org.ccg.mpp.config.ConfigKey;
+import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.ejson.elements.JsonObject;
+
+public record ProjectHostBindings(JsonObject args, ProjectAccess project, Consumer<String> console,
+        ResourceLimits limits, ZoneId timeZone, Locale locale, CancellationToken cancellation,
+        NetworkAccess network) implements HostBindings {
+    private static final JdkNetworkAccess SHARED_NETWORK = new JdkNetworkAccess();
+    private static final Configuration configuration = Configuration.getInstance();
+
+    public static ProjectHostBindings of(JsonObject args, ProjectAccess project, Consumer<String> console,
+            ResourceLimits limits, CancellationToken cancellation) {
+        return new ProjectHostBindings(args, project, console, limits, ZoneId.of(configuration.getScriptTimeZone()),
+                Locale.forLanguageTag(configuration.getScriptLocale()), cancellation,
+                configuration.isScriptFetchEnabled() ? SHARED_NETWORK : null);
+    }
+
+    @Override
+    public ModuleResolver moduleResolver() {
+        if (!configuration.isScriptProcedureImportEnabled() || project() == null || project.scopedProject() == null) {
+            return null;
+        }
+        return new ProcedureModuleResolver(project.scopedProject(), project.mayReadProcedureSource());
+    }
+
+    public static ResourceLimits limitsFromConfiguration() {
+        return new ResourceLimits(configuration.getScriptInstructionBudget(), configuration.getScriptTimeoutMs(),
+                configuration.getScriptMaxDepth(), true, configuration.isScriptFetchEnabled(),
+                configuration.getScriptFetchAllowlist(), configuration.getScriptFetchMaxResponseBytes(),
+                configuration.getScriptFetchTimeoutMs(), false, configuration.isScriptTextImportEnabled(),
+                ResourceLimits.DEFAULT_MAX_MODULE_DEPTH, configuration.getScriptMaxLogLines(),
+                configuration.getScriptMaxLogLineChars(), configuration.getScriptMaxMemoryBytes(),
+                configuration.getScriptMaxResultBytes(), configuration.getScriptCursorBatchSize(),
+                configuration.getScriptCursorMaxBatchSize(), configuration.getScriptFetchMaxConcurrent(),
+                configuration.intValue(ConfigKey.SCRIPT_MAX_ARRAY_LENGTH));
+    }
+}

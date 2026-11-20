@@ -20,8 +20,8 @@ public class FieldIndexEntry<T> extends CollectionScopedEntry implements Compara
     private T value;
     private Set<String> ids;
 
-    public FieldIndexEntry(String databaseName, String collectionName, T value, Set<String> ids) {
-        super(databaseName, collectionName);
+    public FieldIndexEntry(String projectName, String collectionName, T value, Set<String> ids) {
+        super(projectName, collectionName);
         this.value = value;
         this.ids = ids;
     }
@@ -157,10 +157,10 @@ public class FieldIndexEntry<T> extends CollectionScopedEntry implements Compara
         return value + 0.0;
     }
 
-    public static <T> FieldIndexEntry<T> fromIndexFileEntry(String databaseName, String collectionName, String line,
+    public static <T> FieldIndexEntry<T> fromIndexFileEntry(String projectName, String collectionName, String line,
             Class<T> tClass) {
         final var separatorIdx = line.indexOf(Globals.ID_SEPARATOR);
-        return new FieldIndexEntry<>(databaseName, collectionName,
+        return new FieldIndexEntry<>(projectName, collectionName,
                 parseIndexValue(line.substring(0, separatorIdx), tClass),
                 parseIds(line, separatorIdx + Globals.ID_SEPARATOR.length()));
     }
@@ -265,18 +265,18 @@ public class FieldIndexEntry<T> extends CollectionScopedEntry implements Compara
             return true;
         if (!(o instanceof FieldIndexEntry<?> that))
             return false;
-        return Objects.equals(databaseName, that.databaseName) && Objects.equals(collectionName, that.collectionName)
+        return Objects.equals(projectName, that.projectName) && Objects.equals(collectionName, that.collectionName)
                 && Objects.equals(value, that.value) && Objects.equals(ids, that.ids);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(databaseName, collectionName, value, ids);
+        return Objects.hash(projectName, collectionName, value, ids);
     }
 
     @Override
     public String toString() {
-        return "FieldIndexEntry(databaseName=" + databaseName + ", collectionName=" + collectionName + ", value="
-                + value + ", ids=" + ids + ")";
+        return "FieldIndexEntry(projectName=" + projectName + ", collectionName=" + collectionName + ", value=" + value
+                + ", ids=" + ids + ")";
     }
 }

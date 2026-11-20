@@ -19,42 +19,42 @@ public class SchemaRequestValidationTest {
 
     @Test
     public void test_save_schema_valid() {
-        final var request = new SaveSchemaRequest("myDb", "myColl", sampleSchema());
+        final var request = new SaveSchemaRequest("myProject", "myColl", sampleSchema());
         assertTrue(RequestValidator.validate(request).isValid());
     }
 
     @Test
     public void test_save_schema_missing_schema() {
-        final var request = new SaveSchemaRequest("myDb", "myColl", null);
+        final var request = new SaveSchemaRequest("myProject", "myColl", null);
         assertFalse(RequestValidator.validate(request).isValid());
     }
 
     @Test
     public void test_save_schema_empty_schema() {
-        final var request = new SaveSchemaRequest("myDb", "myColl", new JsonObject());
+        final var request = new SaveSchemaRequest("myProject", "myColl", new JsonObject());
         assertFalse(RequestValidator.validate(request).isValid());
     }
 
     @Test
     public void test_save_schema_bad_collection() {
-        final var request = new SaveSchemaRequest("myDb", "x", sampleSchema());
+        final var request = new SaveSchemaRequest("myProject", "x", sampleSchema());
         assertFalse(RequestValidator.validate(request).isValid());
     }
 
     @Test
-    public void test_save_schema_reserved_db() {
+    public void test_save_schema_reserved_project() {
         final var request = new SaveSchemaRequest("admin", "myColl", sampleSchema());
         assertFalse(RequestValidator.validate(request).isValid());
     }
 
     @Test
     public void test_delete_schema_valid() {
-        final var request = new DeleteSchemaRequest("myDb", "myColl");
+        final var request = new DeleteSchemaRequest("myProject", "myColl");
         assertTrue(RequestValidator.validate(request).isValid());
     }
 
     @Test
-    public void test_delete_schema_blank_db() {
+    public void test_delete_schema_blank_project() {
         final var request = new DeleteSchemaRequest("", "myColl");
         assertFalse(RequestValidator.validate(request).isValid());
     }

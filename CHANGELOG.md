@@ -10,6 +10,29 @@ storage format means a dump and restore, never just a jar swap. The client libra
 
 ## [Unreleased]
 
+Protocol version 2, storage format version 2: both moved.
+
+### Changed
+
+- MPP is now the Micro Project Engine, and the unit a collection lives in is a **project**, no longer a database.
+  Everything that named a database names a project:
+  - operations `CREATE_PROJECT`, `DROP_PROJECT`, `LIST_PROJECTS`, `SET_PROJECT_OWNERS` and `GET_PROJECT_STATS`, and
+    the `projectName` field on every request;
+  - the `projects` list of `LIST_PROJECTS`, the users' `projectPermissions` and `ownedProjects`, the
+    `project|collection` collection-permission keys and the `CREATE_PROJECT`/`DROP_PROJECT` global permissions;
+  - error codes `PROJECT_NOT_FOUND` (`404-4`), `PROJECT_ALREADY_EXISTS` (`409-2`),
+    `TOO_MANY_COLLECTIONS_FOR_PROJECT` (`400-40`), `TOO_MANY_PROJECTS` (`400-41`), `ERROR_CREATING_PROJECT`,
+    `ERROR_UPDATING_PROJECT_OWNERS`, `ERROR_DROPPING_PROJECT` and `ERROR_LISTING_PROJECTS` (`500-11` to `500-14`);
+    the numbers are unchanged;
+  - config keys `maxProjects`, `maxCollectionsPerProject`, `maxProceduresPerProject`,
+    `maxConcurrentScriptsPerProject` and `scheduleMaxPerProject`;
+  - the `mpp_projects` metric, the client's `--projects` dump flag, the scripts' `db.listProjects()`, and the
+    `project` field of trigger events, run rows and the run directories;
+  - the client libraries' `Project` type, `client.project(...)` and `listProjects()`, and Spring's
+    `@MppEntity(project = ...)` and `mpp.project`.
+- The `admin` metadata keeps its projects in `admin/projects`. A folder written by an earlier release, stamped or not,
+  is refused at startup. A dump taken by 0.1.0 still uses the old operation and field names.
+
 ## [0.1.0] - 2026-11-17
 
 The first release. Protocol version 1, storage format version 1.

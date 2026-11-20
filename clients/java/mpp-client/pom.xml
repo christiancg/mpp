@@ -12,7 +12,7 @@
 
     <artifactId>mpp-client</artifactId>
     <name>MPP Java client</name>
-    <description>Java client for the MPP database: connection pool, fluent query builder, transactions and live queries.</description>
+    <description>Java client for MPP, the Micro Project Engine: connection pool, fluent query builder, transactions and live queries.</description>
 
     <properties>
         <mpp.root>${project.basedir}/../../..</mpp.root>

@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 @RequiresDirectorySync
 @RequiresFileKeys
 public class WriteAheadLogForceFailureTest {
-    private static final String DB = "forceFailDb";
+    private static final String PROJECT = "forceFailProject";
     private static final String COLL = "forceFailColl";
 
     private final FaultInjector injector = IocContainer.get(FaultInjector.class);
@@ -44,12 +44,12 @@ public class WriteAheadLogForceFailureTest {
     @BeforeEach
     public void setUp() throws Exception {
         power = PowerLossFixture.install();
-        rf = new ReplacerFixture(tmp, DB, COLL);
+        rf = new ReplacerFixture(tmp, PROJECT, COLL);
         for (final var id : List.of("a", "b", "c")) {
             rf.appender.insert(rf.entry(id, "old-" + id, 0), ReplacerFixture.line(id, "old-" + id));
         }
         wal = new WriteAheadLog(rf.fx.paths);
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
         TestUtils.setPrivateField(injector, "enabled", true);
     }
 
@@ -67,11 +67,11 @@ public class WriteAheadLogForceFailureTest {
 
     private Map<String, String> afterPowerLossAndRedo() throws IOException {
         power.powerLoss();
-        PowerLossFixture.restart(rf.fx.paths, DB, COLL);
+        PowerLossFixture.restart(rf.fx.paths, PROJECT, COLL);
         ForceFailures.forgetUnder(tmp);
         WalRedo.redoAll(rf.fx.paths);
         final var values = new TreeMap<String, String>();
-        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(DB, COLL)) {
+        try (var entries = new DocumentPageStore(rf.fx.paths).streamEntries(PROJECT, COLL)) {
             entries.forEach(entry -> values.merge(entry.get_id(), entry.getData().get("v").asJsonString().getValue(),
                     (first, second) -> first + "," + second));
         }
@@ -87,8 +87,8 @@ public class WriteAheadLogForceFailureTest {
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         failNextForceOf(file);
 
-        assertThrows(IOException.class, () -> wal.checkpoint(DB, COLL));
-        wal.checkpoint(DB, COLL);
+        assertThrows(IOException.class, () -> wal.checkpoint(PROJECT, COLL));
+        wal.checkpoint(PROJECT, COLL);
 
         assertEquals(withNewB(), afterPowerLossAndRedo());
     }
@@ -100,7 +100,7 @@ public class WriteAheadLogForceFailureTest {
 
     @Test
     public void aFailedCheckpointForceOfThePkIndexIsNeverRetriedAndTrusted() throws Exception {
-        aFailedCheckpointForceOf(rf.fx.paths.pkIndexFile(DB, COLL));
+        aFailedCheckpointForceOf(rf.fx.paths.pkIndexFile(PROJECT, COLL));
     }
 
     @Test
@@ -110,16 +110,16 @@ public class WriteAheadLogForceFailureTest {
         final var bytes = Files.readAllBytes(page.toPath());
         final var inode = Files.readAttributes(page.toPath(), BasicFileAttributes.class).fileKey();
         failNextForceOf(page);
-        assertThrows(IOException.class, () -> wal.checkpoint(DB, COLL));
+        assertThrows(IOException.class, () -> wal.checkpoint(PROJECT, COLL));
         assertTrue(ForceFailures.hasFailed(page.toPath()));
 
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
 
         assertNotEquals(inode, Files.readAttributes(page.toPath(), BasicFileAttributes.class).fileKey());
         assertArrayEquals(bytes, Files.readAllBytes(page.toPath()));
         assertFalse(ForceFailures.hasFailed(page.toPath()));
-        assertFalse(
-                rf.fx.paths.collectionFolder(DB, COLL).toPath().resolve(page.getName() + ".repair").toFile().exists());
+        assertFalse(rf.fx.paths.collectionFolder(PROJECT, COLL).toPath().resolve(page.getName() + ".repair").toFile()
+                .exists());
     }
 
     @Test
@@ -127,10 +127,10 @@ public class WriteAheadLogForceFailureTest {
         final var page = rf.fx.page(0);
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
         failNextForceOf(page);
-        assertThrows(IOException.class, () -> wal.checkpoint(DB, COLL));
+        assertThrows(IOException.class, () -> wal.checkpoint(PROJECT, COLL));
         injector.arm(FaultPoint.FILE_FORCED, FaultAction.FAIL, page.getName() + ".repair");
 
-        assertThrows(IOException.class, () -> wal.checkpoint(DB, COLL));
+        assertThrows(IOException.class, () -> wal.checkpoint(PROJECT, COLL));
 
         assertTrue(ForceFailures.hasFailed(page.toPath()));
         assertEquals(withNewB(), afterPowerLossAndRedo());
@@ -141,20 +141,20 @@ public class WriteAheadLogForceFailureTest {
         final var gone = rf.fx.page(7).toPath();
         ForceFailures.failed(gone);
 
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
 
         assertFalse(ForceFailures.hasFailed(gone));
     }
 
     @Test
     public void aFailedFieldIndexLogForceIsRebuiltFromItsLiveCopy() throws Exception {
-        final var indexLog = rf.fx.paths.collectionFolder(DB, COLL).toPath().resolve(COLL + "-v-String.idxlog");
+        final var indexLog = rf.fx.paths.collectionFolder(PROJECT, COLL).toPath().resolve(COLL + "-v-String.idxlog");
         Files.writeString(indexLog, "logged index changes\n");
         final var inode = Files.readAttributes(indexLog, BasicFileAttributes.class).fileKey();
         ForceFailures.failed(indexLog);
         rf.replace("b", "new-b", 0, PagePlacement.APPEND);
 
-        wal.checkpoint(DB, COLL);
+        wal.checkpoint(PROJECT, COLL);
 
         assertNotEquals(inode, Files.readAttributes(indexLog, BasicFileAttributes.class).fileKey());
         assertEquals("logged index changes\n", Files.readString(indexLog));
@@ -163,7 +163,7 @@ public class WriteAheadLogForceFailureTest {
 
     @Test
     public void aWriteAfterAFailedLogForceIsNeverForcedIntoTheSameLog() throws Exception {
-        failNextForceOf(rf.fx.paths.writeAheadLog(DB, COLL));
+        failNextForceOf(rf.fx.paths.writeAheadLog(PROJECT, COLL));
         assertThrows(IOException.class, () -> rf.replace("b", "new-b", 0, PagePlacement.APPEND));
 
         rf.replace("c", "new-c", 0, PagePlacement.APPEND);

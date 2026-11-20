@@ -29,7 +29,7 @@ public abstract class ClusterConnectionHandlerTestBase {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.start(true, ACK_TIMEOUT_MS);
         cluster.configureMembership(1, ClusterTestHarness.node("self", cluster.serverPort()));
     }
@@ -51,8 +51,8 @@ public abstract class ClusterConnectionHandlerTestBase {
     }
 
     protected OperationResponse findById(String id) {
-        final var json = "{\"type\":\"FIND_BY_ID\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
-                + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}";
+        final var json = "{\"type\":\"FIND_BY_ID\",\"projectName\":\"" + TestGlobals.PROJECT
+                + "\",\"collectionName\":\"" + TestGlobals.COLL + "\",\"_id\":\"" + id + "\"}";
         return processor.processMessage(RequestParser.parseRequest(json));
     }
 }

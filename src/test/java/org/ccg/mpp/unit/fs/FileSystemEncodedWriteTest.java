@@ -28,7 +28,7 @@ public class FileSystemEncodedWriteTest extends FileSystemTestBase {
         data.addProperty("v", value);
         data.addProperty("unicode", UNICODE);
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id(id);
         entry.setData(data);
@@ -54,9 +54,9 @@ public class FileSystemEncodedWriteTest extends FileSystemTestBase {
     }
 
     private static File page(long page) {
-        return new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL
-                        + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + page + ".dat");
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
+                + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + Globals.FILE_PAGE_SEPARATOR + page
+                + ".dat");
     }
 
     private void assertPagesAsLegacy() throws Exception {
@@ -64,13 +64,13 @@ public class FileSystemEncodedWriteTest extends FileSystemTestBase {
             assertEquals(String.join("", expected.getValue()),
                     Files.readString(page(expected.getKey()).toPath(), StandardCharsets.UTF_8));
         }
-        for (final var row : fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL)) {
+        for (final var row : fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL)) {
             assertEquals(row.getValue(), fs.getById(row).get_id());
         }
     }
 
     private List<PkIndexEntry> resident() throws IOException {
-        return new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.DB, TestGlobals.COLL));
+        return new ArrayList<>(fs.readWholePkIndexFile(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     private PkIndexEntry indexed(String id) throws IOException {
@@ -91,7 +91,7 @@ public class FileSystemEncodedWriteTest extends FileSystemTestBase {
             bulk.add(document("bulk-" + i, "value-" + i, i % 2));
             expectAppended(i % 2, "bulk-" + i, "value-" + i);
         }
-        fs.bulkInsertIntoCollection(TestGlobals.DB, TestGlobals.COLL, bulk, DbEntry::getPage, DbEntry::encodeLine);
+        fs.bulkInsertIntoCollection(TestGlobals.PROJECT, TestGlobals.COLL, bulk, DbEntry::getPage, DbEntry::encodeLine);
         assertPagesAsLegacy();
 
         final var updated = document("plain", "two-grown-" + "z".repeat(30), 0L);

@@ -52,40 +52,40 @@ public class ClusterCoordinator {
     private final EJson eJson = IocContainer.get(EJson.class);
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
 
-    public WriteGuard guardWrite(String dbName, String collName) {
-        if (doesntCoordinate(dbName)) {
+    public WriteGuard guardWrite(String projectName, String collName) {
+        if (doesntCoordinate(projectName)) {
             return WriteGuard.allow();
         }
         if (!ownershipManager.hasQuorum()) {
             return WriteGuard.noQuorum();
         }
-        if (!ownershipManager.isOwner(dbName, collName)) {
-            return WriteGuard.notOwner(ownershipManager.ownerAddress(dbName, collName));
+        if (!ownershipManager.isOwner(projectName, collName)) {
+            return WriteGuard.notOwner(ownershipManager.ownerAddress(projectName, collName));
         }
         return WriteGuard.allow();
     }
 
-    public ReplicationOutcome replicateUpsert(String dbName, String collName, List<String> ids) {
-        final var applicability = documentReplicationOutcome(dbName, collName);
+    public ReplicationOutcome replicateUpsert(String projectName, String collName, List<String> ids) {
+        final var applicability = documentReplicationOutcome(projectName, collName);
         if (applicability != null) {
             return applicability;
         }
         try {
             final var documents = new ArrayList<JsonObject>();
             final var versions = new ArrayList<String>();
-            readDocuments(dbName, collName, ids, documents, versions);
-            return replicator.broadcast(
-                    stamped(new ReplicationPayload(dbName, collName, ReplicationOp.UPSERT, documents, null, versions)));
+            readDocuments(projectName, collName, ids, documents, versions);
+            return replicator.broadcast(stamped(
+                    new ReplicationPayload(projectName, collName, ReplicationOp.UPSERT, documents, null, versions)));
         } catch (Exception e) {
             // The local commit stands; a failure to ship it is reported to the client and reconciled later.
-            logger.warning("Failed to replicate upsert to " + dbName + "|" + collName + ": " + e.getMessage());
+            logger.warning("Failed to replicate upsert to " + projectName + "|" + collName + ": " + e.getMessage());
             return ReplicationOutcome.TIMEOUT;
         }
     }
 
-    public DeleteReservation reserveDelete(String dbName, String collName, List<String> ids)
+    public DeleteReservation reserveDelete(String projectName, String collName, List<String> ids)
             throws java.io.IOException {
-        final var applicability = documentReplicationOutcome(dbName, collName);
+        final var applicability = documentReplicationOutcome(projectName, collName);
         if (applicability == ReplicationOutcome.NOT_OWNER) {
             return DeleteReservation.OWNER_LOST;
         }
@@ -93,42 +93,43 @@ public class ClusterCoordinator {
             return DeleteReservation.NOT_CLUSTERED;
         }
         final var version = hybridClock.next();
-        final var rows = cache.pkRowsForWriter(dbName, collName, ids);
+        final var rows = cache.pkRowsForWriter(projectName, collName, ids);
         final var held = new ArrayList<String>(ids.size());
         for (final var id : ids) {
             if (rows.row(id) != null) {
                 held.add(id);
             }
         }
-        final var forced = fs.tombstones().reserve(dbName, collName, held, version);
-        faultInjector.at(FaultPoint.DELETE_TOMBSTONE_RESERVED, Cache.getCollectionIdentifier(dbName, collName));
+        final var forced = fs.tombstones().reserve(projectName, collName, held, version);
+        faultInjector.at(FaultPoint.DELETE_TOMBSTONE_RESERVED, Cache.getCollectionIdentifier(projectName, collName));
         return new DeleteReservation(false, version, forced);
     }
 
-    public void retractDelete(String dbName, String collName, List<String> ids, Long reservedVersion)
+    public void retractDelete(String projectName, String collName, List<String> ids, Long reservedVersion)
             throws java.io.IOException {
         if (reservedVersion == null) {
             return;
         }
         for (final var id : ids) {
-            fs.tombstones().retract(dbName, collName, id, reservedVersion);
+            fs.tombstones().retract(projectName, collName, id, reservedVersion);
         }
     }
 
-    public ReplicationOutcome replicateDelete(String dbName, String collName, List<String> ids, Long reservedVersion) {
-        final var applicability = documentReplicationOutcome(dbName, collName);
+    public ReplicationOutcome replicateDelete(String projectName, String collName, List<String> ids,
+            Long reservedVersion) {
+        final var applicability = documentReplicationOutcome(projectName, collName);
         if (applicability != null) {
             return applicability;
         }
         final var version = reservedVersion != null ? reservedVersion : hybridClock.next();
         final var versions = new ArrayList<>(Collections.nCopies(ids.size(), Long.toString(version)));
         return replicator.broadcast(
-                stamped(new ReplicationPayload(dbName, collName, ReplicationOp.DELETE, null, ids, versions)));
+                stamped(new ReplicationPayload(projectName, collName, ReplicationOp.DELETE, null, ids, versions)));
     }
 
-    public ReplicationOutcome replicateGroup(String dbName, String collName, List<String> upsertIds,
+    public ReplicationOutcome replicateGroup(String projectName, String collName, List<String> upsertIds,
             Map<String, Long> deleteVersions) {
-        final var applicability = documentReplicationOutcome(dbName, collName);
+        final var applicability = documentReplicationOutcome(projectName, collName);
         if (applicability != null) {
             return applicability;
         }
@@ -139,15 +140,15 @@ public class ClusterCoordinator {
                 for (final var version : deleteVersions.values()) {
                     versions.add(Long.toString(version != null ? version : hybridClock.next()));
                 }
-                entries.add(stamped(new ReplicationPayload(dbName, collName, ReplicationOp.DELETE, null,
+                entries.add(stamped(new ReplicationPayload(projectName, collName, ReplicationOp.DELETE, null,
                         List.copyOf(deleteVersions.keySet()), versions)));
             }
             final var documents = new ArrayList<JsonObject>();
             final var versions = new ArrayList<String>();
-            readDocuments(dbName, collName, upsertIds, documents, versions);
+            readDocuments(projectName, collName, upsertIds, documents, versions);
             if (!documents.isEmpty()) {
-                entries.add(stamped(
-                        new ReplicationPayload(dbName, collName, ReplicationOp.UPSERT, documents, null, versions)));
+                entries.add(stamped(new ReplicationPayload(projectName, collName, ReplicationOp.UPSERT, documents, null,
+                        versions)));
             }
             return switch (entries.size()) {
                 case 0 -> ReplicationOutcome.QUORUM_MET;
@@ -155,7 +156,8 @@ public class ClusterCoordinator {
                 default -> replicator.broadcastTx(new TxReplicationPayload(entries));
             };
         } catch (Exception e) {
-            logger.warning("Failed to replicate a write group to " + dbName + "|" + collName + ": " + e.getMessage());
+            logger.warning(
+                    "Failed to replicate a write group to " + projectName + "|" + collName + ": " + e.getMessage());
             return ReplicationOutcome.TIMEOUT;
         }
     }
@@ -182,10 +184,10 @@ public class ClusterCoordinator {
         }
     }
 
-    private void reserveTombstone(Transaction transaction, String collId, String dbName, String collName, String id)
-            throws IOException {
+    private void reserveTombstone(Transaction transaction, String collId, String projectName, String collName,
+            String id) throws IOException {
         final var version = transaction.versionOf(collId, id);
-        final var stored = VersionedApply.storedEntry(dbName, collName, id);
+        final var stored = VersionedApply.storedEntry(projectName, collName, id);
         final var outcome = ApplyOutcome.forDelete(stored == null ? 0L : stored.getVersion(), stored != null, version);
         if (outcome == ApplyOutcome.SUPERSEDED) {
             transaction.forget(collId, id);
@@ -193,7 +195,7 @@ public class ClusterCoordinator {
         }
         final var tombstoneVersion = version > 0 ? version : hybridClock.next();
         transaction.recordDelete(collId, id, tombstoneVersion);
-        fs.tombstones().append(dbName, collName, id, tombstoneVersion);
+        fs.tombstones().append(projectName, collName, id, tombstoneVersion);
     }
 
     private static List<String> deletedIds(Map<String, JsonObject> overlay) {
@@ -231,11 +233,11 @@ public class ClusterCoordinator {
     }
 
     private static ReplicationPayload stamped(ReplicationPayload payload) {
-        payload.setIncarnationValue(CollectionIncarnation.current(payload.getDbName(), payload.getCollName()));
+        payload.setIncarnationValue(CollectionIncarnation.current(payload.getProjectName(), payload.getCollName()));
         return payload;
     }
 
-    private void buildCollectionEntries(String dbName, String collName, Transaction transaction, String collId,
+    private void buildCollectionEntries(String projectName, String collName, Transaction transaction, String collId,
             List<ReplicationPayload> entries) throws Exception {
         final var overlay = transaction.overlayFor(collId);
         final var upsertIds = new ArrayList<String>();
@@ -248,17 +250,17 @@ public class ClusterCoordinator {
         if (!upsertIds.isEmpty()) {
             final var documents = new ArrayList<JsonObject>();
             final var versions = new ArrayList<String>();
-            readDocuments(dbName, collName, upsertIds, documents, versions);
-            entries.add(
-                    stamped(new ReplicationPayload(dbName, collName, ReplicationOp.UPSERT, documents, null, versions)));
+            readDocuments(projectName, collName, upsertIds, documents, versions);
+            entries.add(stamped(
+                    new ReplicationPayload(projectName, collName, ReplicationOp.UPSERT, documents, null, versions)));
         }
         if (!deleteIds.isEmpty()) {
             final var versions = new ArrayList<String>();
             for (final var id : deleteIds) {
                 versions.add(Long.toString(transaction.versionOf(collId, id)));
             }
-            entries.add(
-                    stamped(new ReplicationPayload(dbName, collName, ReplicationOp.DELETE, null, deleteIds, versions)));
+            entries.add(stamped(
+                    new ReplicationPayload(projectName, collName, ReplicationOp.DELETE, null, deleteIds, versions)));
         }
     }
 
@@ -288,32 +290,32 @@ public class ClusterCoordinator {
         return broadcast.get();
     }
 
-    private boolean doesntCoordinate(String dbName) {
-        return !clusterConfig.isEnabled() || Globals.ADMIN_DB_NAME.equals(dbName);
+    private boolean doesntCoordinate(String projectName) {
+        return !clusterConfig.isEnabled() || Globals.ADMIN_PROJECT_NAME.equals(projectName);
     }
 
-    private ReplicationOutcome documentReplicationOutcome(String dbName, String collName) {
-        if (doesntCoordinate(dbName)) {
+    private ReplicationOutcome documentReplicationOutcome(String projectName, String collName) {
+        if (doesntCoordinate(projectName)) {
             return ReplicationOutcome.NOT_CLUSTERED;
         }
-        if (!ownershipManager.isOwner(dbName, collName)) {
+        if (!ownershipManager.isOwner(projectName, collName)) {
             return ReplicationOutcome.NOT_OWNER;
         }
         return null;
     }
 
-    public boolean stillOwns(String dbName, String collName) {
-        return doesntCoordinate(dbName) || ownershipManager.isOwner(dbName, collName);
+    public boolean stillOwns(String projectName, String collName) {
+        return doesntCoordinate(projectName) || ownershipManager.isOwner(projectName, collName);
     }
 
-    private void readDocuments(String dbName, String collName, List<String> ids, List<JsonObject> documents,
+    private void readDocuments(String projectName, String collName, List<String> ids, List<JsonObject> documents,
             List<String> versions) throws Exception {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(dbName, collName);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(projectName, collName);
         for (final var id : ids) {
             final var position = Collections.binarySearch(primaryKeyIndex, id);
             if (position >= 0) {
                 final var indexEntry = primaryKeyIndex.get(position);
-                documents.add(cache.getById(dbName, collName, indexEntry).getData());
+                documents.add(cache.getById(projectName, collName, indexEntry).getData());
                 versions.add(Long.toString(indexEntry.getVersion()));
             }
         }

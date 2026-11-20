@@ -21,10 +21,10 @@ import org.ccg.mpp.test.TestGlobals;
 import org.junit.jupiter.api.Test;
 
 public class WriteEffectsDurablePrefixTest {
-    private static final String SUBJECT = TestGlobals.DB + "|" + TestGlobals.COLL;
+    private static final String SUBJECT = TestGlobals.PROJECT + "|" + TestGlobals.COLL;
 
     private static AdminTriggerRunEntry run(String runId) {
-        return new AdminTriggerRunEntry(runId, 0, "local", TestGlobals.DB, TestGlobals.COLL, "audit", "record",
+        return new AdminTriggerRunEntry(runId, 0, "local", TestGlobals.PROJECT, TestGlobals.COLL, "audit", "record",
                 EventType.UPDATED, false, "admin", 0, 0L, List.of(runId), List.of());
     }
 
@@ -44,10 +44,10 @@ public class WriteEffectsDurablePrefixTest {
             final var stagedByDurableWrite = effects.stagedCount();
             effects.stagingSink().save(run("lost-run"));
 
-            effects.submitLanded(durable, Map.of(), TestGlobals.DB, TestGlobals.COLL, "admin", 0);
+            effects.submitLanded(durable, Map.of(), TestGlobals.PROJECT, TestGlobals.COLL, "admin", 0);
             effects.replicateDeleteLater("kept", 1L, () -> retracted.add("kept"));
             effects.markDurablePrefix(stagedByDurableWrite);
-            effects.submitLanded(lost, Map.of(), TestGlobals.DB, TestGlobals.COLL, "admin", 0);
+            effects.submitLanded(lost, Map.of(), TestGlobals.PROJECT, TestGlobals.COLL, "admin", 0);
             effects.replicateDeleteLater("gone", 2L, () -> retracted.add("gone"));
             effects.replicateUpsertLater("upserted-after");
 
@@ -75,7 +75,7 @@ public class WriteEffectsDurablePrefixTest {
             final var staged = mock(StagedTriggerRuns.class);
             effects.stagingSink().save(run("first"));
             effects.stagingSink().save(run("second"));
-            effects.submitLanded(staged, Map.of(), TestGlobals.DB, TestGlobals.COLL, "admin", 0);
+            effects.submitLanded(staged, Map.of(), TestGlobals.PROJECT, TestGlobals.COLL, "admin", 0);
             effects.replicateDeleteLater("id", 1L, () -> retracted.add("id"));
 
             effects.abandon(SUBJECT);

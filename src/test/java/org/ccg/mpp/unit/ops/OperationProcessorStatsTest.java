@@ -14,9 +14,9 @@ import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.ScriptAdmission;
-import org.ccg.mpp.ops.req.GetDatabaseStatsRequest;
+import org.ccg.mpp.ops.req.GetProjectStatsRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
-import org.ccg.mpp.ops.resp.GetDatabaseStatsResponse;
+import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -30,7 +30,7 @@ public class OperationProcessorStatsTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -44,7 +44,7 @@ public class OperationProcessorStatsTest {
         final var clientTracker = IocContainer.get(ClientTracker.class);
         final var clientId = clientTracker.registerForwardedClient("ddl_stats_admin");
         try {
-            return processor.processMessage(new GetDatabaseStatsRequest(), clientId);
+            return processor.processMessage(new GetProjectStatsRequest(), clientId);
         } finally {
             clientTracker.removeById(clientId);
         }
@@ -52,17 +52,17 @@ public class OperationProcessorStatsTest {
 
     @Test
     public void test_stats_without_a_user_has_no_node_sections() {
-        final var response = (GetDatabaseStatsResponse) processor.processMessage(new GetDatabaseStatsRequest());
+        final var response = (GetProjectStatsResponse) processor.processMessage(new GetProjectStatsRequest());
 
         assertEquals(OperationStatus.OK, response.getStatus());
         assertFalse(response.getStats().has("memory"));
         assertFalse(response.getStats().has("scripts"));
-        assertEquals(0, response.getStats().get("databases").asJsonArray().size());
+        assertEquals(0, response.getStats().get("projects").asJsonArray().size());
     }
 
     @Test
-    public void test_get_database_stats_returns_populated_payload() {
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+    public void test_get_project_stats_returns_populated_payload() {
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.addProperty(Globals.PK_FIELD, "stats_seed");
         obj.addProperty("v", 1);
@@ -70,14 +70,14 @@ public class OperationProcessorStatsTest {
         save.set_id("stats_seed");
         processor.processMessage(save);
 
-        final var response = (GetDatabaseStatsResponse) statsAsAdmin();
+        final var response = (GetProjectStatsResponse) statsAsAdmin();
         assertEquals(OperationStatus.OK, response.getStatus());
-        assertEquals(OperationType.GET_DATABASE_STATS, response.getType());
+        assertEquals(OperationType.GET_PROJECT_STATS, response.getType());
         final var stats = response.getStats();
         assertNotNull(stats);
         assertTrue(stats.has("memory"));
         assertTrue(stats.has("totals"));
-        assertTrue(stats.has("databases"));
+        assertTrue(stats.has("projects"));
         assertTrue(stats.has("scripts"));
 
         final var scripts = stats.get("scripts").asJsonObject();
@@ -104,17 +104,17 @@ public class OperationProcessorStatsTest {
 
         final var totals = stats.get("totals").asJsonObject();
         assertTrue(totals.get("userCount").asJsonNumber().getValue().longValue() >= 0L);
-        assertTrue(totals.get("databaseCount").asJsonNumber().getValue().longValue() >= 1L);
+        assertTrue(totals.get("projectCount").asJsonNumber().getValue().longValue() >= 1L);
         assertTrue(totals.get("collectionCount").asJsonNumber().getValue().longValue() >= 1L);
         assertTrue(totals.get("entryCount").asJsonNumber().getValue().longValue() >= 0L);
 
-        final var dbs = stats.get("databases").asJsonArray().asList();
-        assertFalse(dbs.isEmpty(), "expected at least one user database in the stats payload");
-        final var firstDb = dbs.getFirst().asJsonObject();
-        assertTrue(firstDb.has("name"));
-        assertTrue(firstDb.has("collectionCount"));
-        assertTrue(firstDb.has("collections"));
-        final var firstCollections = firstDb.get("collections").asJsonArray().asList();
+        final var projects = stats.get("projects").asJsonArray().asList();
+        assertFalse(projects.isEmpty(), "expected at least one user project in the stats payload");
+        final var firstProject = projects.getFirst().asJsonObject();
+        assertTrue(firstProject.has("name"));
+        assertTrue(firstProject.has("collectionCount"));
+        assertTrue(firstProject.has("collections"));
+        final var firstCollections = firstProject.get("collections").asJsonArray().asList();
         if (!firstCollections.isEmpty()) {
             final var firstColl = firstCollections.getFirst().asJsonObject();
             assertTrue(firstColl.has("name"));

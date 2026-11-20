@@ -36,7 +36,7 @@ public final class PointServablePipeline {
                     || operator.getFieldOperatorType() == FieldOperatorType.IN;
         }
         return (AggregationOperationHelper.sortBound(steps, 0) > 0 || countsFromIndex(steps))
-                && !cache.hasNoIndex(request.getDatabaseName(), request.getCollectionName(), operator.getField());
+                && !cache.hasNoIndex(request.getProjectName(), request.getCollectionName(), operator.getField());
     }
 
     private static boolean looksUpPoints(FieldOperator operator) {

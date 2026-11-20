@@ -88,13 +88,13 @@ final class PowerLossFixture implements Forcer, AutoCloseable {
         }
     }
 
-    static void restart(FilePaths paths, String dbName, String collName) {
+    static void restart(FilePaths paths, String projectName, String collName) {
         final var root = new File(paths.dbPath());
         WriteAheadLog.forgetUnder(root);
         WriteIntentJournal.forgetUnder(root);
         PageLengths.forgetUnder(root);
         TombstoneStore.forgetUnder(root);
-        PkIndexStore.forgetState(paths.pkIndexFile(dbName, collName));
+        PkIndexStore.forgetState(paths.pkIndexFile(projectName, collName));
     }
 
     private synchronized Object pinnedKeyOf(Path path) throws IOException {

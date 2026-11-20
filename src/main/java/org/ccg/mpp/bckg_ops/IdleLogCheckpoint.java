@@ -16,21 +16,21 @@ public final class IdleLogCheckpoint {
     private static final AtomicLong nextDue = new AtomicLong();
     private static final CollectionTryLock COLLECTION_WRITE_LOCKS = new CollectionTryLock() {
         @Override
-        public boolean tryLock(String dbName, String collName) {
-            return locks.tryLockWrite(dbName, collName);
+        public boolean tryLock(String projectName, String collName) {
+            return locks.tryLockWrite(projectName, collName);
         }
 
         @Override
-        public void unlock(String dbName, String collName) {
-            locks.releaseWrite(dbName, collName);
+        public void unlock(String projectName, String collName) {
+            locks.releaseWrite(projectName, collName);
         }
     };
 
     private static final CollectionTryLock COLLECTION_READ_LOCKS = new CollectionTryLock() {
         @Override
-        public boolean tryLock(String dbName, String collName) {
+        public boolean tryLock(String projectName, String collName) {
             try {
-                return locks.tryLockRead(dbName, collName, Globals.WAL_BACKGROUND_CHECKPOINT_LOCK_WAIT_MS);
+                return locks.tryLockRead(projectName, collName, Globals.WAL_BACKGROUND_CHECKPOINT_LOCK_WAIT_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return false;
@@ -38,8 +38,8 @@ public final class IdleLogCheckpoint {
         }
 
         @Override
-        public void unlock(String dbName, String collName) {
-            locks.releaseRead(dbName, collName);
+        public void unlock(String projectName, String collName) {
+            locks.releaseRead(projectName, collName);
         }
     };
 

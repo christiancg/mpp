@@ -61,7 +61,7 @@ public class ShutdownCoordinatorTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -98,7 +98,7 @@ public class ShutdownCoordinatorTest {
     @Test
     public void test_shutdown_completes_with_a_run_registered() {
         final var registry = IocContainer.get(ScriptRunRegistry.class);
-        final var run = registry.register(ScriptRunKind.RUN_SCRIPT, TestGlobals.DB, null, "alice", null);
+        final var run = registry.register(ScriptRunKind.RUN_SCRIPT, TestGlobals.PROJECT, null, "alice", null);
         try {
             final var start = System.currentTimeMillis();
             assertDoesNotThrow(() -> coordinator().shutdown(null, null));
@@ -121,11 +121,11 @@ public class ShutdownCoordinatorTest {
     public void test_rollback_releases_locks_acquired_on_another_thread() throws Exception {
         final var coll = "shutdown_cross_thread";
         IocContainer.get(org.ccg.mpp.ops.OperationProcessor.class)
-                .processMessage(new org.ccg.mpp.ops.req.CreateCollectionRequest(TestGlobals.DB, coll));
+                .processMessage(new org.ccg.mpp.ops.req.CreateCollectionRequest(TestGlobals.PROJECT, coll));
         final var session = clientTracker.registerTxSession("shutdown-session", "alice", "edge");
         session.submit(() -> {
             TransactionOperationHelper.start(session.clientId());
-            final var request = new SaveRequest(TestGlobals.DB, coll);
+            final var request = new SaveRequest(TestGlobals.PROJECT, coll);
             request.setObject(document("cross-thread"));
             request.set_id("cross-thread");
             return TransactionOperationHelper.bufferSave(request,
@@ -140,9 +140,9 @@ public class ShutdownCoordinatorTest {
         final var acquired = new java.util.concurrent.atomic.AtomicBoolean();
         final var other = new Thread(() -> {
             try {
-                locks.lock(TestGlobals.DB, coll);
+                locks.lock(TestGlobals.PROJECT, coll);
                 acquired.set(true);
-                locks.release(TestGlobals.DB, coll);
+                locks.release(TestGlobals.PROJECT, coll);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -159,7 +159,7 @@ public class ShutdownCoordinatorTest {
         final var clientId = clientTracker.registerForwardedClient("alice");
         TransactionOperationHelper.start(clientId);
         final var transaction = clientTracker.getActiveTransaction(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document("held"));
         request.set_id("held");
         TransactionOperationHelper.bufferSave(request, transaction);
@@ -172,7 +172,7 @@ public class ShutdownCoordinatorTest {
         final var nextClient = clientTracker.registerForwardedClient("bob");
         TransactionOperationHelper.start(nextClient);
         final var next = clientTracker.getActiveTransaction(nextClient);
-        final var secondRequest = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var secondRequest = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         secondRequest.setObject(document("after"));
         secondRequest.set_id("after");
         final var response = TransactionOperationHelper.bufferSave(secondRequest, next);
@@ -197,7 +197,7 @@ public class ShutdownCoordinatorTest {
         for (var i = 0; i < 10; i++) {
             triggerExecutor
                     .submit(new org.ccg.mpp.bckg_ops.events.TriggerEvent(org.ccg.mpp.bckg_ops.events.EventType.CREATED,
-                            TestGlobals.DB, TestGlobals.COLL, "t", "p", false, List.of(), "alice", 0, null));
+                            TestGlobals.PROJECT, TestGlobals.COLL, "t", "p", false, List.of(), "alice", 0, null));
         }
 
         coordinator().shutdown(null, null);
@@ -210,7 +210,7 @@ public class ShutdownCoordinatorTest {
     public void test_cache_still_answers_after_shutdown() {
         coordinator().shutdown(null, null);
 
-        assertNotNull(IocContainer.get(Cache.class).getUserDatabaseNames());
+        assertNotNull(IocContainer.get(Cache.class).getUserProjectNames());
     }
 
     @Test
@@ -223,7 +223,7 @@ public class ShutdownCoordinatorTest {
         });
         triggerExecutor.submitAfter(
                 new org.ccg.mpp.bckg_ops.events.TriggerEvent(org.ccg.mpp.bckg_ops.events.EventType.CREATED,
-                        TestGlobals.DB, TestGlobals.COLL, "t", "p", false, java.util.List.of(), "alice", 0, null),
+                        TestGlobals.PROJECT, TestGlobals.COLL, "t", "p", false, java.util.List.of(), "alice", 0, null),
                 60_000L);
         try {
             final var start = System.currentTimeMillis();
@@ -335,7 +335,7 @@ public class ShutdownCoordinatorTest {
     private UUID connectionWithAnOpenTransaction(Socket socket, String id) {
         final var clientId = clientTracker.addClient(socket);
         TransactionOperationHelper.start(clientId);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id));
         request.set_id(id);
         TransactionOperationHelper.bufferSave(request, clientTracker.getActiveTransaction(clientId));
@@ -411,17 +411,17 @@ public class ShutdownCoordinatorTest {
 
     @Test
     public void test_shutdown_writes_back_the_dirty_page_rows() throws Exception {
-        final var entry = DbEntry.fromJsonObject(TestGlobals.DB, TestGlobals.COLL, document("rowed"));
+        final var entry = DbEntry.fromJsonObject(TestGlobals.PROJECT, TestGlobals.COLL, document("rowed"));
         entry.setPage(9);
-        EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry,
-                CollectionIncarnation.current(TestGlobals.DB, TestGlobals.COLL)));
-        final var pagesCollection = AdminPageEntry.pagesCollectionName(TestGlobals.DB, TestGlobals.COLL);
-        final var row = AdminPageEntry.buildId(TestGlobals.DB, TestGlobals.COLL, 9);
+        EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL,
+                entry, CollectionIncarnation.current(TestGlobals.PROJECT, TestGlobals.COLL)));
+        final var pagesCollection = AdminPageEntry.pagesCollectionName(TestGlobals.PROJECT, TestGlobals.COLL);
+        final var row = AdminPageEntry.buildId(TestGlobals.PROJECT, TestGlobals.COLL, 9);
         final var fs = IocContainer.get(FileSystem.class);
 
         coordinator().shutdown(null, null);
 
-        try (var rows = fs.streamEntries(Globals.ADMIN_PAGES_DB_NAME, pagesCollection)) {
+        try (var rows = fs.streamEntries(Globals.ADMIN_PAGES_PROJECT_NAME, pagesCollection)) {
             assertTrue(rows.anyMatch(stored -> stored.get_id().equals(row)), "the row the drain left dirty is on disk");
         }
     }

@@ -38,7 +38,7 @@ public class TransactionForceCountTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         recorder = RecordingForcer.install(true);
     }
@@ -77,7 +77,7 @@ public class TransactionForceCountTest {
         final var id = "forced-" + sequence++;
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
-        final var request = new SaveRequest(TestGlobals.DB, collName);
+        final var request = new SaveRequest(TestGlobals.PROJECT, collName);
         request.setObject(object);
         request.set_id(id);
         assertEquals(OperationStatus.OK, TransactionOperationHelper
@@ -182,7 +182,7 @@ public class TransactionForceCountTest {
             processor.processMessage(new StartTransactionRequest(), clientId);
             final var object = new JsonObject();
             object.add(Globals.PK_FIELD, new JsonString("coordinated"));
-            final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObject(object);
             request.set_id("coordinated");
             processor.processMessage(request, clientId);

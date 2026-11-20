@@ -55,7 +55,7 @@ public class TransactionGroupedCommitTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.resetClients();
         TestUtils.ensureAdminUser(USERNAME);
         recorder = RecordingForcer.install(true);
@@ -86,7 +86,7 @@ public class TransactionGroupedCommitTest {
     }
 
     private void save(UUID clientId, String id, String marker) {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document(id, marker));
         request.set_id(id);
         assertEquals(OperationStatus.OK, TransactionOperationHelper
@@ -94,7 +94,7 @@ public class TransactionGroupedCommitTest {
     }
 
     private void deleteWarm0(UUID clientId) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id("warm-0");
         assertEquals(OperationStatus.OK, TransactionOperationHelper
                 .bufferDelete(request, clientTracker.getActiveTransaction(clientId)).getStatus());
@@ -118,18 +118,19 @@ public class TransactionGroupedCommitTest {
     }
 
     private String markerOf(String id) throws Exception {
-        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
+        final var primaryKeyIndex = cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
         final var position = PkIndexList.positionOf(primaryKeyIndex, id);
         if (position < 0) {
             return null;
         }
-        final var entry = cache.getById(TestGlobals.DB, TestGlobals.COLL, primaryKeyIndex.get(position).detachedCopy());
+        final var entry = cache.getById(TestGlobals.PROJECT, TestGlobals.COLL,
+                primaryKeyIndex.get(position).detachedCopy());
         return entry.getData().get("marker").asJsonString().getValue();
     }
 
     private static long copiesOnDisk(String id) throws Exception {
-        final var folder = new File(
-                TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR + TestGlobals.COLL);
+        final var folder = new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT
+                + Globals.FILE_SEPARATOR + TestGlobals.COLL);
         final var needle = "\"_id\":\"" + id + "\"";
         var copies = 0L;
         for (final var page : Objects

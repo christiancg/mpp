@@ -6,8 +6,8 @@ public final class IntentLogs {
     private IntentLogs() {
     }
 
-    public static int openIntents(String dbPath, String dbName, String collName) throws IOException {
-        return journal(dbPath).openIntents(dbName, collName).size();
+    public static int openIntents(String dbPath, String projectName, String collName) throws IOException {
+        return journal(dbPath).openIntents(projectName, collName).size();
     }
 
     public static int openIntentsUnder(String dbPath) throws IOException {

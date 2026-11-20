@@ -12,8 +12,8 @@ import org.ccg.mpp.bckg_ops.events.EventType;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.data.admin.AdminCollEntry;
-import org.ccg.mpp.data.admin.AdminDbEntry;
 import org.ccg.mpp.data.admin.AdminPageEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.AdminOperationHelper;
@@ -43,7 +43,7 @@ public class EventBatchCoalescingTest {
         final var data = new JsonObject();
         data.addProperty("field", id);
         final var dbEntry = new DbEntry();
-        dbEntry.setDatabaseName(TestGlobals.DB);
+        dbEntry.setProjectName(TestGlobals.PROJECT);
         dbEntry.setCollectionName(TestGlobals.COLL);
         dbEntry.set_id(id);
         dbEntry.setData(data);
@@ -51,14 +51,14 @@ public class EventBatchCoalescingTest {
     }
 
     private static int totalEntryCount(String collName) {
-        final var pageEntries = IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.DB, collName);
+        final var pageEntries = IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.PROJECT, collName);
         return pageEntries == null ? 0 : pageEntries.stream().mapToInt(AdminPageEntry::getEntryCount).sum();
     }
 
     private static void seedCollections() throws IOException, InterruptedException {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL));
-        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.DB, OTHER_COLL));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL));
+        AdminOperationHelper.saveCollectionEntry(new AdminCollEntry(TestGlobals.PROJECT, OTHER_COLL));
     }
 
     @Test
@@ -67,14 +67,14 @@ public class EventBatchCoalescingTest {
         final var batched = new ArrayList<Event>();
         final var inserted = new ArrayList<DbEntry>();
         for (var i = 0; i < 12; i++) {
-            batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("id" + i)));
+            batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("id" + i)));
             final var other = entry("id" + i);
             other.setCollectionName(OTHER_COLL);
             inserted.add(other);
         }
 
         EventProcessorHelper.processBatch(batched);
-        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.DB, OTHER_COLL, inserted, List.of()));
+        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.PROJECT, OTHER_COLL, inserted, List.of()));
 
         Assertions.assertEquals(12, totalEntryCount(TestGlobals.COLL));
         Assertions.assertEquals(totalEntryCount(OTHER_COLL), totalEntryCount(TestGlobals.COLL),
@@ -86,12 +86,12 @@ public class EventBatchCoalescingTest {
         seedCollections();
         final var batch = new ArrayList<Event>();
         for (var i = 0; i < 6; i++) {
-            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("once" + i)));
+            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("once" + i)));
         }
         try (var admin = Mockito.mockStatic(AdminOperationHelper.class, Mockito.CALLS_REAL_METHODS)) {
             EventProcessorHelper.processBatch(batch);
 
-            admin.verify(() -> AdminOperationHelper.bookWritePathPages(ArgumentMatchers.eq(TestGlobals.DB),
+            admin.verify(() -> AdminOperationHelper.bookWritePathPages(ArgumentMatchers.eq(TestGlobals.PROJECT),
                     ArgumentMatchers.eq(TestGlobals.COLL), ArgumentMatchers.argThat(created -> created.size() == 6),
                     ArgumentMatchers.argThat(List::isEmpty), ArgumentMatchers.anyLong()), Mockito.times(1));
         }
@@ -104,13 +104,13 @@ public class EventBatchCoalescingTest {
         final var pending = IocContainer.get(PendingIndexWrites.class);
         final var batch = new ArrayList<Event>();
         for (var i = 0; i < 8; i++) {
-            pending.mark(TestGlobals.DB, TestGlobals.COLL, "id" + i);
-            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("id" + i)));
+            pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "id" + i);
+            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("id" + i)));
         }
 
         EventProcessorHelper.processBatch(batch);
 
-        Assertions.assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        Assertions.assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     @Test
@@ -118,12 +118,12 @@ public class EventBatchCoalescingTest {
         seedCollections();
         final var batch = new ArrayList<Event>();
         for (var i = 0; i < 5; i++) {
-            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("a" + i)));
+            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("a" + i)));
         }
         for (var i = 0; i < 3; i++) {
             final var dbEntry = entry("b" + i);
             dbEntry.setCollectionName(OTHER_COLL);
-            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, OTHER_COLL, dbEntry));
+            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, OTHER_COLL, dbEntry));
         }
 
         EventProcessorHelper.processBatch(batch);
@@ -139,9 +139,9 @@ public class EventBatchCoalescingTest {
         seedCollections();
 
         final var batched = new ArrayList<Event>();
-        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("id0")));
-        batched.add(new EntityEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, entry("id0")));
-        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("id1")));
+        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("id0")));
+        batched.add(new EntityEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("id0")));
+        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("id1")));
         EventProcessorHelper.processBatch(batched);
 
         final var inserted = new ArrayList<DbEntry>();
@@ -152,7 +152,8 @@ public class EventBatchCoalescingTest {
         }
         final var updated = entry("id0");
         updated.setCollectionName(OTHER_COLL);
-        EventProcessorHelper.processEvent(new BulkEntityEvent(TestGlobals.DB, OTHER_COLL, inserted, List.of(updated)));
+        EventProcessorHelper
+                .processEvent(new BulkEntityEvent(TestGlobals.PROJECT, OTHER_COLL, inserted, List.of(updated)));
 
         Assertions.assertEquals(2, totalEntryCount(TestGlobals.COLL));
         Assertions.assertEquals(totalEntryCount(OTHER_COLL), totalEntryCount(TestGlobals.COLL),
@@ -163,10 +164,10 @@ public class EventBatchCoalescingTest {
     public void test_a_create_and_delete_of_one_id_in_a_group_count_every_created_id() throws Exception {
         seedCollections();
         final var batched = new ArrayList<Event>();
-        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("flip")));
-        batched.add(new EntityEvent(EventType.DELETED, TestGlobals.DB, TestGlobals.COLL, entry("flip")));
-        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("flip")));
-        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("kept")));
+        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("flip")));
+        batched.add(new EntityEvent(EventType.DELETED, TestGlobals.PROJECT, TestGlobals.COLL, entry("flip")));
+        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("flip")));
+        batched.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("kept")));
 
         EventProcessorHelper.processBatch(batched);
 
@@ -177,18 +178,18 @@ public class EventBatchCoalescingTest {
 
     @Test
     public void test_dropped_collection_in_a_batch_clears_pending_and_creates_no_page_metadata() throws Exception {
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(TestGlobals.DB));
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(TestGlobals.PROJECT));
         final var pending = IocContainer.get(PendingIndexWrites.class);
         final var batch = new ArrayList<Event>();
         for (var i = 0; i < 4; i++) {
-            pending.mark(TestGlobals.DB, TestGlobals.COLL, "ghost" + i);
-            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("ghost" + i)));
+            pending.mark(TestGlobals.PROJECT, TestGlobals.COLL, "ghost" + i);
+            batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("ghost" + i)));
         }
 
         Assertions.assertDoesNotThrow(() -> EventProcessorHelper.processBatch(batch));
 
-        Assertions.assertTrue(pending.idsFor(TestGlobals.DB, TestGlobals.COLL).isEmpty());
-        Assertions.assertNull(IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.DB, TestGlobals.COLL));
+        Assertions.assertTrue(pending.idsFor(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
+        Assertions.assertNull(IocContainer.get(Cache.class).getAdminPageEntries(TestGlobals.PROJECT, TestGlobals.COLL));
     }
 
     @Test
@@ -196,7 +197,7 @@ public class EventBatchCoalescingTest {
         seedCollections();
 
         EventProcessorHelper.processBatch(
-                List.of(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("solo"))));
+                List.of(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("solo"))));
 
         Assertions.assertEquals(1, totalEntryCount(TestGlobals.COLL));
     }
@@ -205,8 +206,8 @@ public class EventBatchCoalescingTest {
     public void test_duplicate_ids_in_one_batch_are_indexed_once_but_counted_per_event() throws Exception {
         seedCollections();
         final var batch = new ArrayList<Event>();
-        batch.add(new EntityEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, entry("dup")));
-        batch.add(new EntityEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, entry("dup")));
+        batch.add(new EntityEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("dup")));
+        batch.add(new EntityEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, entry("dup")));
 
         Assertions.assertDoesNotThrow(() -> EventProcessorHelper.processBatch(batch));
 

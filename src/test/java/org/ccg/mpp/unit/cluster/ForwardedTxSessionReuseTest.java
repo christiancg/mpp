@@ -61,8 +61,8 @@ public class ForwardedTxSessionReuseTest extends ClusterConnectionHandlerTestBas
     }
 
     private static String save(String id) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"v\":1}}";
     }
 
     private static String control(String type) {
@@ -93,7 +93,7 @@ public class ForwardedTxSessionReuseTest extends ClusterConnectionHandlerTestBas
 
     private void prepareTx1() throws Exception {
         Tx2pcLog.recordParticipantPrepared(tx1, COORDINATOR, List.of(COORDINATOR),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
     }
 
     private void releaseFencedTx1() throws Exception {
@@ -173,7 +173,7 @@ public class ForwardedTxSessionReuseTest extends ClusterConnectionHandlerTestBas
     public void test_a_locally_committed_previous_transaction_refuses_the_next_ones_op_with_409_12() throws Exception {
         send(tx1, save("committing"));
         TxCommitLog.recordLocalCommit(tx1, activeTransaction().getBufferedOpIds(),
-                List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL)));
+                List.of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL)));
 
         final var refused = send(tx2, save("refused"));
 

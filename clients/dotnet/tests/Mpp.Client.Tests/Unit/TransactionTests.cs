@@ -49,7 +49,7 @@ public sealed class TransactionTests : IAsyncLifetime
         var caught = await Assert.ThrowsAsync<InvalidOperationException>(() => client.TransactionAsync((_, _) => throw thrown));
         Assert.Same(thrown, caught);
         Assert.Equal(1, _server.Count("ROLLBACK_TRANSACTION"));
-        await client.Database("shop").CreateAsync();
+        await client.Project("shop").CreateAsync();
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public sealed class TransactionTests : IAsyncLifetime
         var transaction = await client.BeginTransactionAsync();
         await Assert.ThrowsAsync<UnknownOutcomeException>(() => transaction.CommitAsync());
         Assert.Equal(0, _server.Count("ROLLBACK_TRANSACTION"));
-        await client.ListDatabasesAsync();
+        await client.ListProjectsAsync();
         Assert.Equal(2, _server.Sessions.Count);
     }
 
@@ -132,7 +132,7 @@ public sealed class TransactionTests : IAsyncLifetime
         _special = request => request["type"]!.GetValue<string>() == "START_TRANSACTION" ? RecordingChannel.Error(request, "ERROR", "409-3") : null;
         await using var client = await Connect();
         await Assert.ThrowsAsync<ConflictException>(() => client.BeginTransactionAsync());
-        await client.ListDatabasesAsync();
+        await client.ListProjectsAsync();
         Assert.Single(_server.Sessions);
     }
 }

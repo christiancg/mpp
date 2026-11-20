@@ -44,8 +44,8 @@ public class FilterConjunctionSinglePassTest {
     @BeforeAll
     static void seed() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, COLL));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, COLL));
         final var objects = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             final var doc = new JsonObject();
@@ -56,14 +56,14 @@ public class FilterConjunctionSinglePassTest {
             doc.add("location", new JsonGeo(i < 3 ? "#geo(40.0,-74.0)" : "#geo(34.05,-118.24)"));
             objects.add(doc);
         }
-        final var bulk = new BulkSaveRequest(TestGlobals.DB, COLL);
+        final var bulk = new BulkSaveRequest(TestGlobals.PROJECT, COLL);
         bulk.setObjects(objects);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, "location")).getStatus());
+                processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, "location")).getStatus());
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, COLL, "k")).getStatus());
-        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.DB, COLL);
+                processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, COLL, "k")).getStatus());
+        IocContainer.get(PendingIndexWrites.class).clearCollection(TestGlobals.PROJECT, COLL);
     }
 
     @AfterAll
@@ -86,7 +86,7 @@ public class FilterConjunctionSinglePassTest {
     }
 
     private static AggregateAnalyzeResponse analyze(BaseAggregationStep... steps) {
-        final var request = new AggregateRequest(TestGlobals.DB, COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, COLL);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(steps));
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);

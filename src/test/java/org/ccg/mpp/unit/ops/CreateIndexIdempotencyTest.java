@@ -31,7 +31,7 @@ public class CreateIndexIdempotencyTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         seed("i0", "active");
         seed("i1", "active");
         seed("i2", "archived");
@@ -47,17 +47,17 @@ public class CreateIndexIdempotencyTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty("status", status);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         processor.processMessage(request);
     }
 
     private void createIndex() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status"));
     }
 
     private int countMatching(FieldOperatorType type) {
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of(new FilterAggregationStep(
                 new FieldOperator(type, "status", new org.ccg.mpp.ejson.elements.JsonString("active")))));
         final var response = (AggregateResponse) processor.processMessage(request);
@@ -65,14 +65,15 @@ public class CreateIndexIdempotencyTest {
     }
 
     private File indexFile() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-status-String.idx");
     }
 
     @Test
     public void test_second_create_index_returns_ok_without_rebuilding() {
         createIndex();
-        final var second = processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "status"));
+        final var second = processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "status"));
         assertEquals(OperationStatus.OK, second.getStatus());
         assertTrue(second.getMessage().contains("already exists"));
     }
@@ -110,20 +111,20 @@ public class CreateIndexIdempotencyTest {
         final var object = new JsonObject();
         object.addProperty("_id", "n1");
         object.add("address", nested);
-        final var save = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var save = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         save.setObject(object);
         save.set_id("n1");
         assertEquals(OperationStatus.OK, processor.processMessage(save).getStatus());
 
         final var created = processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "address.city"));
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "address.city"));
         assertEquals(OperationStatus.OK, created.getStatus());
 
         final var filter = new FilterAggregationStep(new FieldOperator(FieldOperatorType.EQUALS, "address.city",
                 new org.ccg.mpp.ejson.elements.JsonString("lisbon")));
-        final var indexed = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var indexed = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         indexed.setAggregationSteps(List.of(filter));
-        final var scanned = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var scanned = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         scanned.setAggregationSteps(List.of(new org.ccg.mpp.ops.req.agg.step.SkipAggregationStep(0), filter));
 
         final var viaIndex = (AggregateResponse) processor.processMessage(indexed);
@@ -136,15 +137,15 @@ public class CreateIndexIdempotencyTest {
     public void test_case_differing_field_is_refused() {
         createIndex();
         final var colliding = processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "STATUS"));
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "STATUS"));
         assertEquals(ErrorCode.NAME_COLLIDES_ON_DISK.getCode(), colliding.getErrorCode());
     }
 
     @Test
     public void test_case_differing_field_is_refused_on_an_empty_collection() {
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "neverWritten"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "neverWritten"));
         final var colliding = processor
-                .processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "NeverWritten"));
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "NeverWritten"));
         assertEquals(ErrorCode.NAME_COLLIDES_ON_DISK.getCode(), colliding.getErrorCode());
     }
 

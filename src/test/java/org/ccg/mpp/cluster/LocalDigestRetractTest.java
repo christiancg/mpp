@@ -22,31 +22,31 @@ public class LocalDigestRetractTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        tombstones = new File(TestGlobals.PATH + "/" + TestGlobals.DB + "/" + TestGlobals.COLL + "/" + TestGlobals.COLL
-                + "-tombstones.idx");
+        TestUtils.createTestProjectAndCollection();
+        tombstones = new File(TestGlobals.PATH + "/" + TestGlobals.PROJECT + "/" + TestGlobals.COLL + "/"
+                + TestGlobals.COLL + "-tombstones.idx");
     }
 
     @AfterEach
     public void tearDown() throws Exception {
         assertTrue(tombstones.setWritable(true) || !tombstones.exists());
-        fs.tombstones().view(TestGlobals.DB, TestGlobals.COLL);
+        fs.tombstones().view(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.standardTearDown();
     }
 
     @Test
     public void aHeldBackRetractDoesNotOutliveTheLiveRow() throws Exception {
-        final var live = List.of(new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, "kept", 0L, 10L, 0L, 3L));
-        fs.tombstones().append(TestGlobals.DB, TestGlobals.COLL, "kept", 7L);
+        final var live = List.of(new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, "kept", 0L, 10L, 0L, 3L));
+        fs.tombstones().append(TestGlobals.PROJECT, TestGlobals.COLL, "kept", 7L);
         assertTrue(
                 LocalDigest.outlives(live, "kept",
-                        fs.tombstones().view(TestGlobals.DB, TestGlobals.COLL).versionOf("kept")),
+                        fs.tombstones().view(TestGlobals.PROJECT, TestGlobals.COLL).versionOf("kept")),
                 "an unretracted tombstone newer than the row wins");
         assertTrue(tombstones.setWritable(false));
 
-        fs.tombstones().retract(TestGlobals.DB, TestGlobals.COLL, "kept", 7L);
+        fs.tombstones().retract(TestGlobals.PROJECT, TestGlobals.COLL, "kept", 7L);
 
-        final var view = fs.tombstones().view(TestGlobals.DB, TestGlobals.COLL);
+        final var view = fs.tombstones().view(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(0L, view.versionOf("kept"));
         assertFalse(LocalDigest.outlives(live, "kept", view.versionOf("kept")),
                 "the taken-back delete never deletes the live document");

@@ -32,7 +32,7 @@ public class OperationProcessorVectorTest {
     @BeforeAll
     static void setUpBeforeClass() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -57,9 +57,9 @@ public class OperationProcessorVectorTest {
         final var coll = "vecIdx";
         seed(coll);
         assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "embedding")).getStatus());
+                processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "embedding")).getStatus());
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(nearestStep(2, false)));
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -73,9 +73,9 @@ public class OperationProcessorVectorTest {
     public void test_nearest_exact_true_no_index_used() {
         final var coll = "vecExact";
         seed(coll);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "embedding"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "embedding"));
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAnalyze(true);
         request.setAggregationSteps(List.of(nearestStep(2, true)));
         final var response = (AggregateAnalyzeResponse) processor.processMessage(request);
@@ -97,7 +97,7 @@ public class OperationProcessorVectorTest {
     @Test
     public void test_nearest_ignores_missing_or_non_vector_field() {
         final var coll = "vecMixed";
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
         saveVector(coll, "best", "#vector(10.0,0.0)");
         saveVector(coll, "second", "#vector(9.0,1.0)");
         saveNoField();
@@ -113,9 +113,9 @@ public class OperationProcessorVectorTest {
     public void test_count_after_nearest() {
         final var coll = "vecCount";
         seed(coll);
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, coll, "embedding"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, coll, "embedding"));
 
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(nearestStep(2, false), new CountAggregationStep()));
         final var response = (AggregateResponse) processor.processMessage(request);
 
@@ -124,7 +124,7 @@ public class OperationProcessorVectorTest {
     }
 
     private void seed(String coll) {
-        processor.processMessage(new CreateCollectionRequest(TestGlobals.DB, coll));
+        processor.processMessage(new CreateCollectionRequest(TestGlobals.PROJECT, coll));
         saveVector(coll, "best", "#vector(10.0,0.0)");
         saveVector(coll, "second", "#vector(9.0,1.0)");
         saveVector(coll, "third", "#vector(1.0,1.0)");
@@ -132,7 +132,7 @@ public class OperationProcessorVectorTest {
     }
 
     private void saveVector(String coll, String id, String vector) {
-        final var save = new SaveRequest(TestGlobals.DB, coll);
+        final var save = new SaveRequest(TestGlobals.PROJECT, coll);
         final var obj = new JsonObject();
         obj.add("_id", new JsonString(id));
         obj.add("embedding", new JsonVector(vector));
@@ -141,7 +141,7 @@ public class OperationProcessorVectorTest {
     }
 
     private void saveNoField() {
-        final var save = new SaveRequest(TestGlobals.DB, "vecMixed");
+        final var save = new SaveRequest(TestGlobals.PROJECT, "vecMixed");
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("nofield"));
         obj.add("name", new JsonString("nofield"));
@@ -150,7 +150,7 @@ public class OperationProcessorVectorTest {
     }
 
     private void saveScalarField() {
-        final var save = new SaveRequest(TestGlobals.DB, "vecMixed");
+        final var save = new SaveRequest(TestGlobals.PROJECT, "vecMixed");
         final var obj = new JsonObject();
         obj.add("_id", new JsonString("notvector"));
         obj.add("embedding", new JsonNumber(42));
@@ -159,7 +159,7 @@ public class OperationProcessorVectorTest {
     }
 
     private AggregateResponse aggregate(String coll, FilterAggregationStep step) {
-        final var request = new AggregateRequest(TestGlobals.DB, coll);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, coll);
         request.setAggregationSteps(List.of(step));
         return (AggregateResponse) processor.processMessage(request);
     }

@@ -29,7 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class UserCacheRunningTotalTest {
-    private static final String DB = "runningDb";
+    private static final String PROJECT = "runningProject";
     private static final String FIELD = "status";
     private static final com.sun.management.ThreadMXBean THREADS = (com.sun.management.ThreadMXBean) ManagementFactory
             .getThreadMXBean();
@@ -51,13 +51,13 @@ public class UserCacheRunningTotalTest {
         final var data = new JsonObject();
         data.addProperty("_id", id);
         data.addProperty("payload", "value-" + id);
-        return DbEntry.fromJsonObject(DB, collName, data);
+        return DbEntry.fromJsonObject(PROJECT, collName, data);
     }
 
     private static List<PkIndexEntry> pkRows(String collName, int count) {
         final var rows = new ArrayList<PkIndexEntry>();
         for (var i = 0; i < count; i++) {
-            rows.add(new PkIndexEntry(DB, collName, "row-" + String.format("%04d", i), i * 10L, 10, 0));
+            rows.add(new PkIndexEntry(PROJECT, collName, "row-" + String.format("%04d", i), i * 10L, 10, 0));
         }
         return rows;
     }
@@ -65,7 +65,7 @@ public class UserCacheRunningTotalTest {
     private static List<FieldIndexEntry<?>> eightFirstFieldRows() {
         final List<FieldIndexEntry<?>> rows = new ArrayList<>();
         for (var i = 0; i < 8; i++) {
-            rows.add(new FieldIndexEntry<>(DB, "first", "value-" + i, new HashSet<>(Set.of("id-" + i))));
+            rows.add(new FieldIndexEntry<>(PROJECT, "first", "value-" + i, new HashSet<>(Set.of("id-" + i))));
         }
         return rows;
     }
@@ -76,11 +76,11 @@ public class UserCacheRunningTotalTest {
     }
 
     private void underLock(String collName, ThrowingRunnable body) throws Exception {
-        locks.lock(DB, collName);
+        locks.lock(PROJECT, collName);
         try {
             body.run();
         } finally {
-            locks.release(DB, collName);
+            locks.release(PROJECT, collName);
         }
     }
 
@@ -93,35 +93,35 @@ public class UserCacheRunningTotalTest {
     public void test_running_total_matches_listing_after_mixed_tiers() throws Exception {
         final var cache = new UserCache();
         final var fs = mock(FileSystem.class);
-        when(fs.readWholePkIndexFile(DB, "first")).thenReturn(pkRows("first", 30));
-        when(fs.readWholePkIndexFile(DB, "second")).thenReturn(pkRows("second", 12));
+        when(fs.readWholePkIndexFile(PROJECT, "first")).thenReturn(pkRows("first", 30));
+        when(fs.readWholePkIndexFile(PROJECT, "second")).thenReturn(pkRows("second", 12));
         when(fs.pkIndexFileBytes(anyString(), anyString())).thenReturn(400L);
         TestUtils.setPrivateField(cache, "fs", fs);
 
         for (var i = 0; i < 20; i++) {
-            cache.addEntryToCache(DB, "first", document("first", "d" + i));
-            cache.addEntryToCache(DB, "second", document("second", "d" + i));
+            cache.addEntryToCache(PROJECT, "first", document("first", "d" + i));
+            cache.addEntryToCache(PROJECT, "second", document("second", "d" + i));
         }
-        cache.evictEntry(DB, "first", "d3");
+        cache.evictEntry(PROJECT, "first", "d3");
         final var indexKey = Cache.getIndexIdentifier(FIELD, String.class);
         underLock("first", () -> {
-            cache.getPkIndexAndLoadIfNecessary(DB, "first").add(new PkIndexEntry(DB, "first", "zz", 0, 1, 0));
-            cache.admitMaintainedFieldIndex(DB, "first", indexKey, eightFirstFieldRows());
+            cache.getPkIndexAndLoadIfNecessary(PROJECT, "first").add(new PkIndexEntry(PROJECT, "first", "zz", 0, 1, 0));
+            cache.admitMaintainedFieldIndex(PROJECT, "first", indexKey, eightFirstFieldRows());
             final var lookup = new FieldIndexLookup();
             lookup.add("id-1", indexKey, null);
-            cache.admitFieldIndexLookup(DB, "first", FIELD, lookup);
+            cache.admitFieldIndexLookup(PROJECT, "first", FIELD, lookup);
         });
-        underLock("second", () -> cache.getPkIndexAndLoadIfNecessary(DB, "second").removeFirst());
-        cache.rememberFieldIndexBatch(DB, "first", indexKey, 8, 96L, 2);
+        underLock("second", () -> cache.getPkIndexAndLoadIfNecessary(PROJECT, "second").removeFirst());
+        cache.rememberFieldIndexBatch(PROJECT, "first", indexKey, 8, 96L, 2);
         assertEquals(listedBytes(cache), cache.footprintBytes(), "every tier is charged exactly once");
 
-        cache.evictCollectionDocuments(DB, "second");
-        cache.evictFieldIndex(DB, "first", Cache.getFieldLookupIdentifier(FIELD));
+        cache.evictCollectionDocuments(PROJECT, "second");
+        cache.evictFieldIndex(PROJECT, "first", Cache.getFieldLookupIdentifier(FIELD));
         assertEquals(listedBytes(cache), cache.footprintBytes(), "evictions retire what they remove");
 
-        cache.evictCollection(DB, "first");
+        cache.evictCollection(PROJECT, "first");
         assertEquals(listedBytes(cache), cache.footprintBytes());
-        cache.evictDatabase(DB);
+        cache.evictProject(PROJECT);
         assertEquals(0L, cache.footprintBytes());
         assertTrue(cache.listCacheableResources().isEmpty());
     }
@@ -130,7 +130,7 @@ public class UserCacheRunningTotalTest {
     public void test_footprint_reads_no_resources() {
         final var cache = new UserCache();
         for (var collection = 0; collection < 1000; collection++) {
-            cache.addEntryToCache(DB, "coll" + collection, document("coll" + collection, "only"));
+            cache.addEntryToCache(PROJECT, "coll" + collection, document("coll" + collection, "only"));
         }
         for (var warm = 0; warm < 10_000; warm++) {
             cache.footprintBytes();

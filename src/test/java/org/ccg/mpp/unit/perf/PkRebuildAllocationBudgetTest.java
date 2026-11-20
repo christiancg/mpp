@@ -33,7 +33,7 @@ public class PkRebuildAllocationBudgetTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         for (var start = 0; start < DOCS; start += BULK) {
             final var objects = new ArrayList<JsonObject>(BULK);
             for (var i = start; i < start + BULK; i++) {
@@ -43,13 +43,13 @@ public class PkRebuildAllocationBudgetTest {
                 doc.add("qty", new JsonNumber(i % 97));
                 objects.add(doc);
             }
-            final var request = new BulkSaveRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new BulkSaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.setObjects(objects);
-            locks.lock(TestGlobals.DB, TestGlobals.COLL);
+            locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
             try {
                 SaveOperationHelper.executeBulkSave(request);
             } finally {
-                locks.release(TestGlobals.DB, TestGlobals.COLL);
+                locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
             }
         }
         TestUtils.discardQueuedBackgroundEvents(IocContainer.get(BackgroundTaskManager.class));
@@ -66,7 +66,7 @@ public class PkRebuildAllocationBudgetTest {
         var cheapest = Long.MAX_VALUE;
         for (var run = 0; run < 5; run++) {
             final var before = THREADS.getCurrentThreadAllocatedBytes();
-            final var rebuild = fs.planPkRebuild(TestGlobals.DB, TestGlobals.COLL);
+            final var rebuild = fs.planPkRebuild(TestGlobals.PROJECT, TestGlobals.COLL);
             cheapest = Math.min(cheapest, THREADS.getCurrentThreadAllocatedBytes() - before);
             assertEquals(DOCS, rebuild.entries());
             assertTrue(rebuild.appeared().isEmpty());

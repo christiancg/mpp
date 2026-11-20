@@ -34,35 +34,35 @@ public class UncleanStopMarkerTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "name"));
-        processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, "label"));
+        TestUtils.createTestProjectAndCollection();
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "name"));
+        processor.processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, "label"));
     }
 
     @AfterEach
     public void tearDown() throws Exception {
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
 
     private static File uncleanStopMarker() {
-        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.DB + Globals.FILE_SEPARATOR
+        return new File(TestGlobals.PATH + Globals.FILE_SEPARATOR + TestGlobals.PROJECT + Globals.FILE_SEPARATOR
                 + TestGlobals.COLL + Globals.FILE_SEPARATOR + TestGlobals.COLL + "-indexes.unclean");
     }
 
     private static String identifier() {
-        return Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL);
+        return Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL);
     }
 
     private List<String> stopUncleanlyAndRestart() throws IOException {
-        fs.indexMarkers().markDirty(TestGlobals.DB, TestGlobals.COLL);
+        fs.indexMarkers().markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
         return fs.indexMarkers().retainUncleanStops();
     }
 
     private void writeAndDrain(String id) {
-        final var generation = pendingIndexWrites.mark(TestGlobals.DB, TestGlobals.COLL, id);
-        pendingIndexWrites.clear(TestGlobals.DB, TestGlobals.COLL, id, generation);
+        final var generation = pendingIndexWrites.mark(TestGlobals.PROJECT, TestGlobals.COLL, id);
+        pendingIndexWrites.clear(TestGlobals.PROJECT, TestGlobals.COLL, id, generation);
     }
 
     @Test
@@ -95,12 +95,13 @@ public class UncleanStopMarkerTest {
     public void test_a_partial_reindex_keeps_the_unclean_stop_and_a_full_one_retires_it() throws IOException {
         stopUncleanlyAndRestart();
 
-        assertEquals(OperationStatus.OK, processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of("name"))).getStatus());
+        assertEquals(OperationStatus.OK,
+                processor.processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of("name")))
+                        .getStatus());
         assertTrue(uncleanStopMarker().isFile());
 
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of())).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of())).getStatus());
         assertFalse(uncleanStopMarker().exists());
         assertTrue(fs.indexMarkers().retainUncleanStops().isEmpty());
     }
@@ -114,8 +115,8 @@ public class UncleanStopMarkerTest {
 
     @Test
     public void test_startup_names_an_unclean_collection_and_a_half_built_index() throws Exception {
-        fs.indexMarkers().markDirty(TestGlobals.DB, TestGlobals.COLL);
-        fs.indexMarkers().mark(TestGlobals.DB, TestGlobals.COLL, "name");
+        fs.indexMarkers().markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
+        fs.indexMarkers().mark(TestGlobals.PROJECT, TestGlobals.COLL, "name");
         try (var logWriter = mockStatic(LogWriter.class)) {
             StartupWarnings.retainAndReportUncleanStops();
 
@@ -124,7 +125,7 @@ public class UncleanStopMarkerTest {
             logWriter.verify(() -> LogWriter.writeLogEntry(
                     argThat(entry -> entry.contains(identifier() + "|name") && entry.contains("REINDEX"))));
         } finally {
-            fs.indexMarkers().clear(TestGlobals.DB, TestGlobals.COLL, "name");
+            fs.indexMarkers().clear(TestGlobals.PROJECT, TestGlobals.COLL, "name");
         }
     }
 }

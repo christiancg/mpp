@@ -24,7 +24,7 @@ import org.ccg.mpp.simplejs.values.JsObject;
 import org.ccg.mpp.simplejs.values.JsString;
 import org.ccg.mpp.simplejs.values.JsUndefined;
 import org.ccg.mpp.simplejs.values.JsValue;
-import org.ccg.mpp.unit.simplejs.host.FakeDatabaseAccess;
+import org.ccg.mpp.unit.simplejs.host.FakeProjectAccess;
 import org.junit.jupiter.api.Test;
 
 public class DbModuleTest {
@@ -35,7 +35,7 @@ public class DbModuleTest {
 
     @Test
     public void test_find_by_id() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var stored = new JsonObject();
         stored.add("_id", new JsonString("x1"));
         fake.nextFindResult = stored;
@@ -48,7 +48,7 @@ public class DbModuleTest {
 
     @Test
     public void test_find_by_id_missing() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var result = call(db, "findById", new JsString("d"), new JsString("c"), new JsString("nope"));
         assertInstanceOf(JsNull.class, result);
@@ -56,7 +56,7 @@ public class DbModuleTest {
 
     @Test
     public void test_aggregate() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var pipeline = new JsArray();
         pipeline.push(new JsObject());
@@ -68,7 +68,7 @@ public class DbModuleTest {
 
     @Test
     public void test_save() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var document = new JsObject();
         document.set("_id", new JsString("s1"));
@@ -79,7 +79,7 @@ public class DbModuleTest {
 
     @Test
     public void test_delete() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var result = call(db, "delete", new JsString("d"), new JsString("c"), new JsString("s1"));
         assertInstanceOf(JsUndefined.class, result);
@@ -88,7 +88,7 @@ public class DbModuleTest {
 
     @Test
     public void test_update_where_returns_the_count() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         fake.nextUpdatedCount = 4L;
         final var db = DbModule.create(fake, null, null, null);
         final var condition = new JsObject();
@@ -105,7 +105,7 @@ public class DbModuleTest {
 
     @Test
     public void test_delete_where_returns_the_count() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         fake.nextDeletedCount = 7L;
         final var db = DbModule.create(fake, null, null, null);
         final var condition = new JsObject();
@@ -119,14 +119,14 @@ public class DbModuleTest {
 
     @Test
     public void test_list_operations() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var collections = call(db, "listCollections", new JsString("d"));
         assertInstanceOf(JsArray.class, collections);
         assertEquals(2, ((JsArray) collections).length());
-        final var databases = call(db, "listDatabases");
-        assertEquals(1, ((JsArray) databases).length());
-        assertTrue(fake.calls.contains("listDatabases"));
+        final var projects = call(db, "listProjects");
+        assertEquals(1, ((JsArray) projects).length());
+        assertTrue(fake.calls.contains("listProjects"));
     }
 
     @Test
@@ -139,7 +139,7 @@ public class DbModuleTest {
 
     @Test
     public void test_bulk_save() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var documents = new JsArray();
         documents.push(new JsObject());
@@ -152,14 +152,14 @@ public class DbModuleTest {
 
     @Test
     public void test_bulk_save_requires_documents() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class,
                 () -> call(db, "bulkSave", new JsString("d"), new JsString("c"), new JsString("nope")));
     }
 
     @Test
     public void test_insert() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var document = new JsObject();
         document.set("_id", new JsString("i1"));
@@ -170,7 +170,7 @@ public class DbModuleTest {
 
     @Test
     public void test_insert_rejects_a_non_object_document() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         final var thrown = assertThrows(TypeErrorException.class,
                 () -> call(db, "insert", new JsString("d"), new JsString("c"), new JsNumber(5)));
         assertEquals("db.insert expects a document", thrown.getMessage());
@@ -178,45 +178,45 @@ public class DbModuleTest {
 
     @Test
     public void test_save_without_a_document_is_a_type_error() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class, () -> call(db, "save", new JsString("d"), new JsString("c")));
     }
 
     @Test
     public void test_save_without_any_argument_is_a_type_error() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class, () -> call(db, "save"));
     }
 
     @Test
     public void test_save_rejects_a_non_object_document() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class,
                 () -> call(db, "save", new JsString("d"), new JsString("c"), new JsNumber(5)));
     }
 
     @Test
     public void test_aggregate_without_a_pipeline_is_a_type_error() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class, () -> call(db, "aggregate", new JsString("d"), new JsString("c")));
     }
 
     @Test
     public void test_aggregate_rejects_a_non_array_pipeline() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class,
                 () -> call(db, "aggregate", new JsString("d"), new JsString("c"), new JsObject()));
     }
 
     @Test
     public void test_bulk_save_without_documents_is_a_type_error() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertThrows(TypeErrorException.class, () -> call(db, "bulkSave", new JsString("d"), new JsString("c")));
     }
 
     @Test
     public void test_bulk_save_accepts_an_empty_array() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var result = (JsObject) call(db, "bulkSave", new JsString("d"), new JsString("c"), new JsArray());
         assertEquals("bulkSave:d/c/0", fake.calls.getFirst());
@@ -225,19 +225,19 @@ public class DbModuleTest {
 
     @Test
     public void test_module_exposes_new_members() {
-        final var db = DbModule.create(new FakeDatabaseAccess(), null, null, null);
+        final var db = DbModule.create(new FakeProjectAccess(), null, null, null);
         assertInstanceOf(JsNativeFunction.class, db.get("bulkSave"));
         assertInstanceOf(JsNativeFunction.class, db.get("transaction"));
     }
 
-    private static ScriptResult runScript(FakeDatabaseAccess fake, String source) {
+    private static ScriptResult runScript(FakeProjectAccess fake, String source) {
         return new SimpleJs().run(source,
                 new SimpleHostBindings(new JsonObject(), fake, null, ResourceLimits.unlimited()));
     }
 
     @Test
     public void test_transaction_commits() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var result = runScript(fake, """
                 import db from "db";
                 return db.transaction(() => { db.delete("d", "c", "x"); return 7; });
@@ -249,7 +249,7 @@ public class DbModuleTest {
 
     @Test
     public void test_transaction_rolls_back_on_throw() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var result = runScript(fake, """
                 import db from "db";
                 db.transaction(() => { throw new Error("boom"); });
@@ -261,7 +261,7 @@ public class DbModuleTest {
     @Test
     public void test_transaction_rejects_suspendable_callbacks() {
         for (final var callback : List.of("42", "async function () {}", "function* () {}")) {
-            final var fake = new FakeDatabaseAccess();
+            final var fake = new FakeProjectAccess();
             final var result = runScript(fake, "import db from \"db\";\ndb.transaction(" + callback + ");");
             assertTrue(result.isError(), callback);
             assertEquals("TypeError", result.getErrorName(), callback);
@@ -271,7 +271,7 @@ public class DbModuleTest {
 
     @Test
     public void test_transaction_rejects_a_returned_promise() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var result = runScript(fake, """
                 import db from "db";
                 db.transaction(() => Promise.resolve(1));
@@ -282,7 +282,7 @@ public class DbModuleTest {
 
     @Test
     public void test_an_error_thrown_by_the_callback_still_rolls_back() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var ops = org.mockito.Mockito.mock(org.ccg.mpp.simplejs.builtins.InterpreterOps.class);
         org.mockito.Mockito.when(ops.call(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any())).thenThrow(new StackOverflowError("simulated"));
@@ -297,7 +297,7 @@ public class DbModuleTest {
 
     @Test
     public void test_nested_transaction_is_rejected() {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         fake.rejectNestedTransaction = true;
         final var result = runScript(fake, """
                 import db from "db";
@@ -308,7 +308,7 @@ public class DbModuleTest {
     }
 
     private static void assertRefused(String expectedMessage, String method, JsValue... args) {
-        final var fake = new FakeDatabaseAccess();
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         final var refusal = assertThrows(TypeErrorException.class, () -> call(db, method, args));
         assertTrue(refusal.getMessage().contains(expectedMessage), refusal.getMessage());
@@ -316,7 +316,7 @@ public class DbModuleTest {
     }
 
     @Test
-    public void test_delete_without_an_id_is_a_type_error_and_reaches_no_database_call() {
+    public void test_delete_without_an_id_is_a_type_error_and_reaches_no_project_call() {
         assertRefused("db.delete expects a string id", "delete", new JsString("d"), new JsString("c"));
     }
 
@@ -332,7 +332,7 @@ public class DbModuleTest {
     }
 
     @Test
-    public void test_delete_where_without_a_condition_is_a_type_error_and_reaches_no_database_call() {
+    public void test_delete_where_without_a_condition_is_a_type_error_and_reaches_no_project_call() {
         assertRefused("db.deleteWhere expects a condition object", "deleteWhere", new JsString("d"), new JsString("c"));
     }
 
@@ -372,8 +372,8 @@ public class DbModuleTest {
     }
 
     @Test
-    public void test_find_by_id_with_a_non_string_database_is_a_type_error() {
-        assertRefused("db.findById expects a string database name", "findById", new JsNumber(1), new JsString("c"),
+    public void test_find_by_id_with_a_non_string_project_is_a_type_error() {
+        assertRefused("db.findById expects a string project name", "findById", new JsNumber(1), new JsString("c"),
                 new JsString("x"));
     }
 
@@ -389,25 +389,25 @@ public class DbModuleTest {
     }
 
     @Test
-    public void test_bulk_save_with_a_non_string_database_is_a_type_error() {
-        assertRefused("db.bulkSave expects a string database name", "bulkSave", JsUndefined.getInstance(),
+    public void test_bulk_save_with_a_non_string_project_is_a_type_error() {
+        assertRefused("db.bulkSave expects a string project name", "bulkSave", JsUndefined.getInstance(),
                 new JsString("c"), new JsArray());
     }
 
     @Test
-    public void test_list_collections_without_a_database_is_a_type_error() {
-        assertRefused("db.listCollections expects a string database name", "listCollections");
+    public void test_list_collections_without_a_project_is_a_type_error() {
+        assertRefused("db.listCollections expects a string project name", "listCollections");
     }
 
     @Test
-    public void test_cursor_with_a_non_string_database_is_a_type_error() {
-        assertRefused("db.cursor expects a string database name", "cursor", new JsObject(), new JsString("c"),
+    public void test_cursor_with_a_non_string_project_is_a_type_error() {
+        assertRefused("db.cursor expects a string project name", "cursor", new JsObject(), new JsString("c"),
                 new JsArray());
     }
 
     @Test
-    public void test_string_arguments_still_reach_the_database_unchanged() {
-        final var fake = new FakeDatabaseAccess();
+    public void test_string_arguments_still_reach_the_project_unchanged() {
+        final var fake = new FakeProjectAccess();
         final var db = DbModule.create(fake, null, null, null);
         call(db, "delete", new JsString("d"), new JsString("c"), new JsString("undefined"));
         call(db, "findById", new JsString("d"), new JsString("c"), new JsString("5"));

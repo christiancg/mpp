@@ -69,7 +69,7 @@ public class ClusteredDeleteTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         cluster.enableAlone();
         origHalt = TestUtils.getPrivateField(faultInjector, "halt", IntConsumer.class);
     }
@@ -81,7 +81,7 @@ public class ClusteredDeleteTest {
             for (final var run : TriggerRunLog.pending()) {
                 TriggerDispatcher.consumeQuietly(run.getRunId(), run.getTriggerName());
             }
-            cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+            cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
             TestUtils.setPrivateField(config, "triggersEnabled", false);
             TestUtils.setPrivateField(config, "triggerThreads", 2);
         }
@@ -99,13 +99,13 @@ public class ClusteredDeleteTest {
         TestUtils.setPrivateField(config, "triggerRunLogEnabled", true);
         TestUtils.setPrivateField(config, "triggerThreads", 1);
         triggerExecutor.stop();
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL,
                 List.of(new TriggerDefinition("t", new LinkedHashSet<>(Set.of(EventType.DELETED)), "recalc",
                         TriggerDefinition.MODE_DOCUMENT, false, true, "owner", 1L, 1L, 1L, "owner")));
     }
 
     private void save() {
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         final var obj = new JsonObject();
         obj.addProperty(Globals.PK_FIELD, ID);
         request.setObject(obj);
@@ -114,7 +114,7 @@ public class ClusteredDeleteTest {
     }
 
     private OperationStatus delete(String id) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request).getStatus();
     }
@@ -134,7 +134,7 @@ public class ClusteredDeleteTest {
                 ownership.onMembershipChanged(new MembershipView(List.of(elsewhere)));
                 return call.callRealMethod();
             });
-            final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+            final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
             request.set_id(ID);
             return processor.processMessage(request);
         }
@@ -151,7 +151,7 @@ public class ClusteredDeleteTest {
             }
         });
         emit.run();
-        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.DB, TestGlobals.COLL, DRAIN_MARKER,
+        triggerExecutor.submit(new TriggerEvent(EventType.CREATED, TestGlobals.PROJECT, TestGlobals.COLL, DRAIN_MARKER,
                 "recalc", false, List.of(), "owner", 0));
         if (!drained.await(5, TimeUnit.SECONDS)) {
             fail("the drain marker was never dispatched");
@@ -166,7 +166,7 @@ public class ClusteredDeleteTest {
 
         assertEquals(OperationStatus.ERROR, deleteWithFailingReservation());
 
-        assertTrue(cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+        assertTrue(cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                 .anyMatch(pk -> ID.equals(pk.getValue())));
         assertTrue(TriggerRunLog.pending().isEmpty(),
                 "a staged DELETED run outliving a delete that never applied fires on the next restart");
@@ -199,11 +199,11 @@ public class ClusteredDeleteTest {
 
         assertEquals("421-1", response.getErrorCode());
         assertTrue(
-                cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+                cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                         .anyMatch(pk -> ID.equals(pk.getValue())),
                 "a delete with no tombstone would be undone by anti-entropy, so it must not apply locally");
-        assertTrue(IocContainer.get(org.ccg.mpp.fs.FileSystem.class).tombstones().read(TestGlobals.DB, TestGlobals.COLL)
-                .isEmpty());
+        assertTrue(IocContainer.get(org.ccg.mpp.fs.FileSystem.class).tombstones()
+                .read(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
         assertTrue(TriggerRunLog.pending().isEmpty(), "a DELETED run for a delete that never applied must not stay");
     }
 
@@ -213,7 +213,7 @@ public class ClusteredDeleteTest {
 
         assertEquals(OperationStatus.NOT_FOUND, delete("never-existed"));
 
-        assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     @Test
@@ -222,7 +222,7 @@ public class ClusteredDeleteTest {
 
         assertEquals(OperationStatus.OK, delete(ID));
 
-        final var tombstones = fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL);
+        final var tombstones = fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(1, tombstones.size());
         assertTrue(tombstones.containsKey("present"));
     }
@@ -231,15 +231,15 @@ public class ClusteredDeleteTest {
     public void test_one_reservation_tombstones_only_the_present_ids() throws Exception {
         save();
         final var locks = IocContainer.get(ResourceLocking.class);
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            IocContainer.get(ClusterCoordinator.class).reserveDelete(TestGlobals.DB, TestGlobals.COLL,
+            IocContainer.get(ClusterCoordinator.class).reserveDelete(TestGlobals.PROJECT, TestGlobals.COLL,
                     List.of("absent-before", ID, "absent-after"));
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
-        assertEquals(Set.of(ID), fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).keySet());
+        assertEquals(Set.of(ID), fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).keySet());
     }
 
     @Test
@@ -253,7 +253,7 @@ public class ClusteredDeleteTest {
             assertEquals(OperationStatus.ERROR, delete(ID));
         }
 
-        assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).isEmpty(),
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty(),
                 "a tombstone outliving a delete that never applied deletes the document cluster-wide on the next"
                         + " sweep");
     }
@@ -269,13 +269,13 @@ public class ClusteredDeleteTest {
             assertEquals(OperationStatus.ERROR, delete(ID));
         }
 
-        assertTrue(fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).isEmpty());
+        assertTrue(fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).isEmpty());
     }
 
     private boolean presentIsTombstonedAndStillLive() {
         try {
-            return fs.tombstones().read(TestGlobals.DB, TestGlobals.COLL).containsKey("present")
-                    && cache.getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL).stream()
+            return fs.tombstones().read(TestGlobals.PROJECT, TestGlobals.COLL).containsKey("present")
+                    && cache.getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL).stream()
                             .anyMatch(entry -> "present".equals(entry.getValue()));
         } catch (IOException e) {
             return false;
@@ -291,7 +291,7 @@ public class ClusteredDeleteTest {
         TestUtils.setPrivateField(faultInjector, "halt",
                 (IntConsumer) _ -> observed.add(presentIsTombstonedAndStillLive()));
         faultInjector.arm(FaultPoint.DELETE_TOMBSTONE_RESERVED, FaultAction.HALT,
-                Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+                Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
 
         assertEquals(OperationStatus.OK, delete(ID));
 

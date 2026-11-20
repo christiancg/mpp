@@ -43,7 +43,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class IndexEntryReaderSortCoverageTest {
-    private static final String DB = TestGlobals.DB;
+    private static final String PROJECT = TestGlobals.PROJECT;
     private static final String COLL = TestGlobals.COLL;
     private static final String FIELD = "score";
     private static final int DOCUMENTS = 200;
@@ -62,22 +62,22 @@ public class IndexEntryReaderSortCoverageTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         savedMaxMemory = TestUtils.getPrivateField(configuration, "maxMemoryBytes", Long.class);
         final var documents = new ArrayList<JsonObject>();
         for (var i = 0; i < DOCUMENTS; i++) {
             documents.add(document("d" + i, i % 50));
         }
-        final var bulk = new BulkSaveRequest(DB, COLL);
+        final var bulk = new BulkSaveRequest(PROJECT, COLL);
         bulk.setObjects(documents);
         assertEquals(OperationStatus.OK, processor.processMessage(bulk).getStatus());
-        processor.processMessage(new CreateIndexRequest(DB, COLL, FIELD));
+        processor.processMessage(new CreateIndexRequest(PROJECT, COLL, FIELD));
         drain();
     }
 
     @AfterEach
     public void tearDown() throws Exception {
-        idCounts.forgetDatabase(DB);
+        idCounts.forgetProject(PROJECT);
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", savedMaxMemory);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
@@ -91,20 +91,21 @@ public class IndexEntryReaderSortCoverageTest {
     }
 
     private void save(JsonObject document) {
-        final var request = new SaveRequest(DB, COLL);
+        final var request = new SaveRequest(PROJECT, COLL);
         request.setObject(document);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
 
     private void drain() throws IOException, InterruptedException {
         final var pending = IocContainer.get(PendingIndexWrites.class);
-        for (final var id : pending.idsFor(DB, COLL)) {
-            final var entries = IocContainer.get(Cache.class).getEntriesByIds(DB, COLL, Set.of(id));
+        for (final var id : pending.idsFor(PROJECT, COLL)) {
+            final var entries = IocContainer.get(Cache.class).getEntriesByIds(PROJECT, COLL, Set.of(id));
             if (!entries.isEmpty()) {
-                EventProcessorHelper.processEvent(new EntityEvent(EventType.CREATED, DB, COLL, entries.getFirst()));
+                EventProcessorHelper
+                        .processEvent(new EntityEvent(EventType.CREATED, PROJECT, COLL, entries.getFirst()));
             }
         }
-        assertTrue(pending.idsFor(DB, COLL).isEmpty());
+        assertTrue(pending.idsFor(PROJECT, COLL).isEmpty());
     }
 
     private static String identifier(Class<?> type) {
@@ -112,11 +113,11 @@ public class IndexEntryReaderSortCoverageTest {
     }
 
     private long known(Class<?> type) {
-        return idCounts.known(DB, COLL, identifier(type));
+        return idCounts.known(PROJECT, COLL, identifier(type));
     }
 
     private static List<String> sorted() throws IOException {
-        return IndexEntryReader.sortedIdsForField(DB, COLL, FIELD, ASCENDING, Long.MAX_VALUE, ReadObserver.NONE);
+        return IndexEntryReader.sortedIdsForField(PROJECT, COLL, FIELD, ASCENDING, Long.MAX_VALUE, ReadObserver.NONE);
     }
 
     @Test
@@ -124,11 +125,11 @@ public class IndexEntryReaderSortCoverageTest {
         assertEquals(DOCUMENTS, sorted().size());
         assertEquals(DOCUMENTS, known(Number.class));
 
-        idCounts.forget(DB, COLL, identifier(Number.class));
-        idCounts.count(DB, COLL, identifier(Number.class), () -> DOCUMENTS - 1L);
+        idCounts.forget(PROJECT, COLL, identifier(Number.class));
+        idCounts.count(PROJECT, COLL, identifier(Number.class), () -> DOCUMENTS - 1L);
 
         assertNull(sorted(), "the coverage gate reads the remembered count instead of summing the entries");
-        idCounts.forget(DB, COLL, identifier(Number.class));
+        idCounts.forget(PROJECT, COLL, identifier(Number.class));
         assertEquals(DOCUMENTS, sorted().size());
         assertEquals(DOCUMENTS, known(Number.class));
     }
@@ -155,20 +156,20 @@ public class IndexEntryReaderSortCoverageTest {
     @Test
     public void test_an_inexact_batch_forces_one_recount() throws Exception {
         TestUtils.setPrivateField(configuration, "maxMemoryBytes", Globals.CACHE_DISABLED);
-        IocContainer.get(Cache.class).evictCollection(DB, COLL);
+        IocContainer.get(Cache.class).evictCollection(PROJECT, COLL);
         assertEquals(DOCUMENTS, sorted().size());
         assertEquals(DOCUMENTS, known(Number.class));
         save(document("extra", 7));
-        locks.lockRead(DB, COLL);
-        locks.lockIndex(DB, COLL, FIELD);
+        locks.lockRead(PROJECT, COLL);
+        locks.lockIndex(PROJECT, COLL, FIELD);
         try {
-            final var batch = FieldIndexBatch.open(DB, COLL, FIELD, List.of("extra"),
+            final var batch = FieldIndexBatch.open(PROJECT, COLL, FIELD, List.of("extra"),
                     Map.of("extra", Collections.singletonList(IndexedValue.of(JsonNull.INSTANCE))));
             batch.apply("extra", new JsonNumber(7));
             batch.flush();
         } finally {
-            locks.releaseIndex(DB, COLL, FIELD);
-            locks.releaseRead(DB, COLL);
+            locks.releaseIndex(PROJECT, COLL, FIELD);
+            locks.releaseRead(PROJECT, COLL);
         }
 
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class), "a log-only batch cannot know its delta");
@@ -186,7 +187,7 @@ public class IndexEntryReaderSortCoverageTest {
         document.add(FIELD, nested);
         save(document);
         drain();
-        idCounts.forget(DB, COLL, identifier(Number.class));
+        idCounts.forget(PROJECT, COLL, identifier(Number.class));
 
         assertNull(sorted());
         assertEquals(IndexIdCounts.UNKNOWN, known(Number.class));

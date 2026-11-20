@@ -79,7 +79,7 @@ final class AdminBatchWrite {
 
     static <T extends DbEntry> void write(String collName, PkRows rows, List<T> inserts,
             Function<? super T, byte[]> lines, List<String> deleteIds) throws IOException, InterruptedException {
-        locks.lock(Globals.ADMIN_DB_NAME, collName);
+        locks.lock(Globals.ADMIN_PROJECT_NAME, collName);
         try {
             final var removed = resolve(rows, deleteIds);
             final var deletes = new ArrayList<PkIndexEntry>();
@@ -98,11 +98,11 @@ final class AdminBatchWrite {
             for (var index = 0; index < sizes.length; index++) {
                 sizes[index] = lines.apply(inserts.get(index)).length;
             }
-            final var pages = cache.selectPagesForInsert(Globals.ADMIN_DB_NAME, collName, sizes);
+            final var pages = cache.selectPagesForInsert(Globals.ADMIN_PROJECT_NAME, collName, sizes);
             for (var index = 0; index < sizes.length; index++) {
                 inserts.get(index).setPage(pages[index]);
             }
-            final var written = fs.writeBatch(Globals.ADMIN_DB_NAME, collName, inserts, DbEntry::getPage, lines,
+            final var written = fs.writeBatch(Globals.ADMIN_PROJECT_NAME, collName, inserts, DbEntry::getPage, lines,
                     deletes);
             AdminPageHelper.recordLandedRefs(collName, EventType.DELETED, refsOf(deletes));
             AdminPageHelper.recordLandedDelta(collName, EventType.CREATED, List.copyOf(inserts));
@@ -111,7 +111,7 @@ final class AdminBatchWrite {
             }
             rows.unpublish(removed.keySet());
         } finally {
-            locks.release(Globals.ADMIN_DB_NAME, collName);
+            locks.release(Globals.ADMIN_PROJECT_NAME, collName);
         }
     }
 

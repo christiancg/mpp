@@ -13,23 +13,24 @@ public class AdminPageEntryTest {
 
     @Test
     public void test_constructor_sets_correct_collection_name() {
-        AdminPageEntry entry = new AdminPageEntry("myDb", "myColl");
-        assertEquals(Globals.ADMIN_PAGES_DB_NAME, entry.getDatabaseName());
-        assertEquals(String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "myDb", "myColl"),
+        AdminPageEntry entry = new AdminPageEntry("myProject", "myColl");
+        assertEquals(Globals.ADMIN_PAGES_PROJECT_NAME, entry.getProjectName());
+        assertEquals(String.format(Globals.ADMIN_PAGES_PER_COLLECTION_NAME, "myProject", "myColl"),
                 entry.getCollectionName());
     }
 
     @Test
     public void test_id_follows_deterministic_scheme() {
-        AdminPageEntry entry = new AdminPageEntry("myDb", "myColl", 3L);
-        assertEquals("myDb" + Globals.COLL_IDENTIFIER_SEPARATOR + "myColl" + Globals.COLL_IDENTIFIER_SEPARATOR + "3",
+        AdminPageEntry entry = new AdminPageEntry("myProject", "myColl", 3L);
+        assertEquals(
+                "myProject" + Globals.COLL_IDENTIFIER_SEPARATOR + "myColl" + Globals.COLL_IDENTIFIER_SEPARATOR + "3",
                 entry.get_id());
         assertEquals(3L, entry.getPage());
     }
 
     @Test
     public void test_setters_sync_data() {
-        AdminPageEntry entry = new AdminPageEntry("myDb", "myColl", 0L);
+        AdminPageEntry entry = new AdminPageEntry("myProject", "myColl", 0L);
         entry.setEntryCount(7);
         entry.setPageSize(1024L);
         entry.setPage(2L);
@@ -48,13 +49,13 @@ public class AdminPageEntryTest {
     @Test
     public void test_from_json_object_populates_fields() {
         JsonObject obj = new JsonObject();
-        obj.addProperty(Globals.PK_FIELD, "myDb|myColl|5");
+        obj.addProperty(Globals.PK_FIELD, "myProject|myColl|5");
         obj.addProperty("page", 5L);
         obj.addProperty("entryCount", 12);
         obj.addProperty("size", 4096L);
 
-        AdminPageEntry entry = AdminPageEntry.fromJsonObject("myDb", "myColl", obj);
-        assertEquals("myDb|myColl|5", entry.get_id());
+        AdminPageEntry entry = AdminPageEntry.fromJsonObject("myProject", "myColl", obj);
+        assertEquals("myProject|myColl|5", entry.get_id());
         assertEquals(5L, entry.getPage());
         assertEquals(12, entry.getEntryCount());
         assertEquals(4096L, entry.getPageSize());
@@ -118,7 +119,7 @@ public class AdminPageEntryTest {
 
     @Test
     public void test_each_setter_rewrites_only_its_field_and_the_encoded_line_follows() {
-        AdminPageEntry entry = new AdminPageEntry("myDb", "myColl", 4L);
+        AdminPageEntry entry = new AdminPageEntry("myProject", "myColl", 4L);
         entry.setEntryCount(2);
         entry.setPageSize(100L);
         final var before = new String(entry.encodeLine(), StandardCharsets.UTF_8);

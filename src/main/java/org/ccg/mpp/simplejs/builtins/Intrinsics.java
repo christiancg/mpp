@@ -327,7 +327,7 @@ public final class Intrinsics {
         stringIteratorProto = JsIterators.prototype("String Iterator", objectProto);
         mapIteratorProto = JsIterators.prototype("Map Iterator", objectProto);
         setIteratorProto = JsIterators.prototype("Set Iterator", objectProto);
-        dbCursorProto = JsIterators.prototype("Database Cursor", objectProto);
+        dbCursorProto = JsIterators.prototype("Project Cursor", objectProto);
         generatorFunctionProto = prototypes.functionKindPrototype("GeneratorFunction", iteratorProto);
         asyncGeneratorFunctionProto = prototypes.functionKindPrototype("AsyncGeneratorFunction", asyncIteratorProto);
         asyncFunctionProto = prototypes.functionKindPrototype("AsyncFunction", null);

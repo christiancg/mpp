@@ -62,7 +62,7 @@ public class TransactionOpCleanupOrderTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.setPrivateField(configuration, "triggersEnabled", true);
         TestUtils.setPrivateField(configuration, "triggerRunLogEnabled", true);
         TriggerTestSupport.consumeAllPendingRuns();
@@ -70,14 +70,14 @@ public class TransactionOpCleanupOrderTest {
 
     @AfterEach
     public void tearDown() throws Exception {
-        cache.removeTriggers(TestGlobals.DB, TestGlobals.COLL);
+        cache.removeTriggers(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.setPrivateField(configuration, "triggersEnabled", false);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
 
     private void triggerOn(EventType type, String mode) {
-        cache.putTriggers(TestGlobals.DB, TestGlobals.COLL, List.of(new TriggerDefinition(TRIGGER,
+        cache.putTriggers(TestGlobals.PROJECT, TestGlobals.COLL, List.of(new TriggerDefinition(TRIGGER,
                 new LinkedHashSet<>(Set.of(type)), "recalc", mode, false, true, "owner", 1L, 1L, 1L, "owner")));
     }
 
@@ -95,7 +95,7 @@ public class TransactionOpCleanupOrderTest {
     private void save(UUID clientId, String id) {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString(id));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id(id);
         assertEquals(OperationStatus.OK,
@@ -103,7 +103,7 @@ public class TransactionOpCleanupOrderTest {
     }
 
     private void deleteTransientDocument(UUID clientId) {
-        final var request = new DeleteRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new DeleteRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(TRANSIENT_ID);
         assertEquals(OperationStatus.OK,
                 TransactionOperationHelper.bufferDelete(request, transactionOf(clientId)).getStatus());
@@ -118,7 +118,7 @@ public class TransactionOpCleanupOrderTest {
     }
 
     private boolean isVisible(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return processor.processMessage(request) instanceof FindByIdResponse found && found.getObject() != null;
     }
@@ -179,7 +179,7 @@ public class TransactionOpCleanupOrderTest {
 
         assertTrue(TxCommitLog.isLocallyCommitted(txId), "nothing of the finish record landed");
         assertTrue(everyOpLeft(opIds), "a replay needs every op while the marker stands");
-        assertTrue(locks.holdsCollectionLock(TestGlobals.DB, TestGlobals.COLL), "the fence keeps its locks");
+        assertTrue(locks.holdsCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL), "the fence keeps its locks");
         TestUtils.releaseAllLocks();
         clientTracker.removeById(clientId);
 
@@ -187,7 +187,7 @@ public class TransactionOpCleanupOrderTest {
 
         assertFalse(TxCommitLog.isLocallyCommitted(txId));
         assertFalse(anyOpLeft(opIds), "the replay's own finish record removed the ops");
-        assertFalse(locks.holdsCollectionLock(TestGlobals.DB, TestGlobals.COLL));
+        assertFalse(locks.holdsCollectionLock(TestGlobals.PROJECT, TestGlobals.COLL));
         final var runs = TriggerRunLog.pending();
         assertEquals(1, runs.size());
         assertEquals(Set.of("batch-a", "batch-b", "batch-c"), Set.copyOf(runs.getFirst().getIds()),

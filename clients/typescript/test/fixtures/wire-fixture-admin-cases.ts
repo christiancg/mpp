@@ -16,9 +16,9 @@ const LISTEN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const RUN_ID = "8f0e1a2b";
 
 function ddl(cases: Map<string, FixtureCall>): void {
-    cases.set("ddl.list_databases", (r) => r.raw(r.encoder.listDatabases()));
-    cases.set("ddl.create_database", (r) => r.shop.create());
-    cases.set("ddl.drop_database", (r) => r.shop.drop());
+    cases.set("ddl.list_projects", (r) => r.raw(r.encoder.listProjects()));
+    cases.set("ddl.create_project", (r) => r.shop.create());
+    cases.set("ddl.drop_project", (r) => r.shop.drop());
     cases.set("ddl.list_collections", (r) => r.shop.listCollections());
     cases.set("ddl.create_collection", (r) => r.orders.create());
     cases.set("ddl.drop_collection", (r) => r.orders.drop());
@@ -34,8 +34,8 @@ function ddl(cases: Map<string, FixtureCall>): void {
     cases.set("schema.get", (r) => r.orders.schema().get());
     cases.set("schema.delete", (r) => r.orders.schema().delete());
     cases.set("info.server_info", (r) => r.raw(r.encoder.serverInfo()));
-    cases.set("info.database_stats_all", (r) => r.raw(r.encoder.databaseStats()));
-    cases.set("info.database_stats_one", (r) => r.shop.stats());
+    cases.set("info.project_stats_all", (r) => r.raw(r.encoder.projectStats()));
+    cases.set("info.project_stats_one", (r) => r.shop.stats());
     cases.set("info.close_connection", (r) => r.raw(r.encoder.closeConnection()));
 }
 
@@ -103,7 +103,7 @@ function triggersAndSchedules(cases: Map<string, FixtureCall>): void {
     );
     cases.set("scripting.delete_trigger", (r) => r.orders.triggers().delete("audit"));
     cases.set("scripting.list_triggers_collection", (r) => r.orders.triggers().list());
-    cases.set("scripting.list_triggers_database", (r) => r.shop.listTriggers());
+    cases.set("scripting.list_triggers_project", (r) => r.shop.listTriggers());
     cases.set("scripting.test_trigger", (r) =>
         r.orders.triggers().test("normalize", TriggerEvent.CREATED, { _id: "o-1", qty: 2 }),
     );
@@ -145,8 +145,8 @@ function users(cases: Map<string, FixtureCall>): void {
     cases.set("users.create", (r) =>
         r.admin.users().create("bob", "Secret-1234", {
             admin: false,
-            global: [GlobalPermission.CREATE_DATABASE],
-            databases: { shop: DataPermission.READ_WRITE },
+            global: [GlobalPermission.CREATE_PROJECT],
+            projects: { shop: DataPermission.READ_WRITE },
             collections: { "shop|orders": DataPermission.READ },
             scripts: { shop: ScriptPermission.MANAGE },
         }),
@@ -155,7 +155,7 @@ function users(cases: Map<string, FixtureCall>): void {
     cases.set("users.delete", (r) => r.admin.users().delete("bob"));
     cases.set("users.change_permissions", (r) =>
         r.admin.users().changePermissions("bob", {
-            databases: { shop: DataPermission.READ },
+            projects: { shop: DataPermission.READ },
             scripts: { shop: ScriptPermission.RUN },
         }),
     );
@@ -163,7 +163,7 @@ function users(cases: Map<string, FixtureCall>): void {
     cases.set("users.set_password_admin", (r) => r.admin.users().setPassword("bob", "Secret-5678"));
     cases.set("users.list", (r) => r.admin.users().list());
     cases.set("users.list_filtered", (r) => r.admin.users().list(field("admin").eq(true)));
-    cases.set("users.set_database_owners", (r) => r.shop.setOwners(["alice", "bob"]));
+    cases.set("users.set_project_owners", (r) => r.shop.setOwners(["alice", "bob"]));
 }
 
 export function addAdminCases(cases: Map<string, FixtureCall>): void {

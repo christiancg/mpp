@@ -35,15 +35,15 @@ The connection is authenticated with `ClientSettings.Credentials` when they are 
 @exception Mpp.Client.Errors.ConnectionLostException when no host accepts a connection
 @exception Mpp.Client.Errors.AuthenticationException when the credentials are refused
 
-## Database(string)
-Returns a handle for one database. No request is sent, and the database need not exist yet.
+## Project(string)
+Returns a handle for one project. No request is sent, and the project need not exist yet.
 
-@param name the database name: 3 to 64 characters from `A-Z a-z 0-9 _ -`
-@returns the database handle
+@param name the project name: 3 to 64 characters from `A-Z a-z 0-9 _ -`
+@returns the project handle
 @exception System.ArgumentException when the name is not valid
 
-## DatabaseStatsAsync(CancellationToken)
-Reads the statistics of every database the user can see (`GET_DATABASE_STATS`).
+## ProjectStatsAsync(CancellationToken)
+Reads the statistics of every project the user can see (`GET_PROJECT_STATS`).
 
 @param ct cancels the wait; a request already sent closes its connection, since its outcome is unknown
 @returns the statistics as the server reports them
@@ -53,11 +53,11 @@ Closes every listen and pooled connection. Connections still borrowed are given 
 
 @returns a task that completes when the client is closed
 
-## ListDatabasesAsync(CancellationToken)
-Lists the databases the user can see.
+## ListProjectsAsync(CancellationToken)
+Lists the projects the user can see.
 
 @param ct cancels the wait; a request already sent closes its connection, since its outcome is unknown
-@returns the database names
+@returns the project names
 
 ## ServerInfoAsync(CancellationToken)
 Reads the server's state and version (`SERVER_INFO`). The server answers it even before authentication.

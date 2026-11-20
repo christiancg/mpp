@@ -167,8 +167,8 @@ public class VersionedReplayTest extends VersionedReplaySupport {
     @Test
     public void test_an_unversioned_op_from_an_older_build_still_applies() throws Exception {
         final var dtxId = UUID.randomUUID().toString();
-        final var op = new AdminTransactionEntry(dtxId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE, TestGlobals.DB,
-                TestGlobals.COLL, document("legacy", "old-build"));
+        final var op = new AdminTransactionEntry(dtxId, "client", 0, AdminTransactionEntry.OP_TYPE_SAVE,
+                TestGlobals.PROJECT, TestGlobals.COLL, document("legacy", "old-build"));
         AdminOperationHelper.saveTransactionOp(op);
         foreignWrite("legacy", "stored");
         TxCommitLog.recordLocalCommit(dtxId, List.of(op.get_id()), List.of(collId));

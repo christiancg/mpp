@@ -27,8 +27,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class ScriptPlacementLocalityTest {
-    private static final String DB = "locality_db";
-    private static final String UNKNOWN_DB = "no_such_db";
+    private static final String PROJECT = "locality_project";
+    private static final String UNKNOWN_PROJECT = "no_such_project";
     private final MembershipService membershipService = IocContainer.get(MembershipService.class);
     private final Configuration config = Configuration.getInstance();
     private ScriptedRandom scriptedRandom;
@@ -53,7 +53,7 @@ public class ScriptPlacementLocalityTest {
         TestUtils.setPrivateField(membershipService, "self", self);
     }
 
-    // The database has four collections so a share can be 1, 0 or a half without rounding.
+    // The project has four collections so a share can be 1, 0 or a half without rounding.
     private void ownedEntirelyBy(String nodeId) {
         stubCache.collections = List.of("c1", "c2", "c3", "c4");
         final var owners = new HashMap<String, String>();
@@ -96,23 +96,23 @@ public class ScriptPlacementLocalityTest {
     }
 
     // The equivalence claim the whole feature rests on: the fixture and expected winner of
-    // ScriptPlacementTest.test_picks_the_less_loaded_of_two_samples, with b owning the entire database.
+    // ScriptPlacementTest.test_picks_the_less_loaded_of_two_samples, with b owning the entire project.
     @Test
     public void test_weight_zero_reproduces_load_only_ordering() throws Exception {
         weight(0);
         membership(node("a-self", 1, 9, 0), node("b", 2, 7, 0), node("c", 3, 2, 0));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
         assertEquals(0L, placement.getLocalityPreferred());
     }
 
     @Test
-    public void test_owner_of_the_whole_database_beats_an_idle_peer() throws Exception {
+    public void test_owner_of_the_whole_project_beats_an_idle_peer() throws Exception {
         membership(node("a-self", 1, 9, 10), node("b", 2, 4, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("b", placement.choose(DB).getNodeId(), "0.5 * 1 - 0.4 beats 0 - 0");
+        assertEquals("b", placement.choose(PROJECT).getNodeId(), "0.5 * 1 - 0.4 beats 0 - 0");
     }
 
     @Test
@@ -120,7 +120,7 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 10), node("b", 2, 6, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId(), "0.5 * 1 - 0.6 loses to 0 - 0");
+        assertEquals("c", placement.choose(PROJECT).getNodeId(), "0.5 * 1 - 0.6 loses to 0 - 0");
     }
 
     @Test
@@ -129,29 +129,29 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 10), node("b", 2, 10, 10), node("c", 3, 9, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
     }
 
     @Test
-    public void test_empty_database_falls_back_to_load() throws Exception {
+    public void test_empty_project_falls_back_to_load() throws Exception {
         weight(100);
         membership(node("a-self", 1, 9, 10), node("b", 2, 4, 10), node("c", 3, 0, 10));
         stubCache.collections = List.of();
         stubOwnership.owners = Map.of("c1", "b");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
         assertEquals(0L, placement.getLocalityPreferred());
     }
 
     @Test
-    public void test_unknown_database_falls_back_to_load() throws Exception {
+    public void test_unknown_project_falls_back_to_load() throws Exception {
         weight(100);
         membership(node("a-self", 1, 9, 10), node("b", 2, 4, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(UNKNOWN_DB).getNodeId(), "a database this node knows nothing about");
+        assertEquals("c", placement.choose(UNKNOWN_PROJECT).getNodeId(), "a project this node knows nothing about");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(null).getNodeId(), "an operation carrying no database at all");
+        assertEquals("c", placement.choose(null).getNodeId(), "an operation carrying no project at all");
         assertEquals(0L, placement.getLocalityPreferred());
     }
 
@@ -160,12 +160,12 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 0), node("b", 2, 3, 0), node("c", 3, 5, 0));
         ownedEntirelyBy("c");
         scriptedRandom.give(1, 1);
-        assertEquals("b", placement.choose(DB).getNodeId(), "share must not override an unequal absolute load");
+        assertEquals("b", placement.choose(PROJECT).getNodeId(), "share must not override an unequal absolute load");
 
         membership(node("a-self", 1, 9, 0), node("b", 2, 3, 0), node("c", 3, 3, 0));
         ownedEntirelyBy("c");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId(), "equal loads: share wins over the draw order");
+        assertEquals("c", placement.choose(PROJECT).getNodeId(), "equal loads: share wins over the draw order");
     }
 
     @Test
@@ -173,7 +173,7 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 10), node("c", 2, 4, 10), node("b", 3, 4, 10));
         ownedHalfEach();
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId());
+        assertEquals("c", placement.choose(PROJECT).getNodeId());
     }
 
     @Test
@@ -181,12 +181,12 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 10), node("b", 2, 4, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("b", placement.choose(DB).getNodeId());
+        assertEquals("b", placement.choose(PROJECT).getNodeId());
         assertEquals(1L, placement.getLocalityPreferred());
 
         ownedEntirelyBy("c");
         scriptedRandom.give(1, 1);
-        assertEquals("c", placement.choose(DB).getNodeId(), "locality agrees with load, so it changed nothing");
+        assertEquals("c", placement.choose(PROJECT).getNodeId(), "locality agrees with load, so it changed nothing");
         assertEquals(1L, placement.getLocalityPreferred());
     }
 
@@ -195,7 +195,7 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 4, 10), node("b", 2, 0, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("a-self");
         scriptedRandom.give(0, 0);
-        assertNull(placement.choose(DB));
+        assertNull(placement.choose(PROJECT));
         assertEquals(1L, placement.getLocalityPreferred());
     }
 
@@ -205,7 +205,7 @@ public class ScriptPlacementLocalityTest {
         membership(node("a-self", 1, 9, 10), node("b", 2, 9, 10), node("c", 3, 0, 10));
         ownedEntirelyBy("b");
         scriptedRandom.give(1, 1);
-        assertEquals("b", placement.choose(DB).getNodeId(), "1 * 1 - 0.9 still beats 0 - 0");
+        assertEquals("b", placement.choose(PROJECT).getNodeId(), "1 * 1 - 0.9 still beats 0 - 0");
     }
 
     @Test
@@ -224,7 +224,7 @@ public class ScriptPlacementLocalityTest {
                 try {
                     start.await();
                     for (var run = 0; run < 200; run++) {
-                        final var chosen = concurrent.choose(DB);
+                        final var chosen = concurrent.choose(PROJECT);
                         if (chosen != null && "b".equals(chosen.getNodeId())) {
                             owners.incrementAndGet();
                         }
@@ -251,8 +251,8 @@ public class ScriptPlacementLocalityTest {
         private List<String> collections = List.of();
 
         @Override
-        public List<String> getCollectionNamesForDatabase(String dbName) {
-            return DB.equals(dbName) ? collections : null;
+        public List<String> getCollectionNamesForProject(String projectName) {
+            return PROJECT.equals(projectName) ? collections : null;
         }
     }
 
@@ -260,7 +260,7 @@ public class ScriptPlacementLocalityTest {
         private Map<String, String> owners = Map.of();
 
         @Override
-        public String ownerFor(String dbName, String collName) {
+        public String ownerFor(String projectName, String collName) {
             return owners.get(collName);
         }
     }

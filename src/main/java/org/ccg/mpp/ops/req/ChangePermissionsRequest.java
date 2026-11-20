@@ -10,7 +10,7 @@ public class ChangePermissionsRequest extends PermissionsRequest {
         super(OperationType.CHANGE_PERMISSIONS, null, null);
         this.admin = false;
         this.globalPermissions = new JsonArray();
-        this.databasePermissions = new JsonObject();
+        this.projectPermissions = new JsonObject();
         this.collectionPermissions = new JsonObject();
         this.scriptPermissions = new JsonObject();
     }

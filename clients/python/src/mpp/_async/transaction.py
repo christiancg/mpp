@@ -27,8 +27,8 @@ class AsyncTransactionCollection(Generic[T, R]):
         self._ops = ops
 
     @property
-    def database_name(self) -> str:
-        return self._ops.database
+    def project_name(self) -> str:
+        return self._ops.project
 
     @property
     def name(self) -> str:
@@ -87,31 +87,31 @@ class AsyncTransaction:
         return not self._finished
 
     @overload
-    def collection(self, database: str, collection: str) -> AsyncTransactionCollection[Document, Document]: ...
+    def collection(self, project: str, collection: str) -> AsyncTransactionCollection[Document, Document]: ...
 
     @overload
-    def collection(self, database: str, collection: str, model: type[M]) -> AsyncTransactionCollection[M, M]: ...
+    def collection(self, project: str, collection: str, model: type[M]) -> AsyncTransactionCollection[M, M]: ...
 
     @overload
     def collection(
-        self, database: str, collection: str, *, codec: DocumentCodec[T, R]
+        self, project: str, collection: str, *, codec: DocumentCodec[T, R]
     ) -> AsyncTransactionCollection[T, R]: ...
 
     def collection(
         self,
-        database: str,
+        project: str,
         collection: str,
         model: type[Any] | None = None,
         *,
         codec: DocumentCodec[Any, Any] | None = None,
     ) -> AsyncTransactionCollection[Any, Any]:
-        return self._collection(database, collection, model, codec)
+        return self._collection(project, collection, model, codec)
 
     def _collection(
-        self, database: str, collection: str, model: type[Any] | None, codec: DocumentCodec[Any, Any] | None
+        self, project: str, collection: str, model: type[Any] | None, codec: DocumentCodec[Any, Any] | None
     ) -> AsyncTransactionCollection[Any, Any]:
         self._require_open()
-        return AsyncTransactionCollection(CollectionOps(self._context, database, collection, codec_for(model, codec)))
+        return AsyncTransactionCollection(CollectionOps(self._context, project, collection, codec_for(model, codec)))
 
     async def commit(self) -> None:
         await self._end("COMMIT_TRANSACTION")

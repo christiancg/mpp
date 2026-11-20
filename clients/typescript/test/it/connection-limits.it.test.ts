@@ -6,8 +6,8 @@ const it = serverIt({ maxRequestSize: "128Kb", maxEntrySize: "64Kb" });
 
 describe("connection limits", () => {
     test("an oversized request closes its connection and the pool recovers", async () => {
-        await it.client.database("limits_it").create();
-        const notes = it.client.database("limits_it").collection("notes");
+        await it.client.project("limits_it").create();
+        const notes = it.client.project("limits_it").collection("notes");
         await notes.create();
         const refused = notes.save({ _id: "big", text: "x".repeat(200 * 1024) });
         await expect(refused).rejects.toBeInstanceOf(ServerClosedConnectionError);

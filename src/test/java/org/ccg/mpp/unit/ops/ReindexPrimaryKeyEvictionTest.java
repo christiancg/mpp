@@ -44,7 +44,7 @@ public class ReindexPrimaryKeyEvictionTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         originalTaskManager = TestUtils.getPrivateStaticField(PageOccupancyReconciler.class, "taskManager",
                 BackgroundTaskManager.class);
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", new BackgroundTaskManager());
@@ -54,7 +54,7 @@ public class ReindexPrimaryKeyEvictionTest {
     public void tearDown() throws Exception {
         TestUtils.setPrivateStaticField(IndexOperationHelper.class, "fs", realFs);
         TestUtils.setPrivateStaticField(PageOccupancyReconciler.class, "taskManager", originalTaskManager);
-        pendingIndexWrites.clearCollection(TestGlobals.DB, TestGlobals.COLL);
+        pendingIndexWrites.clearCollection(TestGlobals.PROJECT, TestGlobals.COLL);
         TestUtils.releaseAllLocks();
         TestUtils.standardTearDown();
     }
@@ -63,7 +63,7 @@ public class ReindexPrimaryKeyEvictionTest {
         final var object = new JsonObject();
         object.addProperty("_id", id);
         object.addProperty(TAG, "tag-" + id);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
     }
@@ -75,30 +75,30 @@ public class ReindexPrimaryKeyEvictionTest {
     public void rebuildEvictsResidentFirst() throws Exception {
         save("a");
         save("b");
-        assertEquals(OperationStatus.OK,
-                processor.processMessage(new CreateIndexRequest(TestGlobals.DB, TestGlobals.COLL, TAG)).getStatus());
+        assertEquals(OperationStatus.OK, processor
+                .processMessage(new CreateIndexRequest(TestGlobals.PROJECT, TestGlobals.COLL, TAG)).getStatus());
         final var tagIndex = Cache.getIndexIdentifier(TAG, String.class);
         final List<?> pk;
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
-            pk = cache.userCache().getPkIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL);
-            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.DB, TestGlobals.COLL, TAG, String.class);
+            pk = cache.userCache().getPkIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL);
+            cache.getFieldIndexAndLoadIfNecessary(TestGlobals.PROJECT, TestGlobals.COLL, TAG, String.class);
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
-        assertNotNull(cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL, tagIndex));
-        assertTrue(cache.userCache().isResidentPkIndex(TestGlobals.DB, TestGlobals.COLL, cast(pk)));
+        assertNotNull(cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, tagIndex));
+        assertTrue(cache.userCache().isResidentPkIndex(TestGlobals.PROJECT, TestGlobals.COLL, cast(pk)));
         final var spied = spy(realFs);
         TestUtils.setPrivateStaticField(IndexOperationHelper.class, "fs", spied);
         final var seen = new CopyOnWriteArrayList<AtPlan>();
         doAnswer(invocation -> {
-            seen.add(new AtPlan(cache.userCache().isResidentPkIndex(TestGlobals.DB, TestGlobals.COLL, cast(pk)),
-                    cache.residentFieldIndex(TestGlobals.DB, TestGlobals.COLL, tagIndex) != null));
+            seen.add(new AtPlan(cache.userCache().isResidentPkIndex(TestGlobals.PROJECT, TestGlobals.COLL, cast(pk)),
+                    cache.residentFieldIndex(TestGlobals.PROJECT, TestGlobals.COLL, tagIndex) != null));
             return invocation.callRealMethod();
-        }).when(spied).planPkRebuild(eq(TestGlobals.DB), eq(TestGlobals.COLL));
+        }).when(spied).planPkRebuild(eq(TestGlobals.PROJECT), eq(TestGlobals.COLL));
 
         final var response = processor
-                .processMessage(new ReindexRequest(TestGlobals.DB, TestGlobals.COLL, List.of(), true));
+                .processMessage(new ReindexRequest(TestGlobals.PROJECT, TestGlobals.COLL, List.of(), true));
 
         assertInstanceOf(PrimaryKeyReindexResponse.class, response);
         assertEquals(List.of(new AtPlan(false, false)), seen,

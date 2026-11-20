@@ -89,7 +89,7 @@ public class AdminBatchWriteTest {
         payload.addProperty(Globals.PK_FIELD, "doc-" + seq);
         payload.addProperty("filler", "x".repeat(payloadChars));
         final var entry = new AdminTransactionEntry(txId, "client", seq, AdminTransactionEntry.OP_TYPE_SAVE,
-                TestGlobals.DB, TestGlobals.COLL, payload);
+                TestGlobals.PROJECT, TestGlobals.COLL, payload);
         lines.put(entry, entry.encodeLine());
         return entry;
     }
@@ -118,7 +118,8 @@ public class AdminBatchWriteTest {
 
         assertEquals(2, walForces() - before);
         assertEquals(4, rows.published.size());
-        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(Globals.ADMIN_DB_NAME, COLL)));
+        assertFalse(
+                locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(Globals.ADMIN_PROJECT_NAME, COLL)));
     }
 
     @Test
@@ -203,7 +204,7 @@ public class AdminBatchWriteTest {
 
     @Test
     public void test_a_failing_write_publishes_nothing() {
-        final var stale = new PkIndexEntry(Globals.ADMIN_DB_NAME, COLL, "stale", 1_000_000L, 10L, 0L);
+        final var stale = new PkIndexEntry(Globals.ADMIN_PROJECT_NAME, COLL, "stale", 1_000_000L, 10L, 0L);
         rows.published.put("stale", stale);
         final var inserted = entry("tx", 0, 10);
         final var before = walForces();
@@ -214,6 +215,7 @@ public class AdminBatchWriteTest {
         assertEquals(before, walForces());
         assertTrue(rows.events.isEmpty());
         assertEquals(Set.of("stale"), rows.published.keySet());
-        assertFalse(locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(Globals.ADMIN_DB_NAME, COLL)));
+        assertFalse(
+                locks.isWriteLockedByCurrentThread(Cache.getCollectionIdentifier(Globals.ADMIN_PROJECT_NAME, COLL)));
     }
 }

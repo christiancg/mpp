@@ -28,13 +28,14 @@ public class MppPropertiesTest {
     @Test
     public void test_every_property_reaches_the_settings() {
         final var mapper = JsonMapper.builder().build();
-        final var properties = new MppProperties(List.of("db1:9000", "db2"), "alice", "pw", "shop", 3,
+        final var properties = new MppProperties(List.of("project1:9000", "project2"), "alice", "pw", "shop", 3,
                 Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3), Duration.ofSeconds(4),
                 DataSize.ofMegabytes(1), ZoneOffset.UTC,
                 new MppProperties.Tls(true, false, Path.of("t.p12"), "s", "JKS"),
                 new MppProperties.Retry(2, Duration.ofMillis(5), Duration.ofMillis(9)));
         final var settings = properties.toSettings(mapper).build();
-        assertEquals(List.of(new ServerAddress("db1", 9000), new ServerAddress("db2", 8989)), settings.hosts());
+        assertEquals(List.of(new ServerAddress("project1", 9000), new ServerAddress("project2", 8989)),
+                settings.hosts());
         assertEquals("alice", settings.username().orElseThrow());
         assertArrayEquals("pw".toCharArray(), settings.password());
         assertEquals(3, settings.poolSize());

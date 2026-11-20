@@ -31,7 +31,7 @@ public class MessageProcessorCleanupTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(USERNAME);
     }
 
@@ -71,7 +71,7 @@ public class MessageProcessorCleanupTest {
     private void runUntilItDies(Throwable toThrow) throws Exception {
         final var messages = "{\"type\":\"AUTHENTICATE\",\"username\":\"" + USERNAME
                 + "\",\"password\":\"password123\"}\n" + "{\"type\":\"START_TRANSACTION\"}\n"
-                + "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\""
+                + "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
                 + TestGlobals.COLL + "\",\"object\":{\"_id\":\"cleanup-1\"}}\n";
         final var socket = TestUtils.clientSocket(new ByteArrayInputStream(messages.getBytes(StandardCharsets.UTF_8)),
                 new ThrowingAfterSave(toThrow));
@@ -85,9 +85,9 @@ public class MessageProcessorCleanupTest {
 
     private void assertTheConnectionLeftNothingBehind() {
         final var locks = IocContainer.get(ResourceLocking.class);
-        final var free = locks.tryLockWrite(TestGlobals.DB, TestGlobals.COLL);
+        final var free = locks.tryLockWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         if (free) {
-            locks.releaseWrite(TestGlobals.DB, TestGlobals.COLL);
+            locks.releaseWrite(TestGlobals.PROJECT, TestGlobals.COLL);
         }
         assertTrue(free, "the collection write lock must be released by the thread that took it");
         assertTrue(IocContainer.get(Cache.class).getTransactionPkIndexes().isEmpty(),

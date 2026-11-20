@@ -35,7 +35,7 @@ public final class ResponseParser {
             case BULK_SAVE -> new BulkSaveResponse(message, strings(object, "inserted"), strings(object, "updated"));
             case DELETE -> deleteResponse(object, message);
             case LIST_COLLECTIONS -> new ListCollectionsResponse(message, strings(object, "collections"));
-            case LIST_DATABASES -> new ListDatabasesResponse(message, strings(object, "databases"));
+            case LIST_PROJECTS -> new ListProjectsResponse(message, strings(object, "projects"));
             case START_TRANSACTION -> new StartTransactionResponse(message, text(object, "transactionId"));
             default -> new OperationResponse(type, status, message);
         };

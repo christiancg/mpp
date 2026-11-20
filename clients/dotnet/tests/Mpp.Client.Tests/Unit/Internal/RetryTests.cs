@@ -55,7 +55,7 @@ public sealed class RetryTests : IAsyncLifetime
     {
         FailFirst("SAVE", 10, (session, request) => session.Send(RecordingChannel.Error(request, "ERROR", code)));
         await using var client = await Connect();
-        await Assert.ThrowsAsync<UnavailableException>(() => client.Database("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
+        await Assert.ThrowsAsync<UnavailableException>(() => client.Project("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
         Assert.Equal(4, _server.Count("SAVE"));
         Assert.Equal([10, 20, 25], _delays.Select(delay => delay.TotalMilliseconds));
     }
@@ -68,7 +68,7 @@ public sealed class RetryTests : IAsyncLifetime
     {
         FailFirst("SAVE", 10, (session, request) => session.Send(RecordingChannel.Error(request, "ERROR", code)));
         await using var client = await Connect();
-        await Assert.ThrowsAnyAsync<MppException>(() => client.Database("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
+        await Assert.ThrowsAnyAsync<MppException>(() => client.Project("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
         Assert.Equal(1, _server.Count("SAVE"));
     }
 
@@ -77,7 +77,7 @@ public sealed class RetryTests : IAsyncLifetime
     {
         FailFirst("AGGREGATE", 1, (session, _) => session.Close());
         await using var client = await Connect();
-        Assert.Empty(await client.Database("shop").Collection("orders").Query().ToListAsync());
+        Assert.Empty(await client.Project("shop").Collection("orders").Query().ToListAsync());
         Assert.Equal(2, _server.Count("AGGREGATE"));
     }
 
@@ -86,7 +86,7 @@ public sealed class RetryTests : IAsyncLifetime
     {
         FailFirst("SAVE", 1, (session, _) => session.Close());
         await using var client = await Connect();
-        await Assert.ThrowsAsync<ConnectionLostException>(() => client.Database("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
+        await Assert.ThrowsAsync<ConnectionLostException>(() => client.Project("shop").Collection("orders").SaveAsync(Document.Of("a", 1)));
         Assert.Equal(1, _server.Count("SAVE"));
     }
 

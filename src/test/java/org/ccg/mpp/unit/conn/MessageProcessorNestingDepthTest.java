@@ -28,7 +28,7 @@ public class MessageProcessorNestingDepthTest {
     @BeforeEach
     void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         TestUtils.createAdmin(USERNAME);
     }
 
@@ -39,8 +39,8 @@ public class MessageProcessorNestingDepthTest {
     }
 
     private static String saveOf(String id, String object) {
-        return "{\"type\":\"SAVE\",\"databaseName\":\"" + TestGlobals.DB + "\",\"collectionName\":\"" + TestGlobals.COLL
-                + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + object + "}}\n";
+        return "{\"type\":\"SAVE\",\"projectName\":\"" + TestGlobals.PROJECT + "\",\"collectionName\":\""
+                + TestGlobals.COLL + "\",\"object\":{\"_id\":\"" + id + "\",\"n\":" + object + "}}\n";
     }
 
     private static List<String> converse(String messages) throws Exception {
@@ -59,7 +59,7 @@ public class MessageProcessorNestingDepthTest {
     }
 
     private static OperationStatus statusOf(String id) {
-        final var request = new FindByIdRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new FindByIdRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.set_id(id);
         return IocContainer.get(OperationProcessor.class).processMessage(request).getStatus();
     }

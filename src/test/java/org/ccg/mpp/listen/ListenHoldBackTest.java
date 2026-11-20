@@ -36,7 +36,8 @@ public class ListenHoldBackTest {
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
     private final OperationProcessor processor = IocContainer.get(OperationProcessor.class);
     private final ListenManager manager = new ListenManager();
-    private final List<String> applyingKeys = List.of(Cache.getCollectionIdentifier(TestGlobals.DB, TestGlobals.COLL));
+    private final List<String> applyingKeys = List
+            .of(Cache.getCollectionIdentifier(TestGlobals.PROJECT, TestGlobals.COLL));
     private UUID clientId;
     private ListenRegistration registration;
     private String initialHash;
@@ -44,11 +45,11 @@ public class ListenHoldBackTest {
     @BeforeEach
     public void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         AdminOperationHelper.saveUserEntry(
                 new AdminUserEntry(LISTENER, "unused", true, new HashSet<>(), new HashMap<>(), new HashMap<>()));
         clientId = clientTracker.registerForwardedClient(LISTENER);
-        final var request = new AggregateRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new AggregateRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setAggregationSteps(List.of());
         request.setDirtyRead(true);
         initialHash = ResultHasher.hash(List.of(), false);
@@ -74,7 +75,7 @@ public class ListenHoldBackTest {
     private void saveDocument(String id) {
         final var document = new JsonObject();
         document.add(Globals.PK_FIELD, new JsonString(id));
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(document);
         request.set_id(id);
         assertEquals(OperationStatus.OK, processor.processMessage(request).getStatus());
@@ -173,7 +174,7 @@ public class ListenHoldBackTest {
             }
         };
         final var batch = recording.openBatch(applyingKeys);
-        batch.markDirty(TestGlobals.DB, TestGlobals.COLL);
+        batch.markDirty(TestGlobals.PROJECT, TestGlobals.COLL);
         assertEquals(List.of(), activeAtEnqueue, "nothing is enqueued while the batch is open");
 
         batch.close();

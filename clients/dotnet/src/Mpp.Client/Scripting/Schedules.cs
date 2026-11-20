@@ -10,29 +10,29 @@ namespace Mpp.Client.Scripting;
 public sealed class Schedules
 {
     private readonly ClientContext _context;
-    private readonly string _database;
+    private readonly string _project;
 
-    internal Schedules(ClientContext context, string database)
+    internal Schedules(ClientContext context, string project)
     {
         _context = context;
-        _database = database;
+        _project = project;
     }
 
     public async Task<long> SaveAsync(ScheduleDefinition definition, CancellationToken ct = default)
     {
-        var reply = await _context.Channel.SendAsync(Operation.SaveSchedule, ScriptRequestEncoder.SaveSchedule(_database, definition), ct)
+        var reply = await _context.Channel.SendAsync(Operation.SaveSchedule, ScriptRequestEncoder.SaveSchedule(_project, definition), ct)
             .ConfigureAwait(false);
         return ResponseDecoder.WholeOf(reply["version"]) ?? 0;
     }
 
     public async Task DeleteAsync(string name, CancellationToken ct = default) =>
-        await _context.Channel.SendAsync(Operation.DeleteSchedule, ScriptRequestEncoder.DeleteSchedule(_database, name), ct)
+        await _context.Channel.SendAsync(Operation.DeleteSchedule, ScriptRequestEncoder.DeleteSchedule(_project, name), ct)
             .ConfigureAwait(false);
 
     public async Task<IReadOnlyList<ScheduleInfo>> ListAsync(bool? includeArgs = null, CancellationToken ct = default)
     {
         var reply = await _context.Channel
-            .SendAsync(Operation.ListSchedules, ScriptRequestEncoder.ListSchedules(_database, includeArgs), ct)
+            .SendAsync(Operation.ListSchedules, ScriptRequestEncoder.ListSchedules(_project, includeArgs), ct)
             .ConfigureAwait(false);
         return [.. ResponseDecoder.Documents(reply, "schedules").Select(Descriptors.Schedule)];
     }

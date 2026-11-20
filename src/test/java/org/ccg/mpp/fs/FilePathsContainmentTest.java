@@ -22,7 +22,7 @@ public class FilePathsContainmentTest {
     }
 
     private List<Function<String, File>> everyBuilder() {
-        return List.of(paths::databaseFolder, paths::rawDatabaseFolder, name -> paths.collectionFolder("shop", name),
+        return List.of(paths::projectFolder, paths::rawProjectFolder, name -> paths.collectionFolder("shop", name),
                 name -> paths.collectionFolder(name, "orders"), name -> paths.collectionPage(name, "orders", 1),
                 name -> paths.collectionPage("shop", name, 1),
                 name -> paths.indexFile("shop", "orders", name, "String"),
@@ -35,9 +35,9 @@ public class FilePathsContainmentTest {
     }
 
     @Test
-    public void rejectsDotDotAsDatabase() {
-        assertThrows(InvalidPathSegmentException.class, () -> paths.databaseFolder(".."));
-        assertThrows(InvalidPathSegmentException.class, () -> paths.rawDatabaseFolder(".."));
+    public void rejectsDotDotAsProject() {
+        assertThrows(InvalidPathSegmentException.class, () -> paths.projectFolder(".."));
+        assertThrows(InvalidPathSegmentException.class, () -> paths.rawProjectFolder(".."));
     }
 
     @Test
@@ -56,22 +56,22 @@ public class FilePathsContainmentTest {
 
     @Test
     public void rejectsNul() {
-        assertThrows(InvalidPathSegmentException.class, () -> paths.databaseFolder("a\0b"));
+        assertThrows(InvalidPathSegmentException.class, () -> paths.projectFolder("a\0b"));
         assertThrows(InvalidPathSegmentException.class, () -> paths.indexFile("shop", "orders", "a\0b", "String"));
     }
 
     @Test
     public void rejectsNull() {
-        assertThrows(InvalidPathSegmentException.class, () -> paths.databaseFolder(null));
+        assertThrows(InvalidPathSegmentException.class, () -> paths.projectFolder(null));
         assertThrows(InvalidPathSegmentException.class, () -> paths.procedureFile("shop", null));
     }
 
     @Test
     public void acceptsAdminPagesAndTranslatesIt() {
         assertEquals(
-                new File(new File(ROOT).getAbsolutePath() + Globals.FILE_SEPARATOR + Globals.ADMIN_DB_NAME
+                new File(new File(ROOT).getAbsolutePath() + Globals.FILE_SEPARATOR + Globals.ADMIN_PROJECT_NAME
                         + Globals.FILE_SEPARATOR + Globals.ADMIN_PAGES_FOLDER),
-                paths.databaseFolder(Globals.ADMIN_PAGES_DB_NAME));
+                paths.projectFolder(Globals.ADMIN_PAGES_PROJECT_NAME));
     }
 
     @Test
@@ -81,7 +81,7 @@ public class FilePathsContainmentTest {
         }
         assertNotNull(paths.indexFile("shop", "orders", "a.b", "String"));
         assertEquals(new File(new File(ROOT).getAbsolutePath() + Globals.FILE_SEPARATOR + "shop"),
-                paths.databaseFolder("shop"));
+                paths.projectFolder("shop"));
     }
 
     @Test

@@ -18,14 +18,14 @@ import org.ccg.mpp.utils.JsonUtils;
 public final class LegacyIndexMaintenance {
     private final FileSystem fs;
     private final LegacyIndexLines lines;
-    private final String dbName;
+    private final String projectName;
     private final String collName;
     private final String fieldName;
 
-    public LegacyIndexMaintenance(FileSystem fs, String dbName, String collName, String fieldName) {
+    public LegacyIndexMaintenance(FileSystem fs, String projectName, String collName, String fieldName) {
         this.fs = fs;
         this.lines = LegacyIndexLines.of(fs);
-        this.dbName = dbName;
+        this.projectName = projectName;
         this.collName = collName;
         this.fieldName = fieldName;
     }
@@ -70,26 +70,26 @@ public final class LegacyIndexMaintenance {
     }
 
     private void addToHashIndex(String entryId, IndexKind kind, String hash) throws IOException {
-        final var entries = fs.readWholeHashIndexFile(dbName, collName, fieldName, kind);
+        final var entries = fs.readWholeHashIndexFile(projectName, collName, fieldName, kind);
         final var found = entries == null
                 ? null
                 : entries.stream().filter(e -> e.getValue().equals(hash)).findFirst().orElse(null);
         if (found != null) {
             found.getIds().add(entryId);
-            lines.updateHashIndexFiles(dbName, collName, fieldName, kind, found, null);
+            lines.updateHashIndexFiles(projectName, collName, fieldName, kind, found, null);
         } else {
-            final var indexEntry = new FieldIndexEntry<>(dbName, collName, hash, new HashSet<>(Set.of(entryId)));
-            lines.updateHashIndexFiles(dbName, collName, fieldName, kind, indexEntry, null);
+            final var indexEntry = new FieldIndexEntry<>(projectName, collName, hash, new HashSet<>(Set.of(entryId)));
+            lines.updateHashIndexFiles(projectName, collName, fieldName, kind, indexEntry, null);
         }
     }
 
     private void removeIdFromHashIndexes(String entryId) throws IOException {
         for (var kind : IndexKind.HASH_KINDS) {
-            final var entries = fs.readWholeHashIndexFile(dbName, collName, fieldName, kind);
+            final var entries = fs.readWholeHashIndexFile(projectName, collName, fieldName, kind);
             if (entries != null) {
                 for (var entry : entries) {
                     if (entry.getIds().remove(entryId)) {
-                        lines.updateHashIndexFiles(dbName, collName, fieldName, kind, null, entry);
+                        lines.updateHashIndexFiles(projectName, collName, fieldName, kind, null, entry);
                         break;
                     }
                 }
@@ -109,7 +109,7 @@ public final class LegacyIndexMaintenance {
     private <T> void removeScalarOfType(String entryId, Class<T> type) throws IOException {
         final var removed = existingEntry(entryId, type);
         if (removed != null) {
-            lines.updateIndexFiles(dbName, collName, fieldName, null, removed);
+            lines.updateIndexFiles(projectName, collName, fieldName, null, removed);
         }
     }
 
@@ -134,15 +134,15 @@ public final class LegacyIndexMaintenance {
                 : matching(value, tClass);
         if (found != null) {
             found.getIds().add(entryId);
-            lines.updateIndexFiles(dbName, collName, fieldName, found, toRemove);
+            lines.updateIndexFiles(projectName, collName, fieldName, found, toRemove);
         } else {
-            lines.updateIndexFiles(dbName, collName, fieldName,
-                    new FieldIndexEntry<>(dbName, collName, value, new HashSet<>(Set.of(entryId))), toRemove);
+            lines.updateIndexFiles(projectName, collName, fieldName,
+                    new FieldIndexEntry<>(projectName, collName, value, new HashSet<>(Set.of(entryId))), toRemove);
         }
     }
 
     private FieldIndexEntry<?> matchingCustom(JsonCustom<?> value) throws IOException {
-        final var indexEntries = fs.readWholeFieldIndexFiles(dbName, collName, fieldName, value.getClass());
+        final var indexEntries = fs.readWholeFieldIndexFiles(projectName, collName, fieldName, value.getClass());
         if (indexEntries == null) {
             return null;
         }
@@ -151,7 +151,7 @@ public final class LegacyIndexMaintenance {
     }
 
     private <T> FieldIndexEntry<T> matching(T value, Class<T> tClass) throws IOException {
-        final var indexEntries = fs.readWholeFieldIndexFiles(dbName, collName, fieldName, tClass);
+        final var indexEntries = fs.readWholeFieldIndexFiles(projectName, collName, fieldName, tClass);
         if (indexEntries == null) {
             return null;
         }
@@ -161,7 +161,7 @@ public final class LegacyIndexMaintenance {
     }
 
     private <T> FieldIndexEntry<T> existingEntry(String entityId, Class<T> tClass) throws IOException {
-        final var entries = fs.readWholeFieldIndexFiles(dbName, collName, fieldName, tClass);
+        final var entries = fs.readWholeFieldIndexFiles(projectName, collName, fieldName, tClass);
         if (entries == null) {
             return null;
         }

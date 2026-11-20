@@ -56,13 +56,13 @@ public final class MppClient implements AutoCloseable {
         return settings;
     }
 
-    public Database database(String name) {
-        return new Database(context, name);
+    public Project project(String name) {
+        return new Project(context, name);
     }
 
-    public List<String> listDatabases() {
-        final var reply = context.channel().send(Operation.LIST_DATABASES, context.encoder().listDatabases());
-        return ResponseDecoder.strings(reply.get("databases"));
+    public List<String> listProjects() {
+        final var reply = context.channel().send(Operation.LIST_PROJECTS, context.encoder().listProjects());
+        return ResponseDecoder.strings(reply.get("projects"));
     }
 
     public ServerInfo serverInfo() {
@@ -70,8 +70,8 @@ public final class MppClient implements AutoCloseable {
         return Descriptors.server(ResponseDecoder.document(reply, "server").orElseGet(Document::empty));
     }
 
-    public Document databaseStats() {
-        final var reply = context.channel().send(Operation.GET_DATABASE_STATS, context.encoder().databaseStats());
+    public Document projectStats() {
+        final var reply = context.channel().send(Operation.GET_PROJECT_STATS, context.encoder().projectStats());
         return ResponseDecoder.document(reply, "stats").orElseGet(Document::empty);
     }
 

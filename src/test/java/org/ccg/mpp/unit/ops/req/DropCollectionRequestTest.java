@@ -9,24 +9,24 @@ import org.junit.jupiter.api.Test;
 public class DropCollectionRequestTest {
     @Test
     public void test_constructor_sets_drop_collection_type() {
-        String dbName = "testDb";
+        String projectName = "testProject";
         String collName = "testCollection";
 
-        DropCollectionRequest request = new DropCollectionRequest(dbName, collName);
+        DropCollectionRequest request = new DropCollectionRequest(projectName, collName);
 
         assertEquals(OperationType.DROP_COLLECTION, request.getType());
-        assertEquals(dbName, request.getDatabaseName());
+        assertEquals(projectName, request.getProjectName());
         assertEquals(collName, request.getCollectionName());
     }
 
     @Test
-    public void test_constructor_accepts_empty_database_name() {
-        String dbName = "";
+    public void test_constructor_accepts_empty_project_name() {
+        String projectName = "";
         String collName = "testCollection";
 
-        DropCollectionRequest request = new DropCollectionRequest(dbName, collName);
+        DropCollectionRequest request = new DropCollectionRequest(projectName, collName);
 
-        assertEquals("", request.getDatabaseName());
+        assertEquals("", request.getProjectName());
         assertEquals(collName, request.getCollectionName());
         assertEquals(OperationType.DROP_COLLECTION, request.getType());
     }

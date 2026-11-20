@@ -22,14 +22,14 @@ public final class AdminRecordNames {
 
     public static boolean accepts(AdminRecordKey key) {
         return switch (key.kind()) {
-            case DATABASE -> isDatabase(key.dbName()) && key.dbName().equals(key.name());
-            case USER -> key.dbName().isEmpty() && NameValidations.isUsername(key.name());
+            case PROJECT -> isProject(key.projectName()) && key.projectName().equals(key.name());
+            case USER -> key.projectName().isEmpty() && NameValidations.isUsername(key.name());
             case COLLECTION, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE ->
-                isDatabase(key.dbName()) && NameValidations.isName(key.name());
+                isProject(key.projectName()) && NameValidations.isName(key.name());
         };
     }
 
-    private static boolean isDatabase(String dbName) {
-        return NameValidations.isName(dbName) && !NameValidations.isReservedDbName(dbName);
+    private static boolean isProject(String projectName) {
+        return NameValidations.isName(projectName) && !NameValidations.isReservedProjectName(projectName);
     }
 }

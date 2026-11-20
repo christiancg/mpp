@@ -33,7 +33,7 @@ public class FilterOperatorHelperScriptTest {
     @BeforeEach
     public void setUp() throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterEach
@@ -57,7 +57,7 @@ public class FilterOperatorHelperScriptTest {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var operator = new ScriptOperator("export default (doc) => doc.price > 10;");
             final var results = FilterOperatorHelper
-                    .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).toList();
+                    .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).toList();
             assertEquals(2, results.size());
             assertEquals("2", results.getFirst().get("_id").asJsonString().getValue());
         }
@@ -68,7 +68,7 @@ public class FilterOperatorHelperScriptTest {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var operator = new ScriptOperator("export default (doc) => doc.price > 10 ? 'yes' : 0;");
             assertEquals(2, FilterOperatorHelper
-                    .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count());
+                    .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count());
         }
     }
 
@@ -79,7 +79,7 @@ public class FilterOperatorHelperScriptTest {
             try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
                 final var operator = new ScriptOperator("export default (doc) => " + value + ";");
                 assertEquals(0, FilterOperatorHelper
-                        .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count(),
+                        .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count(),
                         value + " must be falsy");
             }
         }
@@ -91,15 +91,14 @@ public class FilterOperatorHelperScriptTest {
             try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
                 final var operator = new ScriptOperator("export default (doc) => " + value + ";");
                 assertEquals(3, FilterOperatorHelper
-                        .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count(),
+                        .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count(),
                         value + " is truthy in JavaScript, and FILTER never stores the value it tests");
             }
         }
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var operator = new ScriptOperator("export default (doc) => NaN;");
-            assertEquals(0,
-                    FilterOperatorHelper
-                            .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count(),
+            assertEquals(0, FilterOperatorHelper
+                    .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count(),
                     "NaN is falsy in JavaScript");
         }
     }
@@ -111,7 +110,7 @@ public class FilterOperatorHelperScriptTest {
             try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
                 final var operator = new ScriptOperator("export default (doc) => " + value + ";");
                 assertEquals(3, FilterOperatorHelper
-                        .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count(),
+                        .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count(),
                         value + " must be truthy");
             }
         }
@@ -120,7 +119,7 @@ public class FilterOperatorHelperScriptTest {
     @Test
     public void test_script_operator_is_not_index_resolvable() throws IOException {
         assertNull(FilterOperatorHelper.resolveIdsViaIndex(new ScriptOperator("export default (doc) => true;"),
-                TestGlobals.DB, TestGlobals.COLL, PipelineContext.withoutScripts()));
+                TestGlobals.PROJECT, TestGlobals.COLL, PipelineContext.withoutScripts()));
     }
 
     // A conjunction containing a script still resolves its other operands via index, so the whole
@@ -131,7 +130,7 @@ public class FilterOperatorHelperScriptTest {
         operators.add(new FieldOperator(FieldOperatorType.EQUALS, "price", new JsonNumber(5)));
         operators.add(new ScriptOperator("export default (doc) => true;"));
         final var conjunction = new ConjunctionOperator(ConjunctionOperatorType.AND, operators);
-        assertNull(FilterOperatorHelper.resolveIdsViaIndex(conjunction, TestGlobals.DB, TestGlobals.COLL,
+        assertNull(FilterOperatorHelper.resolveIdsViaIndex(conjunction, TestGlobals.PROJECT, TestGlobals.COLL,
                 PipelineContext.withoutScripts()));
     }
 
@@ -144,7 +143,7 @@ public class FilterOperatorHelperScriptTest {
             operators.add(new ScriptOperator("export default (doc) => doc.price < 20;"));
             final var conjunction = new ConjunctionOperator(ConjunctionOperatorType.AND, operators);
             final var results = FilterOperatorHelper
-                    .processOperator(conjunction, null, TestGlobals.DB, TestGlobals.COLL, context).toList();
+                    .processOperator(conjunction, null, TestGlobals.PROJECT, TestGlobals.COLL, context).toList();
             assertEquals(1, results.size());
             assertEquals("2", results.getFirst().get("_id").asJsonString().getValue());
         }
@@ -156,24 +155,24 @@ public class FilterOperatorHelperScriptTest {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var operator = new ScriptOperator("export default (doc) => doc.price > 10;");
             assertEquals(2, FilterOperatorHelper
-                    .processOperator(operator, null, TestGlobals.DB, TestGlobals.COLL, context).count());
+                    .processOperator(operator, null, TestGlobals.PROJECT, TestGlobals.COLL, context).count());
         }
     }
 
     private void seedCollection() throws IOException {
         final var cache = IocContainer.get(Cache.class);
-        final var adminCollEntry = new AdminCollEntry(TestGlobals.DB, TestGlobals.COLL);
+        final var adminCollEntry = new AdminCollEntry(TestGlobals.PROJECT, TestGlobals.COLL);
         var position = 0;
         for (final var document : documents().toList()) {
             final var id = document.get("_id").asJsonString().getValue();
             final var entry = new DbEntry();
-            entry.setDatabaseName(TestGlobals.DB);
+            entry.setProjectName(TestGlobals.PROJECT);
             entry.setCollectionName(TestGlobals.COLL);
             entry.setData(document);
             entry.set_id(id);
-            TestUtils.cacheEntry(cache, TestGlobals.DB, TestGlobals.COLL, entry);
+            TestUtils.cacheEntry(cache, TestGlobals.PROJECT, TestGlobals.COLL, entry);
             cache.putAdminCollectionEntry(adminCollEntry,
-                    new PkIndexEntry(TestGlobals.DB, TestGlobals.COLL, id, position, 100, 0));
+                    new PkIndexEntry(TestGlobals.PROJECT, TestGlobals.COLL, id, position, 100, 0));
             position += 100;
         }
     }
@@ -184,7 +183,7 @@ public class FilterOperatorHelperScriptTest {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, analyze)) {
             final var operator = new ScriptOperator("export default (doc) => true;");
             assertEquals(3, FilterOperatorHelper
-                    .processOperator(operator, documents(), TestGlobals.DB, TestGlobals.COLL, context).count());
+                    .processOperator(operator, documents(), TestGlobals.PROJECT, TestGlobals.COLL, context).count());
             assertEquals(3, analyze.getScriptInvocations());
         }
     }
@@ -194,7 +193,7 @@ public class FilterOperatorHelperScriptTest {
         try (var context = PipelineContext.of(0L, Long.MAX_VALUE, null)) {
             final var operator = new ScriptOperator("export default (doc) => { throw new Error('called'); };");
             assertEquals(0, FilterOperatorHelper
-                    .processOperator(operator, Stream.of(), TestGlobals.DB, TestGlobals.COLL, context).count());
+                    .processOperator(operator, Stream.of(), TestGlobals.PROJECT, TestGlobals.COLL, context).count());
         }
     }
 }

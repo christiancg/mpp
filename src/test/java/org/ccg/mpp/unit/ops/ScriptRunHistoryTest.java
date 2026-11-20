@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
-import org.ccg.mpp.data.admin.AdminDbEntry;
+import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ejson.elements.JsonNull;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.AdminOperationHelper;
@@ -35,7 +35,7 @@ public class ScriptRunHistoryTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -65,13 +65,13 @@ public class ScriptRunHistoryTest {
     }
 
     private static ScriptRunRecord row(String runId, ScriptRunKind kind, long startedAt, String outcome) {
-        return new ScriptRunRecord(runId, kind, TestGlobals.DB, "job", "proc", TestGlobals.COLL, "CREATED", "u1", "u2",
-                startedAt, 12L, 1, outcome, null, null, List.of("frame (main:1:1)"),
+        return new ScriptRunRecord(runId, kind, TestGlobals.PROJECT, "job", "proc", TestGlobals.COLL, "CREATED", "u1",
+                "u2", startedAt, 12L, 1, outcome, null, null, List.of("frame (main:1:1)"),
                 new ScriptRunMetrics(9L, 100L, 8L, 200L, 2L, 12L), List.of("a log line"), false);
     }
 
     private static org.ccg.mpp.ejson.elements.JsonObject readRow(String id) {
-        final var entries = cache.getWholeCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        final var entries = cache.getWholeCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         final var entry = entries.get(id);
         return entry == null ? null : entry.getData();
     }
@@ -102,15 +102,15 @@ public class ScriptRunHistoryTest {
 
     @Test
     public void test_the_collection_is_created_lazily_by_the_first_row() throws Exception {
-        final var freshDb = "lazyHistoryDb";
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(freshDb));
-        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createDatabaseFolder(freshDb);
-        assertNull(cache.getAdminCollectionEntry(freshDb, Globals.SCRIPT_RUNS_COLLECTION_NAME));
+        final var freshProject = "lazyHistoryProject";
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(freshProject));
+        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createProjectFolder(freshProject);
+        assertNull(cache.getAdminCollectionEntry(freshProject, Globals.SCRIPT_RUNS_COLLECTION_NAME));
 
-        ScriptRunHistory.write(new ScriptRunRecord("run-lazy", ScriptRunKind.TRIGGER, freshDb, "job", "proc", null,
+        ScriptRunHistory.write(new ScriptRunRecord("run-lazy", ScriptRunKind.TRIGGER, freshProject, "job", "proc", null,
                 null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null,
                 null, false));
-        assertNotNull(cache.getAdminCollectionEntry(freshDb, Globals.SCRIPT_RUNS_COLLECTION_NAME));
+        assertNotNull(cache.getAdminCollectionEntry(freshProject, Globals.SCRIPT_RUNS_COLLECTION_NAME));
         assertEquals(1L, ScriptRunHistory.getRecorded());
     }
 
@@ -150,21 +150,21 @@ public class ScriptRunHistoryTest {
     public void test_a_long_error_message_is_clipped() throws Exception {
         setConfig("scriptRunHistoryMaxErrorChars", 10);
         final var longMessage = "e".repeat(500);
-        ScriptRunHistory.write(new ScriptRunRecord("run-clip", ScriptRunKind.TRIGGER, TestGlobals.DB, "job", "proc",
-                TestGlobals.COLL, "CREATED", "u1", "u2", System.currentTimeMillis(), 1L, 1,
+        ScriptRunHistory.write(new ScriptRunRecord("run-clip", ScriptRunKind.TRIGGER, TestGlobals.PROJECT, "job",
+                "proc", TestGlobals.COLL, "CREATED", "u1", "u2", System.currentTimeMillis(), 1L, 1,
                 ScriptRunRecord.OUTCOME_ERROR, "Error", longMessage, null, null, null, false));
         final var stored = Objects.requireNonNull(readRow("run-clip")).get("errorMessage").asJsonString().getValue();
         assertEquals(11, stored.length(), "expected 10 characters plus the ellipsis, got " + stored);
     }
 
     private static ScriptRunRecord failedRun(String runId, String errorMessage, List<String> stack, List<String> logs) {
-        return new ScriptRunRecord(runId, ScriptRunKind.TRIGGER, TestGlobals.DB, "job", "proc", TestGlobals.COLL,
+        return new ScriptRunRecord(runId, ScriptRunKind.TRIGGER, TestGlobals.PROJECT, "job", "proc", TestGlobals.COLL,
                 "CREATED", "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_ERROR, "Error",
                 errorMessage, stack, null, logs, false);
     }
 
     private static org.ccg.mpp.ejson.elements.JsonObject readRowCold(String id) {
-        cache.evictCollection(TestGlobals.DB, Globals.SCRIPT_RUNS_COLLECTION_NAME);
+        cache.evictCollection(TestGlobals.PROJECT, Globals.SCRIPT_RUNS_COLLECTION_NAME);
         return readRow(id);
     }
 
@@ -219,8 +219,8 @@ public class ScriptRunHistoryTest {
     }
 
     @Test
-    public void test_an_unknown_database_is_dropped_rather_than_thrown() {
-        ScriptRunHistory.write(new ScriptRunRecord("run-nodb", ScriptRunKind.TRIGGER, "noSuchDatabase", "job", "proc",
+    public void test_an_unknown_project_is_dropped_rather_than_thrown() {
+        ScriptRunHistory.write(new ScriptRunRecord("run-nodb", ScriptRunKind.TRIGGER, "noSuchProject", "job", "proc",
                 null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null,
                 null, null, false));
         assertEquals(0L, ScriptRunHistory.getRecorded());
@@ -287,17 +287,17 @@ public class ScriptRunHistoryTest {
 
     @Test
     public void test_a_row_with_no_run_id_still_lands() {
-        ScriptRunHistory.write(new ScriptRunRecord(null, ScriptRunKind.TRIGGER, TestGlobals.DB, "job", "proc", null,
-                null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_ERROR, "Error", "boom",
-                null, null, null, false));
+        ScriptRunHistory.write(new ScriptRunRecord(null, ScriptRunKind.TRIGGER, TestGlobals.PROJECT, "job", "proc",
+                null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_ERROR, "Error",
+                "boom", null, null, null, false));
         assertEquals(1L, ScriptRunHistory.getRecorded());
     }
 
     @Test
     public void test_a_row_stores_json_nulls_for_the_absent_fields() {
-        ScriptRunHistory.write(new ScriptRunRecord("run-absent-fields", ScriptRunKind.TRIGGER, TestGlobals.DB, "job",
-                null, null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null,
-                null, new ScriptRunMetrics(1L, 1L, 1L, 1L, 1L, 1L), null, false));
+        ScriptRunHistory.write(new ScriptRunRecord("run-absent-fields", ScriptRunKind.TRIGGER, TestGlobals.PROJECT,
+                "job", null, null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK,
+                null, null, null, new ScriptRunMetrics(1L, 1L, 1L, 1L, 1L, 1L), null, false));
         final var document = Objects.requireNonNull(readRow("run-absent-fields"));
         assertSame(JsonNull.INSTANCE, document.get("procedure"));
         assertSame(JsonNull.INSTANCE, document.get("collection"));
@@ -307,15 +307,15 @@ public class ScriptRunHistoryTest {
     }
 
     @Test
-    public void test_the_sweep_skips_a_database_with_no_history_collection() throws Exception {
-        final var freshDb = "unsweptHistoryDb";
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(freshDb));
-        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createDatabaseFolder(freshDb);
+    public void test_the_sweep_skips_a_project_with_no_history_collection() throws Exception {
+        final var freshProject = "unsweptHistoryProject";
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(freshProject));
+        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createProjectFolder(freshProject);
         setConfig("scriptRunHistoryRetentionMs", 1L);
 
         ScriptRunHistory.sweepOnce();
 
-        assertNull(cache.getAdminCollectionEntry(freshDb, Globals.SCRIPT_RUNS_COLLECTION_NAME));
+        assertNull(cache.getAdminCollectionEntry(freshProject, Globals.SCRIPT_RUNS_COLLECTION_NAME));
         assertEquals(0L, ScriptRunHistory.getDropped());
     }
 
@@ -394,15 +394,15 @@ public class ScriptRunHistoryTest {
     @Test
     public void test_a_collection_that_cannot_be_created_drops_the_row() throws Exception {
         final var config = Configuration.getInstance();
-        final var freshDb = "uncreatableHistoryDb";
-        AdminOperationHelper.saveDatabaseEntry(new AdminDbEntry(freshDb));
-        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createDatabaseFolder(freshDb);
+        final var freshProject = "uncreatableHistoryProject";
+        AdminOperationHelper.saveProjectEntry(new AdminProjectEntry(freshProject));
+        IocContainer.get(org.ccg.mpp.fs.FileSystem.class).createProjectFolder(freshProject);
         final var clusterWasEnabled = config.isClusterEnabled();
         TestUtils.setPrivateField(config, "clusterEnabled", true);
         try {
-            ScriptRunHistory.write(new ScriptRunRecord("run-uncreatable", ScriptRunKind.TRIGGER, freshDb, "job", "proc",
-                    null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null,
-                    null, null, null, false));
+            ScriptRunHistory.write(new ScriptRunRecord("run-uncreatable", ScriptRunKind.TRIGGER, freshProject, "job",
+                    "proc", null, null, "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null,
+                    null, null, null, null, false));
             assertEquals(0L, ScriptRunHistory.getRecorded());
             assertEquals(1L, ScriptRunHistory.getDropped());
         } finally {
@@ -440,8 +440,8 @@ public class ScriptRunHistoryTest {
     // the background worker, where the row is whatever was queued.
     @Test
     public void test_a_row_without_a_kind_still_lands() {
-        ScriptRunHistory.write(new ScriptRunRecord("run-nokind", null, TestGlobals.DB, "job", "proc", null, null, "u1",
-                "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, null,
+        ScriptRunHistory.write(new ScriptRunRecord("run-nokind", null, TestGlobals.PROJECT, "job", "proc", null, null,
+                "u1", "u2", System.currentTimeMillis(), 1L, 1, ScriptRunRecord.OUTCOME_OK, null, null, null, null, null,
                 false));
         final var document = readRow("run-nokind");
         assertNotNull(document);

@@ -13,11 +13,12 @@ public final class BulkBeforeHooks implements AutoCloseable {
         this.updates = updates;
     }
 
-    public static BulkBeforeHooks open(String dbName, String collName, String actingUser, SchemaBudget schemaBudget) {
-        final var creates = BeforeHookContext.open(dbName, collName, EventType.CREATED, actingUser, schemaBudget);
+    public static BulkBeforeHooks open(String projectName, String collName, String actingUser,
+            SchemaBudget schemaBudget) {
+        final var creates = BeforeHookContext.open(projectName, collName, EventType.CREATED, actingUser, schemaBudget);
         try {
             return new BulkBeforeHooks(creates,
-                    BeforeHookContext.open(dbName, collName, EventType.UPDATED, actingUser, schemaBudget));
+                    BeforeHookContext.open(projectName, collName, EventType.UPDATED, actingUser, schemaBudget));
         } catch (RuntimeException failure) {
             creates.close();
             throw failure;

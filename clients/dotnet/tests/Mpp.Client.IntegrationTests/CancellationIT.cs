@@ -12,7 +12,7 @@ public sealed class CancellationIT(CancellationIT.Server fixture) : IClassFixtur
     [Fact]
     public async Task CancellingALongAggregateClosesOnlyItsConnection()
     {
-        var orders = fixture.Client.Database("cancel_it").Collection("orders");
+        var orders = fixture.Client.Project("cancel_it").Collection("orders");
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         var slow = orders.Query().Filter(Script("export default (doc) => { const end = Date.now() + 5000; while (Date.now() < end) {} return true; };"));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => slow.ToListAsync(cancel.Token));
@@ -24,7 +24,7 @@ public sealed class CancellationIT(CancellationIT.Server fixture) : IClassFixtur
     [Fact]
     public async Task ACancelledTokenSendsNothing()
     {
-        var orders = fixture.Client.Database("cancel_it").Collection("orders");
+        var orders = fixture.Client.Project("cancel_it").Collection("orders");
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => orders.SaveAsync(Document.Of("_id", "never"), new CancellationToken(true)));
         Assert.Null(await orders.FindByIdAsync("never"));
     }
@@ -42,8 +42,8 @@ public sealed class CancellationIT(CancellationIT.Server fixture) : IClassFixtur
 
         protected override async Task SeedAsync()
         {
-            await Client.Database("cancel_it").CreateAsync();
-            var orders = Client.Database("cancel_it").Collection("orders");
+            await Client.Project("cancel_it").CreateAsync();
+            var orders = Client.Project("cancel_it").Collection("orders");
             await orders.CreateAsync();
             await orders.SaveAsync(Document.Of("_id", "one"));
         }

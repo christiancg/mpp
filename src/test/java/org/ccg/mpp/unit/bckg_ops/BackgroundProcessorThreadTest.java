@@ -79,7 +79,7 @@ public class BackgroundProcessorThreadTest {
     @Test
     public void test_the_idle_branch_runs_due_index_folds() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
         final var worker = new Thread(new BackgroundProcessorThread(new BackgroundLanes(1), 0, new AtomicInteger(),
                 new AtomicInteger(), new AtomicInteger(1), new IdleSignal()));
         try {
@@ -101,7 +101,7 @@ public class BackgroundProcessorThreadTest {
 
     private static DbEntry deferredEntry() {
         final var entry = new DbEntry();
-        entry.setDatabaseName(TestGlobals.DB);
+        entry.setProjectName(TestGlobals.PROJECT);
         entry.setCollectionName(TestGlobals.COLL);
         entry.set_id("deferred-doc");
         return entry;
@@ -112,8 +112,8 @@ public class BackgroundProcessorThreadTest {
         final var originalTimeout = configuration.getTransactionLockTimeoutMs();
         try {
             TestUtils.standardInitialSetup();
-            TestUtils.createTestDatabaseAndCollection();
-            IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.DB, TestGlobals.COLL)
+            TestUtils.createTestProjectAndCollection();
+            IocContainer.get(Cache.class).getAdminCollectionEntry(TestGlobals.PROJECT, TestGlobals.COLL)
                     .setIndexes(Set.of("tag"));
             TestUtils.setPrivateField(configuration, "transactionLockTimeoutMs", 20L);
             assertDeferredEventStaysCounted();
@@ -127,18 +127,18 @@ public class BackgroundProcessorThreadTest {
     private void assertDeferredEventStaysCounted() throws Exception {
         final var queue = new BackgroundLanes(1);
         final var inFlight = new AtomicInteger(1);
-        queue.add(new EntityEvent(EventType.UPDATED, TestGlobals.DB, TestGlobals.COLL, deferredEntry()));
+        queue.add(new EntityEvent(EventType.UPDATED, TestGlobals.PROJECT, TestGlobals.COLL, deferredEntry()));
         final var idleSignal = new IdleSignal();
         final var worker = new Thread(new BackgroundProcessorThread(queue, 0, inFlight, new AtomicInteger(),
                 new AtomicInteger(1), idleSignal));
 
-        locks.lock(TestGlobals.DB, TestGlobals.COLL);
+        locks.lock(TestGlobals.PROJECT, TestGlobals.COLL);
         try {
             worker.start();
             assertFalse(idleSignal.awaitIdle(() -> inFlight.get() != 1, BUSY_WINDOW_MS),
                     "an event deferred for a busy collection is still pending after every deferral");
         } finally {
-            locks.release(TestGlobals.DB, TestGlobals.COLL);
+            locks.release(TestGlobals.PROJECT, TestGlobals.COLL);
         }
 
         try {

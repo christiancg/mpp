@@ -91,7 +91,7 @@ async def client(fake: FakeServer) -> AsyncIterator[AsyncMppClient]:
 
 
 def _orders(client: AsyncMppClient):
-    return client.database("shop").collection("orders")
+    return client.project("shop").collection("orders")
 
 
 async def test_the_initial_reply_and_pushes_reach_the_handler_in_order(

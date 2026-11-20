@@ -24,8 +24,8 @@ import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.ops.resp.RunScriptResponse;
 import org.ccg.mpp.simplejs.CompiledScript;
 import org.ccg.mpp.simplejs.SimpleJs;
-import org.ccg.mpp.simplejs.host.DatabaseHostBindings;
-import org.ccg.mpp.simplejs.host.EnforcingDatabaseAccess;
+import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
+import org.ccg.mpp.simplejs.host.ProjectHostBindings;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
 
@@ -45,16 +45,16 @@ public final class ScriptOperationHelper {
         if (!configuration.isScriptsEnabled()) {
             return new OperationResponse(OperationType.RUN_SCRIPT, ErrorCode.SCRIPTS_DISABLED);
         }
-        final var dbName = request.getDatabaseName();
-        if (cache.getAdminDbEntry(dbName) == null) {
-            return new OperationResponse(OperationType.RUN_SCRIPT, "Database '" + dbName + "' not found",
-                    ErrorCode.DATABASE_NOT_FOUND);
+        final var projectName = request.getProjectName();
+        if (cache.getAdminProjectEntry(projectName) == null) {
+            return new OperationResponse(OperationType.RUN_SCRIPT, "Project '" + projectName + "' not found",
+                    ErrorCode.PROJECT_NOT_FOUND);
         }
         final var source = request.getScript();
         if (source.getBytes(StandardCharsets.UTF_8).length > configuration.getScriptMaxSourceBytes()) {
             return new OperationResponse(OperationType.RUN_SCRIPT, ErrorCode.SCRIPT_TOO_LARGE);
         }
-        return switch (admit(username, dbName)) {
+        return switch (admit(username, projectName)) {
             case ScriptAdmission.Refusal refusal -> concurrencyRefusal(OperationType.RUN_SCRIPT, refusal.scope());
             case ScriptAdmission.Permit permit -> runAdmitted(permit, request, username, clientId);
         };
@@ -62,14 +62,14 @@ public final class ScriptOperationHelper {
 
     private static OperationResponse runAdmitted(ScriptAdmission.Permit permit, RunScriptRequest request,
             String username, UUID clientId) {
-        final var dbName = request.getDatabaseName();
+        final var projectName = request.getProjectName();
         final var source = request.getScript();
         try (permit) {
-            final var run = registry.register(ScriptRunKind.RUN_SCRIPT, dbName, null, username, clientId);
+            final var run = registry.register(ScriptRunKind.RUN_SCRIPT, projectName, null, username, clientId);
             try {
                 final var compilation = compiledScripts.get(source);
-                final var database = new EnforcingDatabaseAccess(username, clientId, dbName);
-                final var host = hostFor(request.getArgs(), database, DatabaseHostBindings.limitsFromConfiguration(),
+                final var project = new EnforcingProjectAccess(username, clientId, projectName);
+                final var host = hostFor(request.getArgs(), project, ProjectHostBindings.limitsFromConfiguration(),
                         null, run);
                 final var start = System.currentTimeMillis();
                 final var raw = compilation.failure() == null
@@ -77,10 +77,10 @@ public final class ScriptOperationHelper {
                         : simpleJs.failure(compilation.failure());
                 final var elapsed = System.currentTimeMillis() - start;
                 final var result = raw
-                        .withMetrics(raw.getMetrics().withHostCounters(database.operationCount(), elapsed));
-                logRun("RUN_SCRIPT user=" + username + " database=" + dbName, run.runId(), elapsed, result);
-                ScriptRunHistory.record(historyOf(run.runId(), ScriptRunKind.RUN_SCRIPT, dbName, null, username, start,
-                        elapsed, result));
+                        .withMetrics(raw.getMetrics().withHostCounters(project.operationCount(), elapsed));
+                logRun("RUN_SCRIPT user=" + username + " project=" + projectName, run.runId(), elapsed, result);
+                ScriptRunHistory.record(historyOf(run.runId(), ScriptRunKind.RUN_SCRIPT, projectName, null, username,
+                        start, elapsed, result));
                 return toRunScriptResponse(result, run.runId());
             } finally {
                 registry.unregister(run.runId());
@@ -88,10 +88,10 @@ public final class ScriptOperationHelper {
         }
     }
 
-    static ScriptAdmission.Admission admit(String username, String dbName) {
+    static ScriptAdmission.Admission admit(String username, String projectName) {
         final var privileged = username == null
-                || AuthorizationChecker.ownsOrAdministers(cache.getAdminUserEntry(username), dbName);
-        return admission.acquire(username, dbName, privileged);
+                || AuthorizationChecker.ownsOrAdministers(cache.getAdminUserEntry(username), projectName);
+        return admission.acquire(username, projectName, privileged);
     }
 
     static OperationResponse concurrencyRefusal(OperationType type, String scope) {
@@ -103,26 +103,27 @@ public final class ScriptOperationHelper {
     public record RunOutcome(String runId, ScriptResult result) {
     }
 
-    static RunOutcome runProcedure(CompiledScript compiled, JsonObject args, String dbName, String username,
+    static RunOutcome runProcedure(CompiledScript compiled, JsonObject args, String projectName, String username,
             UUID clientId, String logPrefix, String name) {
-        return runCompiled(compiled, args, dbName, username, clientId, logPrefix, ScriptRunKind.CALL_PROCEDURE, name,
-                DatabaseHostBindings.limitsFromConfiguration(), null);
+        return runCompiled(compiled, args, projectName, username, clientId, logPrefix, ScriptRunKind.CALL_PROCEDURE,
+                name, ProjectHostBindings.limitsFromConfiguration(), null);
     }
 
-    static RunOutcome runCompiled(CompiledScript compiled, JsonObject args, String dbName, String username,
+    static RunOutcome runCompiled(CompiledScript compiled, JsonObject args, String projectName, String username,
             UUID clientId, String logPrefix, ScriptRunKind kind, String name, ResourceLimits limits,
             Consumer<String> console) {
-        final var run = registry.register(kind, dbName, name, username, clientId);
+        final var run = registry.register(kind, projectName, name, username, clientId);
         try {
-            final var database = new EnforcingDatabaseAccess(username, clientId, dbName);
-            final var host = hostFor(args, database, limits, console, run);
+            final var project = new EnforcingProjectAccess(username, clientId, projectName);
+            final var host = hostFor(args, project, limits, console, run);
             final var start = System.currentTimeMillis();
             final var raw = simpleJs.run(compiled, host);
             final var elapsed = System.currentTimeMillis() - start;
-            final var result = raw.withMetrics(raw.getMetrics().withHostCounters(database.operationCount(), elapsed));
+            final var result = raw.withMetrics(raw.getMetrics().withHostCounters(project.operationCount(), elapsed));
             logRun(logPrefix, run.runId(), elapsed, result);
             if (kind != ScriptRunKind.TRIGGER && kind != ScriptRunKind.SCHEDULE) {
-                ScriptRunHistory.record(historyOf(run.runId(), kind, dbName, name, username, start, elapsed, result));
+                ScriptRunHistory
+                        .record(historyOf(run.runId(), kind, projectName, name, username, start, elapsed, result));
             }
             return new RunOutcome(run.runId(), result);
         } finally {
@@ -130,9 +131,9 @@ public final class ScriptOperationHelper {
         }
     }
 
-    private static DatabaseHostBindings hostFor(JsonObject args, EnforcingDatabaseAccess database,
-            ResourceLimits limits, Consumer<String> console, ScriptRun run) {
-        return DatabaseHostBindings.of(args, database, console, limits, run::isCancelled);
+    private static ProjectHostBindings hostFor(JsonObject args, EnforcingProjectAccess project, ResourceLimits limits,
+            Consumer<String> console, ScriptRun run) {
+        return ProjectHostBindings.of(args, project, console, limits, run::isCancelled);
     }
 
     private static void logRun(String logPrefix, String runId, long durationMs, ScriptResult result) {
@@ -159,9 +160,9 @@ public final class ScriptOperationHelper {
         return response;
     }
 
-    static ScriptRunRecord historyOf(String runId, ScriptRunKind kind, String dbName, String name, String username,
+    static ScriptRunRecord historyOf(String runId, ScriptRunKind kind, String projectName, String name, String username,
             long startedAt, long durationMs, ScriptResult result) {
-        return new ScriptRunRecord(runId, kind, dbName, name, name, null, null, username, username, startedAt,
+        return new ScriptRunRecord(runId, kind, projectName, name, name, null, null, username, username, startedAt,
                 durationMs, 1, result.isError() ? ScriptRunRecord.OUTCOME_ERROR : ScriptRunRecord.OUTCOME_OK,
                 result.getErrorName(), result.getErrorMessage(), result.getErrorStack(), result.getMetrics(),
                 result.getLogs(), result.isLogsTruncated());

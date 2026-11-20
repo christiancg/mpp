@@ -155,7 +155,7 @@ If no reachable node knows the outcome, the transaction stays in doubt, and a pa
 its locks. Nothing releases them on a timer, because a guess could commit on one node and abort on another.
 [`LIST_TRANSACTIONS`](protocol.md#list_transactions-admin-only) shows these transactions across the cluster with each
 node's status, and [`RESOLVE_TRANSACTION`](protocol.md#resolve_transaction-admin-only) forces a commit or an abort on
-every node once you know which one is right. They also show up in `GET_DATABASE_STATS`, in the
+every node once you know which one is right. They also show up in `GET_PROJECT_STATS`, in the
 `mpp_in_doubt_transactions` metric and in periodic warnings.
 
 The answers that are specific to a cluster:
@@ -198,14 +198,14 @@ collected a tombstone brings the deleted document back.
 
 ## Admin and DDL replication
 
-Databases, collections, indexes, schemas, users, permissions, procedures, triggers and schedules belong to the whole
+Projects, collections, indexes, schemas, users, permissions, procedures, triggers and schedules belong to the whole
 cluster, not to a collection owner. One node, the admin coordinator, serializes every change to them, and the other
 nodes forward those requests to it. The coordinator applies the change, sends the changed records to every node and
 waits for a majority, so a node without quorum refuses admin changes with `503-2`, like writes.
 
 Every admin record has a version from the same clock as documents. The newer version wins, a delete leaves a permanent
-tombstone, and there is an admin anti-entropy next to the document one, so a node that was down while a database was
-created or a user changed catches up when it comes back. A node that finds out late that a database or collection was
+tombstone, and there is an admin anti-entropy next to the document one, so a node that was down while a project was
+created or a user changed catches up when it comes back. A node that finds out late that a project or collection was
 dropped doesn't delete it: it renames the folder aside (`<name>.quarantined-...`) and logs it. Check those folders and
 delete them yourself.
 
@@ -219,15 +219,15 @@ a retry is enough. A password change signs that user out on each node as the cha
 
 ## Scripts
 
-`RUN_SCRIPT` and `CALL_PROCEDURE` can touch any collection of a database, so there is no owner to send them to.
+`RUN_SCRIPT` and `CALL_PROCEDURE` can touch any collection of a project, so there is no owner to send them to.
 Instead they are placed by load. The node that gets the request samples two nodes (itself included), picks the one with
 less script load relative to its `maxConcurrentScripts`, with a preference for the node that owns more of the
-database's collections, forwards the run there and relays the answer. Taking the better of two random nodes instead of
+project's collections, forwards the run there and relays the answer. Taking the better of two random nodes instead of
 the least loaded one keeps every node from sending its scripts to the same place at once. `scriptLocalityWeight` (0 to
 100, default 50) sets how much ownership counts, and `0` means load only. Set `scriptRoutingEnabled=false` to run
 scripts where they arrive.
 
-A node still catching up on admin metadata is never picked, since it might not have the database or the procedure yet.
+A node still catching up on admin metadata is never picked, since it might not have the project or the procedure yet.
 
 A script runs at most once. If the chosen node can't be connected to, the script runs locally instead. Any other
 failure, like a timeout or a dropped connection, answers `503-7`, because the script may still be running over there
@@ -241,7 +241,7 @@ routed to its collection's owner like any other request. Scripts inside a pipeli
 are different: they run on the collection's owner together with the `AGGREGATE`.
 
 `LIST_SCRIPTS` and `CANCEL_SCRIPT` cover every live node. A run on a node that can't be reached is missing from the
-list until that node is back. `GET_DATABASE_STATS` shows each node's placement counters under `scripts`.
+list until that node is back. `GET_PROJECT_STATS` shows each node's placement counters under `scripts`.
 
 ## Stored procedures and triggers
 

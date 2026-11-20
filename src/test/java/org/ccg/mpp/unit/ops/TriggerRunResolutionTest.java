@@ -46,7 +46,7 @@ public class TriggerRunResolutionTest {
     @BeforeAll
     static void setUp() throws Exception {
         TestUtils.standardInitialSetup();
-        TestUtils.createTestDatabaseAndCollection();
+        TestUtils.createTestProjectAndCollection();
     }
 
     @AfterAll
@@ -68,7 +68,7 @@ public class TriggerRunResolutionTest {
         saveLiveDocument();
         TriggerTestSupport.consumeAllPendingRuns();
         AdminOperationHelper.saveTriggerRun(new AdminTriggerRunEntry(RUN_ID, 0L, TriggerRunLog.currentNodeId(),
-                TestGlobals.DB, TestGlobals.COLL, "audit", "recalc", EventType.UPDATED, false, "alice", 0,
+                TestGlobals.PROJECT, TestGlobals.COLL, "audit", "recalc", EventType.UPDATED, false, "alice", 0,
                 System.currentTimeMillis(), List.of("live"), List.of()));
         TriggerRunLog.markAttempt(RUN_ID, TriggerRunStatus.DEAD, 3, "boom", 0L);
     }
@@ -77,7 +77,7 @@ public class TriggerRunResolutionTest {
         final var object = new JsonObject();
         object.add(Globals.PK_FIELD, new JsonString("live"));
         object.addProperty("value", 1L);
-        final var request = new SaveRequest(TestGlobals.DB, TestGlobals.COLL);
+        final var request = new SaveRequest(TestGlobals.PROJECT, TestGlobals.COLL);
         request.setObject(object);
         request.set_id("live");
         IocContainer.get(OperationProcessor.class).processMessage(request);

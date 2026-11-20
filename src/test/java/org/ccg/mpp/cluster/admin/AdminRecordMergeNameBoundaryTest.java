@@ -47,24 +47,23 @@ public class AdminRecordMergeNameBoundaryTest extends AdminRecordTestBase {
         return HybridClock.pack(System.currentTimeMillis() + TWO_HOURS_MS, 0);
     }
 
-    private AdminRecord traversalDatabase(long version) {
-        final var valid = database("shop", version);
-        return new AdminRecord(new AdminRecordKey(Kind.DATABASE, "../" + MARKER, "../" + MARKER), version,
-                valid.body());
+    private AdminRecord traversalProject(long version) {
+        final var valid = project("shop", version);
+        return new AdminRecord(new AdminRecordKey(Kind.PROJECT, "../" + MARKER, "../" + MARKER), version, valid.body());
     }
 
     @Test
-    public void aTraversalDatabaseRecordCreatesNoFolderOutsideTheDataRoot() {
-        final var result = merge(traversalDatabase(clock.next()));
+    public void aTraversalProjectRecordCreatesNoFolderOutsideTheDataRoot() {
+        final var result = merge(traversalProject(clock.next()));
         assertTrue(result.complete());
         assertFalse(Files.exists(dataRoot().getParent().resolve(MARKER)));
         assertFalse(Files.exists(dataRoot().resolve(MARKER)));
-        assertNull(cache.getAdminDbEntry("../" + MARKER));
+        assertNull(cache.getAdminProjectEntry("../" + MARKER));
     }
 
     @Test
     public void aTraversalProcedureRecordWritesNoFile() {
-        final var result = merge(procedure(TestGlobals.DB, "../../" + MARKER, clock.next()));
+        final var result = merge(procedure(TestGlobals.PROJECT, "../../" + MARKER, clock.next()));
         assertTrue(result.complete());
         assertFalse(Files.exists(dataRoot().resolve(MARKER + ".json")));
         assertFalse(Files.exists(dataRoot().getParent().resolve(MARKER + ".json")));
@@ -72,7 +71,7 @@ public class AdminRecordMergeNameBoundaryTest extends AdminRecordTestBase {
 
     @Test
     public void aRejectedRecordDoesNotMakeTheMergeIncomplete() {
-        final var result = merge(traversalDatabase(clock.next()), procedure("admin", "nightly", clock.next()));
+        final var result = merge(traversalProject(clock.next()), procedure("admin", "nightly", clock.next()));
         assertTrue(result.complete());
         assertFalse(result.changed());
     }
@@ -80,13 +79,13 @@ public class AdminRecordMergeNameBoundaryTest extends AdminRecordTestBase {
     @Test
     public void aRejectedRecordIsNotObservedByTheClock() {
         final var version = clock.next() + 1_000_000L;
-        merge(traversalDatabase(version));
+        merge(traversalProject(version));
         assertTrue(clock.current() < version);
     }
 
     @Test
     public void aValidRecordNextToARejectedOneStillApplies() {
-        final var result = merge(traversalDatabase(clock.next()), user("carol", clock.next()));
+        final var result = merge(traversalProject(clock.next()), user("carol", clock.next()));
         assertTrue(result.complete());
         assertNotNull(cache.getAdminUserEntry("carol"));
     }
@@ -113,9 +112,9 @@ public class AdminRecordMergeNameBoundaryTest extends AdminRecordTestBase {
     @Test
     public void aCollectionWhoseIncarnationIsBeyondTheSkewIsDeferred() {
         final var incarnation = farFuture();
-        final var result = merge(collection(TestGlobals.DB, "skewed", clock.next(), incarnation));
+        final var result = merge(collection(TestGlobals.PROJECT, "skewed", clock.next(), incarnation));
         assertFalse(result.complete());
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "skewed"));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "skewed"));
         assertTrue(clock.current() < incarnation);
     }
 
@@ -140,21 +139,21 @@ public class AdminRecordMergeNameBoundaryTest extends AdminRecordTestBase {
 
     @Test
     public void aCollectionRecordNamingAnInvalidIndexFieldIsSkipped() {
-        final var result = merge(collection(TestGlobals.DB, "indexed", clock.next(), "../" + MARKER));
+        final var result = merge(collection(TestGlobals.PROJECT, "indexed", clock.next(), "../" + MARKER));
         assertTrue(result.complete(), "an invalid index name never becomes valid, so it must not block the round");
-        assertNull(cache.getAdminCollectionEntry(TestGlobals.DB, "indexed"));
-        assertFalse(Files.exists(dataRoot().resolve(TestGlobals.DB).resolve(MARKER + ".building")));
+        assertNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "indexed"));
+        assertFalse(Files.exists(dataRoot().resolve(TestGlobals.PROJECT).resolve(MARKER + ".building")));
     }
 
     @Test
     public void aCollectionRecordWithValidIndexFieldsApplies() {
-        assertTrue(merge(collection(TestGlobals.DB, "indexed", clock.next(), "price", "address.city")).complete());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "indexed"));
+        assertTrue(merge(collection(TestGlobals.PROJECT, "indexed", clock.next(), "price", "address.city")).complete());
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "indexed"));
     }
 
     @Test
     public void ordinaryRecordsStillApply() {
-        assertTrue(merge(collection(TestGlobals.DB, "fresh", clock.next())).complete());
-        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.DB, "fresh"));
+        assertTrue(merge(collection(TestGlobals.PROJECT, "fresh", clock.next())).complete());
+        assertNotNull(cache.getAdminCollectionEntry(TestGlobals.PROJECT, "fresh"));
     }
 }

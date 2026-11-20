@@ -12,13 +12,13 @@ import org.ccg.mpp.data.admin.AdminPageEntry;
 import org.junit.jupiter.api.Test;
 
 public class PageSkipTest {
-    private static final String DB = "skipDb";
+    private static final String PROJECT = "skipProject";
     private static final String COLL = "skipColl";
 
     private static List<AdminPageEntry> pagesWithCounts(int... liveRows) {
         final var pages = new ArrayList<AdminPageEntry>();
         for (var i = 0; i < liveRows.length; i++) {
-            final var page = new AdminPageEntry(DB, COLL, i + 1L);
+            final var page = new AdminPageEntry(PROJECT, COLL, i + 1L);
             page.setEntryCount(liveRows[i]);
             pages.add(page);
         }

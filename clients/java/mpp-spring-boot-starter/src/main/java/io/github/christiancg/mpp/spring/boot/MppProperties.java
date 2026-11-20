@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 @ConfigurationProperties("mpp")
 public record MppProperties(@DefaultValue("localhost:8989") List<String> hosts, String username, String password,
-        String database, Integer poolSize, Duration connectTimeout, Duration requestTimeout, Duration acquireTimeout,
+        String project, Integer poolSize, Duration connectTimeout, Duration requestTimeout, Duration acquireTimeout,
         Duration shutdownTimeout, DataSize maxReplyBytes, ZoneId temporalZone, @DefaultValue Tls tls,
         @DefaultValue Retry retry) {
     private static final char PORT_SEPARATOR = ':';
