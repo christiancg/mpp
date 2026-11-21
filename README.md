@@ -12,7 +12,7 @@ this started. lwnrdb was a database first: a storage engine, its indexes and an 
 triggers and schedules added along the way. I built it because I wanted to learn how databases work internally, and
 there is no better way to learn that than writing a storage engine.
 
-After working on that database for a long time, I understood that a new architecture philosophy could be built from
+After working on it for a long time, I understood that a new architecture philosophy could be built from
 there. The data was only half of what a small project needs: the schemas, the scripts, the triggers and the schedules
 that live beside it are the other half. The storage engine, the hand-rolled JSON, JavaScript and regex engines and the
 clustering all come from lwnrdb; what changed is the idea they are built around.
