@@ -5,11 +5,28 @@ schemas, scripts, triggers and schedules that go with them, all on a non-relatio
 in Java. Its main focus is to be lightweight, small, fast and easy to start.
 Raw speed (measured in IOPS) is not paramount.
 
+## History
+
+MPP comes from [lwnrdb](https://github.com/christiancg/lwnrdb), the lightweight non-relational database where all of
+this started. lwnrdb was a database first: a storage engine, its indexes and an aggregation pipeline, with scripts,
+triggers and schedules added along the way. I built it because I wanted to learn how databases work internally, and
+there is no better way to learn that than writing a storage engine.
+
+After working on that database for a long time, I understood that a new architecture philosophy could be built from
+there. The data was only half of what a small project needs: the schemas, the scripts, the triggers and the schedules
+that live beside it are the other half. The storage engine, the hand-rolled JSON, JavaScript and regex engines and the
+clustering all come from lwnrdb; what changed is the idea they are built around.
+
 ## Motivation
 
-I like learning new stuff and always had some complaints about things I would like to do in the most common database systems. At the same time, I wondered how do databases work internally. What's a better way to learn that building a new storage engine, and then growing it into a home for small projects?
+Having learned a lot from lwnrdb, I wanted to create a new type of architecture: one that is easy to spin up, easy to
+maintain, and that doesn't need a lot of different roles to configure it. Instead of a database that holds databases,
+MPP is an engine that hosts projects, each one a self-contained set of collections together with everything that works
+on them, so a single person can start a project, shape its data and add its logic without a separate database
+administrator, backend developer and operations team.
 
-As such, MPP is not intended to be the fastest one out there, the most reliable or even the simplest: it's a learning exercise that could be helpful for someone in some cases.
+MPP is not intended to be the fastest one out there, the most reliable or even the simplest: it could be helpful for
+someone in some cases.
 
 ## Philosophy
 
