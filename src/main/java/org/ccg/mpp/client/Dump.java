@@ -217,6 +217,18 @@ public final class Dump {
             for (final var schedule : listedOrEmpty(Requests.listSchedules(project, true), "schedules")) {
                 emit(Requests.saveScheduleFrom(project, schedule));
             }
+            if (procedures.isPresent()) {
+                dumpEntrypoints(project);
+            } else {
+                err.println(
+                        "note: entrypoints of " + project + " were not dumped: their procedures could not be listed");
+            }
+        }
+    }
+
+    private void dumpEntrypoints(String project) throws IOException {
+        for (final var entrypoint : listedOrEmpty(Requests.listEntrypoints(project), "entrypoints")) {
+            emit(Requests.saveEntrypointFrom(project, entrypoint));
         }
     }
 

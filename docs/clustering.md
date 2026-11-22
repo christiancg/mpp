@@ -198,10 +198,10 @@ collected a tombstone brings the deleted document back.
 
 ## Admin and DDL replication
 
-Projects, collections, indexes, schemas, users, permissions, procedures, triggers and schedules belong to the whole
-cluster, not to a collection owner. One node, the admin coordinator, serializes every change to them, and the other
-nodes forward those requests to it. The coordinator applies the change, sends the changed records to every node and
-waits for a majority, so a node without quorum refuses admin changes with `503-2`, like writes.
+Projects, collections, indexes, schemas, users, permissions, procedures, triggers, schedules and entrypoints belong to
+the whole cluster, not to a collection owner. One node, the admin coordinator, serializes every change to them, and the
+other nodes forward those requests to it. The coordinator applies the change, sends the changed records to every node
+and waits for a majority, so a node without quorum refuses admin changes with `503-2`, like writes.
 
 Every admin record has a version from the same clock as documents. The newer version wins, a delete leaves a permanent
 tombstone, and there is an admin anti-entropy next to the document one, so a node that was down while a project was
@@ -260,6 +260,17 @@ When a schedule changes owner, the new owner starts from the next future occurre
 already isn't run again. The cost is that a membership change during a tick can drop that tick, and runs missed while a
 node was down are skipped, not caught up. Also, right after a node joins or leaves, two nodes can briefly both think
 they own a schedule and fire the same occurrence twice. A job that must not run twice has to be idempotent.
+
+## HTTP entrypoints
+
+Saving or deleting an [entrypoint](protocol.md#http-entrypoints) is an admin change like saving a schedule, so every
+node ends up with the same route, procedure and definer. Every node with `httpPort` set serves every entrypoint and runs
+it where the request arrived. There is no placement and no forwarding: spread HTTP traffic across the nodes with a load
+balancer. The run's `db` calls are routed to the collections' owners like any script's, so a write it makes on the
+minority side of a partition fails as a client's would, and a failure the procedure doesn't catch answers `500`.
+
+A node that hasn't applied a new or changed entrypoint yet answers with its previous routes, `404` for a new one, until
+the change reaches it.
 
 ## Pending trigger runs are node-local
 

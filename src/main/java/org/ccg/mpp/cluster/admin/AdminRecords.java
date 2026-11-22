@@ -79,6 +79,8 @@ public final class AdminRecords {
                     .forEach(name -> keys.add(AdminRecordKey.procedure(projectName, name)));
             listed(projectName, Globals.SCHEDULES_FOLDER, () -> fs.metadataFiles().listScheduleNames(projectName))
                     .forEach(name -> keys.add(AdminRecordKey.schedule(projectName, name)));
+            listed(projectName, Globals.ENTRYPOINTS_FOLDER, () -> fs.metadataFiles().listEntrypointNames(projectName))
+                    .forEach(name -> keys.add(AdminRecordKey.entrypoint(projectName, name)));
         }
         for (final var user : cache.getAllAdminUserEntries()) {
             keys.add(AdminRecordKey.user(user.get_id()));
@@ -138,6 +140,7 @@ public final class AdminRecords {
                 case TRIGGERS -> stored(key, StoredDefinitions.triggers(key.projectName(), key.name()));
                 case PROCEDURE -> stored(key, StoredDefinitions.procedure(key.projectName(), key.name()));
                 case SCHEDULE -> stored(key, StoredDefinitions.schedule(key.projectName(), key.name()));
+                case ENTRYPOINT -> stored(key, StoredDefinitions.entrypoint(key.projectName(), key.name()));
             };
         } catch (IOException | RuntimeException unreadable) {
             logger.warning("Leaving " + key.id() + " out of the admin records: it could not be read: "
@@ -212,7 +215,8 @@ public final class AdminRecords {
                 StoredDefinitions.writeSchema(key.projectName(), key.name(), AdminStamp.unwrappedSchema(body));
             case TRIGGERS -> StoredDefinitions.writeTriggers(key.projectName(), key.name(), body);
             case PROCEDURE -> StoredDefinitions.writeProcedure(key.projectName(), key.name(), body);
-            default -> StoredDefinitions.writeSchedule(key.projectName(), key.name(), body);
+            case SCHEDULE -> StoredDefinitions.writeSchedule(key.projectName(), key.name(), body);
+            default -> StoredDefinitions.writeEntrypoint(key.projectName(), key.name(), body);
         }
     }
 }

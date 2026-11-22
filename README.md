@@ -71,6 +71,8 @@ Documents are stored as JSON lines in paged files and queried through an
   [stored procedures](docs/protocol.md#save_procedure), [triggers](docs/protocol.md#save_trigger),
   [schedules](docs/protocol.md#save_schedule) and [pipeline steps](docs/protocol.md#script-operators-simplejs-in-the-pipeline)
   (see [docs/simplejs.md](docs/simplejs.md))
+- [HTTP entrypoints](docs/protocol.md#http-entrypoints) that serve a stored procedure at an HTTP route, such as
+  `GET /shop/orders/{id}`, on their own port
 - [clustering](docs/clustering.md) with fully replicated nodes and no master
 - [Prometheus metrics](docs/operations.md#metrics), a health check and graceful shutdown
 
@@ -149,8 +151,9 @@ Exit codes are `0` for success, `1` when a request failed, `2` for a usage error
 reached or refused the login.
 
 A dump is just a list of ordinary requests (`CREATE_PROJECT`, `CREATE_COLLECTION`, `BULK_SAVE`, `SAVE_SCHEMA`,
-`CREATE_INDEX`, procedures, triggers and schedules), so restoring is replaying it. Each project is read from one
-snapshot while writes go on, so the dump is a consistent cut. Users, permissions and runtime state are not dumped.
+`CREATE_INDEX`, procedures, triggers, schedules and entrypoints), so restoring is replaying it. Each project is read
+from one snapshot while writes go on, so the dump is a consistent cut. Users, permissions and runtime state are not
+dumped.
 
 Restore merges into whatever the target already has: documents with the same `_id` and definitions with the same name
 are overwritten, and nothing else is deleted. The target's schema, before hooks and triggers apply to what is restored.

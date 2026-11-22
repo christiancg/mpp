@@ -137,6 +137,15 @@ The `DELETE_SCHEDULE` operation. Deletes a schedule.
 ## ListSchedules
 The `LIST_SCHEDULES` operation. Lists a project's schedules.
 
+## SaveEntrypoint
+The `SAVE_ENTRYPOINT` operation. Saves an entrypoint.
+
+## DeleteEntrypoint
+The `DELETE_ENTRYPOINT` operation. Deletes an entrypoint.
+
+## ListEntrypoints
+The `LIST_ENTRYPOINTS` operation. Lists a project's entrypoints.
+
 ## ListScripts
 The `LIST_SCRIPTS` operation. Lists the running scripts.
 

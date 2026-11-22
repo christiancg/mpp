@@ -41,6 +41,12 @@ public final class Globals {
     public static final String PROCEDURE_FILE_EXTENSION = JSON_FILE_EXTENSION;
     public static final String SCHEDULES_FOLDER = ".schedules";
     public static final String SCHEDULE_FILE_EXTENSION = JSON_FILE_EXTENSION;
+    public static final String ENTRYPOINTS_FOLDER = ".entrypoints";
+    public static final String ENTRYPOINT_FILE_EXTENSION = JSON_FILE_EXTENSION;
+    public static final int ENTRYPOINT_MAX_PATH_CHARS = 256;
+    public static final int ENTRYPOINT_MAX_SEGMENTS = 16;
+    public static final int HTTP_MAX_HEAD_BYTES = 16384;
+    public static final int HTTP_RETRY_AFTER_SECONDS = 1;
     public static final String COLLECTION_NAMES_LOCK = ".collection-names";
     public static final String PROJECT_NAMES_LOCK = ".project-names";
     public static final String TRIGGERS_FILE_NAME = "triggers";

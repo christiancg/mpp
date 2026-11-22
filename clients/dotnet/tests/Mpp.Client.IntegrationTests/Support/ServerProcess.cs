@@ -45,6 +45,7 @@ public sealed class ServerProcess : IAsyncDisposable
             ["logPath"] = "logs",
             ["defaultAdminPassword"] = Password,
             ["maxMemory"] = "128Mb",
+            ["httpPort"] = "0",
         };
         foreach (var (key, value) in overrides ?? new Dictionary<string, string>())
         {

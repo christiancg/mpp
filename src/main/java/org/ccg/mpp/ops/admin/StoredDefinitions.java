@@ -21,6 +21,10 @@ public final class StoredDefinitions {
         return parsed(fs.metadataFiles().readSchedule(projectName, name));
     }
 
+    public static JsonObject entrypoint(String projectName, String name) throws IOException {
+        return parsed(fs.metadataFiles().readEntrypoint(projectName, name));
+    }
+
     public static JsonObject triggers(String projectName, String collName) throws IOException {
         return parsed(fs.metadataFiles().readTriggers(projectName, collName));
     }
@@ -37,6 +41,11 @@ public final class StoredDefinitions {
     public static void writeSchedule(String projectName, String name, JsonObject definition) throws IOException {
         fs.metadataFiles().writeSchedule(projectName, name,
                 eJson.toJson(restamped(definition, scheduleVersion(projectName, name))));
+    }
+
+    public static void writeEntrypoint(String projectName, String name, JsonObject definition) throws IOException {
+        fs.metadataFiles().writeEntrypoint(projectName, name,
+                eJson.toJson(restamped(definition, entrypointVersion(projectName, name))));
     }
 
     public static void writeTriggers(String projectName, String collName, JsonObject file) throws IOException {
@@ -64,6 +73,10 @@ public final class StoredDefinitions {
 
     private static long scheduleVersion(String projectName, String name) {
         return versionOrZero(() -> schedule(projectName, name));
+    }
+
+    private static long entrypointVersion(String projectName, String name) {
+        return versionOrZero(() -> entrypoint(projectName, name));
     }
 
     private static JsonObject restamped(JsonObject definition, long replacedVersion) {

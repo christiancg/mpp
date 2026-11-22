@@ -18,9 +18,14 @@ public class ScriptAdmissionSlicesTest {
     }
 
     @Test
-    public void test_the_shipped_slices_are_not_unlimited() {
-        assertEquals("4", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER.defaultValue());
-        assertEquals("8", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT.defaultValue());
+    public void test_the_shipped_slices_are_not_unlimited_and_leave_room_for_others() {
+        assertEquals("32", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER.defaultValue());
+        assertEquals("48", ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT.defaultValue());
+        assertEquals("64", ConfigKey.MAX_CONCURRENT_SCRIPTS.defaultValue());
+        final var perUser = Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_USER.defaultValue());
+        final var perProject = Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS_PER_PROJECT.defaultValue());
+        final var nodeWide = Integer.parseInt(ConfigKey.MAX_CONCURRENT_SCRIPTS.defaultValue());
+        assertTrue(perUser < perProject && perProject < nodeWide);
     }
 
     @Test

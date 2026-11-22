@@ -1,11 +1,14 @@
 package org.ccg.mpp.ops.req.validations;
 
+import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
+import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
 import org.ccg.mpp.ops.req.RunScriptRequest;
+import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -119,6 +122,41 @@ public final class ScriptRequestValidator {
     }
 
     static ValidationResult validateDeleteSchedule(DeleteScheduleRequest request) {
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
+        }
+        return NameValidations.validateProcedureName(request.getName());
+    }
+
+    static ValidationResult validateSaveEntrypoint(SaveEntrypointRequest request) {
+        final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
+        if (!projectResult.isValid()) {
+            return projectResult;
+        }
+        final var nameResult = NameValidations.validateProcedureName(request.getName());
+        if (!nameResult.isValid()) {
+            return nameResult;
+        }
+        final var inline = request.getProcedure();
+        if ((inline == null) == (request.getProcedureName() == null)) {
+            return ValidationResult.fail(ErrorCode.INVALID_ENTRYPOINT, ErrorCode.INVALID_ENTRYPOINT.getDefaultMessage()
+                    + ": exactly one of 'procedureName' and 'procedure' is required");
+        }
+        if (inline == null) {
+            return NameValidations.validateProcedureName(request.getProcedureName());
+        }
+        final var inlineNameResult = NameValidations.validateProcedureName(inline.getName());
+        if (!inlineNameResult.isValid()) {
+            return inlineNameResult;
+        }
+        if (inline.getScript() == null || inline.getScript().isBlank()) {
+            return ValidationResult.fail("SAVE_ENTRYPOINT request requires a script in 'procedure'");
+        }
+        return ValidationResult.ok();
+    }
+
+    static ValidationResult validateDeleteEntrypoint(DeleteEntrypointRequest request) {
         final var projectResult = NameValidations.validateProjectName(request.getProjectName(), true);
         if (!projectResult.isValid()) {
             return projectResult;

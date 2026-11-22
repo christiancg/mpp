@@ -137,6 +137,15 @@ Code `400-44` (`DELETE_MATCHES_TOO_MANY`). The delete condition matches more doc
 ## UpdateMatchesTooMany
 Code `400-45` (`UPDATE_MATCHES_TOO_MANY`). The update condition matches more documents than allowed.
 
+## InvalidEntrypoint
+Code `400-46` (`INVALID_ENTRYPOINT`). The entrypoint definition is not valid.
+
+## TooManyEntrypoints
+Code `400-47` (`TOO_MANY_ENTRYPOINTS`). The project has the maximum number of entrypoints.
+
+## EntrypointTimeoutTooLarge
+Code `400-48` (`ENTRYPOINT_TIMEOUT_TOO_LARGE`). The entrypoint timeout exceeds the allowed maximum.
+
 ## MustAuthenticateFirst
 Code `401-1` (`MUST_AUTHENTICATE_FIRST`). Must authenticate first.
 
@@ -159,10 +168,10 @@ Code `403-2` (`SCRIPTS_DISABLED`). Script execution is disabled on this server.
 Code `403-3` (`FAULT_INJECTION_DISABLED`). Fault injection is disabled on this server.
 
 ## ProcedureBoundByOtherDefiner
-Code `403-4` (`PROCEDURE_BOUND_BY_OTHER_DEFINER`). Procedure is bound by a trigger or schedule that runs as another user.
+Code `403-4` (`PROCEDURE_BOUND_BY_OTHER_DEFINER`). Procedure is bound by a trigger, schedule or entrypoint that runs as another user.
 
 ## DefinitionOwnedByOtherDefiner
-Code `403-5` (`DEFINITION_OWNED_BY_OTHER_DEFINER`). The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it.
+Code `403-5` (`DEFINITION_OWNED_BY_OTHER_DEFINER`). The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it.
 
 ## SourceRequiresManage
 Code `403-6` (`SOURCE_REQUIRES_MANAGE`). Procedure source requires script MANAGE.
@@ -274,6 +283,9 @@ Code `409-17` (`SNAPSHOT_ABORTED`). The snapshot was aborted and holds nothing a
 
 ## DocumentAlreadyExists
 Code `409-18` (`DOCUMENT_ALREADY_EXISTS`). A document with this _id already exists.
+
+## EntrypointRouteConflict
+Code `409-19` (`ENTRYPOINT_ROUTE_CONFLICT`). Another entrypoint of the project already serves this method and path.
 
 ## ListenEnded
 Code `410-1` (`LISTEN_ENDED`). The listen ended.
@@ -397,6 +409,12 @@ Code `500-36` (`ERROR_STARTING_SNAPSHOT`). Error while opening the snapshot.
 
 ## ErrorReadingSnapshot
 Code `500-37` (`ERROR_READING_SNAPSHOT`). Error while reading the snapshot.
+
+## ErrorSavingEntrypoint
+Code `500-38` (`ERROR_SAVING_ENTRYPOINT`). Error while saving the entrypoint.
+
+## ErrorDeletingEntrypoint
+Code `500-39` (`ERROR_DELETING_ENTRYPOINT`). Error while deleting the entrypoint.
 
 ## MaxConnectionsReached
 Code `503-1` (`MAX_CONNECTIONS_REACHED`). Max number of connections reached.

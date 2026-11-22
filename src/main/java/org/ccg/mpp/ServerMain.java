@@ -38,11 +38,14 @@ import org.ccg.mpp.data.auth.GlobalPermissionType;
 import org.ccg.mpp.data.auth.PasswordHasher;
 import org.ccg.mpp.ex.InvalidPortException;
 import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.http.HttpLimits;
+import org.ccg.mpp.http.HttpServer;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.listen.ListenManager;
 import org.ccg.mpp.log.LogWriter;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.EntrypointDispatcher;
 import org.ccg.mpp.ops.ScheduleDispatcher;
 import org.ccg.mpp.ops.ScriptRunHistory;
 import org.ccg.mpp.ops.TransactionOperationHelper;
@@ -51,6 +54,7 @@ import org.ccg.mpp.ops.TriggerRunRecovery;
 import org.ccg.mpp.ops.admin.AdminStamp;
 import org.ccg.mpp.ops.admin.DeferredWrites;
 import org.ccg.mpp.ops.admin.PageOccupancyReconciler;
+import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
 import org.ccg.mpp.ops.snapshot.SnapshotRegistry;
 import org.ccg.mpp.ops.snapshot.SnapshotSweeper;
 import org.ccg.mpp.simplejs.host.ScriptHeapGuard;
@@ -73,6 +77,8 @@ public class ServerMain {
     private static final ShutdownCoordinator shutdownCoordinator = IocContainer.get(ShutdownCoordinator.class);
     private static final WriteStallWatchdog writeStallWatchdog = IocContainer.get(WriteStallWatchdog.class);
     private static final MetricsServer metricsServer = IocContainer.get(MetricsServer.class);
+    private static final HttpServer httpServer = IocContainer.get(HttpServer.class);
+    private static final EntrypointRouter entrypointRouter = IocContainer.get(EntrypointRouter.class);
     private static final SnapshotRegistry snapshotRegistry = IocContainer.get(SnapshotRegistry.class);
     private static final SnapshotSweeper snapshotSweeper = IocContainer.get(SnapshotSweeper.class);
     private static ClusterServer clusterServer;
@@ -189,9 +195,28 @@ public class ServerMain {
         StartupWarnings.warnIfNamesShareAnOnDiskKey();
         StartupWarnings.warnIfProjectSharesTheClusterFolder();
         startMetricsIfEnabled();
+        final var tlsFactory = createTlsFactory();
+        startEntrypointsIfEnabled(tlsFactory);
         startClusterIfEnabled();
         TriggerRunRecovery.recoverLocal(startupTriggerRuns);
-        return new SocketServer(port, config.getBindAddress(), createTlsFactory());
+        return new SocketServer(port, config.getBindAddress(), tlsFactory);
+    }
+
+    private static void startEntrypointsIfEnabled(SSLServerSocketFactory tlsFactory) throws IOException {
+        final var httpPort = config.intValue(ConfigKey.HTTP_PORT);
+        if (httpPort == 0) {
+            return;
+        }
+        try {
+            entrypointRouter.loadAll();
+        } catch (RuntimeException e) {
+            logger.error("Failed to load the entrypoint routes; the listener starts with the ones that loaded", e);
+        }
+        final var limits = new HttpLimits(config.intValue(ConfigKey.HTTP_MAX_CONNECTIONS),
+                config.sizeValue(ConfigKey.HTTP_MAX_REQUEST_BYTES), config.longValue(ConfigKey.HTTP_READ_TIMEOUT_MS),
+                config.longValue(ConfigKey.HTTP_IDLE_TIMEOUT_MS));
+        httpServer.start(httpPort, config.stringValue(ConfigKey.HTTP_BIND_ADDRESS).trim(), tlsFactory,
+                List.of(TlsContextFactory.enabledProtocols()), limits, EntrypointDispatcher::handle);
     }
 
     private static void startMetricsIfEnabled() throws IOException {

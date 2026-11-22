@@ -45,6 +45,8 @@ public class RequestsTest {
                 json(Requests.listProcedures("shop", true)));
         assertEquals("{\"type\":\"LIST_SCHEDULES\",\"projectName\":\"shop\",\"includeArgs\":false}",
                 json(Requests.listSchedules("shop", false)));
+        assertEquals("{\"type\":\"LIST_ENTRYPOINTS\",\"projectName\":\"shop\"}",
+                json(Requests.listEntrypoints("shop")));
     }
 
     @Test

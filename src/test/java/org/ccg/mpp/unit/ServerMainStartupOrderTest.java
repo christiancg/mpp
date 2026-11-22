@@ -1,5 +1,6 @@
 package org.ccg.mpp.unit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -222,5 +223,16 @@ public class ServerMainStartupOrderTest {
         assertTrue(check < positionOf(body, "bootstrapDefaultAdmin();"));
         assertTrue(check < positionOf(body, "backgroundTaskManager.startBackgroundWorkers();"),
                 "the refusal ends the JVM only while no non-daemon thread has started");
+    }
+
+    @Test
+    public void test_one_tls_factory_serves_the_entrypoint_listener_and_the_client_port() throws IOException {
+        final var source = Files.readString(MAIN_SOURCE);
+        final var factory = positionOf(source, "final var tlsFactory = createTlsFactory();");
+
+        assertTrue(factory < positionOf(source, "startEntrypointsIfEnabled(tlsFactory);"));
+        assertTrue(factory < positionOf(source, "new SocketServer(port, config.getBindAddress(), tlsFactory)"));
+        assertEquals(source.indexOf("createTlsFactory();"), source.lastIndexOf("createTlsFactory();"),
+                "the keystore must be loaded once");
     }
 }

@@ -34,6 +34,8 @@ public final class ConfigurationValidator {
         validateCursorBatchSizes(configs, errors);
         validateTls(configs, errors);
         validateMetricsPort(configs, errors);
+        validateHttpPort(configs, errors);
+        validateEntrypointTimeouts(configs, errors);
         if (Boolean.parseBoolean(configs.getOrDefault("clusterEnabled", "false").trim())) {
             validateEnabledClusterConstraints(configs, errors);
         }
@@ -147,6 +149,38 @@ public final class ConfigurationValidator {
                 configs.getOrDefault(ConfigKey.CLUSTER_PORT.key(), ConfigKey.CLUSTER_PORT.defaultValue()));
         if (clusterEnabled && clusterPort != null && clusterPort.intValue() == metricsPort.intValue()) {
             errors.add("metricsPort (" + metricsPort + ") must be different from clusterPort (" + clusterPort + ")");
+        }
+    }
+
+    private static void validateHttpPort(Map<String, String> configs, List<String> errors) {
+        final var httpPort = portOf(configs, ConfigKey.HTTP_PORT);
+        if (httpPort == null || httpPort == 0) {
+            return;
+        }
+        if (httpPort.equals(portOf(configs, ConfigKey.PORT))) {
+            errors.add("httpPort (" + httpPort + ") must be different from port (" + httpPort + ")");
+        }
+        if (httpPort.equals(portOf(configs, ConfigKey.METRICS_PORT))) {
+            errors.add("httpPort (" + httpPort + ") must be different from metricsPort (" + httpPort + ")");
+        }
+        final var clusterEnabled = Boolean.parseBoolean(configs.getOrDefault("clusterEnabled", "false").trim());
+        if (clusterEnabled && httpPort.equals(portOf(configs, ConfigKey.CLUSTER_PORT))) {
+            errors.add("httpPort (" + httpPort + ") must be different from clusterPort (" + httpPort + ")");
+        }
+    }
+
+    private static Integer portOf(Map<String, String> configs, ConfigKey key) {
+        return parseIntOrNull(configs.getOrDefault(key.key(), key.defaultValue()));
+    }
+
+    private static void validateEntrypointTimeouts(Map<String, String> configs, List<String> errors) {
+        final var timeout = parseLongOrNull(configs.getOrDefault(ConfigKey.ENTRYPOINT_TIMEOUT_MS.key(),
+                ConfigKey.ENTRYPOINT_TIMEOUT_MS.defaultValue()));
+        final var max = parseLongOrNull(configs.getOrDefault(ConfigKey.ENTRYPOINT_MAX_TIMEOUT_MS.key(),
+                ConfigKey.ENTRYPOINT_MAX_TIMEOUT_MS.defaultValue()));
+        if (timeout != null && max != null && timeout > max) {
+            errors.add("entrypointTimeoutMs (" + timeout + ") must not be greater than entrypointMaxTimeoutMs (" + max
+                    + ")");
         }
     }
 

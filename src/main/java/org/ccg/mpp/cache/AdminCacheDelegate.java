@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.function.Predicate;
+import org.ccg.mpp.data.EntrypointDefinition;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.ProcedureDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
@@ -187,6 +188,22 @@ interface AdminCacheDelegate {
 
     default void removeSchedulesMatching(Predicate<String> keyMatches) {
         adminCache().removeSchedulesMatching(keyMatches);
+    }
+
+    default EntrypointDefinition getEntrypoint(String projectName, String name) {
+        return adminCache().entrypoints().get(projectName, name);
+    }
+
+    default void putEntrypoint(String projectName, EntrypointDefinition definition) {
+        adminCache().entrypoints().put(projectName, definition);
+    }
+
+    default void removeEntrypoint(String projectName, String name) {
+        adminCache().entrypoints().remove(projectName, name);
+    }
+
+    default void removeEntrypointsForProject(String projectName) {
+        adminCache().entrypoints().removeForProject(projectName);
     }
 
     default MetadataCacheStats metadataCacheStats() {

@@ -10,7 +10,9 @@ import static org.ccg.mpp.simplejs.host.ScriptErrorNames.RESULT_TOO_LARGE;
 import static org.ccg.mpp.simplejs.host.ScriptErrorNames.TIMEOUT;
 
 import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.ccg.mpp.cache.Cache;
@@ -37,6 +39,8 @@ public final class ScriptOperationHelper {
     private static final CompiledScriptCache compiledScripts = IocContainer.get(CompiledScriptCache.class);
     private static final Configuration configuration = Configuration.getInstance();
     private static final Logger logger = Logger.logFor(ScriptOperationHelper.class);
+    private static final Set<ScriptRunKind> SELF_RECORDED_KINDS = EnumSet.of(ScriptRunKind.TRIGGER,
+            ScriptRunKind.SCHEDULE, ScriptRunKind.ENTRYPOINT);
 
     private ScriptOperationHelper() {
     }
@@ -121,7 +125,7 @@ public final class ScriptOperationHelper {
             final var elapsed = System.currentTimeMillis() - start;
             final var result = raw.withMetrics(raw.getMetrics().withHostCounters(project.operationCount(), elapsed));
             logRun(logPrefix, run.runId(), elapsed, result);
-            if (kind != ScriptRunKind.TRIGGER && kind != ScriptRunKind.SCHEDULE) {
+            if (!SELF_RECORDED_KINDS.contains(kind)) {
                 ScriptRunHistory
                         .record(historyOf(run.runId(), kind, projectName, name, username, start, elapsed, result));
             }

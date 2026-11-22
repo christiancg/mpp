@@ -31,7 +31,7 @@ public final class ProcedureBindingGuard {
         for (final var boundProcedure : foreignBoundProcedures(projectName, actingUser)) {
             if (reaches(projectName, boundProcedure, procedureName, memo)) {
                 return new OperationResponse(type, "Procedure '" + procedureName
-                        + "' is bound by a trigger or schedule that runs as another user; only that user, a project"
+                        + "' is bound by a trigger, schedule or entrypoint that runs as another user; only that user, a project"
                         + " owner or an admin may change it", ErrorCode.PROCEDURE_BOUND_BY_OTHER_DEFINER);
             }
         }
@@ -65,6 +65,9 @@ public final class ProcedureBindingGuard {
         }
         for (final var schedule : ScheduleOperationHelper.schedulesIn(projectName)) {
             addIfForeign(bindings, schedule.getDefiner(), schedule.getProcedureName(), actingUser);
+        }
+        for (final var entrypoint : EntrypointOperationHelper.entrypointsIn(projectName)) {
+            addIfForeign(bindings, entrypoint.getDefiner(), entrypoint.getProcedureName(), actingUser);
         }
         return bindings;
     }

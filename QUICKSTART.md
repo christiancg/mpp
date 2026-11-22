@@ -7,7 +7,8 @@ MPP is experimental. Try it and build things with it, but don't put data in it t
 
 ## 1. Start the server
 
-Pick one of the three ways below. All of them listen on port `8989`.
+Pick one of the three ways below. All of them listen on port `8989`, and on `8990` for
+[HTTP entrypoints](docs/protocol.md#http-entrypoints).
 
 The server won't start without a password for its admin user, which is called `admin`, so each option sets one. Use at
 least 8 characters and avoid common passwords and the username, because the server refuses those too (see
@@ -16,7 +17,7 @@ least 8 characters and avoid common passwords and the username, because the serv
 ### With the published Docker image
 
 ```bash
-docker run -d --name mpp -p 8989:8989 \
+docker run -d --name mpp -p 8989:8989 -p 8990:8990 \
   -e MPP_ADMIN_PASSWORD=<choose-a-strong-password> \
   -v mpp-data:/app/db \
   ghcr.io/christiancg/mpp:latest
@@ -30,7 +31,7 @@ You only need Git and Docker. The image builds the jar itself.
 git clone https://github.com/christiancg/mpp.git
 cd mpp
 docker build -t mpp .
-docker run -d --name mpp -p 8989:8989 \
+docker run -d --name mpp -p 8989:8989 -p 8990:8990 \
   -e MPP_ADMIN_PASSWORD=<choose-a-strong-password> \
   -v mpp-data:/app/db \
   mpp

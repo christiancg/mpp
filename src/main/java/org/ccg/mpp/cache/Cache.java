@@ -204,6 +204,7 @@ public class Cache implements UserCacheDelegate, AdminCacheDelegate {
         adminCache.removeCollectionSchemasForProject(projectName);
         adminCache.removeProceduresForProject(projectName);
         adminCache.removeSchedulesForProject(projectName);
+        adminCache.entrypoints().removeForProject(projectName);
         adminCache.removeTriggersForProject(projectName);
     }
 

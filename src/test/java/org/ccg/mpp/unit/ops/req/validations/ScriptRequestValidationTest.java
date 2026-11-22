@@ -1,15 +1,21 @@
 package org.ccg.mpp.unit.ops.req.validations;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
+import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
+import org.ccg.mpp.ops.req.InlineProcedure;
+import org.ccg.mpp.ops.req.ListEntrypointsRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
+import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -189,5 +195,46 @@ public class ScriptRequestValidationTest {
     @Test
     public void test_delete_schedule_rejects_a_bad_project() {
         assertFalse(RequestValidator.validate(new DeleteScheduleRequest("a b", "nightly")).isValid());
+    }
+
+    private static SaveEntrypointRequest entrypoint(String procedureName, InlineProcedure procedure) {
+        final var request = new SaveEntrypointRequest("myProject", "getOrder", "GET", "/orders/{id}");
+        request.setProcedureName(procedureName);
+        request.setProcedure(procedure);
+        return request;
+    }
+
+    @Test
+    public void test_save_entrypoint_needs_exactly_one_procedure_source() {
+        assertTrue(RequestValidator.validate(entrypoint("myProc", null)).isValid());
+        assertTrue(RequestValidator.validate(entrypoint(null, new InlineProcedure("myProc", "return 1;"))).isValid());
+        final var neither = RequestValidator.validate(entrypoint(null, null));
+        final var both = RequestValidator.validate(entrypoint("myProc", new InlineProcedure("myProc", "return 1;")));
+
+        assertFalse(neither.isValid());
+        assertEquals(ErrorCode.INVALID_ENTRYPOINT, neither.getErrorCode());
+        assertEquals(ErrorCode.INVALID_ENTRYPOINT, both.getErrorCode());
+    }
+
+    @Test
+    public void test_save_entrypoint_refuses_bad_names_and_a_blank_inline_script() {
+        assertFalse(RequestValidator.validate(entrypoint(null, new InlineProcedure("myProc", " "))).isValid());
+        assertFalse(RequestValidator.validate(entrypoint(null, new InlineProcedure("../x", "return 1;"))).isValid());
+        assertFalse(RequestValidator.validate(entrypoint("../x", null)).isValid());
+        final var badName = new SaveEntrypointRequest("myProject", "../escaped", "GET", "/x");
+        badName.setProcedureName("myProc");
+        assertFalse(RequestValidator.validate(badName).isValid());
+        final var adminProject = new SaveEntrypointRequest("admin", "e", "GET", "/x");
+        adminProject.setProcedureName("myProc");
+        assertFalse(RequestValidator.validate(adminProject).isValid());
+    }
+
+    @Test
+    public void test_delete_and_list_entrypoints_validate_names() {
+        assertTrue(RequestValidator.validate(new DeleteEntrypointRequest("myProject", "getOrder")).isValid());
+        assertFalse(RequestValidator.validate(new DeleteEntrypointRequest("myProject", "")).isValid());
+        assertFalse(RequestValidator.validate(new DeleteEntrypointRequest(null, "getOrder")).isValid());
+        assertTrue(RequestValidator.validate(new ListEntrypointsRequest("myProject")).isValid());
+        assertFalse(RequestValidator.validate(new ListEntrypointsRequest("bad name")).isValid());
     }
 }

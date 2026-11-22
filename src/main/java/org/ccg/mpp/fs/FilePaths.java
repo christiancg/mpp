@@ -158,6 +158,15 @@ final class FilePaths {
                 + Globals.SCHEDULE_FILE_EXTENSION);
     }
 
+    File entrypointsFolder(String projectName) {
+        return new File(projectFolder(projectName).getPath() + Globals.FILE_SEPARATOR + Globals.ENTRYPOINTS_FOLDER);
+    }
+
+    File entrypointFile(String projectName, String name) {
+        return new File(entrypointsFolder(projectName).getPath() + Globals.FILE_SEPARATOR + segment(name)
+                + Globals.ENTRYPOINT_FILE_EXTENSION);
+    }
+
     private String collectionPrefix(String projectName, String collectionName) {
         final var hit = prefixes.get(projectName, collectionName);
         if (hit != null) {

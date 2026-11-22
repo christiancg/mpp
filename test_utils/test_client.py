@@ -93,6 +93,10 @@ def snapshot(port: int, skip_documents=()) -> dict:
             entry["schedules"] = sorted(json.dumps({key: s.get(key) for key in (
                 "name", "procedureName", "cron", "intervalMs", "args", "timeoutMs", "enabled")}, sort_keys=True)
                 for s in schedules.get("schedules") or [])
+            entrypoints = conn.send({"type": "LIST_ENTRYPOINTS", "projectName": project}).get("entrypoints") or []
+            entry["entrypoints"] = sorted(json.dumps({key: e.get(key) for key in (
+                "name", "method", "path", "procedureName", "timeoutMs", "description", "enabled")}, sort_keys=True)
+                for e in entrypoints)
             state[project] = entry
     return state
 
@@ -158,6 +162,9 @@ def seed_source():
         check_status("install a schedule with args", c.send({
             "type": "SAVE_SCHEDULE", "projectName": SHOP, "name": "nightly", "procedureName": "rollup",
             "cron": "0 3 * * *", "args": {"limit": 7}}), "OK")
+        check_status("expose the rollup over HTTP", c.send({
+            "type": "SAVE_ENTRYPOINT", "projectName": SHOP, "name": "rollupHttp", "method": "POST",
+            "path": "/rollup/{day}", "procedureName": "rollup", "timeoutMs": 5000, "description": "manual"}), "OK")
         check_status("one RUN_SCRIPT", c.send({"type": "RUN_SCRIPT", "projectName": SHOP, "script": "return 1;"}),
                      "OK")
         check("script_runs exists on the source", bu.wait_until(lambda: "script_runs" in (c.send({
@@ -403,7 +410,7 @@ def test_non_admin_dump_and_restore(cwd: str):
     reader_types = dumped_types(reader_dump.stdout)
     check("a READ user dumps data", reader_dump.returncode == 0 and "BULK_SAVE" in reader_types,
           reader_dump.stderr.decode())
-    check("without definitions", not {"SAVE_PROCEDURE", "SAVE_TRIGGER", "SAVE_SCHEDULE"} & set(reader_types),
+    check("without definitions", not {"SAVE_PROCEDURE", "SAVE_TRIGGER", "SAVE_SCHEDULE", "SAVE_ENTRYPOINT"} & set(reader_types),
           str(reader_types))
     check("and notes what it skipped", f"note: procedures of {CRM} were not dumped" in reader_dump.stderr.decode(),
           reader_dump.stderr.decode())

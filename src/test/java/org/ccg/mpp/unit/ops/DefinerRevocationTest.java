@@ -16,6 +16,7 @@ import org.ccg.mpp.bckg_ops.events.EventType;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.EntrypointDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminUserEntry;
@@ -296,5 +297,27 @@ public class DefinerRevocationTest {
 
         assertTrue(storedTrigger("hook").isEnabled(), "before hooks are not re-checked against their definer");
         assertTrue(restamped.keys().isEmpty());
+    }
+
+    @Test
+    public void test_a_revoked_definers_entrypoint_is_disabled_and_restamped() throws Exception {
+        final var definition = new EntrypointDefinition("read", "GET", "/read", "job", 0L, true, DEFINER, null, 1L, 1L,
+                1L, DEFINER);
+        fs.metadataFiles().writeEntrypoint(TestGlobals.PROJECT, "read", eJson.toJson(definition.toJsonObject()));
+        cache.removeEntrypoint(TestGlobals.PROJECT, "read");
+        grant(DEFINER, false);
+        final var restamped = new RestampedRecords();
+
+        try {
+            DefinerRevocation.forDefiner(DEFINER, restamped);
+
+            final var stored = cache.getEntrypoint(TestGlobals.PROJECT, "read");
+            assertFalse(stored.isEnabled());
+            assertTrue(stored.getDisabledReason().contains("script RUN on project"), stored.getDisabledReason());
+            assertEquals(List.of(AdminRecordKey.entrypoint(TestGlobals.PROJECT, "read")), restamped.keys());
+        } finally {
+            fs.metadataFiles().deleteEntrypoint(TestGlobals.PROJECT, "read");
+            cache.removeEntrypoint(TestGlobals.PROJECT, "read");
+        }
     }
 }

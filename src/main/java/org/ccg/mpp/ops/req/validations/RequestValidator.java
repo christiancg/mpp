@@ -10,6 +10,7 @@ import org.ccg.mpp.ops.req.CancelScriptRequest;
 import org.ccg.mpp.ops.req.ChangePermissionsRequest;
 import org.ccg.mpp.ops.req.CreateIndexRequest;
 import org.ccg.mpp.ops.req.CreateUserRequest;
+import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
@@ -29,6 +30,7 @@ import org.ccg.mpp.ops.req.ReleaseSnapshotRequest;
 import org.ccg.mpp.ops.req.ResolveTransactionRequest;
 import org.ccg.mpp.ops.req.ResolveTriggerRunRequest;
 import org.ccg.mpp.ops.req.RunScriptRequest;
+import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
@@ -81,7 +83,8 @@ public class RequestValidator {
             case RUN_SCRIPT -> ScriptRequestValidator.validateRunScript((RunScriptRequest) request);
             case SAVE_PROCEDURE -> ScriptRequestValidator.validateSaveProcedure((SaveProcedureRequest) request);
             case DELETE_PROCEDURE -> ScriptRequestValidator.validateDeleteProcedure((DeleteProcedureRequest) request);
-            case LIST_PROCEDURES, LIST_SCHEDULES -> NameValidations.validateProjectNameOnly(request.getProjectName());
+            case LIST_PROCEDURES, LIST_SCHEDULES, LIST_ENTRYPOINTS ->
+                NameValidations.validateProjectNameOnly(request.getProjectName());
             case CALL_PROCEDURE -> ScriptRequestValidator.validateCallProcedure((CallProcedureRequest) request);
             case SAVE_TRIGGER -> ScriptRequestValidator.validateSaveTrigger((SaveTriggerRequest) request);
             case DELETE_TRIGGER -> ScriptRequestValidator.validateDeleteTrigger((DeleteTriggerRequest) request);
@@ -89,6 +92,9 @@ public class RequestValidator {
             case TEST_TRIGGER -> ScriptRequestValidator.validateTestTrigger((TestTriggerRequest) request);
             case SAVE_SCHEDULE -> ScriptRequestValidator.validateSaveSchedule((SaveScheduleRequest) request);
             case DELETE_SCHEDULE -> ScriptRequestValidator.validateDeleteSchedule((DeleteScheduleRequest) request);
+            case SAVE_ENTRYPOINT -> ScriptRequestValidator.validateSaveEntrypoint((SaveEntrypointRequest) request);
+            case DELETE_ENTRYPOINT ->
+                ScriptRequestValidator.validateDeleteEntrypoint((DeleteEntrypointRequest) request);
             case CANCEL_SCRIPT -> ControlRequestValidator.validateCancelScript((CancelScriptRequest) request);
             case LIST_TRIGGER_RUNS -> ControlRequestValidator.validateListTriggerRuns((ListTriggerRunsRequest) request);
             case RESOLVE_TRIGGER_RUN ->

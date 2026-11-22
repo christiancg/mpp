@@ -16,6 +16,7 @@ import org.ccg.mpp.conn.MetricsServer;
 import org.ccg.mpp.conn.SocketServer;
 import org.ccg.mpp.conn.WriteStallWatchdog;
 import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.http.HttpServer;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.listen.ListenManager;
 import org.ccg.mpp.log.LogWriter;
@@ -50,6 +51,7 @@ public class ShutdownCoordinator {
     private final Tx2pcRecovery tx2pcRecovery = IocContainer.get(Tx2pcRecovery.class);
     private final WriteStallWatchdog writeStallWatchdog = IocContainer.get(WriteStallWatchdog.class);
     private final MetricsServer metricsServer = IocContainer.get(MetricsServer.class);
+    private final HttpServer httpServer = IocContainer.get(HttpServer.class);
 
     private volatile boolean alreadyRun;
 
@@ -67,6 +69,7 @@ public class ShutdownCoordinator {
                 socketServer.stopAccepting();
             }
             metricsServer.stop();
+            httpServer.stopAccepting();
             if (clusterServer != null) {
                 clusterServer.refuseWrites();
             }
@@ -86,6 +89,7 @@ public class ShutdownCoordinator {
         });
         step("roll back open transactions", TransactionOperationHelper::rollbackOpenTransactionsAtShutdown);
         step("wait for in-flight requests", () -> awaitInFlightRequests(deadline));
+        step("drain HTTP requests", () -> httpServer.drain(remaining(deadline)));
         step("release snapshots", snapshotRegistry::releaseAll);
         step("drain triggers", () -> triggerExecutor.drain(remaining(deadline)));
         // After the triggers and before the background queue: a scheduled run enqueues into both.

@@ -35,6 +35,7 @@ import org.ccg.mpp.ops.resp.FindByIdResponse;
 import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.GetSchemaResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
+import org.ccg.mpp.ops.resp.ListEntrypointsResponse;
 import org.ccg.mpp.ops.resp.ListProceduresResponse;
 import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.ListSchedulesResponse;
@@ -51,6 +52,7 @@ import org.ccg.mpp.ops.resp.ReadSnapshotResponse;
 import org.ccg.mpp.ops.resp.ReindexResponse;
 import org.ccg.mpp.ops.resp.ResolveTriggerRunResponse;
 import org.ccg.mpp.ops.resp.RunScriptResponse;
+import org.ccg.mpp.ops.resp.SaveEntrypointResponse;
 import org.ccg.mpp.ops.resp.SaveProcedureResponse;
 import org.ccg.mpp.ops.resp.SaveResponse;
 import org.ccg.mpp.ops.resp.SaveScheduleResponse;
@@ -110,10 +112,10 @@ public class ResponseBytesTest {
                 new FindByIdResponse("ok", null), new GetProjectStatsResponse("ok", doc),
                 new GetSchemaResponse("ok", doc), new ListCollectionsResponse("ok", List.of("c1", "c2")),
                 new ListProjectsResponse("ok", List.of("project1")), new ListProceduresResponse("ok", rows),
-                new ListSchedulesResponse("ok", rows), new ListScriptsResponse("ok", rows),
-                new ListTransactionsResponse("ok", rows), new ListTriggerRunsResponse("ok", rows),
-                new ListTriggersResponse("ok", rows), new ListUsersResponse("ok", rows),
-                new ListenEndedResponse("listen-1", "collection dropped"),
+                new ListSchedulesResponse("ok", rows), new ListEntrypointsResponse("ok", rows),
+                new ListScriptsResponse("ok", rows), new ListTransactionsResponse("ok", rows),
+                new ListTriggerRunsResponse("ok", rows), new ListTriggersResponse("ok", rows),
+                new ListUsersResponse("ok", rows), new ListenEndedResponse("listen-1", "collection dropped"),
                 new ListenResponse("listen-1", rows, "hash", true), new ListenResponse("listen-2", rows, "h", false),
                 new PrimaryKeyReindexResponse("ok", List.of("f"),
                         new PkRebuild(List.of(), 2, true, List.of(), List.of())),
@@ -121,8 +123,9 @@ public class ResponseBytesTest {
                 new ServerInfoResponse("ok", doc), new RunScriptResponse("ok", doc, logs, true, "run-3"),
                 new RunScriptResponse("failed", ErrorCode.ERROR_RETRIEVING, logs, false, "run-4"),
                 new SaveProcedureResponse("ok", 3L), new SaveResponse("ok", "doc-1", true),
-                new SaveScheduleResponse("ok", 5L), new SaveSchemaResponse("ok", List.of("warning 界")),
-                new SaveTriggerResponse("ok", 4L, "alice"), new StartTransactionResponse("ok", "tx-1"),
+                new SaveScheduleResponse("ok", 5L), new SaveEntrypointResponse("ok", 2L, 7L),
+                new SaveSchemaResponse("ok", List.of("warning 界")), new SaveTriggerResponse("ok", 4L, "alice"),
+                new StartTransactionResponse("ok", "tx-1"),
                 new StartSnapshotResponse("ok", "snap-1", List.of("c1", "界")),
                 new ReadSnapshotResponse("ok", rows, "doc-2", false),
                 new ReadSnapshotResponse("ok", List.of(), null, true), new StopListenResponse(),

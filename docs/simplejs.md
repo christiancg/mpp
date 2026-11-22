@@ -77,6 +77,7 @@ single-threaded run.
 | After trigger | the trigger's definer | yes | `script*`, `triggerTimeoutMs` | logged |
 | Before-write hook | no one, it can't touch stored data | no | `beforeHook*` | discarded |
 | Scheduled procedure | the schedule's definer | yes | `script*`, `scheduleTimeoutMs` | logged |
+| HTTP entrypoint | the entrypoint's definer | yes | `script*`, `entrypointTimeoutMs` | not returned |
 | Pipeline script | the query's caller | no | `aggregationScript*` | discarded |
 
 ### Ad-hoc scripts and stored procedures
@@ -331,14 +332,15 @@ refuses the write with `400-21`. A hook that times out or runs out of budget ref
 
 ### Who can change a bound procedure
 
-A trigger, before hook or schedule looks its procedure up by name when it fires, so whoever can change that procedure
-changes what runs with the definer's authority. While a binding by another user reaches a procedure, directly or
-through its imports, only that definer, a project owner or an admin can save, disable or delete it (`403-4` for
+A trigger, before hook, schedule or entrypoint looks its procedure up by name when it runs, so whoever can change that
+procedure changes what runs with the definer's authority. While a binding by another user reaches a procedure, directly
+or through its imports, only that definer, a project owner or an admin can save, disable or delete it (`403-4` for
 everyone else). A procedure that imports by a computed name, or imports the `script` module, could reach any procedure,
 so it counts as reaching all of them. Procedures nobody else has bound stay freely editable.
 
-Only the definer, an owner or an admin can replace or delete someone else's trigger or schedule (`403-5`). Saving one
-always makes you its definer; no request field can name another user.
+Only the definer, an owner or an admin can replace or delete someone else's trigger, schedule or entrypoint (`403-5`).
+Saving one always makes you its definer; no request field can name another user. A procedure an entrypoint uses can't be
+deleted until the entrypoint is (`400-46`).
 
 ### Scheduled procedures
 
@@ -357,6 +359,57 @@ daily schedule fires once across a daylight saving change. Like a trigger it run
   schedule was changed or deleted while the run was queued.
 - `intervalMs` can't be below `scheduleMinIntervalMs` (`400-35`), and one user can have at most
   `scheduleMaxTotalPerUser` schedules across every project (`400-33`).
+
+### HTTP entrypoints
+
+An entrypoint runs a stored procedure for an HTTP request. It maps a method and a path template of a project, such as
+`GET /orders/{id}`, to the procedure, and the server's HTTP listener (`httpPort`, default `8990`) serves it at
+`/{project}{path}`. The request is [`SAVE_ENTRYPOINT`](protocol.md#save_entrypoint), and the routing rules are in
+[protocol.md](protocol.md#http-entrypoints). Like a schedule it runs as its definer, who needs script `RUN` on the
+project, or it is disabled. Every entrypoint is public, so the definer's grants are what anyone on the network can
+reach through it.
+
+The procedure reads the request from `args`:
+
+```json
+{
+  "entrypoint": "getOrder",
+  "method": "GET",
+  "path": "/orders/o1",
+  "pathParams": {"id": "o1"},
+  "query": {"expand": "lines", "tag": ["a", "b"]},
+  "headers": {"accept": "application/json"},
+  "body": null,
+  "remoteAddress": "203.0.113.7"
+}
+```
+
+`query` values are strings, or arrays for a repeated key. Header names are lower case. `body` is the parsed JSON for a
+JSON `Content-Type`, a string for anything else and `null` when there is none.
+
+What it returns is the response. An object with an integer `status` from 100 to 599 is an envelope, anything else is
+sent as the body with `200`:
+
+```js
+import db from "db";
+import args from "args";
+const order = db.findById(db.name, "orders", args.pathParams.id);
+if (order === null) {
+  return {status: 404, body: {error: "no such order"}};
+}
+return {status: 200, headers: {"cache-control": "max-age=60"}, body: order};
+```
+
+- A string body is sent as `text/plain`, anything else as JSON, and `null` as an empty body.
+- A run that fails answers `500` with only its `runId`. The message is in the server log and, with `ENTRYPOINT` in
+  `scriptRunHistoryKinds`, in the run history. Never put a secret in an error either way.
+- A run isn't a transaction. Open your own `db.transaction(...)` if you need one.
+- `timeoutMs` on the entrypoint bounds a run (`entrypointTimeoutMs` by default, at most `entrypointMaxTimeoutMs`).
+  The other `script*` budgets apply as to any run.
+- Runs take script slots as their definer, so `maxConcurrentScriptsPerUser`, `maxConcurrentScriptsPerProject` and
+  `maxConcurrentScripts` are what size an entrypoint's throughput, and `0` lifts each one. A request that finds no slot
+  answers `503` with `Retry-After: 1`, and nothing ran.
+- Under clustering every node serves every entrypoint and runs it where the request arrived, with no placement.
 
 ### Pipeline scripts
 
@@ -392,7 +445,8 @@ every reader of the project.
 - The collection is created on the first run. Clients can read and index it but not write to it, and triggers and hooks
   don't fire on it.
 - `scriptRunHistoryKinds` picks what is recorded. By default it is procedures, triggers and schedules; ad-hoc
-  `RUN_SCRIPT` is opt-in, and `BEFORE_HOOK` records only refusals.
+  `RUN_SCRIPT` and `ENTRYPOINT` are opt-in, since every HTTP request would add a row, and `BEFORE_HOOK` records only
+  refusals.
 - Rows are written in the background and best effort. At most `scriptRunHistoryMaxQueued` wait to be written; past
   that a run is not recorded and is counted in `historyDropped`.
 - Every `scriptRunHistorySweepMs` the owner deletes rows older than `scriptRunHistoryRetentionMs` and the oldest ones past
@@ -486,19 +540,20 @@ A few limits throw ordinary, catchable errors instead:
 - An array-like longer than `scriptMaxArrayLength` passed to `apply`, `Reflect.construct` or `Vector.from` is refused
   with `400-30`.
 
-How many scripts run at once is limited per user (`maxConcurrentScriptsPerUser`, 4), per project
-(`maxConcurrentScriptsPerProject`, 8) and per node (`maxConcurrentScripts`, 16). A caller at their own limit is refused
+How many scripts run at once is limited per user (`maxConcurrentScriptsPerUser`, 32), per project
+(`maxConcurrentScriptsPerProject`, 48) and per node (`maxConcurrentScripts`, 64). A caller at their own limit is refused
 at once, and the node-wide one waits up to `scriptQueueWaitMs`; both answer `503-6`, which is safe to retry because
-nothing ran. Triggers and schedules take the user and project slots as their definer: a trigger waits for a slot and is
-retried later without losing an attempt, a schedule skips that occurrence. Before hooks, `TEST_TRIGGER` and pipeline
-scripts don't take slots, since a write refused for a slot would be a failed write. The worst case for script memory is
-`maxConcurrentScripts + triggerThreads + scheduleThreads` times `scriptMaxMemoryBytes`, on top of `maxMemory`.
+nothing ran. Triggers, schedules and entrypoints take the user and project slots as their definer: a trigger waits for a
+slot and is retried later without losing an attempt, a schedule skips that occurrence, and an entrypoint answers `503`.
+Before hooks, `TEST_TRIGGER` and pipeline scripts don't take slots, since a write refused for a slot would be a failed
+write. The worst case for script memory is `maxConcurrentScripts + triggerThreads + scheduleThreads` times
+`scriptMaxMemoryBytes`, on top of `maxMemory`.
 
 ### `fetch`
 
-Scripts can make HTTP requests with `fetch` from `RUN_SCRIPT`, procedures, triggers and schedules, but not from before
-hooks or pipeline scripts, which hold locks. It is on by default with `scriptFetchAllowlist=*`, which means any public
-host. You should narrow it, and the server warns about it at every startup.
+Scripts can make HTTP requests with `fetch` from `RUN_SCRIPT`, procedures, triggers, schedules and entrypoints, but not
+from before hooks or pipeline scripts, which hold locks. It is on by default with `scriptFetchAllowlist=*`, which means
+any public host. You should narrow it, and the server warns about it at every startup.
 
 - The allowlist takes exact hosts, `*.example.com` wildcards or `*`. An empty list denies everything.
 - Only public addresses are reached. Loopback, private, link-local (the cloud metadata endpoint), CGNAT and other
@@ -528,6 +583,7 @@ These are the keys that shape scripting. What each one means and its default are
 | Triggers | `triggerThreads`, `triggerQueueSize`, `triggerQueueMaxBytes`, `triggerMaxPerCollection`, `triggerTimeoutMs`, `triggerMaxDepth`, `triggerRunLogEnabled`, `triggerRunRetentionMs`, `triggerMaxAttempts`, `triggerRetryBackoffMs`, `triggerRetryMaxBackoffMs`, `triggerDeadLetterRetentionMs`, `triggerDeadLetterMaxRuns` |
 | Before hooks | `beforeHookInstructionBudget`, `beforeHookTimeoutMs` |
 | Schedules | `scheduleThreads`, `scheduleQueueSize`, `scheduleTickMs`, `scheduleRefreshMs`, `scheduleTimeoutMs`, `scheduleMaxTimeoutMs`, `scheduleMaxPerProject`, `scheduleMaxTotalPerUser`, `scheduleMinIntervalMs` |
+| Entrypoints | `httpPort`, `httpBindAddress`, `httpMaxConnections`, `httpMaxRequestBytes`, `httpReadTimeoutMs`, `httpIdleTimeoutMs`, `entrypointTimeoutMs`, `entrypointMaxTimeoutMs`, `maxEntrypointsPerProject` |
 | Pipeline scripts | `aggregationScriptInstructionBudget`, `aggregationScriptTimeoutMs`, `aggregationScriptMaxSourceBytes` |
 | History | `scriptRunHistoryEnabled`, `scriptRunHistoryKinds`, `scriptRunHistoryRetentionMs`, `scriptRunHistoryIncludeLogs`, `scriptRunHistoryMaxErrorChars`, `scriptRunHistoryMaxQueued`, `scriptRunHistoryMaxRows`, `scriptRunHistorySweepMs` |
 | Cluster | `scriptRoutingEnabled`, `scriptLocalityWeight` |

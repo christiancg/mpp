@@ -47,6 +47,9 @@ class Operation(StrEnum):
     SAVE_SCHEDULE = 'SAVE_SCHEDULE'
     DELETE_SCHEDULE = 'DELETE_SCHEDULE'
     LIST_SCHEDULES = 'LIST_SCHEDULES'
+    SAVE_ENTRYPOINT = 'SAVE_ENTRYPOINT'
+    DELETE_ENTRYPOINT = 'DELETE_ENTRYPOINT'
+    LIST_ENTRYPOINTS = 'LIST_ENTRYPOINTS'
     LIST_SCRIPTS = 'LIST_SCRIPTS'
     CANCEL_SCRIPT = 'CANCEL_SCRIPT'
     TEST_TRIGGER = 'TEST_TRIGGER'
@@ -100,6 +103,9 @@ class ErrorCode(StrEnum):
     INVALID_COMMAND = '400-43'
     DELETE_MATCHES_TOO_MANY = '400-44'
     UPDATE_MATCHES_TOO_MANY = '400-45'
+    INVALID_ENTRYPOINT = '400-46'
+    TOO_MANY_ENTRYPOINTS = '400-47'
+    ENTRYPOINT_TIMEOUT_TOO_LARGE = '400-48'
     MUST_AUTHENTICATE_FIRST = '401-1'
     USER_NO_LONGER_EXISTS = '401-2'
     WRONG_CREDENTIALS = '401-3'
@@ -146,6 +152,7 @@ class ErrorCode(StrEnum):
     TRANSACTION_IDLE_TIMEOUT = '409-16'
     SNAPSHOT_ABORTED = '409-17'
     DOCUMENT_ALREADY_EXISTS = '409-18'
+    ENTRYPOINT_ROUTE_CONFLICT = '409-19'
     LISTEN_ENDED = '410-1'
     OUTBOUND_BACKLOG = '413-1'
     NOT_COLLECTION_OWNER = '421-1'
@@ -187,6 +194,8 @@ class ErrorCode(StrEnum):
     ERROR_GATHERING_SERVER_INFO = '500-35'
     ERROR_STARTING_SNAPSHOT = '500-36'
     ERROR_READING_SNAPSHOT = '500-37'
+    ERROR_SAVING_ENTRYPOINT = '500-38'
+    ERROR_DELETING_ENTRYPOINT = '500-39'
     MAX_CONNECTIONS_REACHED = '503-1'
     NO_QUORUM = '503-2'
     REPLICATION_TIMEOUT = '503-3'
@@ -267,6 +276,9 @@ OPERATIONS = (
     ('SAVE_SCHEDULE', 'PROJECT', False, False),
     ('DELETE_SCHEDULE', 'PROJECT', False, False),
     ('LIST_SCHEDULES', 'PROJECT', False, False),
+    ('SAVE_ENTRYPOINT', 'PROJECT', False, False),
+    ('DELETE_ENTRYPOINT', 'PROJECT', False, False),
+    ('LIST_ENTRYPOINTS', 'PROJECT', False, False),
     ('LIST_SCRIPTS', 'NONE', True, False),
     ('CANCEL_SCRIPT', 'NONE', True, False),
     ('TEST_TRIGGER', 'COLLECTION', False, False),
@@ -320,6 +332,9 @@ ERROR_CODES = (
     ('INVALID_COMMAND', '400-43', 'ERROR', False, 'The command is not valid'),
     ('DELETE_MATCHES_TOO_MANY', '400-44', 'ERROR', False, 'The delete condition matches more documents than allowed'),
     ('UPDATE_MATCHES_TOO_MANY', '400-45', 'ERROR', False, 'The update condition matches more documents than allowed'),
+    ('INVALID_ENTRYPOINT', '400-46', 'ERROR', False, 'The entrypoint definition is not valid'),
+    ('TOO_MANY_ENTRYPOINTS', '400-47', 'ERROR', False, 'The project has the maximum number of entrypoints'),
+    ('ENTRYPOINT_TIMEOUT_TOO_LARGE', '400-48', 'ERROR', False, 'The entrypoint timeout exceeds the allowed maximum'),
     ('MUST_AUTHENTICATE_FIRST', '401-1', 'UNAUTHENTICATED', False, 'Must authenticate first'),
     ('USER_NO_LONGER_EXISTS', '401-2', 'UNAUTHENTICATED', False, 'User no longer exists'),
     ('WRONG_CREDENTIALS', '401-3', 'ERROR', False, "The user doesn't exist or the wrong credentials have been provided"),
@@ -327,8 +342,8 @@ ERROR_CODES = (
     ('NO_PERMISSIONS', '403-1', 'FORBIDDEN', False, 'Action is forbidden, no permissions'),
     ('SCRIPTS_DISABLED', '403-2', 'FORBIDDEN', False, 'Script execution is disabled on this server'),
     ('FAULT_INJECTION_DISABLED', '403-3', 'FORBIDDEN', False, 'Fault injection is disabled on this server'),
-    ('PROCEDURE_BOUND_BY_OTHER_DEFINER', '403-4', 'FORBIDDEN', False, 'Procedure is bound by a trigger or schedule that runs as another user'),
-    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it'),
+    ('PROCEDURE_BOUND_BY_OTHER_DEFINER', '403-4', 'FORBIDDEN', False, 'Procedure is bound by a trigger, schedule or entrypoint that runs as another user'),
+    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it'),
     ('SOURCE_REQUIRES_MANAGE', '403-6', 'FORBIDDEN', False, 'Procedure source requires script MANAGE'),
     ('USER_NOT_FOUND', '404-1', 'NOT_FOUND', False, 'User not found'),
     ('ENTRY_NOT_FOUND', '404-2', 'NOT_FOUND', False, 'Entry not found'),
@@ -366,6 +381,7 @@ ERROR_CODES = (
     ('TRANSACTION_IDLE_TIMEOUT', '409-16', 'ERROR', False, 'The transaction was rolled back after being idle too long'),
     ('SNAPSHOT_ABORTED', '409-17', 'ERROR', False, 'The snapshot was aborted and holds nothing any more; open a new one'),
     ('DOCUMENT_ALREADY_EXISTS', '409-18', 'ERROR', False, 'A document with this _id already exists'),
+    ('ENTRYPOINT_ROUTE_CONFLICT', '409-19', 'ERROR', False, 'Another entrypoint of the project already serves this method and path'),
     ('LISTEN_ENDED', '410-1', 'NOT_FOUND', False, 'The listen ended'),
     ('OUTBOUND_BACKLOG', '413-1', 'ERROR', False, "The connection's outbound buffer overflowed"),
     ('NOT_COLLECTION_OWNER', '421-1', 'ERROR', False, 'This node is not the owner of the target collection'),
@@ -407,6 +423,8 @@ ERROR_CODES = (
     ('ERROR_GATHERING_SERVER_INFO', '500-35', 'ERROR', False, 'Error while gathering server info'),
     ('ERROR_STARTING_SNAPSHOT', '500-36', 'ERROR', False, 'Error while opening the snapshot'),
     ('ERROR_READING_SNAPSHOT', '500-37', 'ERROR', False, 'Error while reading the snapshot'),
+    ('ERROR_SAVING_ENTRYPOINT', '500-38', 'ERROR', False, 'Error while saving the entrypoint'),
+    ('ERROR_DELETING_ENTRYPOINT', '500-39', 'ERROR', False, 'Error while deleting the entrypoint'),
     ('MAX_CONNECTIONS_REACHED', '503-1', 'ERROR', False, 'Max number of connections reached'),
     ('NO_QUORUM', '503-2', 'ERROR', True, 'Cluster does not have a write quorum'),
     ('REPLICATION_TIMEOUT', '503-3', 'ERROR', False, 'Timed out waiting for the replication quorum'),

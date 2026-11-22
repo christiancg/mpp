@@ -206,7 +206,8 @@ public class ProcedureBindingGuardTest {
         assertNotNull(refused);
         assertEquals(OperationType.DELETE_PROCEDURE, refused.getType());
         assertEquals(OperationStatus.FORBIDDEN, refused.getStatus());
-        assertEquals("Procedure '" + BOUND + "' is bound by a trigger or schedule that runs as another user; only"
+        assertEquals("Procedure '" + BOUND
+                + "' is bound by a trigger, schedule or entrypoint that runs as another user; only"
                 + " that user, a project owner or an admin may change it", refused.getMessage());
         assertFalse(refused.getMessage().contains(DEFINER));
         assertFalse(refused.getMessage().contains("audit"));

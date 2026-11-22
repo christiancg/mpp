@@ -50,6 +50,7 @@ class ServerProcess:
             "logPath": "logs",
             "defaultAdminPassword": PASSWORD,
             "maxMemory": "128Mb",
+            "httpPort": "0",
             **(overrides or {}),
         }
         (work_dir / "mpp.cfg").write_text("".join(f"{key}={value}\n" for key, value in config.items()))

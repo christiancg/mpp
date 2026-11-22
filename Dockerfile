@@ -23,6 +23,8 @@ FROM alpine:3.21
 
 ARG PORT=8989
 ENV PORT=${PORT}
+ARG HTTP_PORT=8990
+ENV HTTP_PORT=${HTTP_PORT}
 
 RUN apk add --no-cache libstdc++
 
@@ -48,6 +50,7 @@ VOLUME /app/db
 VOLUME /app/logs
 
 EXPOSE ${PORT}
+EXPOSE ${HTTP_PORT}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["/app/healthcheck.sh"]
 

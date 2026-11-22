@@ -366,7 +366,7 @@ A `MANAGE` user replacing or deleting a trigger or schedule installed by another
 or an admin) → `403-5`:
 
 ```json
-{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it", "errorCode": "403-5"}
+{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it", "errorCode": "403-5"}
 ```
 
 A user with `READ` on the project but not script `MANAGE` (nor ownership, nor admin) asking for procedure source
@@ -2050,8 +2050,8 @@ cluster it is the executing node's `host:clusterPort`.
 
 While it runs, admission is also visible. With `maxConcurrentScripts=1` in `mpp.cfg`, a second script on
 connection B waits `scriptQueueWaitMs` (250 ms by default) for a permit and is then refused → `503-6`. The
-message names the limit that refused it; `maxConcurrentScriptsPerUser` (4 by default) and
-`maxConcurrentScriptsPerProject` (8 by default) refuse the same way, without waiting. A fifth concurrent script
+message names the limit that refused it; `maxConcurrentScriptsPerUser` (32 by default) and
+`maxConcurrentScriptsPerProject` (48 by default) refuse the same way, without waiting. A 33rd concurrent script
 by the same user answers `503-6` with `(user limit)` at once, even while node-wide permits are free. The
 last per-project slot is kept for the project's owners and admins: with 7 scripts of ordinary users running
 in `test`, an eighth ordinary one answers `503-6` with `(project limit)` while the owner's still runs.
@@ -3156,7 +3156,7 @@ for any procedure `auditWrite` imports, and for a procedure a before hook or a s
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
+{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule or entrypoint that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
 `DELETE_PROCEDURE` answers `403-4` before the `400-14` reference refusal
@@ -3166,7 +3166,7 @@ for any procedure `auditWrite` imports, and for a procedure a before hook or a s
 ```
 
 ```json
-{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger or schedule that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
+{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule or entrypoint that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
 `MANAGE` without `READ_WRITE` on the collection (no entry, and no project grant) cannot install a
@@ -3373,6 +3373,122 @@ Delete — idempotent, so sending it twice still returns OK
 {"type": "DELETE_SCHEDULE", "projectName": "test", "name": "monthly"}
 ```
 
+HTTP entrypoints
+
+An entrypoint serves a stored procedure at an HTTP route of the project, on `httpPort` (8990 by default) at
+`/{project}{path}`. It is public, runs as its definer (whoever last saved it, like a schedule) and needs script
+`MANAGE` to save or delete. These use the `beat` procedure from the schedules section above.
+
+By name: `GET http://localhost:8990/test/beats/{label}` then runs `beat` with `args.pathParams.label`
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "getBeat", "method": "GET", "path": "/beats/{label}", "procedureName": "beat", "timeoutMs": 5000, "description": "bump the heartbeat"}
+```
+
+```json
+{"type": "SAVE_ENTRYPOINT", "status": "OK", "message": "Entrypoint saved successfully", "version": 1, "procedureVersion": 1}
+```
+
+Inline: the procedure is saved as an ordinary procedure first (every `SAVE_PROCEDURE` check applies) and stays if the
+entrypoint write then fails (`500-38`). A result with an integer `status` is an envelope:
+`curl -i -X POST -H 'Content-Type: application/json' -d '{"_id":"p1","n":1}' http://localhost:8990/test/pings` answers
+`201` with a `Location` header
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "createPing", "method": "POST", "path": "/pings", "procedure": {"name": "createPing", "script": "import db from \"db\";\nimport args from \"args\";\nconst saved = db.save(db.name, 'heartbeat', args.body);\nreturn {status: 201, headers: {location: '/test/pings/' + saved._id}, body: saved};"}}
+```
+
+A literal beats a parameter at the first segment where two routes differ, so `GET /test/beats/latest` runs this one
+and never `getBeat`
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "latestBeat", "method": "GET", "path": "/beats/latest", "procedureName": "beat"}
+```
+
+List them — each item carries the `url` to request on `httpPort`, and a disabled one a `disabledReason` (only
+`getBeat` is shown below)
+
+```json
+{"type": "LIST_ENTRYPOINTS", "projectName": "test"}
+```
+
+```json
+{"type": "LIST_ENTRYPOINTS", "status": "OK", "message": "Ok", "entrypoints": [{"name": "getBeat", "method": "GET", "path": "/beats/{label}", "procedureName": "beat", "timeoutMs": 5000, "enabled": true, "definer": "admin", "description": "bump the heartbeat", "version": 1, "createdAt": 1763700000000, "updatedAt": 1763700000000, "updatedBy": "admin", "url": "/test/beats/{label}"}]}
+```
+
+Two routes of the same method with literals and parameters at the same positions → `409-19`
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "otherBeat", "method": "GET", "path": "/beats/{name}", "procedureName": "beat"}
+```
+
+```json
+{"type": "SAVE_ENTRYPOINT", "status": "ERROR", "message": "Another entrypoint of the project already serves this method and path: 'getBeat' (GET /beats/{label})", "errorCode": "409-19"}
+```
+
+A method that is not routed (`HEAD` included), a bad path, neither or both of `procedureName` and `procedure`, or a
+negative `timeoutMs` → `400-46`
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "badPath", "method": "GET", "path": "/beats/*", "procedureName": "beat"}
+```
+
+```json
+{"type": "SAVE_ENTRYPOINT", "status": "ERROR", "message": "The entrypoint definition is not valid: the segment '*' is neither a {parameter} nor made only of letters, digits, '-', '.', '_' and '~'", "errorCode": "400-46"}
+```
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "headBeat", "method": "HEAD", "path": "/beats", "procedureName": "beat"}
+```
+
+A `timeoutMs` above `entrypointMaxTimeoutMs` (300 000) → `400-48`
+
+```json
+{"type": "SAVE_ENTRYPOINT", "projectName": "test", "name": "slowBeat", "method": "GET", "path": "/slow", "procedureName": "beat", "timeoutMs": 600000}
+```
+
+```json
+{"type": "SAVE_ENTRYPOINT", "status": "ERROR", "message": "The entrypoint timeout exceeds the allowed maximum (300000 ms)", "errorCode": "400-48"}
+```
+
+A project holding `maxEntrypointsPerProject` entrypoints (1000 by default) refuses a new one → `400-47`. Re-saving one
+it already holds is still allowed. To try it by hand, set `maxEntrypointsPerProject=1` in `mpp.cfg`:
+
+```json
+{"type": "SAVE_ENTRYPOINT", "status": "ERROR", "message": "The project has the maximum number of entrypoints (1)", "errorCode": "400-47"}
+```
+
+Deleting a procedure an entrypoint still uses is refused → `400-46`
+
+```json
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "createPing"}
+```
+
+```json
+{"type": "DELETE_PROCEDURE", "status": "ERROR", "message": "Procedure 'createPing' is still referenced by entrypoint 'createPing'", "errorCode": "400-46"}
+```
+
+A `MANAGE` user replacing or deleting another user's entrypoint → `403-5`, and saving a procedure another user's
+entrypoint runs → `403-4`, as for triggers and schedules.
+
+Delete — idempotent, and the procedure stays
+
+```json
+{"type": "DELETE_ENTRYPOINT", "projectName": "test", "name": "getBeat"}
+```
+
+```json
+{"type": "DELETE_ENTRYPOINT", "status": "OK", "message": "Entrypoint deleted successfully"}
+```
+
+```json
+{"type": "DELETE_ENTRYPOINT", "projectName": "test", "name": "latestBeat"}
+```
+
+```json
+{"type": "DELETE_ENTRYPOINT", "projectName": "test", "name": "createPing"}
+```
+
 Answers only a cluster gives
 
 These need `clusterEnabled=true` and at least three nodes. A client may connect to any node: writes and
@@ -3487,8 +3603,9 @@ force failed answers a `500-*` and is not acknowledged
 
 Every `500-*` answer is a failure inside the server — a disk that is full or unwritable, a file that could not
 be read — and cannot be provoked from this playbook; the server log names the cause. That includes a
-`DELETE_PROCEDURE`, `DELETE_SCHEDULE`, `DELETE_TRIGGER` or `DELETE_SCHEMA` whose file could not be removed
-(`500-28`, `500-32`, `500-30`, `500-26`): the definition is still in force, where it used to answer `OK` and come
+`DELETE_PROCEDURE`, `DELETE_SCHEDULE`, `DELETE_TRIGGER`, `DELETE_ENTRYPOINT` or `DELETE_SCHEMA` whose file could not
+be removed (`500-28`, `500-32`, `500-30`, `500-39`, `500-26`), and a `SAVE_ENTRYPOINT` whose file could not be written
+(`500-38`): the definition is still in force, where it used to answer `OK` and come
 back on the next load. One of them changes what a
 client does next: `500-33` is a commit that failed after its commit point. The transaction stays open and keeps
 its locks, and re-sending `COMMIT_TRANSACTION` finishes it once the fault is gone. Until then a `SAVE`,

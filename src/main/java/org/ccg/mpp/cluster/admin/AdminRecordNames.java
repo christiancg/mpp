@@ -24,7 +24,7 @@ public final class AdminRecordNames {
         return switch (key.kind()) {
             case PROJECT -> isProject(key.projectName()) && key.projectName().equals(key.name());
             case USER -> key.projectName().isEmpty() && NameValidations.isUsername(key.name());
-            case COLLECTION, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE ->
+            case COLLECTION, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT ->
                 isProject(key.projectName()) && NameValidations.isName(key.name());
         };
     }

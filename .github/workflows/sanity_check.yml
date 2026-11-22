@@ -419,6 +419,11 @@ jobs:
             run: |
               python3 test_utils/test_schedules.py
 
+          - name: entrypoints
+            start_server: false
+            run: |
+              python3 test_utils/test_entrypoints.py
+
           - name: script-admission
             start_server: false
             run: |

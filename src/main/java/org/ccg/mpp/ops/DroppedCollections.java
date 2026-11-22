@@ -11,6 +11,7 @@ import org.ccg.mpp.listen.ListenManager;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.admin.AdminUsageHelper;
 import org.ccg.mpp.ops.admin.DeferredWrites;
+import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
 import org.ccg.mpp.ops.index.IdleIndexFolds;
 import org.ccg.mpp.ops.snapshot.SnapshotRegistry;
 
@@ -22,6 +23,7 @@ public final class DroppedCollections {
     private static final ListenManager listenManager = IocContainer.get(ListenManager.class);
     private static final ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private static final SnapshotRegistry snapshots = IocContainer.get(SnapshotRegistry.class);
+    private static final EntrypointRouter entrypointRouter = IocContainer.get(EntrypointRouter.class);
 
     private interface UsageRowDelete {
         void run() throws IOException, InterruptedException;
@@ -47,6 +49,8 @@ public final class DroppedCollections {
 
     public static void forgetProject(String projectName) {
         locks.removeCollectionLock(projectName, Globals.PROCEDURES_FOLDER);
+        locks.removeCollectionLock(projectName, Globals.ENTRYPOINTS_FOLDER);
+        entrypointRouter.forgetProject(projectName);
         cache.evictProject(projectName);
         cache.forgetScanRefusals(projectName);
         pendingIndexWrites.clearProject(projectName);

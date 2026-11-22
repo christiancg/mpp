@@ -25,8 +25,9 @@ public final class ClusterAdminHelper {
             OperationType.DROP_INDEX, OperationType.REINDEX, OperationType.SET_PROJECT_OWNERS,
             OperationType.SAVE_SCHEMA, OperationType.DELETE_SCHEMA, OperationType.SAVE_PROCEDURE,
             OperationType.DELETE_PROCEDURE, OperationType.SAVE_TRIGGER, OperationType.DELETE_TRIGGER,
-            OperationType.SAVE_SCHEDULE, OperationType.DELETE_SCHEDULE, OperationType.CREATE_USER,
-            OperationType.DELETE_USER, OperationType.SET_PASSWORD, OperationType.CHANGE_PERMISSIONS);
+            OperationType.SAVE_SCHEDULE, OperationType.DELETE_SCHEDULE, OperationType.SAVE_ENTRYPOINT,
+            OperationType.DELETE_ENTRYPOINT, OperationType.CREATE_USER, OperationType.DELETE_USER,
+            OperationType.SET_PASSWORD, OperationType.CHANGE_PERMISSIONS);
     private static final Logger logger = Logger.logFor(ClusterAdminHelper.class);
     private static final ClusterCoordinator coordinator = IocContainer.get(ClusterCoordinator.class);
     private static final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);

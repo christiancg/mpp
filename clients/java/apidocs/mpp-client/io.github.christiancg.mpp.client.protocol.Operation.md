@@ -181,6 +181,18 @@ Scope project.
 
 Scope project.
 
+## SAVE_ENTRYPOINT
+
+Scope project.
+
+## DELETE_ENTRYPOINT
+
+Scope project.
+
+## LIST_ENTRYPOINTS
+
+Scope project.
+
 ## LIST_SCRIPTS
 
 Scope none; admin only.

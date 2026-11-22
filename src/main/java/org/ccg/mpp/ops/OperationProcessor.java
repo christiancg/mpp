@@ -146,30 +146,22 @@ public class OperationProcessor {
             case SAVE_SCHEDULE -> processSaveSchedule((SaveScheduleRequest) operationRequest, actingUser);
             case DELETE_SCHEDULE -> processDeleteSchedule((DeleteScheduleRequest) operationRequest, actingUser);
             case LIST_SCHEDULES -> processListSchedules((ListSchedulesRequest) operationRequest);
+            case SAVE_ENTRYPOINT, DELETE_ENTRYPOINT, LIST_ENTRYPOINTS ->
+                EntrypointOperationHelper.process(operationRequest, actingUser);
             case LIST_SCRIPTS -> processListScripts();
             case CANCEL_SCRIPT -> processCancelScript((CancelScriptRequest) operationRequest);
             case LIST_TRIGGER_RUNS -> processListTriggerRuns((ListTriggerRunsRequest) operationRequest);
             case RESOLVE_TRIGGER_RUN -> processResolveTriggerRun((ResolveTriggerRunRequest) operationRequest);
-            case START_SNAPSHOT -> processStartSnapshot((StartSnapshotRequest) operationRequest, clientId, actingUser);
-            case READ_SNAPSHOT -> processReadSnapshot((ReadSnapshotRequest) operationRequest, clientId);
-            case RELEASE_SNAPSHOT -> processReleaseSnapshot((ReleaseSnapshotRequest) operationRequest, clientId);
+            case START_SNAPSHOT ->
+                SnapshotOperationHelper.start((StartSnapshotRequest) operationRequest, clientId, actingUser);
+            case READ_SNAPSHOT -> SnapshotOperationHelper.read((ReadSnapshotRequest) operationRequest, clientId);
+            case RELEASE_SNAPSHOT ->
+                SnapshotOperationHelper.release((ReleaseSnapshotRequest) operationRequest, clientId);
             case ARM_FAULT -> FaultOperationHelper.arm((ArmFaultRequest) operationRequest);
             case AWAIT_FAULT -> FaultOperationHelper.await((AwaitFaultRequest) operationRequest);
             case RELEASE_FAULT -> FaultOperationHelper.release((ReleaseFaultRequest) operationRequest);
         };
         return ClusterAdminHelper.afterAdminOp(operationRequest, response, restamped);
-    }
-
-    private OperationResponse processStartSnapshot(StartSnapshotRequest request, UUID clientId, String actingUser) {
-        return SnapshotOperationHelper.start(request, clientId, actingUser);
-    }
-
-    private OperationResponse processReadSnapshot(ReadSnapshotRequest request, UUID clientId) {
-        return SnapshotOperationHelper.read(request, clientId);
-    }
-
-    private OperationResponse processReleaseSnapshot(ReleaseSnapshotRequest request, UUID clientId) {
-        return SnapshotOperationHelper.release(request, clientId);
     }
 
     private OperationResponse processServerInfo(ServerInfoRequest request, String actingUser) {

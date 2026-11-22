@@ -181,6 +181,18 @@ unavailable) and the number is sequential.
 
 `400-45`: The update condition matches more documents than allowed.
 
+## INVALID_ENTRYPOINT
+
+`400-46`: The entrypoint definition is not valid.
+
+## TOO_MANY_ENTRYPOINTS
+
+`400-47`: The project has the maximum number of entrypoints.
+
+## ENTRYPOINT_TIMEOUT_TOO_LARGE
+
+`400-48`: The entrypoint timeout exceeds the allowed maximum.
+
 ## MUST_AUTHENTICATE_FIRST
 
 `401-1`: Must authenticate first.
@@ -211,11 +223,11 @@ unavailable) and the number is sequential.
 
 ## PROCEDURE_BOUND_BY_OTHER_DEFINER
 
-`403-4`: Procedure is bound by a trigger or schedule that runs as another user.
+`403-4`: Procedure is bound by a trigger, schedule or entrypoint that runs as another user.
 
 ## DEFINITION_OWNED_BY_OTHER_DEFINER
 
-`403-5`: The trigger or schedule belongs to another user; only that user, a project owner or an admin may change it.
+`403-5`: The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it.
 
 ## SOURCE_REQUIRES_MANAGE
 
@@ -364,6 +376,10 @@ unavailable) and the number is sequential.
 ## DOCUMENT_ALREADY_EXISTS
 
 `409-18`: A document with this _id already exists.
+
+## ENTRYPOINT_ROUTE_CONFLICT
+
+`409-19`: Another entrypoint of the project already serves this method and path.
 
 ## LISTEN_ENDED
 
@@ -528,6 +544,14 @@ unavailable) and the number is sequential.
 ## ERROR_READING_SNAPSHOT
 
 `500-37`: Error while reading the snapshot.
+
+## ERROR_SAVING_ENTRYPOINT
+
+`500-38`: Error while saving the entrypoint.
+
+## ERROR_DELETING_ENTRYPOINT
+
+`500-39`: Error while deleting the entrypoint.
 
 ## MAX_CONNECTIONS_REACHED
 

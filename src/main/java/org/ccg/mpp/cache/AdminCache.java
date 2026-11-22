@@ -72,6 +72,8 @@ public class AdminCache {
             () -> metadataMisses, PROCEDURE_MISS_PREFIX, this::loadProcedureUncached);
     private final DefinitionCache<ScheduleDefinition> scheduleCache = new DefinitionCache<>(() -> schedules,
             () -> metadataMisses, SCHEDULE_MISS_PREFIX, this::loadScheduleUncached);
+    private final EntrypointDefinitions entrypoints = new EntrypointDefinitions(
+            configuration.getMetadataCacheMaxBytes() / 3, () -> metadataMisses);
 
     public void loadAdminData() throws IOException {
         for (var collName : Globals.ADMIN_COLLECTION_NAMES) {
@@ -365,6 +367,10 @@ public class AdminCache {
         scheduleCache.removeIf(keyMatches);
     }
 
+    public EntrypointDefinitions entrypoints() {
+        return entrypoints;
+    }
+
     // An empty list doubles as the negative-cache sentinel, so an untriggered collection is read from
     // disk once rather than on every SAVE.
     public List<TriggerDefinition> getTriggersFor(String projectName, String collName) {
@@ -417,7 +423,7 @@ public class AdminCache {
     public MetadataCacheStats metadataCacheStats() {
         return new MetadataCacheStats(procedures.bytes(), procedures.size(), triggers.bytes(), triggers.size(),
                 collectionSchemas.bytes(), collectionSchemas.size(), schedules.bytes(), schedules.size(),
-                metadataMisses.size());
+                entrypoints.bytes(), entrypoints.size(), metadataMisses.size());
     }
 
     public AdminUserEntry getAdminUserEntry(String username) {
