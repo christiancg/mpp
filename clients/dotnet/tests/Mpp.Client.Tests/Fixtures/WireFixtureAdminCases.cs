@@ -19,6 +19,7 @@ internal static class WireFixtureAdminCases
         ListenAndTransactions(cases);
         Procedures(cases);
         TriggersAndSchedules(cases);
+        Entrypoints(cases);
         AdminScripts(cases);
         Users(cases);
     }
@@ -109,6 +110,30 @@ internal static class WireFixtureAdminCases
         cases["scripting.delete_schedule"] = r => r.Shop.Schedules().DeleteAsync("nightly");
         cases["scripting.list_schedules"] = r => r.Shop.Schedules().ListAsync(true);
         cases["scripting.list_schedules_default"] = r => r.Shop.Schedules().ListAsync();
+    }
+
+    private static void Entrypoints(Dictionary<string, FixtureCall> cases)
+    {
+        cases["scripting.save_entrypoint"] = r => r.Shop.Entrypoints().SaveAsync(
+            new EntrypointDefinition("getOrder", EntrypointMethod.Get, "/orders/{id}")
+            {
+                ProcedureName = "getOrder",
+                Timeout = TimeSpan.FromSeconds(5),
+                Description = "Order by id",
+                Enabled = true,
+                IfVersion = 2,
+            });
+        cases["scripting.save_entrypoint_inline"] = r => r.Shop.Entrypoints().SaveAsync(
+            new EntrypointDefinition("createOrder", EntrypointMethod.Post, "/orders")
+            {
+                Procedure = new ProcedureDefinition("createOrder", "import args from \"args\";\nreturn {status: 201, body: args.body};")
+                {
+                    Description = "Creates an order",
+                    Enabled = true,
+                },
+            });
+        cases["scripting.delete_entrypoint"] = r => r.Shop.Entrypoints().DeleteAsync("getOrder");
+        cases["scripting.list_entrypoints"] = r => r.Shop.Entrypoints().ListAsync();
     }
 
     private static void AdminScripts(Dictionary<string, FixtureCall> cases)

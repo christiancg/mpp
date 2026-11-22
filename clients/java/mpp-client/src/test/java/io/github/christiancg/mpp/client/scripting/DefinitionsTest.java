@@ -55,6 +55,44 @@ public class DefinitionsTest {
     }
 
     @Test
+    public void test_an_entrypoint_takes_exactly_one_of_procedure_name_and_procedure() {
+        final var inline = ProcedureDefinition.builder("p", "return 1;").build();
+        final var neither = assertThrows(IllegalArgumentException.class,
+                () -> EntrypointDefinition.builder("e", EntrypointMethod.GET, "/e").build());
+        assertEquals("an entrypoint takes exactly one of procedureName and procedure", neither.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> EntrypointDefinition.builder("e", EntrypointMethod.GET, "/e")
+                .procedureName("p").procedure(inline).build());
+    }
+
+    @Test
+    public void test_an_inline_procedure_takes_no_if_version() {
+        final var versioned = ProcedureDefinition.builder("p", "return 1;").ifVersion(2).build();
+        final var refused = assertThrows(IllegalArgumentException.class,
+                () -> EntrypointDefinition.builder("e", EntrypointMethod.POST, "/e").procedure(versioned).build());
+        assertEquals("an inline procedure takes no ifVersion", refused.getMessage());
+    }
+
+    @Test
+    public void test_an_entrypoint_definition_exposes_its_fields() {
+        final var inline = ProcedureDefinition.builder("p", "return 1;").build();
+        final var entrypoint = EntrypointDefinition.builder("e", EntrypointMethod.QUERY, "/search/{term}")
+                .procedure(inline).timeout(Duration.ofSeconds(5)).description("d").enabled(false).ifVersion(3).build();
+        assertEquals("e", entrypoint.name());
+        assertEquals(EntrypointMethod.QUERY, entrypoint.method());
+        assertEquals("/search/{term}", entrypoint.path());
+        assertTrue(entrypoint.procedureName().isEmpty());
+        assertEquals(inline, entrypoint.procedure().orElseThrow());
+        assertEquals(Duration.ofSeconds(5), entrypoint.timeout().orElseThrow());
+        assertEquals("d", entrypoint.description().orElseThrow());
+        assertEquals(false, entrypoint.enabled().orElseThrow());
+        assertEquals(OptionalLong.of(3), entrypoint.ifVersion());
+        final var byName = EntrypointDefinition.builder("e", EntrypointMethod.GET, "/e").procedureName("p").build();
+        assertEquals("p", byName.procedureName().orElseThrow());
+        assertTrue(byName.procedure().isEmpty());
+        assertTrue(byName.ifVersion().isEmpty());
+    }
+
+    @Test
     public void test_a_procedure_exposes_what_was_set() {
         final var procedure = ProcedureDefinition.builder("p", "return 1;").description("d").enabled(false).ifVersion(9)
                 .build();

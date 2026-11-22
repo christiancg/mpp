@@ -9,6 +9,9 @@ import pytest
 from mpp import (
     AsyncMppClient,
     AsyncProject,
+    ConflictError,
+    EntrypointDefinition,
+    EntrypointMethod,
     MppError,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -120,6 +123,39 @@ async def test_schedules_are_saved_listed_and_deleted(shop: AsyncProject) -> Non
     await schedules.delete("hourly")
     await schedules.delete("poll")
     assert await schedules.list() == []
+
+
+async def test_entrypoints_are_saved_listed_refused_and_deleted(shop: AsyncProject) -> None:
+    await shop.procedures().save(ProcedureDefinition("noop", "return 0;"))
+    entrypoints = shop.entrypoints()
+    ping = await entrypoints.save(EntrypointDefinition("ping", EntrypointMethod.GET, "/ping", procedure_name="noop"))
+    assert ping.version == 1
+    echo = await entrypoints.save(
+        EntrypointDefinition(
+            "echo",
+            EntrypointMethod.POST,
+            "/echo",
+            procedure=ProcedureDefinition(
+                "echo_body", 'import args from "args";\nreturn {status: 200, body: args.body};'
+            ),
+        )
+    )
+    assert echo.procedure_version == 1
+    assert "echo_body" in {procedure.name for procedure in await shop.procedures().list()}
+    listed = {entrypoint.name: entrypoint for entrypoint in await entrypoints.list()}
+    assert set(listed) == {"ping", "echo"}
+    assert (listed["ping"].method, listed["ping"].url, listed["ping"].procedure_name) == (
+        "GET",
+        "/script_it/ping",
+        "noop",
+    )
+    with pytest.raises(ConflictError) as refused:
+        await entrypoints.save(EntrypointDefinition("ping2", EntrypointMethod.GET, "/ping", procedure_name="noop"))
+    assert refused.value.raw_code == "409-19"
+    await entrypoints.delete("ping")
+    await entrypoints.delete("echo")
+    assert await entrypoints.list() == []
+    assert "echo_body" in {procedure.name for procedure in await shop.procedures().list()}
 
 
 async def test_a_long_script_is_listed_and_cancelled(client: AsyncMppClient, shop: AsyncProject) -> None:

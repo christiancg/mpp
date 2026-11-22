@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import {
     type Project,
+    EntrypointMethod,
     MppError,
     TriggerEvent,
     TriggerRunDecision,
@@ -120,6 +121,41 @@ describe("scripting", () => {
         await shop.schedules().delete("hourly");
         await shop.schedules().delete("poll");
         expect(await shop.schedules().list()).toEqual([]);
+    });
+
+    test("entrypoints are saved by name and inline, listed, refused on a route conflict and deleted", async () => {
+        await shop.procedures().save({ name: "noop", script: "return 0;" });
+        const entrypoints = shop.entrypoints();
+        const ping = await entrypoints.save({
+            name: "ping",
+            method: EntrypointMethod.GET,
+            path: "/ping",
+            procedureName: "noop",
+        });
+        expect(ping.version).toBe(1);
+        const echo = await entrypoints.save({
+            name: "echo",
+            method: EntrypointMethod.POST,
+            path: "/echo",
+            procedure: { name: "echo_proc", script: 'import args from "args";\nreturn { body: args.body };' },
+        });
+        expect(echo.procedureVersion).toBe(1);
+        expect((await shop.procedures().list()).some((procedure) => procedure.name === "echo_proc")).toBe(true);
+        const listed = await entrypoints.list();
+        expect(listed).toHaveLength(2);
+        expect(listed.find((entrypoint) => entrypoint.name === "ping")?.url).toBe("/script_it/ping");
+        const conflict = entrypoints.save({
+            name: "ping_again",
+            method: EntrypointMethod.GET,
+            path: "/ping",
+            procedureName: "noop",
+        });
+        await expect(conflict).rejects.toBeInstanceOf(MppError);
+        await expect(conflict).rejects.toMatchObject({ rawCode: "409-19" });
+        await entrypoints.delete("ping");
+        await entrypoints.delete("echo");
+        expect(await entrypoints.list()).toEqual([]);
+        expect((await shop.procedures().list()).some((procedure) => procedure.name === "echo_proc")).toBe(true);
     });
 
     test("a long script is listed and cancelled", async () => {

@@ -6,7 +6,13 @@ from mpp._internal.request_encoder import RequestEncoder, request
 from mpp._internal.values_codec import Json, JsonObject
 from mpp.admin_types import Permissions, TransactionDecision, TriggerRunDecision, TriggerRunStatus
 from mpp.query.types import PipelineStep
-from mpp.scripting_types import ProcedureDefinition, ScheduleDefinition, TriggerDefinition, TriggerEvent
+from mpp.scripting_types import (
+    EntrypointDefinition,
+    ProcedureDefinition,
+    ScheduleDefinition,
+    TriggerDefinition,
+    TriggerEvent,
+)
 
 
 def _optional(**fields: Json) -> JsonObject:
@@ -30,6 +36,24 @@ def _permissions(granted: Permissions) -> JsonObject:
 
 def _text(value: str | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _inline_procedure(procedure: ProcedureDefinition) -> JsonObject:
+    if procedure.if_version is not None:
+        raise ValueError("an inline procedure takes no if_version")
+    return {
+        "name": procedure.name,
+        "script": procedure.script,
+        **_optional(description=procedure.description, enabled=procedure.enabled),
+    }
+
+
+def _entrypoint_target(entrypoint: EntrypointDefinition) -> JsonObject:
+    if (entrypoint.procedure_name is None) == (entrypoint.procedure is None):
+        raise ValueError("an entrypoint takes exactly one of procedure_name and procedure")
+    if entrypoint.procedure is not None:
+        return {"procedure": _inline_procedure(entrypoint.procedure)}
+    return {"procedureName": str(entrypoint.procedure_name)}
 
 
 class ScriptRequestEncoder:
@@ -119,6 +143,28 @@ class ScriptRequestEncoder:
 
     def list_schedules(self, project: str, include_args: bool | None) -> JsonObject:
         return {**request("LIST_SCHEDULES", project), **_optional(includeArgs=include_args)}
+
+    def save_entrypoint(self, project: str, entrypoint: EntrypointDefinition) -> JsonObject:
+        target = _entrypoint_target(entrypoint)
+        return {
+            **request("SAVE_ENTRYPOINT", project),
+            "name": entrypoint.name,
+            "method": str(entrypoint.method),
+            "path": entrypoint.path,
+            **target,
+            **_optional(
+                timeoutMs=entrypoint.timeout_ms,
+                description=entrypoint.description,
+                enabled=entrypoint.enabled,
+                ifVersion=entrypoint.if_version,
+            ),
+        }
+
+    def delete_entrypoint(self, project: str, name: str) -> JsonObject:
+        return {**request("DELETE_ENTRYPOINT", project), "name": name}
+
+    def list_entrypoints(self, project: str) -> JsonObject:
+        return request("LIST_ENTRYPOINTS", project)
 
     def list_scripts(self) -> JsonObject:
         return request("LIST_SCRIPTS")

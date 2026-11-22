@@ -1,7 +1,7 @@
 import type { ScriptRun, ServerInfo, TransactionInfo, TriggerRun, UserInfo } from "../admin/types.js";
 import type { Document } from "../document.js";
 import type { ScriptResult } from "../results.js";
-import type { ProcedureInfo, ScheduleInfo, TriggerInfo } from "../scripting/definitions.js";
+import type { EntrypointInfo, ProcedureInfo, ScheduleInfo, TriggerInfo } from "../scripting/definitions.js";
 import { booleanOf, strings, textOf } from "./response-decoder.js";
 import { decodeValue, type JsonObject } from "./values-codec.js";
 
@@ -76,6 +76,23 @@ export function schedule(row: Document): ScheduleInfo {
         version: whole(row, "version"),
         definer: optionalText(row, "definer"),
         nextRunAt: optionalWhole(row, "nextRunAt"),
+        raw: row,
+    };
+}
+
+export function entrypoint(row: Document): EntrypointInfo {
+    return {
+        name: text(row, "name"),
+        method: text(row, "method"),
+        path: text(row, "path"),
+        url: text(row, "url"),
+        procedureName: text(row, "procedureName"),
+        timeoutMs: whole(row, "timeoutMs"),
+        enabled: flag(row, "enabled", true),
+        version: whole(row, "version"),
+        definer: optionalText(row, "definer"),
+        description: optionalText(row, "description"),
+        disabledReason: optionalText(row, "disabledReason"),
         raw: row,
     };
 }

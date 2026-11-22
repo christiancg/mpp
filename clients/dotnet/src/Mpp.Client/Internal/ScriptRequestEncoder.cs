@@ -92,6 +92,34 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
     public static JsonObject ListSchedules(string project, bool? includeArgs) =>
         Optional(Request("LIST_SCHEDULES", project), "includeArgs", includeArgs);
 
+    public static JsonObject SaveEntrypoint(string project, EntrypointDefinition entrypoint)
+    {
+        if (entrypoint.ProcedureName is null == entrypoint.Procedure is null)
+        {
+            throw new ArgumentException("an entrypoint takes exactly one of ProcedureName and Procedure", nameof(entrypoint));
+        }
+        if (entrypoint.Procedure?.IfVersion is not null)
+        {
+            throw new ArgumentException("an inline procedure takes no IfVersion", nameof(entrypoint));
+        }
+        var frame = Request("SAVE_ENTRYPOINT", project);
+        frame["name"] = entrypoint.Name;
+        frame["method"] = WireNames.Upper(entrypoint.Method.ToString());
+        frame["path"] = entrypoint.Path;
+        Optional(frame, "procedureName", entrypoint.ProcedureName);
+        Optional(frame, "procedure", InlineProcedure(entrypoint.Procedure));
+        Optional(frame, "timeoutMs", Millis(entrypoint.Timeout));
+        Optional(frame, "description", entrypoint.Description);
+        Optional(frame, "enabled", entrypoint.Enabled);
+        Optional(frame, "ifVersion", entrypoint.IfVersion);
+        return frame;
+    }
+
+    public static JsonObject DeleteEntrypoint(string project, string name) =>
+        With(Request("DELETE_ENTRYPOINT", project), "name", name);
+
+    public static JsonObject ListEntrypoints(string project) => Request("LIST_ENTRYPOINTS", project);
+
     public static JsonObject CancelScript(string runId) => With(Request("CANCEL_SCRIPT"), "runId", runId);
 
     public static JsonObject ListTriggerRuns(TriggerRunStatus? status) =>
@@ -146,6 +174,18 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
             encoded[key] = WireNames.Upper(permission.ToString());
         }
         return encoded;
+    }
+
+    private static JsonObject? InlineProcedure(ProcedureDefinition? procedure)
+    {
+        if (procedure is null)
+        {
+            return null;
+        }
+        var inline = new JsonObject { ["name"] = procedure.Name, ["script"] = procedure.Script };
+        Optional(inline, "description", procedure.Description);
+        Optional(inline, "enabled", procedure.Enabled);
+        return inline;
     }
 
     private static JsonObject Args(JsonObject frame, Document? args) => args is null ? frame : With(frame, "args", Document(args));

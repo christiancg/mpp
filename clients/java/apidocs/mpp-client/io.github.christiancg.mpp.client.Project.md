@@ -71,6 +71,10 @@ Runs a SimpleJS program scoped to this project.
 
 @return the project's scheduled procedures
 
+## entrypoints()
+
+@return the project's HTTP entrypoints
+
 ## listTriggers()
 
 @return every trigger of every collection in the project

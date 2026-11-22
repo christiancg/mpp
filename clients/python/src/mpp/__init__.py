@@ -7,6 +7,7 @@ from mpp._async.admin import (
 )
 from mpp._async.client import AsyncMppClient
 from mpp._async.collection import AsyncCollection
+from mpp._async.entrypoints import AsyncEntrypoints
 from mpp._async.indexes import AsyncIndexes
 from mpp._async.procedures import AsyncProcedures
 from mpp._async.project import AsyncProject
@@ -24,7 +25,7 @@ from mpp._sync.collection import Collection
 from mpp._sync.indexes import Indexes, Schema, Triggers
 from mpp._sync.project import Project
 from mpp._sync.query import Query
-from mpp._sync.scripting import Procedures, Schedules
+from mpp._sync.scripting import Entrypoints, Procedures, Schedules
 from mpp._sync.subscription import Subscription
 from mpp._sync.transaction import Transaction, TransactionCollection
 from mpp.admin_types import (
@@ -100,6 +101,10 @@ from mpp.query import (
 )
 from mpp.results import AnalyzeResult, BulkSaveResult, ReindexResult, SaveResult, ScriptResult
 from mpp.scripting_types import (
+    EntrypointDefinition,
+    EntrypointInfo,
+    EntrypointMethod,
+    EntrypointSaved,
     ProcedureDefinition,
     ProcedureInfo,
     ScheduleDefinition,
@@ -138,6 +143,7 @@ __all__ = [
     "AsyncAdmin",
     "AsyncCollection",
     "AsyncDistributedTransactions",
+    "AsyncEntrypoints",
     "AsyncIndexes",
     "AsyncMppClient",
     "AsyncProcedures",
@@ -170,6 +176,11 @@ __all__ = [
     "DistributedTransactions",
     "Document",
     "DocumentCodec",
+    "EntrypointDefinition",
+    "EntrypointInfo",
+    "EntrypointMethod",
+    "EntrypointSaved",
+    "Entrypoints",
     "ErrorCode",
     "ErrorCodeDetails",
     "FieldCondition",

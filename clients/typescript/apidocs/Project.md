@@ -56,6 +56,10 @@ Runs a SimpleJS script against the project.
 
 @returns the project's scheduled procedures
 
+## entrypoints
+
+@returns the project's HTTP entrypoints
+
 ## listTriggers
 
 @returns every trigger on every collection of the project

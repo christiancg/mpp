@@ -40,6 +40,20 @@ internal static class Descriptors
         row.GetDouble("nextRunAt") is { } next ? DateTimeOffset.FromUnixTimeMilliseconds((long)next) : null,
         row);
 
+    public static EntrypointInfo Entrypoint(Document row) => new(
+        Text(row, "name"),
+        Text(row, "method"),
+        Text(row, "path"),
+        Text(row, "url"),
+        Text(row, "procedureName"),
+        Whole(row, "timeoutMs"),
+        row.GetBoolean("enabled") ?? true,
+        Whole(row, "version"),
+        row.GetString("definer"),
+        row.GetString("description"),
+        row.GetString("disabledReason"),
+        row);
+
     public static UserInfo User(Document row) => new(
         Text(row, "_id"),
         row.GetBoolean("admin") ?? false,

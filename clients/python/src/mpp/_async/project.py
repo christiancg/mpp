@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, TypeVar, overload
 
 from mpp._async.collection import AsyncCollection
+from mpp._async.entrypoints import AsyncEntrypoints
 from mpp._async.procedures import AsyncProcedures
 from mpp._async.schedules import AsyncSchedules
 from mpp._internal.client_context import ClientContext
@@ -82,6 +83,9 @@ class AsyncProject:
 
     def schedules(self) -> AsyncSchedules:
         return AsyncSchedules(self._context, self._name)
+
+    def entrypoints(self) -> AsyncEntrypoints:
+        return AsyncEntrypoints(self._context, self._name)
 
     async def list_triggers(self) -> list[TriggerInfo]:
         reply = await self._context.channel.send("LIST_TRIGGERS", self._context.scripts.list_triggers(self._name, None))

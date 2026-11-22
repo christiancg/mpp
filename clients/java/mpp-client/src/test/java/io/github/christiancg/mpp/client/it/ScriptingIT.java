@@ -9,8 +9,13 @@ import io.github.christiancg.mpp.client.Document;
 import io.github.christiancg.mpp.client.Project;
 import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
+import io.github.christiancg.mpp.client.error.ConflictException;
 import io.github.christiancg.mpp.client.error.MppException;
+import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
+import io.github.christiancg.mpp.client.scripting.EntrypointInfo;
+import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
+import io.github.christiancg.mpp.client.scripting.ProcedureInfo;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerEvent;
@@ -127,6 +132,32 @@ public class ScriptingIT extends ServerIT {
         shop.schedules().delete("hourly");
         shop.schedules().delete("poll");
         assertTrue(shop.schedules().list().isEmpty());
+    }
+
+    @Test
+    public void test_entrypoints_are_saved_listed_refused_and_deleted() {
+        shop.procedures().save(ProcedureDefinition.builder("pong", "return 0;").build());
+        final var byName = shop.entrypoints().save(
+                EntrypointDefinition.builder("ping", EntrypointMethod.GET, "/ping").procedureName("pong").build());
+        assertEquals(1, byName.version());
+        final var inline = shop.entrypoints()
+                .save(EntrypointDefinition.builder("echo", EntrypointMethod.POST, "/echo")
+                        .procedure(ProcedureDefinition
+                                .builder("echo_proc", "import args from \"args\";\nreturn {body: args.body};").build())
+                        .build());
+        assertEquals(1, inline.procedureVersion());
+        assertTrue(shop.procedures().list().stream().map(ProcedureInfo::name).anyMatch("echo_proc"::equals));
+        final var listed = shop.entrypoints().list();
+        assertEquals(2, listed.size());
+        assertEquals("/script_it/ping", listed.stream().filter(entrypoint -> entrypoint.name().equals("ping"))
+                .map(EntrypointInfo::url).findFirst().orElseThrow());
+        final var clash = assertThrows(ConflictException.class, () -> shop.entrypoints().save(EntrypointDefinition
+                .builder("ping_again", EntrypointMethod.GET, "/ping").procedureName("pong").build()));
+        assertEquals("409-19", clash.rawCode().orElseThrow());
+        shop.entrypoints().delete("ping");
+        shop.entrypoints().delete("echo");
+        assertTrue(shop.entrypoints().list().isEmpty());
+        assertTrue(shop.procedures().list().stream().map(ProcedureInfo::name).anyMatch("echo_proc"::equals));
     }
 
     @Test

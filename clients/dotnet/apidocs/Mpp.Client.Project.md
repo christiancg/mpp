@@ -30,6 +30,11 @@ Drops the project with every collection, index, schema, procedure, trigger and s
 @param ct cancels the wait; a request already sent closes its connection, since its outcome is unknown
 @exception Mpp.Client.Errors.NotFoundException with code `404-4` when it does not exist
 
+## Entrypoints()
+Returns the project's HTTP entrypoints.
+
+@returns the entrypoints facade
+
 ## ListCollectionsAsync(CancellationToken)
 Lists the project's collections.
 

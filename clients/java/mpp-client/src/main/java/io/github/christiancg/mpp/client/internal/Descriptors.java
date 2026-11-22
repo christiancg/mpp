@@ -6,6 +6,7 @@ import io.github.christiancg.mpp.client.admin.ServerInfo;
 import io.github.christiancg.mpp.client.admin.TransactionInfo;
 import io.github.christiancg.mpp.client.admin.TriggerRun;
 import io.github.christiancg.mpp.client.admin.UserInfo;
+import io.github.christiancg.mpp.client.scripting.EntrypointInfo;
 import io.github.christiancg.mpp.client.scripting.ProcedureInfo;
 import io.github.christiancg.mpp.client.scripting.ScheduleInfo;
 import io.github.christiancg.mpp.client.scripting.TriggerInfo;
@@ -35,6 +36,12 @@ public final class Descriptors {
         return new ScheduleInfo(text(row, NAME), text(row, "procedureName"), row.getString("cron"),
                 optionalWhole(row, "intervalMs"), flag(row, "enabled", true), whole(row, "version"),
                 row.getString("definer"), optionalWhole(row, "nextRunAt"), row);
+    }
+
+    public static EntrypointInfo entrypoint(Document row) {
+        return new EntrypointInfo(text(row, NAME), text(row, "method"), text(row, "path"), text(row, "url"),
+                text(row, "procedureName"), whole(row, "timeoutMs"), flag(row, "enabled", true), whole(row, "version"),
+                row.getString("definer"), row.getString("description"), row.getString("disabledReason"), row);
     }
 
     public static UserInfo user(Document row) {
