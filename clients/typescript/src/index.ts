@@ -78,13 +78,18 @@ export {
     type TriggerRun,
     type UserInfo,
 } from "./admin/types.js";
+export { Entrypoints } from "./scripting/entrypoints.js";
 export { Procedures } from "./scripting/procedures.js";
 export { Schedules } from "./scripting/schedules.js";
 export { Triggers } from "./scripting/triggers.js";
 export {
+    EntrypointMethod,
     TriggerEvent,
     TriggerMode,
     TriggerTiming,
+    type EntrypointDefinition,
+    type EntrypointInfo,
+    type EntrypointSaved,
     type ProcedureDefinition,
     type ProcedureInfo,
     type ScheduleDefinition,

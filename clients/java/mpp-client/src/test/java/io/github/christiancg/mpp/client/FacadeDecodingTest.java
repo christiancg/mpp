@@ -7,8 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
 import io.github.christiancg.mpp.client.error.ConflictException;
+import io.github.christiancg.mpp.client.internal.Descriptors;
 import io.github.christiancg.mpp.client.protocol.ErrorCode;
 import io.github.christiancg.mpp.client.query.Filters;
+import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
+import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -131,6 +134,42 @@ public class FacadeDecodingTest {
         assertTrue(tested.document().isPresent());
         assertEquals(3, recorder.shop.schedules().save(ScheduleDefinition.builder("s", "p").cron("* * * * *").build()));
         assertEquals("nightly", recorder.shop.schedules().list().get(0).name());
+    }
+
+    @Test
+    public void test_entrypoint_replies_decode() {
+        final var saved = recorder.shop.entrypoints()
+                .save(EntrypointDefinition.builder("e", EntrypointMethod.GET, "/e").procedureName("p").build());
+        assertEquals(1, saved.version());
+        assertEquals(3, saved.procedureVersion());
+        final var entrypoint = recorder.shop.entrypoints().list().get(0);
+        assertEquals("getOrder", entrypoint.name());
+        assertEquals("GET", entrypoint.method());
+        assertEquals("/orders/{id}", entrypoint.path());
+        assertEquals("/shop/orders/{id}", entrypoint.url());
+        assertEquals("", entrypoint.procedureName());
+        assertTrue(entrypoint.enabled());
+        assertEquals(0, entrypoint.timeoutMs());
+        assertEquals(0, entrypoint.version());
+        assertTrue(entrypoint.definer().isEmpty());
+        assertTrue(entrypoint.description().isEmpty());
+        assertTrue(entrypoint.disabledReason().isEmpty());
+    }
+
+    @Test
+    public void test_an_entrypoint_row_decodes_every_field() {
+        final var row = Document.of("name", "e", "method", "POST", "path", "/e", "url", "/shop/e", "procedureName", "p",
+                "timeoutMs", 5000, "enabled", false, "version", 3, "definer", "alice", "description", "d",
+                "disabledReason", "definer deleted");
+        final var entrypoint = Descriptors.entrypoint(row);
+        assertEquals("p", entrypoint.procedureName());
+        assertEquals(5000, entrypoint.timeoutMs());
+        assertFalse(entrypoint.enabled());
+        assertEquals(3, entrypoint.version());
+        assertEquals("alice", entrypoint.definer().orElseThrow());
+        assertEquals("d", entrypoint.description().orElseThrow());
+        assertEquals("definer deleted", entrypoint.disabledReason().orElseThrow());
+        assertEquals(row, entrypoint.raw());
     }
 
     @Test

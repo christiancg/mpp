@@ -45,6 +45,9 @@ public final class ProcedureOperationHelper {
     private ProcedureOperationHelper() {
     }
 
+    public record SaveProcedureOutcome(OperationResponse refusal, long version) {
+    }
+
     public static OperationResponse executeSave(SaveProcedureRequest request, String actingUser)
             throws IOException, InterruptedException {
         if (!configuration.isScriptsEnabled()) {
@@ -54,9 +57,18 @@ public final class ProcedureOperationHelper {
         if (cache.getAdminProjectEntry(projectName) == null) {
             return projectNotFound(projectName);
         }
+        final var refusal = refusalBeforeSave(OperationType.SAVE_PROCEDURE, request);
+        if (refusal != null) {
+            return refusal;
+        }
+        return OperationLocks.withProjectShared(projectName, OperationType.SAVE_PROCEDURE,
+                ErrorCode.ERROR_SAVING_PROCEDURE, () -> saveUnderProjectBarrier(request, actingUser));
+    }
+
+    static OperationResponse refusalBeforeSave(OperationType type, SaveProcedureRequest request) {
         final var source = request.getScript();
         if (source.getBytes(StandardCharsets.UTF_8).length > configuration.getScriptMaxSourceBytes()) {
-            return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.SCRIPT_TOO_LARGE);
+            return new OperationResponse(type, ErrorCode.SCRIPT_TOO_LARGE);
         }
         final CompiledScript compiled;
         try {
@@ -64,22 +76,21 @@ public final class ProcedureOperationHelper {
         } catch (SimpleJsRuntimeException | UnexpectedTokenException | UnexpectedEndOfInputException
                 | UnexpectedCharacterException | UnterminatedStringException | UnterminatedTemplateException
                 | UnterminatedCommentException | UnterminatedRegexException parseFailure) {
-            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+            return new OperationResponse(type,
                     ErrorCode.INVALID_PROCEDURE.getDefaultMessage() + ": " + parseFailure.getMessage(),
                     ErrorCode.INVALID_PROCEDURE);
         } catch (StackOverflowError tooDeep) {
-            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+            return new OperationResponse(type,
                     ErrorCode.INVALID_PROCEDURE.getDefaultMessage() + ": " + CompiledScriptCache.NESTING_TOO_DEEP,
                     ErrorCode.INVALID_PROCEDURE);
         }
-        final var missingImport = firstUnresolvableImport(request, projectName, compiled);
+        final var missingImport = firstUnresolvableImport(request, request.getProjectName(), compiled);
         if (missingImport != null) {
-            return new OperationResponse(OperationType.SAVE_PROCEDURE,
+            return new OperationResponse(type,
                     ErrorCode.PROCEDURE_IMPORT_NOT_FOUND.getDefaultMessage() + ": '" + missingImport + "'",
                     ErrorCode.PROCEDURE_IMPORT_NOT_FOUND);
         }
-        return OperationLocks.withProjectShared(projectName, OperationType.SAVE_PROCEDURE,
-                ErrorCode.ERROR_SAVING_PROCEDURE, () -> saveUnderProjectBarrier(request, actingUser));
+        return null;
     }
 
     private static OperationResponse saveUnderProjectBarrier(SaveProcedureRequest request, String actingUser)
@@ -90,34 +101,46 @@ public final class ProcedureOperationHelper {
         }
         locks.lock(projectName, Globals.PROCEDURES_FOLDER);
         try {
-            final var refusal = ProcedureBindingGuard.refusal(OperationType.SAVE_PROCEDURE, projectName,
-                    request.getName(), actingUser);
-            if (refusal != null) {
-                return refusal;
-            }
-            final var existing = cache.getProcedure(projectName, request.getName());
-            if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
-                return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.PROCEDURE_VERSION_CONFLICT);
-            }
-            final var procedureNames = fs.metadataFiles().listProcedureNames(projectName);
-            final var maxProcedures = configuration.intValue(ConfigKey.MAX_PROCEDURES_PER_PROJECT);
-            if (existing == null && procedureNames.size() >= maxProcedures) {
-                return new OperationResponse(OperationType.SAVE_PROCEDURE,
-                        ErrorCode.TOO_MANY_PROCEDURES.getDefaultMessage() + " (" + maxProcedures + ")",
-                        ErrorCode.TOO_MANY_PROCEDURES);
-            }
-            final var colliding = OnDiskNameRegistry.collidingDefinition(procedureNames, request.getName());
-            if (colliding != null) {
-                return new OperationResponse(OperationType.SAVE_PROCEDURE, ErrorCode.NAME_COLLIDES_ON_DISK, colliding);
-            }
-            final var definition = newDefinition(request, existing, actingUser);
-            StoredDefinitions.writeProcedure(projectName, definition.getName(), definition.toJsonObject());
-            cache.putProcedure(projectName, definition);
-            compiledProcedures.invalidateProcedure(projectName, definition.getName());
-            return new SaveProcedureResponse("Procedure saved successfully", definition.getVersion());
+            final var outcome = saveHoldingLock(OperationType.SAVE_PROCEDURE, request, actingUser);
+            return outcome.refusal() != null
+                    ? outcome.refusal()
+                    : new SaveProcedureResponse("Procedure saved successfully", outcome.version());
         } finally {
             locks.release(projectName, Globals.PROCEDURES_FOLDER);
         }
+    }
+
+    static SaveProcedureOutcome saveHoldingLock(OperationType type, SaveProcedureRequest request, String actingUser)
+            throws IOException {
+        final var projectName = request.getProjectName();
+        final var refusal = ProcedureBindingGuard.refusal(type, projectName, request.getName(), actingUser);
+        if (refusal != null) {
+            return refused(refusal);
+        }
+        final var existing = cache.getProcedure(projectName, request.getName());
+        if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
+            return refused(new OperationResponse(type, ErrorCode.PROCEDURE_VERSION_CONFLICT));
+        }
+        final var procedureNames = fs.metadataFiles().listProcedureNames(projectName);
+        final var maxProcedures = configuration.intValue(ConfigKey.MAX_PROCEDURES_PER_PROJECT);
+        if (existing == null && procedureNames.size() >= maxProcedures) {
+            return refused(new OperationResponse(type,
+                    ErrorCode.TOO_MANY_PROCEDURES.getDefaultMessage() + " (" + maxProcedures + ")",
+                    ErrorCode.TOO_MANY_PROCEDURES));
+        }
+        final var colliding = OnDiskNameRegistry.collidingDefinition(procedureNames, request.getName());
+        if (colliding != null) {
+            return refused(new OperationResponse(type, ErrorCode.NAME_COLLIDES_ON_DISK, colliding));
+        }
+        final var definition = newDefinition(request, existing, actingUser);
+        StoredDefinitions.writeProcedure(projectName, definition.getName(), definition.toJsonObject());
+        cache.putProcedure(projectName, definition);
+        compiledProcedures.invalidateProcedure(projectName, definition.getName());
+        return new SaveProcedureOutcome(null, definition.getVersion());
+    }
+
+    private static SaveProcedureOutcome refused(OperationResponse refusal) {
+        return new SaveProcedureOutcome(refusal, 0L);
     }
 
     private static OperationResponse projectNotFound(String projectName) {
@@ -177,6 +200,12 @@ public final class ProcedureOperationHelper {
                 return new OperationResponse(OperationType.DELETE_PROCEDURE,
                         "Procedure '" + request.getName() + "' is still referenced by schedule '" + scheduled + "'",
                         ErrorCode.INVALID_SCHEDULE);
+            }
+            final var exposed = EntrypointOperationHelper.entrypointReferencing(projectName, request.getName());
+            if (exposed != null) {
+                return new OperationResponse(OperationType.DELETE_PROCEDURE,
+                        "Procedure '" + request.getName() + "' is still referenced by entrypoint '" + exposed + "'",
+                        ErrorCode.INVALID_ENTRYPOINT);
             }
             if (fs.metadataFiles().deleteProcedure(projectName, request.getName())) {
                 AdminStamp.tombstone(AdminRecordKey.procedure(projectName, request.getName()));

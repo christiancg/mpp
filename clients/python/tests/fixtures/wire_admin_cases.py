@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from mpp import (
     DataPermission,
+    EntrypointDefinition,
+    EntrypointMethod,
     GlobalPermission,
     Permissions,
     ProcedureDefinition,
@@ -123,6 +125,36 @@ def _triggers_and_schedules(cases: dict[str, FixtureCall]) -> None:
     cases["scripting.list_schedules_default"] = lambda r: r.shop.schedules().list()
 
 
+def _entrypoints(cases: dict[str, FixtureCall]) -> None:
+    cases["scripting.save_entrypoint"] = lambda r: r.shop.entrypoints().save(
+        EntrypointDefinition(
+            "getOrder",
+            EntrypointMethod.GET,
+            "/orders/{id}",
+            procedure_name="getOrder",
+            timeout_ms=5000,
+            description="Order by id",
+            enabled=True,
+            if_version=2,
+        )
+    )
+    cases["scripting.save_entrypoint_inline"] = lambda r: r.shop.entrypoints().save(
+        EntrypointDefinition(
+            "createOrder",
+            EntrypointMethod.POST,
+            "/orders",
+            procedure=ProcedureDefinition(
+                "createOrder",
+                'import args from "args";\nreturn {status: 201, body: args.body};',
+                description="Creates an order",
+                enabled=True,
+            ),
+        )
+    )
+    cases["scripting.delete_entrypoint"] = lambda r: r.shop.entrypoints().delete("getOrder")
+    cases["scripting.list_entrypoints"] = lambda r: r.shop.entrypoints().list()
+
+
 def _admin_scripts(cases: dict[str, FixtureCall]) -> None:
     cases["scripting.list_scripts"] = lambda r: r.admin.scripts().list()
     cases["scripting.cancel_script"] = lambda r: r.admin.scripts().cancel("3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83")
@@ -166,5 +198,6 @@ def add_admin_cases(cases: dict[str, FixtureCall]) -> None:
     _listen_and_transactions(cases)
     _procedures(cases)
     _triggers_and_schedules(cases)
+    _entrypoints(cases)
     _admin_scripts(cases)
     _users(cases)

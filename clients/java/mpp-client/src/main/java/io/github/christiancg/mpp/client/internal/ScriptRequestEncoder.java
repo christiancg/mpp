@@ -6,6 +6,7 @@ import io.github.christiancg.mpp.client.admin.TransactionDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
 import io.github.christiancg.mpp.client.protocol.Operation;
+import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -24,6 +25,8 @@ public final class ScriptRequestEncoder {
     private static final String IF_VERSION = "ifVersion";
     private static final String DESCRIPTION = "description";
     private static final String PROCEDURE = "procedureName";
+    private static final String SCRIPT = "script";
+    private static final String TIMEOUT = "timeoutMs";
 
     private final PipelineEncoder pipeline;
 
@@ -32,7 +35,7 @@ public final class ScriptRequestEncoder {
     }
 
     public ObjectNode runScript(String project, String script) {
-        return RequestEncoder.of(Operation.RUN_SCRIPT, project).put("script", script);
+        return RequestEncoder.of(Operation.RUN_SCRIPT, project).put(SCRIPT, script);
     }
 
     public ObjectNode runScript(String project, String script, Document args) {
@@ -40,8 +43,8 @@ public final class ScriptRequestEncoder {
     }
 
     public ObjectNode saveProcedure(String project, ProcedureDefinition procedure) {
-        final var request = RequestEncoder.of(Operation.SAVE_PROCEDURE, project).put(NAME, procedure.name())
-                .put("script", procedure.script());
+        final var request = RequestEncoder.of(Operation.SAVE_PROCEDURE, project).put(NAME, procedure.name()).put(SCRIPT,
+                procedure.script());
         procedure.description().ifPresent(description -> request.put(DESCRIPTION, description));
         procedure.enabled().ifPresent(enabled -> request.put(ENABLED, enabled));
         procedure.ifVersion().ifPresent(version -> request.put(IF_VERSION, version));
@@ -105,7 +108,7 @@ public final class ScriptRequestEncoder {
         schedule.cron().ifPresent(cron -> request.put("cron", cron));
         schedule.interval().ifPresent(interval -> request.put("intervalMs", interval.toMillis()));
         schedule.args().ifPresent(args -> request.set(ARGS, Documents.node(args)));
-        schedule.timeout().ifPresent(timeout -> request.put("timeoutMs", timeout.toMillis()));
+        schedule.timeout().ifPresent(timeout -> request.put(TIMEOUT, timeout.toMillis()));
         schedule.description().ifPresent(description -> request.put(DESCRIPTION, description));
         schedule.enabled().ifPresent(enabled -> request.put(ENABLED, enabled));
         schedule.ifVersion().ifPresent(version -> request.put(IF_VERSION, version));
@@ -122,6 +125,26 @@ public final class ScriptRequestEncoder {
 
     public ObjectNode listSchedules(String project, boolean includeArgs) {
         return listSchedules(project).put("includeArgs", includeArgs);
+    }
+
+    public ObjectNode saveEntrypoint(String project, EntrypointDefinition entrypoint) {
+        final var request = RequestEncoder.of(Operation.SAVE_ENTRYPOINT, project).put(NAME, entrypoint.name())
+                .put("method", entrypoint.method().name()).put("path", entrypoint.path());
+        entrypoint.procedureName().ifPresent(procedureName -> request.put(PROCEDURE, procedureName));
+        entrypoint.procedure().ifPresent(procedure -> request.set("procedure", inlineProcedure(procedure)));
+        entrypoint.timeout().ifPresent(timeout -> request.put(TIMEOUT, timeout.toMillis()));
+        entrypoint.description().ifPresent(description -> request.put(DESCRIPTION, description));
+        entrypoint.enabled().ifPresent(enabled -> request.put(ENABLED, enabled));
+        entrypoint.ifVersion().ifPresent(version -> request.put(IF_VERSION, version));
+        return request;
+    }
+
+    public ObjectNode deleteEntrypoint(String project, String name) {
+        return RequestEncoder.of(Operation.DELETE_ENTRYPOINT, project).put(NAME, name);
+    }
+
+    public ObjectNode listEntrypoints(String project) {
+        return RequestEncoder.of(Operation.LIST_ENTRYPOINTS, project);
     }
 
     public ObjectNode listScripts() {
@@ -197,6 +220,14 @@ public final class ScriptRequestEncoder {
 
     private static void names(ObjectNode target, Map<String, ? extends Enum<?>> grants) {
         grants.forEach((key, level) -> target.put(key, level.name()));
+    }
+
+    private static ObjectNode inlineProcedure(ProcedureDefinition procedure) {
+        final var inline = RequestEncoder.NODES.objectNode().put(NAME, procedure.name()).put(SCRIPT,
+                procedure.script());
+        procedure.description().ifPresent(description -> inline.put(DESCRIPTION, description));
+        procedure.enabled().ifPresent(enabled -> inline.put(ENABLED, enabled));
+        return inline;
     }
 
     private static ObjectNode withArgs(ObjectNode request, Document args) {

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.function.Predicate;
 import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.data.EntrypointDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminProjectEntry;
@@ -39,7 +40,8 @@ public final class DefinerRevocation {
 
     private static boolean revoke(String projectName, Predicate<String> definerInScope, RestampedRecords restamped) {
         return revokeTriggers(projectName, definerInScope, restamped)
-                && revokeSchedules(projectName, definerInScope, restamped);
+                && revokeSchedules(projectName, definerInScope, restamped)
+                && revokeEntrypoints(projectName, definerInScope, restamped);
     }
 
     private static boolean revokeTriggers(String projectName, Predicate<String> definerInScope,
@@ -93,6 +95,36 @@ public final class DefinerRevocation {
             }
             if (outcome == Outcome.DISABLED) {
                 restamped.add(AdminRecordKey.schedule(projectName, schedule.getName()));
+            }
+        }
+        return true;
+    }
+
+    private static boolean revokeEntrypoints(String projectName, Predicate<String> definerInScope,
+            RestampedRecords restamped) {
+        final List<EntrypointDefinition> entrypoints;
+        try {
+            entrypoints = EntrypointOperationHelper.entrypointsIn(projectName);
+        } catch (IOException e) {
+            logger.error("Could not read the entrypoints of project '" + projectName + "' to re-check their definers;"
+                    + " an entrypoint whose definer lost its rights is disabled when it is next called", e);
+            return true;
+        }
+        for (final var entrypoint : entrypoints) {
+            if (outOfScope(entrypoint.isEnabled(), entrypoint.getDefiner(), definerInScope)) {
+                continue;
+            }
+            final var refusal = DefinerAuthority.refusal(entrypoint.getDefiner(), projectName, null);
+            if (refusal == null) {
+                continue;
+            }
+            final var outcome = disable("Entrypoint '" + entrypoint.getName() + "' in " + projectName, refusal,
+                    () -> EntrypointOperationHelper.disable(projectName, entrypoint, refusal));
+            if (outcome == Outcome.INTERRUPTED) {
+                return false;
+            }
+            if (outcome == Outcome.DISABLED) {
+                restamped.add(AdminRecordKey.entrypoint(projectName, entrypoint.getName()));
             }
         }
         return true;

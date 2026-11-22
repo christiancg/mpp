@@ -23,6 +23,16 @@ class TriggerMode(StrEnum):
     BATCH = "batch"
 
 
+class EntrypointMethod(StrEnum):
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    PATCH = "PATCH"
+    DELETE = "DELETE"
+    OPTIONS = "OPTIONS"
+    QUERY = "QUERY"
+
+
 @dataclass(frozen=True, slots=True)
 class ProcedureDefinition:
     name: str
@@ -51,6 +61,19 @@ class ScheduleDefinition:
     cron: str | None = None
     interval_ms: int | None = None
     args: Document | None = None
+    timeout_ms: int | None = None
+    description: str | None = None
+    enabled: bool | None = None
+    if_version: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EntrypointDefinition:
+    name: str
+    method: EntrypointMethod
+    path: str
+    procedure_name: str | None = None
+    procedure: ProcedureDefinition | None = None
     timeout_ms: int | None = None
     description: str | None = None
     enabled: bool | None = None
@@ -92,6 +115,28 @@ class ScheduleInfo:
     definer: str | None
     next_run_at: float | None
     raw: Document
+
+
+@dataclass(frozen=True, slots=True)
+class EntrypointInfo:
+    name: str
+    method: str
+    path: str
+    url: str
+    procedure_name: str
+    timeout_ms: float
+    enabled: bool
+    version: float
+    definer: str | None
+    description: str | None
+    disabled_reason: str | None
+    raw: Document
+
+
+@dataclass(frozen=True, slots=True)
+class EntrypointSaved:
+    version: float
+    procedure_version: float
 
 
 @dataclass(frozen=True, slots=True)

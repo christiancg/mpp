@@ -9,6 +9,17 @@ export type TriggerTiming = (typeof TriggerTiming)[keyof typeof TriggerTiming];
 export const TriggerMode = { DOCUMENT: "document", BATCH: "batch" } as const;
 export type TriggerMode = (typeof TriggerMode)[keyof typeof TriggerMode];
 
+export const EntrypointMethod = {
+    GET: "GET",
+    POST: "POST",
+    PUT: "PUT",
+    PATCH: "PATCH",
+    DELETE: "DELETE",
+    OPTIONS: "OPTIONS",
+    QUERY: "QUERY",
+} as const;
+export type EntrypointMethod = (typeof EntrypointMethod)[keyof typeof EntrypointMethod];
+
 export interface ProcedureDefinition {
     readonly name: string;
     readonly script: string;
@@ -34,6 +45,18 @@ export interface ScheduleDefinition {
     readonly cron?: string;
     readonly intervalMs?: number;
     readonly args?: Document;
+    readonly timeoutMs?: number;
+    readonly description?: string;
+    readonly enabled?: boolean;
+    readonly ifVersion?: number;
+}
+
+export interface EntrypointDefinition {
+    readonly name: string;
+    readonly method: EntrypointMethod;
+    readonly path: string;
+    readonly procedureName?: string;
+    readonly procedure?: ProcedureDefinition;
     readonly timeoutMs?: number;
     readonly description?: string;
     readonly enabled?: boolean;
@@ -72,6 +95,26 @@ export interface ScheduleInfo {
     readonly definer: string | undefined;
     readonly nextRunAt: number | undefined;
     readonly raw: Document;
+}
+
+export interface EntrypointInfo {
+    readonly name: string;
+    readonly method: string;
+    readonly path: string;
+    readonly url: string;
+    readonly procedureName: string;
+    readonly timeoutMs: number;
+    readonly enabled: boolean;
+    readonly version: number;
+    readonly definer: string | undefined;
+    readonly description: string | undefined;
+    readonly disabledReason: string | undefined;
+    readonly raw: Document;
+}
+
+export interface EntrypointSaved {
+    readonly version: number;
+    readonly procedureVersion: number;
 }
 
 export interface TriggerSaved {

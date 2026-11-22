@@ -10,6 +10,8 @@ from mpp import (
     AsyncProject,
     ConflictError,
     Document,
+    EntrypointDefinition,
+    EntrypointMethod,
     NotFoundError,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -159,7 +161,13 @@ async def test_index_and_schema_replies() -> None:
 async def test_scripting_replies() -> None:
     shop = _shop(
         _replying(
-            "ok.save_procedure", "ok.list_procedures", "ok.call_procedure", "ok.save_schedule", "ok.list_schedules"
+            "ok.save_procedure",
+            "ok.list_procedures",
+            "ok.call_procedure",
+            "ok.save_schedule",
+            "ok.list_schedules",
+            "ok.save_entrypoint",
+            "ok.list_entrypoints",
         )
     )
     assert await shop.procedures().save(ProcedureDefinition("recalc", "return 1;")) == 4
@@ -169,6 +177,44 @@ async def test_scripting_replies() -> None:
     assert await shop.schedules().save(ScheduleDefinition("nightly", "rollup", interval_ms=1000)) == 3
     schedules = await shop.schedules().list()
     assert (schedules[0].name, schedules[0].cron, schedules[0].enabled) == ("nightly", None, True)
+    saved = await shop.entrypoints().save(EntrypointDefinition("getOrder", EntrypointMethod.GET, "/o", "getOrder"))
+    assert (saved.version, saved.procedure_version) == (1, 3)
+    entrypoints = await shop.entrypoints().list()
+    assert (entrypoints[0].name, entrypoints[0].method, entrypoints[0].path, entrypoints[0].url) == (
+        "getOrder",
+        "GET",
+        "/orders/{id}",
+        "/shop/orders/{id}",
+    )
+    assert (entrypoints[0].enabled, entrypoints[0].timeout_ms, entrypoints[0].version) == (True, 0, 0)
+    assert (entrypoints[0].procedure_name, entrypoints[0].definer, entrypoints[0].disabled_reason) == ("", None, None)
+    assert entrypoints[0].description is None
+    await shop.entrypoints().delete("getOrder")
+
+
+async def test_entrypoint_replies_carry_every_field() -> None:
+    row = {
+        "name": "ping",
+        "method": "POST",
+        "path": "/ping",
+        "url": "/shop/ping",
+        "procedureName": "noop",
+        "timeoutMs": 5000,
+        "enabled": False,
+        "version": 2,
+        "definer": "alice",
+        "description": "health",
+        "disabledReason": "procedure missing",
+    }
+    channel = RecordingChannel()
+    channel.replies = lambda request: ok(request, entrypoints=[row])
+    entrypoints = _shop(channel).entrypoints()
+    saved = await entrypoints.save(EntrypointDefinition("ping", EntrypointMethod.POST, "/ping", "noop"))
+    assert (saved.version, saved.procedure_version) == (0, 0)
+    listed = (await entrypoints.list())[0]
+    assert (listed.procedure_name, listed.timeout_ms, listed.enabled, listed.version) == ("noop", 5000, False, 2)
+    assert (listed.definer, listed.description, listed.disabled_reason) == ("alice", "health", "procedure missing")
+    assert listed.raw == row
 
 
 async def test_trigger_replies() -> None:
@@ -191,6 +237,19 @@ async def test_definitions_are_validated() -> None:
         await shop.schedules().save(ScheduleDefinition("a", "b"))
     with pytest.raises(ValueError, match="exactly one"):
         await shop.schedules().save(ScheduleDefinition("a", "b", cron="* * * * *", interval_ms=5))
+
+
+async def test_entrypoint_definitions_are_validated() -> None:
+    entrypoints = _shop(RecordingChannel()).entrypoints()
+    inline = ProcedureDefinition("a", "return 1;")
+    with pytest.raises(ValueError, match="exactly one of procedure_name and procedure"):
+        await entrypoints.save(EntrypointDefinition("a", EntrypointMethod.GET, "/a"))
+    with pytest.raises(ValueError, match="exactly one of procedure_name and procedure"):
+        await entrypoints.save(EntrypointDefinition("a", EntrypointMethod.GET, "/a", "b", inline))
+    with pytest.raises(ValueError, match="an inline procedure takes no if_version"):
+        await entrypoints.save(
+            EntrypointDefinition("a", EntrypointMethod.GET, "/a", procedure=ProcedureDefinition("a", "", if_version=1))
+        )
 
 
 async def test_admin_replies() -> None:

@@ -81,4 +81,18 @@ public record ResourceLimits(long instructionBudget, long wallClockMillis, int m
     public static ResourceLimits unlimited() {
         return new ResourceLimits(-1, -1, -1, true);
     }
+
+    public ResourceLimits withWallClockMillis(long millis) {
+        return new ResourceLimits(instructionBudget, millis, maxDepth, reportUnhandledRejections, fetchEnabled,
+                fetchHostAllowlist, maxResponseBytes, fetchTimeoutMillis, strictScriptGoal, textImportEnabled,
+                maxModuleDepth, maxLogLines, maxLogLineChars, memoryBudget, maxResultBytes, cursorBatchSize,
+                cursorMaxBatchSize, fetchMaxConcurrent, maxArrayLength);
+    }
+
+    public ResourceLimits withMaxResultBytes(long bytes) {
+        return new ResourceLimits(instructionBudget, wallClockMillis, maxDepth, reportUnhandledRejections, fetchEnabled,
+                fetchHostAllowlist, maxResponseBytes, fetchTimeoutMillis, strictScriptGoal, textImportEnabled,
+                maxModuleDepth, maxLogLines, maxLogLineChars, memoryBudget, bytes, cursorBatchSize, cursorMaxBatchSize,
+                fetchMaxConcurrent, maxArrayLength);
+    }
 }

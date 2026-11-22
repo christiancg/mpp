@@ -5,7 +5,7 @@ from mpp._internal.values_codec import JsonObject, decode_value
 from mpp.admin_types import ScriptRun, ServerInfo, TransactionInfo, TriggerRun, UserInfo
 from mpp.document import Document
 from mpp.results import ScriptResult
-from mpp.scripting_types import ProcedureInfo, ScheduleInfo, TriggerInfo
+from mpp.scripting_types import EntrypointInfo, ProcedureInfo, ScheduleInfo, TriggerInfo
 
 
 def _optional_text(row: Document, field: str) -> str | None:
@@ -80,6 +80,23 @@ def schedule(row: Document) -> ScheduleInfo:
         version=_number(row, "version"),
         definer=_optional_text(row, "definer"),
         next_run_at=_optional_number(row, "nextRunAt"),
+        raw=row,
+    )
+
+
+def entrypoint(row: Document) -> EntrypointInfo:
+    return EntrypointInfo(
+        name=_text(row, "name"),
+        method=_text(row, "method"),
+        path=_text(row, "path"),
+        url=_text(row, "url"),
+        procedure_name=_text(row, "procedureName"),
+        timeout_ms=_number(row, "timeoutMs"),
+        enabled=_flag(row, "enabled", fallback=True),
+        version=_number(row, "version"),
+        definer=_optional_text(row, "definer"),
+        description=_optional_text(row, "description"),
+        disabled_reason=_optional_text(row, "disabledReason"),
         raw=row,
     )
 

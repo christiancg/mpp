@@ -2,11 +2,13 @@ package org.ccg.mpp.ops.admin;
 
 import java.util.List;
 import java.util.Locale;
+import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.ops.req.PermissionsRequest;
+import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
@@ -15,7 +17,7 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
     private static final String SEPARATOR = "|";
 
     public enum Kind {
-        PROJECT, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE;
+        PROJECT, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT;
 
         String label() {
             return name().toLowerCase(Locale.ROOT);
@@ -50,6 +52,10 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
         return new AdminRecordKey(Kind.SCHEDULE, projectName, name);
     }
 
+    public static AdminRecordKey entrypoint(String projectName, String name) {
+        return new AdminRecordKey(Kind.ENTRYPOINT, projectName, name);
+    }
+
     public String id() {
         return kind.label() + SEPARATOR + projectName + SEPARATOR + name;
     }
@@ -66,6 +72,11 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
             case DeleteProcedureRequest delete -> List.of(procedure(projectName, delete.getName()));
             case SaveScheduleRequest save -> List.of(schedule(projectName, save.getName()));
             case DeleteScheduleRequest delete -> List.of(schedule(projectName, delete.getName()));
+            case SaveEntrypointRequest save -> save.getProcedure() == null
+                    ? List.of(entrypoint(projectName, save.getName()))
+                    : List.of(procedure(projectName, save.getProcedure().getName()),
+                            entrypoint(projectName, save.getName()));
+            case DeleteEntrypointRequest delete -> List.of(entrypoint(projectName, delete.getName()));
             case PermissionsRequest permissions -> List.of(user(permissions.getUsername()));
             case DeleteUserRequest delete -> List.of(user(delete.getUsername()));
             case SetPasswordRequest password -> List.of(user(password.getUsername()));

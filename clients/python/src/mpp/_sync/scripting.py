@@ -2,11 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from mpp._async.entrypoints import AsyncEntrypoints
 from mpp._async.procedures import AsyncProcedures
 from mpp._async.schedules import AsyncSchedules
 from mpp._internal.portal import SyncRuntime
 from mpp.results import ScriptResult
-from mpp.scripting_types import ProcedureDefinition, ProcedureInfo, ScheduleDefinition, ScheduleInfo
+from mpp.scripting_types import (
+    EntrypointDefinition,
+    EntrypointInfo,
+    EntrypointSaved,
+    ProcedureDefinition,
+    ProcedureInfo,
+    ScheduleDefinition,
+    ScheduleInfo,
+)
 
 
 class Procedures:
@@ -40,3 +49,18 @@ class Schedules:
 
     def list(self, include_args: bool | None = None) -> list[ScheduleInfo]:
         return self._runtime.run(self._inner.list(include_args))
+
+
+class Entrypoints:
+    def __init__(self, runtime: SyncRuntime, inner: AsyncEntrypoints) -> None:
+        self._runtime = runtime
+        self._inner = inner
+
+    def save(self, definition: EntrypointDefinition) -> EntrypointSaved:
+        return self._runtime.run(self._inner.save(definition))
+
+    def delete(self, name: str) -> None:
+        self._runtime.run(self._inner.delete(name))
+
+    def list(self) -> list[EntrypointInfo]:
+        return self._runtime.run(self._inner.list())

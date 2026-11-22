@@ -100,10 +100,6 @@ public final class ScheduleDispatcher {
                 ? definition.getTimeoutMs()
                 : configuration.getScheduleTimeoutMs();
         final var timeout = Math.min(requested, configuration.longValue(ConfigKey.SCHEDULE_MAX_TIMEOUT_MS));
-        return new ResourceLimits(base.instructionBudget(), timeout, base.maxDepth(), base.reportUnhandledRejections(),
-                base.fetchEnabled(), base.fetchHostAllowlist(), base.maxResponseBytes(), base.fetchTimeoutMillis(),
-                base.strictScriptGoal(), base.textImportEnabled(), base.maxModuleDepth(), base.maxLogLines(),
-                base.maxLogLineChars(), base.memoryBudget(), -1, base.cursorBatchSize(), base.cursorMaxBatchSize(),
-                base.fetchMaxConcurrent(), base.maxArrayLength());
+        return base.withWallClockMillis(timeout).withMaxResultBytes(-1);
     }
 }

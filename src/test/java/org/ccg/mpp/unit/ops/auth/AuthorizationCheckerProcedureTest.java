@@ -13,13 +13,16 @@ import org.ccg.mpp.ops.AdminOperationHelper;
 import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.auth.AuthorizationChecker;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
+import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
+import org.ccg.mpp.ops.req.ListEntrypointsRequest;
 import org.ccg.mpp.ops.req.ListProceduresRequest;
 import org.ccg.mpp.ops.req.ListSchedulesRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
+import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -204,5 +207,25 @@ public class AuthorizationCheckerProcedureTest {
             assertFalse(AuthorizationChecker.check(request, nobody).isAllowed(), type.name());
             assertTrue(AuthorizationChecker.check(request, admin()).isAllowed(), type.name());
         }
+    }
+
+    @Test
+    public void test_entrypoint_management_needs_manage_and_listing_needs_read() {
+        final var save = new SaveEntrypointRequest(TestGlobals.PROJECT, "e", "GET", "/x");
+        save.setProcedureName("p");
+        final var delete = new DeleteEntrypointRequest(TestGlobals.PROJECT, "e");
+        final var list = new ListEntrypointsRequest(TestGlobals.PROJECT);
+        final var runner = userWith(ScriptPermissionLevel.RUN, PermissionLevel.READ_WRITE);
+        final var manager = userWith(ScriptPermissionLevel.MANAGE, null);
+        final var reader = userWith(null, PermissionLevel.READ);
+        final var nobody = userWith(null, null);
+
+        assertFalse(AuthorizationChecker.check(save, runner).isAllowed());
+        assertFalse(AuthorizationChecker.check(delete, runner).isAllowed());
+        assertTrue(AuthorizationChecker.check(save, manager).isAllowed());
+        assertTrue(AuthorizationChecker.check(delete, manager).isAllowed());
+        assertTrue(AuthorizationChecker.check(save, owner()).isAllowed());
+        assertTrue(AuthorizationChecker.check(list, reader).isAllowed());
+        assertFalse(AuthorizationChecker.check(list, nobody).isAllowed());
     }
 }

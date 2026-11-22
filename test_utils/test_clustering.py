@@ -1,6 +1,7 @@
 import argparse
 import bisect
 import hashlib
+import http.client
 import json
 import os
 import socket
@@ -30,6 +31,7 @@ from base_utils import (
 HOST = "127.0.0.1"
 BASE_CLIENT_PORT = int(os.environ.get("CLUSTER_TEST_CLIENT_PORT", "8991"))
 BASE_CLUSTER_PORT = int(os.environ.get("CLUSTER_TEST_CLUSTER_PORT", "9991"))
+BASE_HTTP_PORT = int(os.environ.get("CLUSTER_TEST_HTTP_PORT", "9881"))
 NODE_COUNT = 3
 
 ADMIN_USERNAME = "admin"
@@ -401,6 +403,7 @@ class Node:
         self.index = index
         self.client_port = BASE_CLIENT_PORT + index
         self.cluster_port = BASE_CLUSTER_PORT + index
+        self.http_port = BASE_HTTP_PORT + index
         self.work_dir = os.path.join(base_dir, f"node-{index}")
         os.makedirs(self.work_dir, exist_ok=True)
         self.log_path = os.path.join(self.work_dir, "server.log")
@@ -441,6 +444,7 @@ class Node:
             "scheduleRefreshMs": 2000,
             "scheduleTimeoutMs": 10000,
             "faultInjectionEnabled": True,
+            "httpPort": self.http_port,
         }
         settings.update(overrides)
         bu.write_config(self.work_dir, self.client_port, **settings)
@@ -3293,6 +3297,48 @@ def collection_owned_off_the_coordinator(coordinator, prefix):
     return None, None
 
 
+def http_status(port: int, path: str) -> int:
+    connection = http.client.HTTPConnection(HOST, port, timeout=10)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        response.read()
+        return response.status
+    except OSError:
+        return -1
+    finally:
+        connection.close()
+
+
+def entrypoint_answers_everywhere(path: str, status: int) -> bool:
+    return all(http_status(node.http_port, path) == status for node in nodes if node.alive)
+
+
+def procedure_names(port: int) -> list:
+    listed = op(port, {"type": "LIST_PROCEDURES", "projectName": PROJECT}).get("procedures") or []
+    return [entry.get("name") for entry in listed]
+
+
+def test_entrypoint_replicates_and_every_node_serves_it():
+    section("HTTP entrypoints — an inline entrypoint replicates both records and every node serves it")
+    path = f"/{PROJECT}/cluster/x"
+    check_status("save an inline entrypoint via node-0", op(nodes[0].client_port, {
+        "type": "SAVE_ENTRYPOINT", "projectName": PROJECT, "name": "clusterEcho", "method": "GET",
+        "path": "/cluster/{id}",
+        "procedure": {"name": "clusterEcho", "script": 'import args from "args";\nreturn args.pathParams;'}}), "OK")
+    check("every node serves it", wait_until(lambda: entrypoint_answers_everywhere(path, 200), timeout_s=20.0),
+          detail=str([http_status(node.http_port, path) for node in nodes if node.alive]))
+    check("the inline procedure is on every node",
+          wait_until(lambda: all("clusterEcho" in procedure_names(node.client_port) for node in nodes if node.alive),
+                     timeout_s=20.0))
+    check_status("delete the entrypoint via node-1", op(nodes[1].client_port, {
+        "type": "DELETE_ENTRYPOINT", "projectName": PROJECT, "name": "clusterEcho"}), "OK")
+    check("every node stops serving it", wait_until(lambda: entrypoint_answers_everywhere(path, 404), timeout_s=20.0),
+          detail=str([http_status(node.http_port, path) for node in nodes if node.alive]))
+    check_status("delete the procedure", op(nodes[0].client_port, {
+        "type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "clusterEcho"}), "OK")
+
+
 def test_a_revoked_definer_is_disabled_on_every_node():
     section("A trigger whose definer loses READ is disabled on every node, not only where it fires")
 
@@ -4452,6 +4498,7 @@ GROUPS = {
         test_formation_and_quorum_writes,
         test_a_procedure_bound_by_another_definer_is_protected_through_any_node,
         test_a_revoked_definer_is_disabled_on_every_node,
+        test_entrypoint_replicates_and_every_node_serves_it,
         test_script_placement_forwards_runs,
         test_script_run_history_still_reaches_the_collection_owner,
         test_forwarded_script_reads_and_writes,

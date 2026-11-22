@@ -6,7 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.ccg.mpp.config.Globals;
 
 public final class DeferredApplies {
-    private static final Set<String> collections = ConcurrentHashMap.newKeySet();
+    private static final Set<String> unappliedLogs = ConcurrentHashMap.newKeySet();
+    private static final Set<String> vacuumsBehind = ConcurrentHashMap.newKeySet();
     private static volatile boolean any;
     private static volatile DeferredApplyListener listener = DeferredApplyListener.NONE;
 
@@ -14,11 +15,16 @@ public final class DeferredApplies {
     }
 
     public static boolean pending(String collectionId) {
-        return any && collections.contains(collectionId);
+        return any && (unappliedLogs.contains(collectionId) || vacuumsBehind.contains(collectionId));
     }
 
     static synchronized void flag(String projectName, String collName) {
-        collections.add(idOf(projectName, collName));
+        unappliedLogs.add(idOf(projectName, collName));
+        any = true;
+    }
+
+    static synchronized void flagBehindAVacuum(String projectName, String collName) {
+        vacuumsBehind.add(idOf(projectName, collName));
         any = true;
     }
 
@@ -31,13 +37,19 @@ public final class DeferredApplies {
 
     static void clear(String projectName, String collName) {
         if (any) {
-            clearFlag(projectName, collName);
+            clearFlag(unappliedLogs, projectName, collName);
         }
     }
 
-    private static synchronized void clearFlag(String projectName, String collName) {
-        collections.remove(idOf(projectName, collName));
-        any = !collections.isEmpty();
+    static void clearBehindAVacuum(String projectName, String collName) {
+        if (any) {
+            clearFlag(vacuumsBehind, projectName, collName);
+        }
+    }
+
+    private static synchronized void clearFlag(Set<String> flagged, String projectName, String collName) {
+        flagged.remove(idOf(projectName, collName));
+        any = !unappliedLogs.isEmpty() || !vacuumsBehind.isEmpty();
     }
 
     static void listenWith(DeferredApplyListener replacement) {

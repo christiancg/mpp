@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Objects;
 import org.ccg.mpp.config.ConfigKey;
 import org.ccg.mpp.config.Configuration;
@@ -35,6 +36,7 @@ public class LogWriterTest {
     public void setUp() throws NoSuchFieldException, IllegalAccessException {
         Configuration config = Configuration.getInstance();
         origMaxLogFiles = config.getMaxLogFiles();
+        TestUtils.getPrivateStaticField(LogWriter.class, "HELD_ENTRIES", List.class).clear();
         TestUtils.setPrivateField(config, "logPath", TestGlobals.LOG_PATH);
         final var logDir = new File(config.getLogPath());
         if (!logDir.exists()) {

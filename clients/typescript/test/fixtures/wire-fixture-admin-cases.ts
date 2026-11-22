@@ -1,5 +1,6 @@
 import {
     DataPermission,
+    EntrypointMethod,
     field,
     GlobalPermission,
     ScriptPermission,
@@ -127,6 +128,36 @@ function triggersAndSchedules(cases: Map<string, FixtureCall>): void {
     cases.set("scripting.list_schedules_default", (r) => r.shop.schedules().list());
 }
 
+function entrypoints(cases: Map<string, FixtureCall>): void {
+    cases.set("scripting.save_entrypoint", (r) =>
+        r.shop.entrypoints().save({
+            name: "getOrder",
+            method: EntrypointMethod.GET,
+            path: "/orders/{id}",
+            procedureName: "getOrder",
+            timeoutMs: 5000,
+            description: "Order by id",
+            enabled: true,
+            ifVersion: 2,
+        }),
+    );
+    cases.set("scripting.save_entrypoint_inline", (r) =>
+        r.shop.entrypoints().save({
+            name: "createOrder",
+            method: EntrypointMethod.POST,
+            path: "/orders",
+            procedure: {
+                name: "createOrder",
+                script: 'import args from "args";\nreturn {status: 201, body: args.body};',
+                description: "Creates an order",
+                enabled: true,
+            },
+        }),
+    );
+    cases.set("scripting.delete_entrypoint", (r) => r.shop.entrypoints().delete("getOrder"));
+    cases.set("scripting.list_entrypoints", (r) => r.shop.entrypoints().list());
+}
+
 function adminScripts(cases: Map<string, FixtureCall>): void {
     cases.set("scripting.list_scripts", (r) => r.admin.scripts().list());
     cases.set("scripting.cancel_script", (r) => r.admin.scripts().cancel("3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83"));
@@ -171,6 +202,7 @@ export function addAdminCases(cases: Map<string, FixtureCall>): void {
     listenAndTransactions(cases);
     procedures(cases);
     triggersAndSchedules(cases);
+    entrypoints(cases);
     adminScripts(cases);
     users(cases);
 }

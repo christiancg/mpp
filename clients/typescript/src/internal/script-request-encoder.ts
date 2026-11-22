@@ -1,6 +1,7 @@
 import type { Permissions, TransactionDecision, TriggerRunDecision, TriggerRunStatus } from "../admin/types.js";
 import type { PipelineStep } from "../query/types.js";
 import type {
+    EntrypointDefinition,
     ProcedureDefinition,
     ScheduleDefinition,
     TriggerDefinition,
@@ -27,6 +28,28 @@ function checkSchedule(schedule: ScheduleDefinition): void {
     if ((schedule.cron === undefined) === (schedule.intervalMs === undefined)) {
         throw new TypeError("a schedule takes exactly one of cron and intervalMs");
     }
+}
+
+function checkEntrypoint(entrypoint: EntrypointDefinition): void {
+    if ((entrypoint.procedureName === undefined) === (entrypoint.procedure === undefined)) {
+        throw new TypeError("an entrypoint takes exactly one of procedureName and procedure");
+    }
+    if (entrypoint.procedure?.ifVersion !== undefined) {
+        throw new TypeError("an inline procedure takes no ifVersion");
+    }
+}
+
+function inlineProcedure(procedure: ProcedureDefinition | undefined): JsonObject {
+    return procedure === undefined
+        ? {}
+        : {
+              procedure: {
+                  name: procedure.name,
+                  script: procedure.script,
+                  ...optional("description", procedure.description),
+                  ...optional("enabled", procedure.enabled),
+              },
+          };
 }
 
 function checkTrigger(trigger: TriggerDefinition): void {
@@ -123,6 +146,30 @@ export class ScriptRequestEncoder {
 
     listSchedules(project: string, includeArgs: boolean | undefined): JsonObject {
         return { ...request("LIST_SCHEDULES", project), ...optional("includeArgs", includeArgs) };
+    }
+
+    saveEntrypoint(project: string, entrypoint: EntrypointDefinition): JsonObject {
+        checkEntrypoint(entrypoint);
+        return {
+            ...request("SAVE_ENTRYPOINT", project),
+            name: entrypoint.name,
+            method: entrypoint.method,
+            path: entrypoint.path,
+            ...optional("procedureName", entrypoint.procedureName),
+            ...inlineProcedure(entrypoint.procedure),
+            ...optional("timeoutMs", entrypoint.timeoutMs),
+            ...optional("description", entrypoint.description),
+            ...optional("enabled", entrypoint.enabled),
+            ...optional("ifVersion", entrypoint.ifVersion),
+        };
+    }
+
+    deleteEntrypoint(project: string, name: string): JsonObject {
+        return { ...request("DELETE_ENTRYPOINT", project), name };
+    }
+
+    listEntrypoints(project: string): JsonObject {
+        return request("LIST_ENTRYPOINTS", project);
     }
 
     listScripts(): JsonObject {

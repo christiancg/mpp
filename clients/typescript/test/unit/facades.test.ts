@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { Admin, Project, field, LocalTime, NotFoundError, TriggerEvent, TriggerRunDecision } from "../../src/index.js";
+import {
+    Admin,
+    EntrypointMethod,
+    Project,
+    field,
+    LocalTime,
+    NotFoundError,
+    TriggerEvent,
+    TriggerRunDecision,
+} from "../../src/index.js";
 import type { JsonObject } from "../../src/internal/values-codec.js";
 import { RecordingChannel, recordingContext } from "../support/recording-channel.js";
 
@@ -238,6 +247,84 @@ describe("scripting replies", () => {
         await expect(
             shop.schedules().save({ name: "s", procedureName: "p", cron: "x", intervalMs: 1 }),
         ).rejects.toThrow(/exactly one/);
+    });
+});
+
+describe("entrypoint replies", () => {
+    const byName = { name: "ping", method: EntrypointMethod.GET, path: "/ping", procedureName: "noop" } as const;
+
+    test("entrypoints decode saves and lists", async () => {
+        const full = {
+            name: "getOrder",
+            method: "GET",
+            path: "/orders/{id}",
+            url: "/shop/orders/{id}",
+            procedureName: "getOrder",
+            timeoutMs: 5000,
+            enabled: false,
+            version: 3,
+            definer: "alice",
+            description: "Order by id",
+            disabledReason: "definer deleted",
+        };
+        const sparse = { name: "ping" };
+        const { shop, channel } = setup((request) =>
+            request.type === "LIST_ENTRYPOINTS"
+                ? { entrypoints: [full, sparse] }
+                : request.type === "SAVE_ENTRYPOINT"
+                  ? { version: 2, procedureVersion: 5 }
+                  : {},
+        );
+        expect(await shop.entrypoints().save(byName)).toEqual({ version: 2, procedureVersion: 5 });
+        expect(await shop.entrypoints().list()).toEqual([
+            { ...full, raw: full },
+            {
+                name: "ping",
+                method: "",
+                path: "",
+                url: "",
+                procedureName: "",
+                timeoutMs: 0,
+                enabled: true,
+                version: 0,
+                definer: undefined,
+                description: undefined,
+                disabledReason: undefined,
+                raw: sparse,
+            },
+        ]);
+        await shop.entrypoints().delete("ping");
+        expect(channel.requests.at(-1)).toEqual({ type: "DELETE_ENTRYPOINT", projectName: "shop", name: "ping" });
+    });
+
+    test("an empty save reply gives version 0", async () => {
+        const { shop } = setup(() => ({}));
+        expect(await shop.entrypoints().save(byName)).toEqual({ version: 0, procedureVersion: 0 });
+    });
+
+    test("an entrypoint needs exactly one of procedureName and procedure", async () => {
+        const { shop, channel } = setup(() => ({}));
+        const procedure = { name: "noop", script: "return 0;" };
+        await expect(
+            shop.entrypoints().save({ name: "ping", method: EntrypointMethod.GET, path: "/ping" }),
+        ).rejects.toThrow(/exactly one of procedureName and procedure/);
+        await expect(shop.entrypoints().save({ ...byName, procedure })).rejects.toThrow(
+            /exactly one of procedureName and procedure/,
+        );
+        expect(channel.requests).toEqual([]);
+    });
+
+    test("an inline procedure takes no ifVersion", async () => {
+        const { shop, channel } = setup(() => ({}));
+        await expect(
+            shop.entrypoints().save({
+                name: "echo",
+                method: EntrypointMethod.POST,
+                path: "/echo",
+                procedure: { name: "echo", script: "return 0;", ifVersion: 1 },
+            }),
+        ).rejects.toThrow(/inline procedure takes no ifVersion/);
+        expect(channel.requests).toEqual([]);
     });
 });
 

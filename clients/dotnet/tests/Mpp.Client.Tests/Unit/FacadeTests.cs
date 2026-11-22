@@ -255,6 +255,76 @@ public sealed class FacadeTests
     }
 
     [Fact]
+    public async Task EntrypointsDecodeSavesAndLists()
+    {
+        _recorder.Channel.Replies = request => RecordingChannel.Ok(request, new JsonObject { ["version"] = 2, ["procedureVersion"] = 5 });
+        var entrypoints = _recorder.Shop.Entrypoints();
+        var saved = await entrypoints.SaveAsync(new Scripting.EntrypointDefinition("ping", Scripting.EntrypointMethod.Options, "/ping") { ProcedureName = "noop" });
+        Assert.Equal(new Scripting.EntrypointSaved(2, 5), saved);
+        Assert.Equal("OPTIONS", _recorder.Channel.Last["method"]!.GetValue<string>());
+        Assert.Null(_recorder.Channel.Last["procedure"]);
+        Reply("entrypoints", new JsonArray(new JsonObject
+        {
+            ["name"] = "ping",
+            ["method"] = "GET",
+            ["path"] = "/ping",
+            ["url"] = "/shop/ping",
+            ["procedureName"] = "noop",
+            ["timeoutMs"] = 5000,
+            ["enabled"] = false,
+            ["version"] = 3,
+            ["definer"] = "alice",
+            ["description"] = "d",
+            ["disabledReason"] = "definer deleted",
+        }));
+        var entrypoint = (await entrypoints.ListAsync()).Single();
+        Assert.Equal(("ping", "GET", "/ping", "/shop/ping", "noop"), (entrypoint.Name, entrypoint.Method, entrypoint.Path, entrypoint.Url, entrypoint.ProcedureName));
+        Assert.Equal((5000L, false, 3L), (entrypoint.TimeoutMs, entrypoint.Enabled, entrypoint.Version));
+        Assert.Equal(("alice", "d", "definer deleted"), (entrypoint.Definer, entrypoint.Description, entrypoint.DisabledReason));
+        Assert.Equal("noop", entrypoint.Raw.GetString("procedureName"));
+    }
+
+    [Fact]
+    public async Task EntrypointDescriptorFillsDefaultsForMissingFields()
+    {
+        Reply("entrypoints", new JsonArray(new JsonObject()));
+        var entrypoint = (await _recorder.Shop.Entrypoints().ListAsync()).Single();
+        Assert.Equal((string.Empty, string.Empty, string.Empty, string.Empty, string.Empty), (entrypoint.Name, entrypoint.Method, entrypoint.Path, entrypoint.Url, entrypoint.ProcedureName));
+        Assert.Equal((0L, true, 0L), (entrypoint.TimeoutMs, entrypoint.Enabled, entrypoint.Version));
+        Assert.Equal(((string?)null, (string?)null, (string?)null), (entrypoint.Definer, entrypoint.Description, entrypoint.DisabledReason));
+        _recorder.Channel.Replies = request => RecordingChannel.Ok(request);
+        Assert.Empty(await _recorder.Shop.Entrypoints().ListAsync());
+        var saved = await _recorder.Shop.Entrypoints().SaveAsync(new Scripting.EntrypointDefinition("p", Scripting.EntrypointMethod.Get, "/p")
+        {
+            Procedure = new Scripting.ProcedureDefinition("p", "return 1;"),
+        });
+        Assert.Equal(new Scripting.EntrypointSaved(0, 0), saved);
+        Assert.Equal("""{"name":"p","script":"return 1;"}""", _recorder.Channel.Last["procedure"]!.ToJsonString());
+        Assert.Null(_recorder.Channel.Last["procedureName"]);
+    }
+
+    [Fact]
+    public async Task EntrypointsCheckTheirDefinitions()
+    {
+        var entrypoints = _recorder.Shop.Entrypoints();
+        var neither = await Assert.ThrowsAsync<ArgumentException>(() => entrypoints.SaveAsync(
+            new Scripting.EntrypointDefinition("e", Scripting.EntrypointMethod.Get, "/e")));
+        Assert.Equal("entrypoint", neither.ParamName);
+        await Assert.ThrowsAsync<ArgumentException>(() => entrypoints.SaveAsync(new Scripting.EntrypointDefinition("e", Scripting.EntrypointMethod.Get, "/e")
+        {
+            ProcedureName = "p",
+            Procedure = new Scripting.ProcedureDefinition("p", "return 1;"),
+        }));
+        var versioned = await Assert.ThrowsAsync<ArgumentException>(() => entrypoints.SaveAsync(
+            new Scripting.EntrypointDefinition("e", Scripting.EntrypointMethod.Get, "/e")
+            {
+                Procedure = new Scripting.ProcedureDefinition("p", "return 1;") { IfVersion = 1 },
+            }));
+        Assert.Contains("IfVersion", versioned.Message, StringComparison.Ordinal);
+        Assert.Empty(_recorder.Channel.Requests);
+    }
+
+    [Fact]
     public void EveryExceptionHasTheStandardConstructors()
     {
         foreach (var type in typeof(MppException).Assembly.GetExportedTypes().Where(typeof(MppException).IsAssignableFrom))

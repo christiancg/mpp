@@ -9,6 +9,8 @@ import io.github.christiancg.mpp.client.admin.ScriptPermission;
 import io.github.christiancg.mpp.client.admin.TransactionDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
+import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
+import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -31,6 +33,7 @@ final class WireFixtureAdminCases {
         ddl(cases);
         listenAndTransactions(cases);
         scripting(cases);
+        entrypoints(cases);
         users(cases);
     }
 
@@ -115,6 +118,22 @@ final class WireFixtureAdminCases {
                 r -> r.admin.triggerRuns().resolve(RUN_ID, TriggerRunDecision.REPLAY));
         cases.put("scripting.resolve_trigger_run_discard",
                 r -> r.admin.triggerRuns().resolve(RUN_ID, TriggerRunDecision.DISCARD));
+    }
+
+    private static void entrypoints(Map<String, Consumer<Recorder>> cases) {
+        cases.put("scripting.save_entrypoint",
+                r -> r.shop.entrypoints()
+                        .save(EntrypointDefinition.builder("getOrder", EntrypointMethod.GET, "/orders/{id}")
+                                .procedureName("getOrder").timeout(Duration.ofSeconds(5)).description("Order by id")
+                                .enabled(true).ifVersion(2).build()));
+        cases.put("scripting.save_entrypoint_inline", r -> r.shop.entrypoints().save(EntrypointDefinition
+                .builder("createOrder", EntrypointMethod.POST, "/orders")
+                .procedure(ProcedureDefinition
+                        .builder("createOrder", "import args from \"args\";\nreturn {status: 201, body: args.body};")
+                        .description("Creates an order").enabled(true).build())
+                .build()));
+        cases.put("scripting.delete_entrypoint", r -> r.shop.entrypoints().delete("getOrder"));
+        cases.put("scripting.list_entrypoints", r -> r.shop.entrypoints().list());
     }
 
     private static void users(Map<String, Consumer<Recorder>> cases) {

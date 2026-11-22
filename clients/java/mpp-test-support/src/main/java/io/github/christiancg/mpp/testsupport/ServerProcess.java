@@ -33,6 +33,7 @@ public final class ServerProcess implements AutoCloseable {
         config.put("logPath", "logs");
         config.put("defaultAdminPassword", PASSWORD);
         config.put("maxMemory", "128Mb");
+        config.put("httpPort", "0");
         config.putAll(overrides);
         final var text = new StringBuilder();
         config.forEach((key, value) -> text.append(key).append('=').append(value).append('\n'));

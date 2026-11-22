@@ -94,6 +94,32 @@ public sealed class ScriptingIT(ScriptingIT.Server fixture) : IClassFixture<Scri
     }
 
     [Fact]
+    public async Task EntrypointsAreSavedListedRefusedAndDeleted()
+    {
+        await Shop.Procedures().SaveAsync(new ProcedureDefinition("noop", "return 0;"));
+        var entrypoints = Shop.Entrypoints();
+        var ping = await entrypoints.SaveAsync(new EntrypointDefinition("ping", EntrypointMethod.Get, "/ping") { ProcedureName = "noop" });
+        Assert.Equal(1, ping.Version);
+        var echo = await entrypoints.SaveAsync(new EntrypointDefinition("echo", EntrypointMethod.Post, "/echo")
+        {
+            Procedure = new ProcedureDefinition("echo_body", "import args from \"args\";\nreturn {status: 200, body: args.body};"),
+        });
+        Assert.Equal(1, echo.ProcedureVersion);
+        Assert.Contains(await Shop.Procedures().ListAsync(), procedure => procedure.Name == "echo_body");
+        var listed = await entrypoints.ListAsync();
+        Assert.Equal(2, listed.Count);
+        var pingInfo = listed.Single(entrypoint => entrypoint.Name == "ping");
+        Assert.Equal(("GET", "/ping", "/script_it/ping", "noop", true), (pingInfo.Method, pingInfo.Path, pingInfo.Url, pingInfo.ProcedureName, pingInfo.Enabled));
+        var conflict = await Assert.ThrowsAsync<ConflictException>(
+            () => entrypoints.SaveAsync(new EntrypointDefinition("ping_again", EntrypointMethod.Get, "/ping") { ProcedureName = "noop" }));
+        Assert.True(conflict.HasCode(ErrorCode.EntrypointRouteConflict));
+        await entrypoints.DeleteAsync("ping");
+        await entrypoints.DeleteAsync("echo");
+        Assert.Empty(await entrypoints.ListAsync());
+        Assert.Contains(await Shop.Procedures().ListAsync(), procedure => procedure.Name == "echo_body");
+    }
+
+    [Fact]
     public async Task ALongScriptIsListedAndCancelled()
     {
         var running = Shop.RunScriptAsync("let i = 0;\nwhile (true) { i++; }");

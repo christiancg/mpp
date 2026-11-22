@@ -66,6 +66,7 @@ export class ServerProcess {
             logPath: "logs",
             defaultAdminPassword: PASSWORD,
             maxMemory: "128Mb",
+            httpPort: "0",
             ...overrides,
         };
         writeFileSync(

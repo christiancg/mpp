@@ -8,6 +8,7 @@ import io.github.christiancg.mpp.client.internal.ResponseDecoder;
 import io.github.christiancg.mpp.client.internal.ScriptResults;
 import io.github.christiancg.mpp.client.mapping.JacksonCodec;
 import io.github.christiancg.mpp.client.protocol.Operation;
+import io.github.christiancg.mpp.client.scripting.Entrypoints;
 import io.github.christiancg.mpp.client.scripting.Procedures;
 import io.github.christiancg.mpp.client.scripting.Schedules;
 import io.github.christiancg.mpp.client.scripting.TriggerInfo;
@@ -75,6 +76,10 @@ public final class Project {
 
     public Schedules schedules() {
         return new Schedules(context, name);
+    }
+
+    public Entrypoints entrypoints() {
+        return new Entrypoints(context, name);
     }
 
     public List<TriggerInfo> listTriggers() {

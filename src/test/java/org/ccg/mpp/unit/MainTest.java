@@ -23,6 +23,7 @@ import org.ccg.mpp.bckg_ops.BackgroundTaskManager;
 import org.ccg.mpp.bckg_ops.ScheduleExecutor;
 import org.ccg.mpp.bckg_ops.TriggerExecutor;
 import org.ccg.mpp.cache.MemoryManagement;
+import org.ccg.mpp.config.ConfigKey;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.conn.WriteStallWatchdog;
 import org.ccg.mpp.ex.InvalidConfigurationException;
@@ -50,11 +51,13 @@ public class MainTest {
     public void setUp() throws NoSuchFieldException, IllegalAccessException {
         origPassword = config.getDefaultAdminPassword();
         TestUtils.setPrivateField(config, "defaultAdminPassword", TestGlobals.ADMIN_PASSWORD);
+        config.override(ConfigKey.HTTP_PORT, "0");
     }
 
     @AfterEach
     public void tearDown() throws NoSuchFieldException, IllegalAccessException {
         TestUtils.setPrivateField(config, "defaultAdminPassword", origPassword);
+        config.override(ConfigKey.HTTP_PORT, ConfigKey.HTTP_PORT.defaultValue());
         // Stop them here, or a leaked worker writing admin/collection_usage corrupts later tests in the
         // same JVM fork.
         IocContainer.get(BackgroundTaskManager.class).stopBackgroundWorkers();

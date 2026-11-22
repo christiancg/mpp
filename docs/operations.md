@@ -32,6 +32,7 @@ guide describes what the server does today, not a promise that it is ready for d
 | Data folder | `filePath` on a local disk that honours `fsync`, with `syncWrites=true` | Otherwise a power loss can lose acknowledged writes ([Durability](#durability)) |
 | File modes | `chmod 700` on `filePath` and `logPath`, `chmod 600` on `mpp.cfg` and the keystore | They hold password hashes, data and secrets ([File permissions](#file-permissions)) |
 | Network | `bindAddress` set to the interface clients use | Blank binds every interface |
+| HTTP entrypoints | `httpPort=0` if you don't use [entrypoints](protocol.md#http-entrypoints), otherwise `httpBindAddress` and a firewall rule for `8990` | The listener is on by default on every interface, HTTPS-only with the client port's keystore when `tlsEnabled=true` |
 | TLS | `tlsEnabled=true`, a CA-issued keystore and your own `tlsKeystorePassword` | Without it passwords and documents travel in plaintext ([TLS](#tls--secure-connections)) |
 | Limits | Every protective limit above `0` | `0` turns a limit off ([Security hardening](#security-hardening)) |
 | Script fetch | `scriptFetchAllowlist` narrowed to the hosts your scripts call, or `scriptFetchEnabled=false` | The shipped `*` lets any script call any public host |
@@ -62,8 +63,11 @@ variable can't write into a read-only mount):
 
 ```bash
 docker build -t mpp .
-docker run -p 8989:8989 -v ./db:/app/db -v ./mpp.cfg:/app/mpp.cfg:ro mpp
+docker run -p 8989:8989 -p 8990:8990 -v ./db:/app/db -v ./mpp.cfg:/app/mpp.cfg:ro mpp
 ```
+
+Port `8990` is the [HTTP entrypoint](protocol.md#http-entrypoints) listener. Leave out `-p 8990:8990` if you don't use
+entrypoints.
 
 The image runs as the unprivileged `mpp` user, so a host folder mounted over `/app/db`, `/app/logs` or `/app/certs`
 must be writable by its uid (`docker run --rm --entrypoint id mpp` prints it). It also has a `HEALTHCHECK`, see
@@ -198,7 +202,7 @@ shutdownTimeoutMs=8000
 |---|---|---|
 | `maxMemory` | `auto` | Document and index cache. `auto` is 40% of the heap, a size is capped at 60%, `0` is unlimited and `-1` turns caching off |
 | `transientLoadPermits` | `4` | Index loads too big for the cache that may run at once. The rest wait |
-| `metadataCacheMaxBytes` | `72Mb` | Cache of procedures, schemas and schedules, on top of `maxMemory` |
+| `metadataCacheMaxBytes` | `72Mb` | Cache of procedures, schemas, schedules and entrypoints, on top of `maxMemory` |
 | `metadataCacheMaxEntries` | `4096` | Cache of trigger lists and "not found" answers, by count. `0` reads from disk every time |
 | `procedureCacheSize` | `128` | Compiled procedures kept. `0` compiles on every call |
 | `procedureCacheMaxBytes` | `16Mb` | Heap the compiled procedures and scripts may hold |
@@ -289,9 +293,9 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `aggregationScriptInstructionBudget` | `1000000` | Instructions all script operators of one pipeline may run, then `400-11` |
 | `aggregationScriptTimeoutMs` | `2000` | Time for the same, then `408-1` |
 | `aggregationScriptMaxSourceBytes` | `16Kb` | Largest script operator, then `400-10` |
-| `maxConcurrentScripts` | `16` | Client script runs at once on the node, then `503-6` |
-| `maxConcurrentScriptsPerUser` | `4` | Script runs at once per user, triggers and schedules included |
-| `maxConcurrentScriptsPerProject` | `8` | Script runs at once per project. The last slot is kept for owners and admins |
+| `maxConcurrentScripts` | `64` | Client script runs at once on the node, then `503-6` |
+| `maxConcurrentScriptsPerUser` | `32` | Script runs at once per user, triggers, schedules and entrypoints included |
+| `maxConcurrentScriptsPerProject` | `48` | Script runs at once per project. The last slot is kept for owners and admins |
 | `scriptQueueWaitMs` | `250` | How long a run waits for a free slot before `503-6` |
 
 ### Script fetch
@@ -309,7 +313,7 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | Key | Default | What it does |
 |---|---|---|
 | `scriptRunHistoryEnabled` | `true` | Record finished runs in each project's `script_runs` collection, best effort |
-| `scriptRunHistoryKinds` | `CALL_PROCEDURE,TRIGGER,SCHEDULE` | Kinds recorded. `RUN_SCRIPT` and `BEFORE_HOOK` (failures only) can be added |
+| `scriptRunHistoryKinds` | `CALL_PROCEDURE,TRIGGER,SCHEDULE` | Kinds recorded. `RUN_SCRIPT`, `ENTRYPOINT` and `BEFORE_HOOK` (failures only) can be added |
 | `scriptRunHistoryIncludeLogs` | `false` | Keep the run's console output on its row |
 | `scriptRunHistoryMaxErrorChars` | `2000` | Characters of an error message kept |
 | `scriptRunHistoryMaxQueued` | `10000` | Rows waiting to be written. More are dropped and counted |
@@ -352,6 +356,22 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | `scheduleMaxPerProject` | `100` | Schedules per project |
 | `scheduleMaxTotalPerUser` | `500` | Schedules one user defines across all projects, then `400-33` |
 | `scheduleMinIntervalMs` | `1000` | Smallest `intervalMs`, below it `400-35` |
+
+### HTTP entrypoints
+
+What an entrypoint does is in [protocol.md](protocol.md#http-entrypoints).
+
+| Key | Default | What it does |
+|---|---|---|
+| `httpPort` | `8990` | Port of the HTTP entrypoint listener, different from `port`, `metricsPort` and `clusterPort`. `0` turns it off. HTTPS when `tlsEnabled=true` |
+| `httpBindAddress` | blank | Interface the entrypoint listener binds to. Blank binds all of them |
+| `httpMaxConnections` | `10000` | HTTP connections open at once, then `503` and the connection is closed. `0` means no cap |
+| `httpMaxRequestBytes` | `64Mb` | Largest request body, then `413` without reading it |
+| `httpReadTimeoutMs` | `10000` | Time the request head, and then its body, has to arrive, then `408` and the connection is closed |
+| `httpIdleTimeoutMs` | `5000` | Time a kept-alive connection may wait for its next request |
+| `entrypointTimeoutMs` | `30000` | Default time per run |
+| `entrypointMaxTimeoutMs` | `300000` | Largest `timeoutMs` an entrypoint may ask for, then `400-48` |
+| `maxEntrypointsPerProject` | `1000` | Entrypoints per project, then `400-47` |
 
 ### Cluster
 
@@ -397,7 +417,8 @@ The heap holds four things:
 
 - the document and index cache, `maxMemory` (40% of the heap with `auto`);
 - the metadata caches, `metadataCacheMaxBytes` (72 MB) plus the procedure and schema caches;
-- scripts, up to `maxConcurrentScripts x scriptMaxMemoryBytes` (16 x 64 MB) when every slot runs a greedy script;
+- scripts, up to `maxConcurrentScripts x scriptMaxMemoryBytes` (64 x 64 MB) when every slot runs a greedy script, though
+  `scriptHeapCeilingPercent` stops scripts once the heap passes 75%;
 - everything else: the collector's headroom, requests and responses in flight, open transactions and running
   aggregates (the last two capped at a quarter of the heap each).
 
@@ -431,6 +452,18 @@ The process takes more memory than the heap: metaspace, compiled code and unused
 On a glibc host (the image uses Alpine), the same server uses about 185 MB more native memory. With `java -jar` there,
 set `MALLOC_ARENA_MAX=2`, consider `-XX:TrimNativeHeapInterval=60000`, and keep the heap nearer the JVM's default
 quarter of memory than the image's 70%.
+
+### Entrypoint traffic
+
+Every [HTTP entrypoint](protocol.md#http-entrypoints) request runs a script, so the three script-concurrency keys are
+what size entrypoint throughput: `maxConcurrentScriptsPerUser` (32, counted against the entrypoint's definer, so all
+traffic to one user's entrypoints shares those slots), `maxConcurrentScriptsPerProject` (48) and `maxConcurrentScripts`
+(64). A request past them answers `503` with `Retry-After: 1`. Raise them for a busy endpoint, or set one to `0` to
+lift it, and keep the script memory worst case above in mind. The body is read only once a run has its slot, so request
+bodies in memory are bounded by `maxConcurrentScripts x httpMaxRequestBytes`, not by the open connections.
+
+Each open connection holds a file descriptor. `httpMaxConnections=10000` needs a limit above it (`ulimit -n`) plus room
+for the client port and the data files. Docker's default is usually enough, a bare Linux login shell's 1024 is not.
 
 ### Disk
 
@@ -483,11 +516,17 @@ Beyond that:
 - Give each application its own user with the narrowest grant that works ([permission model](protocol.md#permission-model)),
   not the admin.
 - Leave `triggersEnabled` off unless you use triggers, and turn `scriptsEnabled` off if nobody runs scripts.
+- Every [HTTP entrypoint](protocol.md#http-entrypoints) is public, and its procedure runs with its definer's
+  permissions. Anyone who can reach `httpPort` can do through it whatever the procedure does with those grants. Save
+  entrypoints as a user that holds only the grants they need, never as an admin or an owner, check what they accept
+  inside the procedure, and set `httpPort=0` or `httpBindAddress` when nothing outside should reach them.
 - Remove the admin password from `mpp.cfg` once the first admin exists.
 
 ### TLS / secure connections
 
-With `tlsEnabled=true` the same protocol runs over TLS and a plaintext client is dropped at the handshake. The key and
+With `tlsEnabled=true` the same protocol runs over TLS and a plaintext client is dropped at the handshake. The same
+setting makes the [HTTP entrypoint](protocol.md#http-entrypoints) listener HTTPS-only, with the same keystore and
+protocols, so one TLS config covers both listeners and there is nothing more to set. The key and
 certificate come from the PKCS12 keystore at `tlsKeystorePath`, unlocked with `tlsKeystorePassword`. Use a CA-issued
 certificate in production.
 
@@ -602,9 +641,10 @@ Every refusal is one `FATAL` line and exit status `1`. Nothing on disk changes, 
 
 | Line starts with | Cause and action |
 |---|---|
-| `Configuration validation failed, the application will not start:` | Every invalid key follows, separated by a literal `\n`. Fix `mpp.cfg` ([Configuration](#configuration)) |
+| `Configuration validation failed, the application will not start:` | Every invalid key follows, separated by a literal `\n`. Fix `mpp.cfg` ([Configuration](#configuration)). This includes `httpPort (...) must be different from port`, `metricsPort` or `clusterPort` |
 | `Insecure configuration, the application will not start:` | A weak or missing `defaultAdminPassword` ([Bootstrap](#bootstrap)), or script fetch outside the jar. The line says which |
 | `The server will not start: .../format.json says this folder holds storage format` | The data folder belongs to another release. The line says which one to run ([compatibility.md](compatibility.md#the-format-stamp)) |
+| `The server will not start: could not bind the HTTP entrypoint listener to port` | `httpPort` is taken, or can't be bound on `httpBindAddress`. Pick a free port, or `httpPort=0` to turn the listener off |
 | `The server will not start:` followed by anything else | The server can't prepare `filePath` or `logPath`, for example a missing permission. The line names the path |
 | `I/O error while starting server on port` | The client port is taken, or can't be bound on `bindAddress` |
 | `Failed to start the cluster server` | The cluster port couldn't open. The exception that follows says why |
@@ -668,8 +708,8 @@ Users, grants and project owners never leave the server: password hashes aren't 
 [`CREATE_USER`](protocol.md#create_user-admin-only) only takes a plaintext password. Keep a script that recreates them
 with `CREATE_USER`, [`CHANGE_PERMISSIONS`](protocol.md#change_permissions-admin-only) and
 [`SET_PROJECT_OWNERS`](protocol.md#set_project_owners-admin-only), and run it after a restore.
-[`LIST_USERS`](protocol.md#list_users-admin-only) shows what it needs to cover. Restored procedures, triggers and
-schedules belong to the user who ran the restore, and run with that user's permissions.
+[`LIST_USERS`](protocol.md#list_users-admin-only) shows what it needs to cover. Restored procedures, triggers,
+schedules and entrypoints belong to the user who ran the restore, and run with that user's permissions.
 
 Script run history, pending trigger runs and in-doubt transactions aren't dumped either.
 
@@ -700,11 +740,11 @@ such a copy only into the same release.
 `SIGTERM` (what `docker stop` sends) or Ctrl+C starts a graceful shutdown. The log shows
 `Shutting down; up to 15000ms to finish outstanding work` and, at the end, `Shutdown complete`.
 
-In that time the server stops accepting connections, rolls back open transactions, finishes the queued trigger and
-index work, releases snapshots and checkpoints the write-ahead logs. Whatever is still pending when
-`shutdownTimeoutMs` runs out is dropped with a warning. If that was index work, run `REINDEX` on the collections it
-names. Keep `shutdownTimeoutMs` below your supervisor's kill grace period (Docker's is 10 s, so lower the budget or
-raise `--stop-timeout`).
+In that time the server stops accepting connections, rolls back open transactions, lets the HTTP entrypoint requests in
+flight finish (closing idle HTTP connections), finishes the queued trigger and index work, releases snapshots and
+checkpoints the write-ahead logs. Whatever is still pending when `shutdownTimeoutMs` runs out is dropped with a warning.
+If that was index work, run `REINDEX` on the collections it names. Keep `shutdownTimeoutMs` below your supervisor's kill
+grace period (Docker's is 10 s, so lower the budget or raise `--stop-timeout`).
 
 A `SIGKILL` skips all of that and is still safe: the next start replays the logs ([Durability](#durability)), it just
 takes longer.

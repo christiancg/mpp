@@ -97,6 +97,10 @@ public final class Requests {
         return request;
     }
 
+    public static JsonObject listEntrypoints(String project) {
+        return onProject("LIST_ENTRYPOINTS", project);
+    }
+
     public static JsonObject createProject(String project) {
         return onProject("CREATE_PROJECT", project);
     }
@@ -153,6 +157,12 @@ public final class Requests {
             copy(listed, request, INTERVAL_MS);
         }
         copy(listed, request, "args", "timeoutMs", "description", "enabled");
+        return request;
+    }
+
+    public static JsonObject saveEntrypointFrom(String project, JsonObject listed) {
+        final var request = onProject("SAVE_ENTRYPOINT", project);
+        copy(listed, request, NAME, "method", "path", PROCEDURE_NAME, "timeoutMs", "description", "enabled");
         return request;
     }
 

@@ -1,13 +1,11 @@
 package org.ccg.mpp.conn;
 
 import java.io.BufferedInputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.Semaphore;
@@ -15,6 +13,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.ccg.mpp.config.ConfigKey;
 import org.ccg.mpp.config.Configuration;
+import org.ccg.mpp.http.DeadlineInput;
+import org.ccg.mpp.http.HttpRequestHead;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.metrics.PrometheusText;
 import org.ccg.mpp.ops.MetricsExposition;
@@ -213,38 +213,6 @@ public class MetricsServer {
 
         Reply with(String header) {
             return new Reply(status, contentType, body, header);
-        }
-    }
-
-    private static final class DeadlineInput extends FilterInputStream {
-        private final Socket socket;
-        private final long deadlineNanos;
-
-        DeadlineInput(Socket socket, long deadlineNanos) throws IOException {
-            super(socket.getInputStream());
-            this.socket = socket;
-            this.deadlineNanos = deadlineNanos;
-        }
-
-        @Override
-        public int read() throws IOException {
-            armTimeout();
-            return super.read();
-        }
-
-        @Override
-        @SuppressWarnings("NullableProblems")
-        public int read(byte[] buffer, int offset, int length) throws IOException {
-            armTimeout();
-            return super.read(buffer, offset, length);
-        }
-
-        private void armTimeout() throws IOException {
-            final var remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
-            if (remainingMs <= 0) {
-                throw new SocketTimeoutException("The metrics request head did not arrive in time");
-            }
-            socket.setSoTimeout((int) remainingMs);
         }
     }
 }

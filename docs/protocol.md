@@ -23,6 +23,7 @@ tested against.
 - [Naming rules](#naming-rules)
 - [Operations](#operations)
 - [Schema validation](#schema-validation)
+- [HTTP entrypoints](#http-entrypoints)
 - [Users & Permissions](#users--permissions)
 - [Permission model](#permission-model)
 - [Fault injection](#fault-injection-testing-and-debugging-only)
@@ -893,20 +894,22 @@ Saving an existing name replaces it and raises its `version`.
 - A procedure that exports instead of returning is a library other scripts can import. Imports must resolve when the
   procedure is saved (`400-18`), so install libraries first. A caller without `MANAGE` can run imported code but can't
   read its source.
-- While a trigger, before hook or schedule of another user runs the procedure, directly or through imports, only that
-  user, an owner or an admin can change it (`403-4`). Otherwise that user's trigger would run code they never saw.
+- While a trigger, before hook, schedule or entrypoint of another user runs the procedure, directly or through imports,
+  only that user, an owner or an admin can change it (`403-4`). Otherwise that user's trigger would run code they never
+  saw.
 
-Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` bound by another user's trigger or schedule, `404-4`
-unknown project, `400-1` an invalid name (same rules as a collection) or an empty script, `400-10` source too big,
-`400-13` doesn't parse (the message has the line and column), `400-18` an import that doesn't resolve, `400-34` more
-than `maxProceduresPerProject`, `409-8` version conflict.
+Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` bound by another user's trigger, schedule or
+entrypoint, `404-4` unknown project, `400-1` an invalid name (same rules as a collection) or an empty script, `400-10`
+source too big, `400-13` doesn't parse (the message has the line and column), `400-18` an import that doesn't resolve,
+`400-34` more than `maxProceduresPerProject`, `409-8` version conflict.
 
 ### `DELETE_PROCEDURE`
 ```json
 {"type":"DELETE_PROCEDURE","projectName":"myproject","name":"recalcTotals"}
 ```
-Answers `OK` whether or not the procedure existed. Refused with `400-14` while a trigger uses it and `400-16` while a
-schedule does (the message names it), and with `403-4` under the same rule as `SAVE_PROCEDURE`.
+Answers `OK` whether or not the procedure existed. Refused with `400-14` while a trigger uses it, `400-16` while a
+schedule does and `400-46` while an entrypoint does (the message names it), and with `403-4` under the same rule as
+`SAVE_PROCEDURE`.
 
 ### `LIST_PROCEDURES`
 ```json
@@ -1191,6 +1194,95 @@ Needs `READ` on the project. `args` is left out unless the request sets `"includ
 ownership or admin (`403-6` otherwise). `nextRunAt` and `owner` are the answering node's view, and `owner` is missing
 when clustering is off.
 
+### `SAVE_ENTRYPOINT`
+Maps an HTTP method and path of a project to a stored procedure, so a plain HTTP client can run it (see
+[HTTP entrypoints](#http-entrypoints)). Needs admin, ownership or `MANAGE`. Answers `403-2` when the server runs with
+`scriptsEnabled=false`. Saving an existing name replaces it and raises its `version`.
+
+```json
+{
+  "type": "SAVE_ENTRYPOINT",
+  "projectName": "shop",
+  "name": "getOrder",
+  "method": "GET",
+  "path": "/orders/{id}",
+  "procedureName": "getOrder",
+  "timeoutMs": 5000,
+  "description": "optional",
+  "enabled": true,
+  "ifVersion": 2
+}
+```
+
+Or with the procedure inline:
+
+```json
+{
+  "type": "SAVE_ENTRYPOINT",
+  "projectName": "shop",
+  "name": "createOrder",
+  "method": "POST",
+  "path": "/orders",
+  "procedure": {
+    "name": "createOrder",
+    "script": "import db from \"db\";\nimport args from \"args\";\nconst saved = db.save(db.name, \"orders\", args.body);\nreturn {status: 201, headers: {location: `/shop/orders/${saved._id}`}, body: saved};",
+    "description": "optional",
+    "enabled": true
+  }
+}
+```
+```json
+{"type":"SAVE_ENTRYPOINT","status":"OK","message":"Entrypoint saved successfully","version":1,"procedureVersion":1}
+```
+
+- `method` is one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` and `QUERY`, in any letter case. It is stored upper
+  case.
+- `path` is a route template, described in [Route templates](#route-templates). It is stored without a trailing `/`.
+- Give exactly one of `procedureName` and `procedure`. `procedureName` names a procedure that already exists.
+  `procedure` is saved first as an ordinary procedure, with every check of [`SAVE_PROCEDURE`](#save_procedure), and
+  other entrypoints, triggers, schedules and `CALL_PROCEDURE` can use it too. If the procedure saves but the
+  entrypoint can't be written (`500-38`), the procedure stays saved. `procedureVersion` is the version of the
+  procedure the entrypoint now runs.
+- It runs with its definer's permissions, like a schedule. Saving one always makes you its definer. Only the definer,
+  an owner or an admin can replace or delete it (`403-5`). If the definer is deleted or loses script `RUN`, the
+  entrypoint is disabled with a `disabledReason` until it's saved again.
+- `timeoutMs` bounds one run, and `0` or missing means `entrypointTimeoutMs`. It can't exceed `entrypointMaxTimeoutMs`
+  (default `300000`).
+- `enabled` defaults to `true`. A disabled entrypoint answers `404`. `ifVersion` works as in `SAVE_PROCEDURE`.
+
+Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` an inline procedure bound by another user's trigger,
+schedule or entrypoint, `403-5` replacing another user's entrypoint, `404-4` unknown project, `404-8` unknown
+procedure, `400-1` an invalid name, `400-10`, `400-13`, `400-18` and `400-34` for an inline procedure as in
+`SAVE_PROCEDURE`, `400-46` a bad method or path, neither or both of `procedureName` and `procedure`, or a negative
+`timeoutMs`, `400-47` more than `maxEntrypointsPerProject`, `400-48` `timeoutMs` over `entrypointMaxTimeoutMs`,
+`409-8` version conflict, `409-11` a name that differs only by case, `409-19` another entrypoint already serves the
+same method and path shape.
+
+### `DELETE_ENTRYPOINT`
+```json
+{"type":"DELETE_ENTRYPOINT","projectName":"shop","name":"getOrder"}
+```
+Answers `OK` whether or not the entrypoint existed. Only its definer, an owner or an admin can delete someone else's
+(`403-5`). It never deletes the procedure.
+
+### `LIST_ENTRYPOINTS`
+```json
+{"type":"LIST_ENTRYPOINTS","projectName":"shop"}
+```
+```json
+{
+  "type": "LIST_ENTRYPOINTS",
+  "status": "OK",
+  "entrypoints": [
+    {"name":"getOrder","method":"GET","path":"/orders/{id}","procedureName":"getOrder","timeoutMs":5000,
+     "enabled":true,"definer":"alice","description":"Order by id","version":3,
+     "createdAt":1763700000000,"updatedAt":1763710000000,"updatedBy":"alice","url":"/shop/orders/{id}"}
+  ]
+}
+```
+Needs `READ` on the project. `url` is the path to request on `httpPort`. A disabled entrypoint also carries
+`disabledReason`.
+
 ### `CLOSE_CONNECTION`
 ```json
 {"type":"CLOSE_CONNECTION"}
@@ -1232,6 +1324,148 @@ how they travel.
 
 In a cluster the schema is replicated to every node, and a node that was down when it changed catches up when it
 rejoins.
+
+## HTTP entrypoints
+
+An entrypoint maps an HTTP method and path of a project to a stored procedure, so any HTTP client can run the procedure
+without speaking this protocol. Entrypoints are managed with [`SAVE_ENTRYPOINT`](#save_entrypoint),
+[`DELETE_ENTRYPOINT`](#delete_entrypoint) and [`LIST_ENTRYPOINTS`](#list_entrypoints), and served by a separate
+HTTP/1.1 listener on `httpPort` (default `8990`, every interface). `httpPort=0` turns the listener off. Its keys are in
+[operations.md](operations.md#http-entrypoints).
+
+Every entrypoint is public: the listener asks for no credentials. The procedure runs as the entrypoint's definer, the
+user who last saved it, so the definer's grants are the most a caller can reach. A definer who is deleted or loses
+script `RUN` disables the entrypoint, which then answers `404`.
+
+```
+GET /shop/orders/o1?expand=lines HTTP/1.1
+Host: api.example.com
+Accept: application/json
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 42
+Connection: keep-alive
+
+{"_id":"o1","qty":2,"price":10,"lines":[]}
+```
+
+### URLs and methods
+
+The URL is `/{projectName}{path}`. `GET /shop/orders/o1` runs the `GET /orders/{id}` entrypoint of project `shop`, and
+an entrypoint saved with the path `/` answers at `/shop`. Two projects can define the same route, and a route never
+crosses projects.
+
+The methods are `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` and `QUERY`. `QUERY` is the safe, idempotent method
+that carries a request body (IETF draft "The HTTP QUERY Method"), for searches whose criteria don't fit in a URL: its
+body reaches the procedure as `args.body` like a `POST`'s, and declaring a route `QUERY` documents that it changes
+nothing. The server can't enforce that, so a `QUERY` procedure should only read. `HEAD` isn't routed, because answering
+it would run the procedure for its side effects and then drop the body. A path that only other methods serve answers `405` with
+an `Allow` header listing them.
+
+### Route templates
+
+A template starts with `/` and is a list of `/`-separated segments, at most 256 characters and 16 segments. Each
+segment is either:
+
+- a literal of one or more of `A-Z a-z 0-9 - . _ ~`, compared exactly;
+- a `{param}` whose name matches `[A-Za-z_][A-Za-z0-9_]{0,63}`, unique within the template.
+
+Nothing else is accepted: no empty segments, wildcards, regular expressions, `%` or text mixed with a `{param}` in one
+segment (`400-46`). A trailing `/` is dropped, and `/` alone is the root.
+
+Routes are tried from the most specific to the least: at the first segment where two templates differ, a literal beats
+a parameter. `GET /shop/orders/latest` runs the `/orders/latest` entrypoint even when `/orders/{id}` also exists, so an
+order whose `_id` is `latest` can't be reached through `/orders/{id}`. The only refusal is for two templates of the same
+method that no request could tell apart, because they have literals and parameters at exactly the same positions, such
+as `/orders/{id}` and `/orders/{orderId}` (`409-19`).
+
+The request path is split on `/` before each segment is percent-decoded, so `%2F` stays inside a parameter value and
+never starts a new segment. A trailing `/` on the request is ignored too.
+
+### What the procedure gets
+
+The procedure reads the request from the `args` module (`import args from "args"`):
+
+```json
+{
+  "entrypoint": "getOrder",
+  "method": "GET",
+  "path": "/orders/o1",
+  "pathParams": {"id": "o1"},
+  "query": {"expand": "lines", "tag": ["a", "b"]},
+  "headers": {"accept": "application/json", "x-request-id": "r-9"},
+  "body": null,
+  "remoteAddress": "203.0.113.7"
+}
+```
+
+- `path` is the request path after the project, as it was sent, without the query.
+- `pathParams` holds the decoded value of each `{param}`.
+- `query`: a value is a string, a repeated key is an array of strings in order, and a key without `=` is `""`.
+- `headers`: names are lower case, and a repeated header is joined with `", "`.
+- `body` is `null` when the request has none. With a `Content-Type` of `application/json` or `*/*+json` it is the
+  parsed JSON object or array, and a body that doesn't parse (a bare scalar such as `42` included) answers `400`
+  without running the procedure. As on the wire protocol, a
+  string shaped like a custom type (`"#geo(1,2)"`) parses as that type. Any other body is a UTF-8 string, and one that
+  isn't UTF-8 answers `400`.
+
+### What the procedure returns
+
+A result that is an object with an integer `status` from 100 to 599 is an envelope: `status` is the HTTP status,
+`headers` (optional) are response headers and `body` is what is sent. Any other result is the body, sent with `200`, so
+a document with `"status": "active"` isn't taken for an envelope.
+
+```js
+import db from "db";
+import args from "args";
+const saved = db.save(db.name, "orders", args.body);
+return {status: 201, headers: {location: `/shop/orders/${saved._id}`}, body: saved};
+```
+
+- A body that is `null` or missing is sent empty. A string is sent as is with `Content-Type: text/plain; charset=utf-8`,
+  and anything else as JSON with `Content-Type: application/json`, unless the envelope sets its own `Content-Type`.
+- Envelope `headers` is an object whose values are strings, numbers or booleans. A name must be an HTTP token and a
+  value must not hold control characters, or the reply is `500`. `Content-Length`, `Transfer-Encoding`, `Connection`
+  and `Keep-Alive` belong to the server and are dropped.
+- A `1xx`, `204` or `304` status is sent without a body.
+- A script that fails in any way (throws, times out, runs out of a budget, returns too much) answers `500` with
+  `{"error":"Internal Server Error","runId":"..."}`. The error message never reaches the caller: it goes to the server
+  log line and, when the `ENTRYPOINT` kind is recorded, to the run history under that `runId`.
+
+### Replies from the server
+
+The replies the server writes itself have a JSON body, `{"error":"<reason>"}`:
+
+| Code | When |
+|---|---|
+| `400` | A malformed request head, path or query, or a body that isn't valid JSON or UTF-8 |
+| `404` | Unknown project, no route, a disabled entrypoint, or a definer who lost their rights |
+| `405` | The path matches only other methods. `Allow` lists them |
+| `408` | The head or the body took longer than `httpReadTimeoutMs` |
+| `411` | The request has a `Transfer-Encoding`. Chunked bodies aren't supported, send a `Content-Length` |
+| `413` | `Content-Length` is over `httpMaxRequestBytes` |
+| `431` | The request head is over 16 KB |
+| `500` | The script failed, its envelope can't be sent, or the bound procedure is missing or disabled |
+| `503` | `httpMaxConnections` connections are open, scripts are disabled, a script limit was reached (with `Retry-After: 1`), or the server is shutting down |
+
+Runs share the script limits of [`RUN_SCRIPT`](#run_script): `maxConcurrentScriptsPerUser`, counted against the
+definer, `maxConcurrentScriptsPerProject` and `maxConcurrentScripts`. Past them the request answers `503` with
+`Retry-After: 1` and nothing ran. The body is read only once the run has a script slot. A request refused before that
+(`404`, `405`, `413`, `503`) is answered without reading its body, and when it has one the connection is closed.
+
+### Connections
+
+HTTP/1.1 connections are kept alive and serve one request at a time, in order. A connection closes when the client
+sends `Connection: close`, after an HTTP/1.0 request, after a framing error (`400`, `408`, `411`, `413`, `431`), and
+after `httpIdleTimeoutMs` (default 5 s) without a request. On shutdown the server stops accepting, closes idle
+connections and lets the requests in flight finish.
+
+### HTTPS
+
+With `tlsEnabled=true` the listener speaks HTTPS only, with the same keystore and protocols as the client port (see
+[TLS / secure connections](operations.md#tls--secure-connections)). A plaintext request on that port gets no reply.
+ALPN offers only `http/1.1`. There are no extra keys to set.
 
 ## Users & Permissions
 
@@ -1435,7 +1669,7 @@ deny reads on a single collection.
 
 | Needs | Operations |
 |---|---|
-| `READ` | `FIND_BY_ID`, `AGGREGATE`, `LIST_COLLECTIONS`, `GET_SCHEMA`, `LISTEN`, `LIST_PROCEDURES`, `LIST_TRIGGERS`, `LIST_SCHEDULES`, `START_SNAPSHOT` |
+| `READ` | `FIND_BY_ID`, `AGGREGATE`, `LIST_COLLECTIONS`, `GET_SCHEMA`, `LISTEN`, `LIST_PROCEDURES`, `LIST_TRIGGERS`, `LIST_SCHEDULES`, `LIST_ENTRYPOINTS`, `START_SNAPSHOT` |
 | `READ_WRITE` | `SAVE`, `BULK_SAVE`, `DELETE`, `CREATE_COLLECTION`, `DROP_COLLECTION`, `CREATE_INDEX`, `DROP_INDEX`, `REINDEX` |
 | Admin or ownership | `DROP_PROJECT`, `SAVE_SCHEMA`, `DELETE_SCHEMA` |
 | Any authenticated user | `LIST_PROJECTS`, `GET_PROJECT_STATS` (both filtered to what the user can see), `START_TRANSACTION`, `COMMIT_TRANSACTION`, `ROLLBACK_TRANSACTION`, `SET_PASSWORD` for their own password |
@@ -1451,15 +1685,15 @@ also stops the user from creating it.
 |---|---|
 | `NONE` (or missing) | Nothing |
 | `RUN` | [`RUN_SCRIPT`](#run_script), [`CALL_PROCEDURE`](#call_procedure) and script operators in a pipeline |
-| `MANAGE` | Everything `RUN` allows, plus [`SAVE_PROCEDURE`](#save_procedure), [`DELETE_PROCEDURE`](#delete_procedure), [`SAVE_TRIGGER`](#save_trigger), [`DELETE_TRIGGER`](#delete_trigger), [`TEST_TRIGGER`](#test_trigger), [`SAVE_SCHEDULE`](#save_schedule) and [`DELETE_SCHEDULE`](#delete_schedule). The trigger operations also need `READ_WRITE` on the collection |
+| `MANAGE` | Everything `RUN` allows, plus [`SAVE_PROCEDURE`](#save_procedure), [`DELETE_PROCEDURE`](#delete_procedure), [`SAVE_TRIGGER`](#save_trigger), [`DELETE_TRIGGER`](#delete_trigger), [`TEST_TRIGGER`](#test_trigger), [`SAVE_SCHEDULE`](#save_schedule), [`DELETE_SCHEDULE`](#delete_schedule), [`SAVE_ENTRYPOINT`](#save_entrypoint) and [`DELETE_ENTRYPOINT`](#delete_entrypoint). The trigger operations also need `READ_WRITE` on the collection |
 
 Admins and owners have `MANAGE` on the projects they reach. `true` is read as `RUN` and `false` as `NONE`; any other
 value is `400-1`.
 
-Installing code is its own level, separate from `READ_WRITE`, because triggers and schedules run with their installer's
-permissions, and a procedure runs with the permissions of whoever calls it, admins included. Starting a script doesn't
-grant anything by itself either: every operation it sends is checked against the caller's data grants. Triggers and
-schedules are the exception, they run as their definer.
+Installing code is its own level, separate from `READ_WRITE`, because triggers, schedules and entrypoints run with
+their installer's permissions, and a procedure runs with the permissions of whoever calls it, admins included. Starting
+a script doesn't grant anything by itself either: every operation it sends is checked against the caller's data grants.
+Triggers, schedules and entrypoints are the exception, they run as their definer.
 
 ## Fault injection (testing and debugging only)
 
@@ -1575,6 +1809,9 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `400-43` | `ERROR` |  | The command isn't valid (not JSON, unknown `type`, too dense, too deep, a bad value or field); the connection stays open |
 | `400-44` | `ERROR` |  | The delete condition matches more than `deleteMaxMatches` documents; nothing was deleted |
 | `400-45` | `ERROR` |  | The update condition matches more than `updateMaxMatches` documents; nothing was written |
+| `400-46` | `ERROR` |  | The entrypoint definition isn't valid, or an entrypoint still uses the procedure |
+| `400-47` | `ERROR` |  | The project has the maximum number of entrypoints |
+| `400-48` | `ERROR` |  | The entrypoint timeout exceeds `entrypointMaxTimeoutMs` |
 | `401-1` | `UNAUTHENTICATED` |  | Must authenticate first |
 | `401-2` | `UNAUTHENTICATED` |  | User no longer exists |
 | `401-3` | `ERROR` |  | Wrong username or password |
@@ -1582,8 +1819,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `403-1` | `FORBIDDEN` |  | No permission |
 | `403-2` | `FORBIDDEN` |  | Scripts (or schedules) are disabled on this server |
 | `403-3` | `FORBIDDEN` |  | Fault injection is disabled on this server |
-| `403-4` | `FORBIDDEN` |  | The procedure is used by another user's trigger, before hook or schedule |
-| `403-5` | `FORBIDDEN` |  | The trigger or schedule belongs to another user |
+| `403-4` | `FORBIDDEN` |  | The procedure is used by another user's trigger, before hook, schedule or entrypoint |
+| `403-5` | `FORBIDDEN` |  | The trigger, schedule or entrypoint belongs to another user |
 | `403-6` | `FORBIDDEN` |  | `includeSource` or `includeArgs` needs script `MANAGE` |
 | `404-1` | `NOT_FOUND` |  | User not found |
 | `404-2` | `NOT_FOUND` |  | Entry not found |
@@ -1610,7 +1847,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `409-5` | `ERROR` |  | Couldn't lock the collection in time; the transaction is aborted |
 | `409-6` | `ERROR` |  | Not allowed while a transaction is open |
 | `409-7` | `ERROR` |  | Transaction aborted: a participant couldn't prepare |
-| `409-8` | `ERROR` |  | The procedure, trigger or schedule was changed by someone else (`ifVersion`) |
+| `409-8` | `ERROR` |  | The procedure, trigger, schedule or entrypoint was changed by someone else (`ifVersion`) |
 | `409-9` | `ERROR` |  | The transaction was aborted and must be rolled back |
 | `409-10` | `ERROR` |  | The commit was decided but part of it didn't apply; the server finishes it. Never roll back or resend its writes |
 | `409-11` | `ERROR` |  | A name that differs only by case already exists |
@@ -1621,6 +1858,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `409-16` | `ERROR` |  | The transaction was rolled back after `transactionIdleTimeoutMs`; answered once, to the next request |
 | `409-17` | `ERROR` |  | The snapshot was aborted; the message says why |
 | `409-18` | `ERROR` |  | A document with this `_id` already exists (`failOnUpdate`) |
+| `409-19` | `ERROR` |  | Another entrypoint of the project already serves the same method and path shape |
 | `410-1` | `NOT_FOUND` |  | The listen ended; pushed once on its connection |
 | `413-1` | `ERROR` |  | Too many unread responses; sent as a `CLOSE_CONNECTION` frame, then the connection is closed |
 | `421-1` | `ERROR` |  | This node doesn't own the collection |
@@ -1662,6 +1900,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `500-35` | `ERROR` |  | Error gathering server info |
 | `500-36` | `ERROR` |  | Error opening the snapshot |
 | `500-37` | `ERROR` |  | Error reading the snapshot |
+| `500-38` | `ERROR` |  | Error saving the entrypoint. An inline procedure saved before the failure stays saved |
+| `500-39` | `ERROR` |  | Error deleting the entrypoint |
 | `503-1` | `ERROR` |  | Too many connections; sent as a `CLOSE_CONNECTION` frame, then the connection is closed (with TLS, closed with no frame) |
 | `503-2` | `ERROR` | yes | The cluster has no write quorum |
 | `503-3` | `ERROR` |  | Timed out waiting for the replication quorum. The write did happen, so don't resend it blindly |

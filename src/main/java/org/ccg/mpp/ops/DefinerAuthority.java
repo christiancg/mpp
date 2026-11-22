@@ -9,6 +9,7 @@ import org.ccg.mpp.cluster.ClusterCoordinator;
 import org.ccg.mpp.cluster.WriteGuard;
 import org.ccg.mpp.cluster.admin.AdminRecords;
 import org.ccg.mpp.cluster.ownership.OwnershipManager;
+import org.ccg.mpp.data.EntrypointDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.ioc.IocContainer;
@@ -52,6 +53,12 @@ public final class DefinerAuthority {
         disable(AdminRecordKey.schedule(projectName, schedule.getName()),
                 "Schedule '" + schedule.getName() + "' in " + projectName, reason,
                 () -> ScheduleOperationHelper.disable(projectName, schedule, reason));
+    }
+
+    public static void disableEntrypoint(String projectName, EntrypointDefinition entrypoint, String reason) {
+        disable(AdminRecordKey.entrypoint(projectName, entrypoint.getName()),
+                "Entrypoint '" + entrypoint.getName() + "' in " + projectName, reason,
+                () -> EntrypointOperationHelper.disable(projectName, entrypoint, reason));
     }
 
     private interface Disabling {

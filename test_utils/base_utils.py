@@ -476,6 +476,7 @@ def write_config(work_dir: str, port: int, *, admin_password: Optional[str] = No
     password = PASSWORD if admin_password is None else admin_password
     lines = [f"port={port}", "filePath=db", "logPath=logs",
              f"defaultAdminUsername={USERNAME}", f"defaultAdminPassword={password}"]
+    settings = {"httpPort": 0, **settings}
     lines += [f"{key}={_config_value(value)}" for key, value in settings.items()]
     with open(os.path.join(work_dir, "mpp.cfg"), "w") as fp:
         fp.write("\n".join(lines) + "\n")

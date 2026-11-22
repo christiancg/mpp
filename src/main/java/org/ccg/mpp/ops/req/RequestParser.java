@@ -126,6 +126,9 @@ public final class RequestParser {
                 case SAVE_SCHEDULE -> eJson.fromJson(root, SaveScheduleRequest.class);
                 case DELETE_SCHEDULE -> eJson.fromJson(root, DeleteScheduleRequest.class);
                 case LIST_SCHEDULES -> eJson.fromJson(root, ListSchedulesRequest.class);
+                case SAVE_ENTRYPOINT -> eJson.fromJson(root, SaveEntrypointRequest.class);
+                case DELETE_ENTRYPOINT -> eJson.fromJson(root, DeleteEntrypointRequest.class);
+                case LIST_ENTRYPOINTS -> eJson.fromJson(root, ListEntrypointsRequest.class);
                 case ARM_FAULT -> eJson.fromJson(root, ArmFaultRequest.class);
                 case AWAIT_FAULT -> eJson.fromJson(root, AwaitFaultRequest.class);
                 case RELEASE_FAULT -> eJson.fromJson(root, ReleaseFaultRequest.class);
