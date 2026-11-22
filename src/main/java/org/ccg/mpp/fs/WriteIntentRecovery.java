@@ -33,6 +33,7 @@ final class WriteIntentRecovery {
     }
 
     boolean recoverBehindAVacuum(String projectName, String collName) throws IOException {
+        DeferredApplies.clearBehindAVacuum(projectName, collName);
         if (!pkIndexStore.clearBehindAVacuum(projectName, collName)) {
             return false;
         }
@@ -53,7 +54,7 @@ final class WriteIntentRecovery {
 
     private void stayBehind(String projectName, String collName) {
         pkIndexStore.markBehindAVacuum(projectName, collName);
-        DeferredApplies.flag(projectName, collName);
+        DeferredApplies.flagBehindAVacuum(projectName, collName);
     }
 
     private boolean recoverIntent(WriteIntentJournal.Intent intent) throws IOException {

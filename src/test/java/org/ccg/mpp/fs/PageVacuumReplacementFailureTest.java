@@ -1,6 +1,7 @@
 package org.ccg.mpp.fs;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,6 +50,7 @@ public class PageVacuumReplacementFailureTest {
     @AfterEach
     public void tearDown() throws Exception {
         DeferredApplies.clear(PROJECT, COLL);
+        DeferredApplies.clearBehindAVacuum(PROJECT, COLL);
         PkIndexStore.forgetUnder(fx.paths.collectionFolder(PROJECT, COLL));
         TestUtils.standardTearDown();
     }
@@ -94,10 +96,31 @@ public class PageVacuumReplacementFailureTest {
 
         assertTrue(new WriteIntentRecovery(fx.paths, fx.store, fx.journal).recoverBehindAVacuum(PROJECT, COLL));
 
+        assertFalse(DeferredApplies.pending(PROJECT + "|" + COLL));
         assertEquals(0, fx.openIntents());
         final var rows = fx.store.rowsFor(PROJECT, COLL, Set.of("b", "c"));
         assertEquals(StorageFixture.record("b", "old-b"), fx.readAt(rows.get("b")));
         assertEquals(StorageFixture.record("c", "old-c"), fx.readAt(rows.get("c")));
+    }
+
+    @Test
+    public void anAppliedWriteAheadLogLeavesTheCollectionFlaggedWhileItsPkIndexIsBehind() throws Exception {
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
+
+        assertFalse(new WriteAheadLog(fx.paths).requireApplied(PROJECT, COLL));
+
+        assertTrue(DeferredApplies.pending(PROJECT + "|" + COLL));
+        assertThrows(IOException.class, () -> fx.store.readWholePkIndexFile(PROJECT, COLL));
+    }
+
+    @Test
+    public void aFlagWhoseMarkerIsGoneIsClearedByTheNextUse() throws Exception {
+        assertThrows(IOException.class, () -> vacuum.vacuum(PROJECT, COLL, 0, liveRows()));
+        PkIndexStore.forgetUnder(fx.paths.collectionFolder(PROJECT, COLL));
+
+        assertFalse(new WriteIntentRecovery(fx.paths, fx.store, fx.journal).recoverBehindAVacuum(PROJECT, COLL));
+
+        assertFalse(DeferredApplies.pending(PROJECT + "|" + COLL));
     }
 
     @Test
