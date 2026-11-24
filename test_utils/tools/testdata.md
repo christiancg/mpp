@@ -366,7 +366,7 @@ A `MANAGE` user replacing or deleting a trigger or schedule installed by another
 or an admin) → `403-5`:
 
 ```json
-{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it", "errorCode": "403-5"}
+{"type": "DELETE_TRIGGER", "status": "FORBIDDEN", "message": "The trigger, schedule, entrypoint or middleware belongs to another user; only that user, a project owner or an admin may change it", "errorCode": "403-5"}
 ```
 
 A user with `READ` on the project but not script `MANAGE` (nor ownership, nor admin) asking for procedure source
@@ -3156,7 +3156,7 @@ for any procedure `auditWrite` imports, and for a procedure a before hook or a s
 ```
 
 ```json
-{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule or entrypoint that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
+{"type": "SAVE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule, entrypoint or middleware that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
 `DELETE_PROCEDURE` answers `403-4` before the `400-14` reference refusal
@@ -3166,7 +3166,7 @@ for any procedure `auditWrite` imports, and for a procedure a before hook or a s
 ```
 
 ```json
-{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule or entrypoint that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
+{"type": "DELETE_PROCEDURE", "status": "FORBIDDEN", "message": "Procedure 'auditWrite' is bound by a trigger, schedule, entrypoint or middleware that runs as another user; only that user, a project owner or an admin may change it", "errorCode": "403-4"}
 ```
 
 `MANAGE` without `READ_WRITE` on the collection (no entry, and no project grant) cannot install a
@@ -3487,6 +3487,82 @@ Delete — idempotent, and the procedure stays
 
 ```json
 {"type": "DELETE_ENTRYPOINT", "projectName": "test", "name": "createPing"}
+```
+
+HTTP middlewares
+
+A middleware wraps the project's entrypoints with a procedure of its own: `INGRESS` runs before the entrypoint's
+procedure, `EGRESS` after it, each by ascending `order`. It decides by calling `next(...)` or `reject(...)` from the
+`middleware` module. These use the `beat` procedure and the `getBeat` entrypoint above, so save `getBeat` again first.
+
+An auth filter on `/beats` that leaves `latestBeat` public: `GET http://localhost:8990/test/beats/x` without
+`Authorization: Bearer letmein` then answers 401
+
+```json
+{"type": "SAVE_MIDDLEWARE", "projectName": "test", "name": "beatAuth", "phase": "INGRESS", "order": 10, "match": {"pathPrefix": "/beats", "exclude": [{"entrypoints": ["latestBeat"]}]}, "procedure": {"name": "beatAuth", "script": "import args from \"args\";\nimport { next, reject } from \"middleware\";\nif (args.headers.authorization === 'Bearer letmein') next({locals: {user: 'tester'}}); else reject(401, {error: 'unauthorized'}, {'www-authenticate': 'Bearer'});"}}
+```
+
+```json
+{"type": "SAVE_MIDDLEWARE", "status": "OK", "message": "Middleware saved successfully", "version": 1, "procedureVersion": 1}
+```
+
+An egress middleware that adds a CORS header to every response, the 401 above included
+
+```json
+{"type": "SAVE_MIDDLEWARE", "projectName": "test", "name": "cors", "phase": "EGRESS", "procedure": {"name": "cors", "script": "import { next } from \"middleware\";\nnext({headers: {'access-control-allow-origin': '*'}});"}}
+```
+
+```json
+{"type": "LIST_MIDDLEWARES", "projectName": "test"}
+```
+
+```json
+{"type": "LIST_MIDDLEWARES", "status": "OK", "message": "Ok", "middlewares": [{"name": "beatAuth", "phase": "INGRESS", "order": 10, "match": {"pathPrefix": "/beats", "exclude": [{"entrypoints": ["latestBeat"]}]}, "procedureName": "beatAuth", "timeoutMs": 0, "enabled": true, "definer": "admin", "version": 1, "createdAt": 1763700000000, "updatedAt": 1763700000000, "updatedBy": "admin"}, {"name": "cors", "phase": "EGRESS", "order": 0, "procedureName": "cors", "timeoutMs": 0, "enabled": true, "definer": "admin", "version": 1, "createdAt": 1763700000000, "updatedAt": 1763700000000, "updatedBy": "admin"}]}
+```
+
+A bad phase, method, `pathPrefix`, entrypoint name or `timeoutMs`, or an empty `exclude` rule → `400-49`
+
+```json
+{"type": "SAVE_MIDDLEWARE", "projectName": "test", "name": "badRule", "phase": "INGRESS", "procedureName": "beat", "match": {"exclude": [{}]}}
+```
+
+```json
+{"type": "SAVE_MIDDLEWARE", "status": "ERROR", "message": "The middleware definition is not valid: match.exclude[0] needs at least one of 'methods', 'pathPrefix' and 'entrypoints'", "errorCode": "400-49"}
+```
+
+A project holding `maxMiddlewaresPerProject` middlewares (64 by default) refuses a new one → `400-50`. To try it by hand,
+set `maxMiddlewaresPerProject=1` in `mpp.cfg` and save a second one:
+
+```json
+{"type": "SAVE_MIDDLEWARE", "status": "ERROR", "message": "The project has the maximum number of middlewares (1)", "errorCode": "400-50"}
+```
+
+Deleting a procedure a middleware still uses is refused → `400-49`
+
+```json
+{"type": "DELETE_PROCEDURE", "projectName": "test", "name": "cors"}
+```
+
+```json
+{"type": "DELETE_PROCEDURE", "status": "ERROR", "message": "Procedure 'cors' is still referenced by middleware 'cors'", "errorCode": "400-49"}
+```
+
+A middleware that calls neither `next` nor `reject`, one whose procedure is missing, or one disabled because its definer
+lost script `RUN` makes every entrypoint it wraps answer `500` (it fails closed). `500-40` and `500-41` are a save or
+delete that failed on disk, like `500-38` and `500-39` for entrypoints.
+
+Delete — idempotent, and the procedure stays
+
+```json
+{"type": "DELETE_MIDDLEWARE", "projectName": "test", "name": "beatAuth"}
+```
+
+```json
+{"type": "DELETE_MIDDLEWARE", "status": "OK", "message": "Middleware deleted successfully"}
+```
+
+```json
+{"type": "DELETE_MIDDLEWARE", "projectName": "test", "name": "cors"}
 ```
 
 Answers only a cluster gives

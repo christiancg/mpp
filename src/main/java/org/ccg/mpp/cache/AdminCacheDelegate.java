@@ -8,6 +8,7 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.ccg.mpp.data.EntrypointDefinition;
+import org.ccg.mpp.data.MiddlewareDefinition;
 import org.ccg.mpp.data.PkIndexEntry;
 import org.ccg.mpp.data.ProcedureDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
@@ -191,19 +192,35 @@ interface AdminCacheDelegate {
     }
 
     default EntrypointDefinition getEntrypoint(String projectName, String name) {
-        return adminCache().entrypoints().get(projectName, name);
+        return adminCache().http().entrypoints().get(projectName, name);
     }
 
     default void putEntrypoint(String projectName, EntrypointDefinition definition) {
-        adminCache().entrypoints().put(projectName, definition);
+        adminCache().http().entrypoints().put(projectName, definition);
     }
 
     default void removeEntrypoint(String projectName, String name) {
-        adminCache().entrypoints().remove(projectName, name);
+        adminCache().http().entrypoints().remove(projectName, name);
     }
 
     default void removeEntrypointsForProject(String projectName) {
-        adminCache().entrypoints().removeForProject(projectName);
+        adminCache().http().entrypoints().removeForProject(projectName);
+    }
+
+    default MiddlewareDefinition getMiddleware(String projectName, String name) {
+        return adminCache().http().middlewares().get(projectName, name);
+    }
+
+    default void putMiddleware(String projectName, MiddlewareDefinition definition) {
+        adminCache().http().middlewares().put(projectName, definition);
+    }
+
+    default void removeMiddleware(String projectName, String name) {
+        adminCache().http().middlewares().remove(projectName, name);
+    }
+
+    default void removeMiddlewaresForProject(String projectName) {
+        adminCache().http().middlewares().removeForProject(projectName);
     }
 
     default MetadataCacheStats metadataCacheStats() {

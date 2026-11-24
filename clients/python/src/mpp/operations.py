@@ -24,6 +24,8 @@ _READS = frozenset(
         Operation.LIST_PROCEDURES,
         Operation.LIST_TRIGGERS,
         Operation.LIST_SCHEDULES,
+        Operation.LIST_ENTRYPOINTS,
+        Operation.LIST_MIDDLEWARES,
         Operation.LIST_SCRIPTS,
         Operation.LIST_TRIGGER_RUNS,
     }

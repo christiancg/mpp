@@ -55,6 +55,7 @@ import org.ccg.mpp.ops.admin.AdminStamp;
 import org.ccg.mpp.ops.admin.DeferredWrites;
 import org.ccg.mpp.ops.admin.PageOccupancyReconciler;
 import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 import org.ccg.mpp.ops.snapshot.SnapshotRegistry;
 import org.ccg.mpp.ops.snapshot.SnapshotSweeper;
 import org.ccg.mpp.simplejs.host.ScriptHeapGuard;
@@ -79,6 +80,7 @@ public class ServerMain {
     private static final MetricsServer metricsServer = IocContainer.get(MetricsServer.class);
     private static final HttpServer httpServer = IocContainer.get(HttpServer.class);
     private static final EntrypointRouter entrypointRouter = IocContainer.get(EntrypointRouter.class);
+    private static final MiddlewareChains middlewareChains = IocContainer.get(MiddlewareChains.class);
     private static final SnapshotRegistry snapshotRegistry = IocContainer.get(SnapshotRegistry.class);
     private static final SnapshotSweeper snapshotSweeper = IocContainer.get(SnapshotSweeper.class);
     private static ClusterServer clusterServer;
@@ -212,6 +214,7 @@ public class ServerMain {
         } catch (RuntimeException e) {
             logger.error("Failed to load the entrypoint routes; the listener starts with the ones that loaded", e);
         }
+        middlewareChains.loadAll();
         final var limits = new HttpLimits(config.intValue(ConfigKey.HTTP_MAX_CONNECTIONS),
                 config.sizeValue(ConfigKey.HTTP_MAX_REQUEST_BYTES), config.longValue(ConfigKey.HTTP_READ_TIMEOUT_MS),
                 config.longValue(ConfigKey.HTTP_IDLE_TIMEOUT_MS));

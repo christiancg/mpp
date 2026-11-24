@@ -9,6 +9,7 @@ import { document, documents, strings } from "./internal/response-decoder.js";
 import type { ScriptResult } from "./results.js";
 import type { TriggerInfo } from "./scripting/definitions.js";
 import { Entrypoints } from "./scripting/entrypoints.js";
+import { Middlewares } from "./scripting/middlewares.js";
 import { Procedures } from "./scripting/procedures.js";
 import { Schedules } from "./scripting/schedules.js";
 
@@ -75,6 +76,10 @@ export class Project {
 
     entrypoints(): Entrypoints {
         return new Entrypoints(this.#context, this.name);
+    }
+
+    middlewares(): Middlewares {
+        return new Middlewares(this.#context, this.name);
     }
 
     async listTriggers(): Promise<TriggerInfo[]> {

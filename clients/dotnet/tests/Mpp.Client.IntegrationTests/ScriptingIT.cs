@@ -120,6 +120,46 @@ public sealed class ScriptingIT(ScriptingIT.Server fixture) : IClassFixture<Scri
     }
 
     [Fact]
+    public async Task MiddlewaresAreSavedListedRefusedAndDeleted()
+    {
+        await Shop.Procedures().SaveAsync(new ProcedureDefinition("pass_through", "import { next } from \"middleware\";\nnext();"));
+        var middlewares = Shop.Middlewares();
+        var auth = await middlewares.SaveAsync(new MiddlewareDefinition("auth", MiddlewarePhase.Ingress)
+        {
+            Order = 10,
+            Match = new MiddlewareMatch
+            {
+                Methods = [EntrypointMethod.Post],
+                PathPrefix = "/orders",
+                Exclude = [new MiddlewareCriteria { Entrypoints = ["listOrders"] }],
+            },
+            ProcedureName = "pass_through",
+        });
+        Assert.Equal(1, auth.Version);
+        var cors = await middlewares.SaveAsync(new MiddlewareDefinition("cors", MiddlewarePhase.Egress)
+        {
+            Procedure = new ProcedureDefinition(
+                "cors_headers",
+                "import { next } from \"middleware\";\nnext({headers: {\"access-control-allow-origin\": \"*\"}});"),
+        });
+        Assert.Equal((1L, 1L), (cors.Version, cors.ProcedureVersion));
+        Assert.Contains(await Shop.Procedures().ListAsync(), procedure => procedure.Name == "cors_headers");
+        var listed = await middlewares.ListAsync();
+        Assert.Equal(["auth", "cors"], listed.Select(middleware => middleware.Name));
+        var authInfo = listed[0];
+        Assert.Equal(("INGRESS", 10, "pass_through", true), (authInfo.Phase, authInfo.Order, authInfo.ProcedureName, authInfo.Enabled));
+        Assert.Equal("/orders", authInfo.Match!.GetString("pathPrefix"));
+        Assert.Null(listed[1].Match);
+        var stale = await Assert.ThrowsAsync<ConflictException>(() => middlewares.SaveAsync(
+            new MiddlewareDefinition("auth", MiddlewarePhase.Ingress) { ProcedureName = "pass_through", IfVersion = 5 }));
+        Assert.True(stale.HasCode(ErrorCode.ProcedureVersionConflict));
+        await middlewares.DeleteAsync("auth");
+        await middlewares.DeleteAsync("cors");
+        Assert.Empty(await middlewares.ListAsync());
+        Assert.Contains(await Shop.Procedures().ListAsync(), procedure => procedure.Name == "cors_headers");
+    }
+
+    [Fact]
     public async Task ALongScriptIsListedAndCancelled()
     {
         var running = Shop.RunScriptAsync("let i = 0;\nwhile (true) { i++; }");

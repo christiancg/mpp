@@ -198,10 +198,11 @@ collected a tombstone brings the deleted document back.
 
 ## Admin and DDL replication
 
-Projects, collections, indexes, schemas, users, permissions, procedures, triggers, schedules and entrypoints belong to
-the whole cluster, not to a collection owner. One node, the admin coordinator, serializes every change to them, and the
-other nodes forward those requests to it. The coordinator applies the change, sends the changed records to every node
-and waits for a majority, so a node without quorum refuses admin changes with `503-2`, like writes.
+Projects, collections, indexes, schemas, users, permissions, procedures, triggers, schedules, entrypoints and
+middlewares belong to the whole cluster, not to a collection owner. One node, the admin coordinator, serializes every
+change to them, and the other nodes forward those requests to it. The coordinator applies the change, sends the changed
+records to every node and waits for a majority, so a node without quorum refuses admin changes with `503-2`, like
+writes.
 
 Every admin record has a version from the same clock as documents. The newer version wins, a delete leaves a permanent
 tombstone, and there is an admin anti-entropy next to the document one, so a node that was down while a project was
@@ -271,6 +272,10 @@ minority side of a partition fails as a client's would, and a failure the proced
 
 A node that hasn't applied a new or changed entrypoint yet answers with its previous routes, `404` for a new one, until
 the change reaches it.
+
+[Middlewares](protocol.md#middlewares) replicate the same way, and every node applies them to the requests it serves.
+Until a node applies a new or changed middleware it runs the chain it had, so for that short window an auth filter just
+saved on one node may not guard requests arriving at another yet.
 
 ## Pending trigger runs are node-local
 

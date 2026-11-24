@@ -31,7 +31,8 @@ public final class AuthorizationChecker {
     private static final Set<OperationType> SCRIPT_MANAGEMENT_OPERATIONS = Set.of(OperationType.SAVE_PROCEDURE,
             OperationType.DELETE_PROCEDURE, OperationType.SAVE_TRIGGER, OperationType.DELETE_TRIGGER,
             OperationType.SAVE_SCHEDULE, OperationType.DELETE_SCHEDULE, OperationType.TEST_TRIGGER,
-            OperationType.SAVE_ENTRYPOINT, OperationType.DELETE_ENTRYPOINT);
+            OperationType.SAVE_ENTRYPOINT, OperationType.DELETE_ENTRYPOINT, OperationType.SAVE_MIDDLEWARE,
+            OperationType.DELETE_MIDDLEWARE);
     private static final Set<OperationType> TRIGGER_OPERATIONS = Set.of(OperationType.SAVE_TRIGGER,
             OperationType.DELETE_TRIGGER, OperationType.TEST_TRIGGER);
 
@@ -231,7 +232,8 @@ public final class AuthorizationChecker {
     private static PermissionLevel getRequiredPermissionLevel(OperationType type) {
         return switch (type) {
             case FIND_BY_ID, AGGREGATE, LIST_COLLECTIONS, GET_SCHEMA, LISTEN, LIST_PROCEDURES, LIST_TRIGGERS,
-                    LIST_SCHEDULES, LIST_ENTRYPOINTS, START_SNAPSHOT, READ_SNAPSHOT, RELEASE_SNAPSHOT ->
+                    LIST_SCHEDULES, LIST_ENTRYPOINTS, LIST_MIDDLEWARES, START_SNAPSHOT, READ_SNAPSHOT,
+                    RELEASE_SNAPSHOT ->
                 PermissionLevel.READ;
             default -> PermissionLevel.READ_WRITE;
         };

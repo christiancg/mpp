@@ -2,6 +2,9 @@ import type { Permissions, TransactionDecision, TriggerRunDecision, TriggerRunSt
 import type { PipelineStep } from "../query/types.js";
 import type {
     EntrypointDefinition,
+    MiddlewareDefinition,
+    MiddlewareMatch,
+    MiddlewareRule,
     ProcedureDefinition,
     ScheduleDefinition,
     TriggerDefinition,
@@ -30,13 +33,32 @@ function checkSchedule(schedule: ScheduleDefinition): void {
     }
 }
 
-function checkEntrypoint(entrypoint: EntrypointDefinition): void {
-    if ((entrypoint.procedureName === undefined) === (entrypoint.procedure === undefined)) {
-        throw new TypeError("an entrypoint takes exactly one of procedureName and procedure");
+function checkProcedureSource(kind: string, definition: EntrypointDefinition | MiddlewareDefinition): void {
+    if ((definition.procedureName === undefined) === (definition.procedure === undefined)) {
+        throw new TypeError(`${kind} takes exactly one of procedureName and procedure`);
     }
-    if (entrypoint.procedure?.ifVersion !== undefined) {
+    if (definition.procedure?.ifVersion !== undefined) {
         throw new TypeError("an inline procedure takes no ifVersion");
     }
+}
+
+function middlewareRule(rule: MiddlewareRule): JsonObject {
+    return {
+        ...optional("methods", rule.methods === undefined ? undefined : [...rule.methods]),
+        ...optional("pathPrefix", rule.pathPrefix),
+        ...optional("entrypoints", rule.entrypoints === undefined ? undefined : [...rule.entrypoints]),
+    };
+}
+
+function middlewareMatch(match: MiddlewareMatch | undefined): JsonObject {
+    return match === undefined
+        ? {}
+        : {
+              match: {
+                  ...middlewareRule(match),
+                  ...optional("exclude", match.exclude?.map(middlewareRule)),
+              },
+          };
 }
 
 function inlineProcedure(procedure: ProcedureDefinition | undefined): JsonObject {
@@ -149,7 +171,7 @@ export class ScriptRequestEncoder {
     }
 
     saveEntrypoint(project: string, entrypoint: EntrypointDefinition): JsonObject {
-        checkEntrypoint(entrypoint);
+        checkProcedureSource("an entrypoint", entrypoint);
         return {
             ...request("SAVE_ENTRYPOINT", project),
             name: entrypoint.name,
@@ -170,6 +192,31 @@ export class ScriptRequestEncoder {
 
     listEntrypoints(project: string): JsonObject {
         return request("LIST_ENTRYPOINTS", project);
+    }
+
+    saveMiddleware(project: string, middleware: MiddlewareDefinition): JsonObject {
+        checkProcedureSource("a middleware", middleware);
+        return {
+            ...request("SAVE_MIDDLEWARE", project),
+            name: middleware.name,
+            phase: middleware.phase,
+            ...optional("order", middleware.order),
+            ...middlewareMatch(middleware.match),
+            ...optional("procedureName", middleware.procedureName),
+            ...inlineProcedure(middleware.procedure),
+            ...optional("timeoutMs", middleware.timeoutMs),
+            ...optional("description", middleware.description),
+            ...optional("enabled", middleware.enabled),
+            ...optional("ifVersion", middleware.ifVersion),
+        };
+    }
+
+    deleteMiddleware(project: string, name: string): JsonObject {
+        return { ...request("DELETE_MIDDLEWARE", project), name };
+    }
+
+    listMiddlewares(project: string): JsonObject {
+        return request("LIST_MIDDLEWARES", project);
     }
 
     listScripts(): JsonObject {

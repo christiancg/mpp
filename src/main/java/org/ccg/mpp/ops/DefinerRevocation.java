@@ -2,10 +2,14 @@ package org.ccg.mpp.ops;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.data.EntrypointDefinition;
+import org.ccg.mpp.data.MiddlewareDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
+import org.ccg.mpp.data.StoredDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminProjectEntry;
 import org.ccg.mpp.ioc.IocContainer;
@@ -41,7 +45,8 @@ public final class DefinerRevocation {
     private static boolean revoke(String projectName, Predicate<String> definerInScope, RestampedRecords restamped) {
         return revokeTriggers(projectName, definerInScope, restamped)
                 && revokeSchedules(projectName, definerInScope, restamped)
-                && revokeEntrypoints(projectName, definerInScope, restamped);
+                && revokeAll(ENTRYPOINTS, projectName, definerInScope, restamped)
+                && revokeAll(MIDDLEWARES, projectName, definerInScope, restamped);
     }
 
     private static boolean revokeTriggers(String projectName, Predicate<String> definerInScope,
@@ -100,31 +105,52 @@ public final class DefinerRevocation {
         return true;
     }
 
-    private static boolean revokeEntrypoints(String projectName, Predicate<String> definerInScope,
-            RestampedRecords restamped) {
-        final List<EntrypointDefinition> entrypoints;
+    private interface Lister<T> {
+        List<T> list(String projectName) throws IOException;
+    }
+
+    private interface Disabler<T> {
+        boolean disable(String projectName, T definition, String reason) throws IOException, InterruptedException;
+    }
+
+    private record Revocable<T extends StoredDefinition>(String kind, String plural, Lister<T> lister,
+            Function<T, String> definerOf, Disabler<T> disabler, BiFunction<String, String, AdminRecordKey> keyOf) {
+    }
+
+    private static final Revocable<EntrypointDefinition> ENTRYPOINTS = new Revocable<>("Entrypoint", "entrypoints",
+            EntrypointOperationHelper::entrypointsIn, EntrypointDefinition::getDefiner,
+            EntrypointOperationHelper::disable, AdminRecordKey::entrypoint);
+    private static final Revocable<MiddlewareDefinition> MIDDLEWARES = new Revocable<>("Middleware", "middlewares",
+            MiddlewareOperationHelper::middlewaresIn, MiddlewareDefinition::getDefiner,
+            MiddlewareOperationHelper::disable, AdminRecordKey::middleware);
+
+    private static <T extends StoredDefinition> boolean revokeAll(Revocable<T> revocable, String projectName,
+            Predicate<String> definerInScope, RestampedRecords restamped) {
+        final List<T> definitions;
         try {
-            entrypoints = EntrypointOperationHelper.entrypointsIn(projectName);
+            definitions = revocable.lister().list(projectName);
         } catch (IOException e) {
-            logger.error("Could not read the entrypoints of project '" + projectName + "' to re-check their definers;"
-                    + " an entrypoint whose definer lost its rights is disabled when it is next called", e);
+            logger.error("Could not read the " + revocable.plural() + " of project '" + projectName
+                    + "' to re-check their definers; one whose definer lost its rights is disabled when it next runs",
+                    e);
             return true;
         }
-        for (final var entrypoint : entrypoints) {
-            if (outOfScope(entrypoint.isEnabled(), entrypoint.getDefiner(), definerInScope)) {
+        for (final var definition : definitions) {
+            final var definer = revocable.definerOf().apply(definition);
+            if (outOfScope(definition.isEnabled(), definer, definerInScope)) {
                 continue;
             }
-            final var refusal = DefinerAuthority.refusal(entrypoint.getDefiner(), projectName, null);
+            final var refusal = DefinerAuthority.refusal(definer, projectName, null);
             if (refusal == null) {
                 continue;
             }
-            final var outcome = disable("Entrypoint '" + entrypoint.getName() + "' in " + projectName, refusal,
-                    () -> EntrypointOperationHelper.disable(projectName, entrypoint, refusal));
+            final var outcome = disable(revocable.kind() + " '" + definition.getName() + "' in " + projectName, refusal,
+                    () -> revocable.disabler().disable(projectName, definition, refusal));
             if (outcome == Outcome.INTERRUPTED) {
                 return false;
             }
             if (outcome == Outcome.DISABLED) {
-                restamped.add(AdminRecordKey.entrypoint(projectName, entrypoint.getName()));
+                restamped.add(revocable.keyOf().apply(projectName, definition.getName()));
             }
         }
         return true;

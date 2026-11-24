@@ -231,6 +231,10 @@ public class ServerMainStartupOrderTest {
         final var factory = positionOf(source, "final var tlsFactory = createTlsFactory();");
 
         assertTrue(factory < positionOf(source, "startEntrypointsIfEnabled(tlsFactory);"));
+        assertTrue(
+                positionOf(source, "entrypointRouter.loadAll();") < positionOf(source, "middlewareChains.loadAll();"));
+        assertTrue(positionOf(source, "middlewareChains.loadAll();") < positionOf(source, "httpServer.start("),
+                "no request may be served before its middlewares are loaded");
         assertTrue(factory < positionOf(source, "new SocketServer(port, config.getBindAddress(), tlsFactory)"));
         assertEquals(source.indexOf("createTlsFactory();"), source.lastIndexOf("createTlsFactory();"),
                 "the keystore must be loaded once");

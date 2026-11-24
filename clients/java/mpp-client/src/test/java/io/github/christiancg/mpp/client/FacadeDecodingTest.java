@@ -12,6 +12,10 @@ import io.github.christiancg.mpp.client.protocol.ErrorCode;
 import io.github.christiancg.mpp.client.query.Filters;
 import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
 import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
+import io.github.christiancg.mpp.client.scripting.MiddlewareCriteria;
+import io.github.christiancg.mpp.client.scripting.MiddlewareDefinition;
+import io.github.christiancg.mpp.client.scripting.MiddlewareMatch;
+import io.github.christiancg.mpp.client.scripting.MiddlewarePhase;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -170,6 +174,72 @@ public class FacadeDecodingTest {
         assertEquals("d", entrypoint.description().orElseThrow());
         assertEquals("definer deleted", entrypoint.disabledReason().orElseThrow());
         assertEquals(row, entrypoint.raw());
+    }
+
+    @Test
+    public void test_middleware_replies_decode() {
+        final var saved = recorder.shop.middlewares()
+                .save(MiddlewareDefinition.builder("m", MiddlewarePhase.INGRESS).procedureName("p").build());
+        assertEquals(1, saved.version());
+        assertEquals(2, saved.procedureVersion());
+        final var middleware = recorder.shop.middlewares().list().get(0);
+        assertEquals("auth", middleware.name());
+        assertEquals("INGRESS", middleware.phase());
+        assertEquals(10, middleware.order());
+        assertEquals("checkToken", middleware.procedureName());
+        assertTrue(middleware.match().isEmpty());
+        assertTrue(middleware.enabled());
+        assertEquals(0, middleware.timeoutMs());
+        assertEquals(0, middleware.version());
+        assertTrue(middleware.definer().isEmpty());
+        assertTrue(middleware.description().isEmpty());
+        assertTrue(middleware.disabledReason().isEmpty());
+    }
+
+    @Test
+    public void test_a_middleware_row_decodes_every_field() {
+        final var row = Document.parse("""
+                {"name":"cors","phase":"EGRESS","order":-1,"match":{"methods":["POST","DELETE"],"pathPrefix":"/orders",
+                "exclude":[{"entrypoints":["listOrders"]},{"methods":["GET"],"pathPrefix":"/orders/public"}]},
+                "procedureName":"p","timeoutMs":2000,"enabled":false,"version":3,"definer":"alice","description":"d",
+                "disabledReason":"definer deleted"}""");
+        final var middleware = Descriptors.middleware(row);
+        assertEquals("EGRESS", middleware.phase());
+        assertEquals(-1, middleware.order());
+        assertEquals(MiddlewareMatch.of(
+                MiddlewareCriteria.builder().methods(EntrypointMethod.POST, EntrypointMethod.DELETE)
+                        .pathPrefix("/orders").build(),
+                MiddlewareCriteria.builder().entrypoints("listOrders").build(),
+                MiddlewareCriteria.builder().methods(EntrypointMethod.GET).pathPrefix("/orders/public").build()),
+                middleware.match().orElseThrow());
+        assertEquals(2000, middleware.timeoutMs());
+        assertFalse(middleware.enabled());
+        assertEquals(3, middleware.version());
+        assertEquals("alice", middleware.definer().orElseThrow());
+        assertEquals("d", middleware.description().orElseThrow());
+        assertEquals("definer deleted", middleware.disabledReason().orElseThrow());
+        assertEquals(row, middleware.raw());
+    }
+
+    @Test
+    public void test_a_middleware_match_skips_unknown_methods_and_non_object_rules() {
+        final var row = Document.parse(
+                "{\"name\":\"m\",\"match\":{\"methods\":[\"GET\",\"TRACE\"],\"exclude\":[1,{\"methods\":[\"BREW\"],\"entrypoints\":[\"e\"]}]}}");
+        final var match = Descriptors.middleware(row).match().orElseThrow();
+        assertEquals(List.of(EntrypointMethod.GET), match.include().methods());
+        assertEquals(1, match.exclude().size());
+        assertTrue(match.exclude().get(0).methods().isEmpty());
+        assertEquals(List.of("e"), match.exclude().get(0).entrypoints());
+    }
+
+    @Test
+    public void test_a_middleware_match_without_exclude_decodes_to_an_empty_exclude() {
+        final var row = Document.parse("{\"name\":\"m\",\"match\":{\"pathPrefix\":\"/a\"}}");
+        final var match = Descriptors.middleware(row).match().orElseThrow();
+        assertEquals("/a", match.include().pathPrefix().orElseThrow());
+        assertTrue(match.include().methods().isEmpty());
+        assertTrue(match.include().entrypoints().isEmpty());
+        assertTrue(match.exclude().isEmpty());
     }
 
     @Test

@@ -11,6 +11,10 @@ import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
 import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
 import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
+import io.github.christiancg.mpp.client.scripting.MiddlewareCriteria;
+import io.github.christiancg.mpp.client.scripting.MiddlewareDefinition;
+import io.github.christiancg.mpp.client.scripting.MiddlewareMatch;
+import io.github.christiancg.mpp.client.scripting.MiddlewarePhase;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -34,6 +38,7 @@ final class WireFixtureAdminCases {
         listenAndTransactions(cases);
         scripting(cases);
         entrypoints(cases);
+        middlewares(cases);
         users(cases);
     }
 
@@ -134,6 +139,33 @@ final class WireFixtureAdminCases {
                 .build()));
         cases.put("scripting.delete_entrypoint", r -> r.shop.entrypoints().delete("getOrder"));
         cases.put("scripting.list_entrypoints", r -> r.shop.entrypoints().list());
+    }
+
+    private static void middlewares(Map<String, Consumer<Recorder>> cases) {
+        cases.put("scripting.save_middleware",
+                r -> r.shop
+                        .middlewares().save(
+                                MiddlewareDefinition
+                                        .builder("auth", MiddlewarePhase.INGRESS).order(
+                                                10)
+                                        .match(MiddlewareMatch.of(
+                                                MiddlewareCriteria.builder()
+                                                        .methods(EntrypointMethod.POST, EntrypointMethod.DELETE)
+                                                        .pathPrefix("/orders").build(),
+                                                MiddlewareCriteria.builder().entrypoints("listOrders").build()))
+                                        .procedureName("checkToken").timeout(Duration.ofSeconds(2))
+                                        .description("Bearer-token filter").enabled(true).ifVersion(2).build()));
+        cases.put("scripting.save_middleware_inline",
+                r -> r.shop.middlewares()
+                        .save(MiddlewareDefinition.builder("cors", MiddlewarePhase.EGRESS)
+                                .procedure(ProcedureDefinition
+                                        .builder("cors",
+                                                "import { next } from \"middleware\";\n"
+                                                        + "next({headers: {\"access-control-allow-origin\": \"*\"}});")
+                                        .description("Adds CORS headers").enabled(true).build())
+                                .build()));
+        cases.put("scripting.delete_middleware", r -> r.shop.middlewares().delete("auth"));
+        cases.put("scripting.list_middlewares", r -> r.shop.middlewares().list());
     }
 
     private static void users(Map<String, Consumer<Recorder>> cases) {

@@ -5,6 +5,10 @@ from mpp import (
     EntrypointDefinition,
     EntrypointMethod,
     GlobalPermission,
+    MiddlewareDefinition,
+    MiddlewareMatch,
+    MiddlewarePhase,
+    MiddlewareRule,
     Permissions,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -155,6 +159,40 @@ def _entrypoints(cases: dict[str, FixtureCall]) -> None:
     cases["scripting.list_entrypoints"] = lambda r: r.shop.entrypoints().list()
 
 
+def _middlewares(cases: dict[str, FixtureCall]) -> None:
+    cases["scripting.save_middleware"] = lambda r: r.shop.middlewares().save(
+        MiddlewareDefinition(
+            "auth",
+            MiddlewarePhase.INGRESS,
+            procedure_name="checkToken",
+            order=10,
+            match=MiddlewareMatch(
+                methods=(EntrypointMethod.POST, EntrypointMethod.DELETE),
+                path_prefix="/orders",
+                exclude=(MiddlewareRule(entrypoints=("listOrders",)),),
+            ),
+            timeout_ms=2000,
+            description="Bearer-token filter",
+            enabled=True,
+            if_version=2,
+        )
+    )
+    cases["scripting.save_middleware_inline"] = lambda r: r.shop.middlewares().save(
+        MiddlewareDefinition(
+            "cors",
+            MiddlewarePhase.EGRESS,
+            procedure=ProcedureDefinition(
+                "cors",
+                'import { next } from "middleware";\nnext({headers: {"access-control-allow-origin": "*"}});',
+                description="Adds CORS headers",
+                enabled=True,
+            ),
+        )
+    )
+    cases["scripting.delete_middleware"] = lambda r: r.shop.middlewares().delete("auth")
+    cases["scripting.list_middlewares"] = lambda r: r.shop.middlewares().list()
+
+
 def _admin_scripts(cases: dict[str, FixtureCall]) -> None:
     cases["scripting.list_scripts"] = lambda r: r.admin.scripts().list()
     cases["scripting.cancel_script"] = lambda r: r.admin.scripts().cancel("3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83")
@@ -199,5 +237,6 @@ def add_admin_cases(cases: dict[str, FixtureCall]) -> None:
     _procedures(cases)
     _triggers_and_schedules(cases)
     _entrypoints(cases)
+    _middlewares(cases)
     _admin_scripts(cases)
     _users(cases)

@@ -54,6 +54,20 @@ internal static class Descriptors
         row.GetString("disabledReason"),
         row);
 
+    public static MiddlewareInfo Middleware(Document row) => new(
+        Text(row, "name"),
+        Text(row, "phase"),
+        (int)Whole(row, "order"),
+        row.GetDocument("match"),
+        Text(row, "procedureName"),
+        Whole(row, "timeoutMs"),
+        row.GetBoolean("enabled") ?? true,
+        Whole(row, "version"),
+        row.GetString("definer"),
+        row.GetString("description"),
+        row.GetString("disabledReason"),
+        row);
+
     public static UserInfo User(Document row) => new(
         Text(row, "_id"),
         row.GetBoolean("admin") ?? false,

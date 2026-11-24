@@ -20,6 +20,7 @@ internal static class WireFixtureAdminCases
         Procedures(cases);
         TriggersAndSchedules(cases);
         Entrypoints(cases);
+        Middlewares(cases);
         AdminScripts(cases);
         Users(cases);
     }
@@ -134,6 +135,39 @@ internal static class WireFixtureAdminCases
             });
         cases["scripting.delete_entrypoint"] = r => r.Shop.Entrypoints().DeleteAsync("getOrder");
         cases["scripting.list_entrypoints"] = r => r.Shop.Entrypoints().ListAsync();
+    }
+
+    private static void Middlewares(Dictionary<string, FixtureCall> cases)
+    {
+        cases["scripting.save_middleware"] = r => r.Shop.Middlewares().SaveAsync(
+            new MiddlewareDefinition("auth", MiddlewarePhase.Ingress)
+            {
+                Order = 10,
+                Match = new MiddlewareMatch
+                {
+                    Methods = [EntrypointMethod.Post, EntrypointMethod.Delete],
+                    PathPrefix = "/orders",
+                    Exclude = [new MiddlewareCriteria { Entrypoints = ["listOrders"] }],
+                },
+                ProcedureName = "checkToken",
+                Timeout = TimeSpan.FromSeconds(2),
+                Description = "Bearer-token filter",
+                Enabled = true,
+                IfVersion = 2,
+            });
+        cases["scripting.save_middleware_inline"] = r => r.Shop.Middlewares().SaveAsync(
+            new MiddlewareDefinition("cors", MiddlewarePhase.Egress)
+            {
+                Procedure = new ProcedureDefinition(
+                    "cors",
+                    "import { next } from \"middleware\";\nnext({headers: {\"access-control-allow-origin\": \"*\"}});")
+                {
+                    Description = "Adds CORS headers",
+                    Enabled = true,
+                },
+            });
+        cases["scripting.delete_middleware"] = r => r.Shop.Middlewares().DeleteAsync("auth");
+        cases["scripting.list_middlewares"] = r => r.Shop.Middlewares().ListAsync();
     }
 
     private static void AdminScripts(Dictionary<string, FixtureCall> cases)

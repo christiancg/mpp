@@ -47,6 +47,11 @@ Lists the triggers of every collection in the project.
 @param ct cancels the wait; a request already sent closes its connection, since its outcome is unknown
 @returns the triggers, each with its `Collection`
 
+## Middlewares()
+Returns the project's HTTP middlewares.
+
+@returns the middlewares facade
+
 ## Procedures()
 Returns the project's stored procedures.
 

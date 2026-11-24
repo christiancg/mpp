@@ -3339,6 +3339,32 @@ def test_entrypoint_replicates_and_every_node_serves_it():
         "type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": "clusterEcho"}), "OK")
 
 
+def test_middleware_replicates_and_every_node_applies_it():
+    section("HTTP middlewares — an inline middleware replicates and every node applies it")
+    path = f"/{PROJECT}/guarded/x"
+    check_status("save a target via node-0", op(nodes[0].client_port, {
+        "type": "SAVE_ENTRYPOINT", "projectName": PROJECT, "name": "clusterGuarded", "method": "GET",
+        "path": "/guarded/{id}", "procedure": {"name": "clusterGuarded", "script": "return 1;"}}), "OK")
+    check("every node serves it", wait_until(lambda: entrypoint_answers_everywhere(path, 200), timeout_s=20.0),
+          detail=str([http_status(node.http_port, path) for node in nodes if node.alive]))
+    check_status("save an inline auth middleware via node-0", op(nodes[0].client_port, {
+        "type": "SAVE_MIDDLEWARE", "projectName": PROJECT, "name": "clusterAuth", "phase": "INGRESS",
+        "match": {"pathPrefix": "/guarded"}, "procedure": {"name": "clusterAuth", "script": (
+            'import { reject } from "middleware";\nreject(401, {error: "unauthorized"});')}}), "OK")
+    check("every node answers 401", wait_until(lambda: entrypoint_answers_everywhere(path, 401), timeout_s=20.0),
+          detail=str([http_status(node.http_port, path) for node in nodes if node.alive]))
+    check_status("delete the middleware via node-1", op(nodes[1].client_port, {
+        "type": "DELETE_MIDDLEWARE", "projectName": PROJECT, "name": "clusterAuth"}), "OK")
+    check("every node answers 200 again", wait_until(lambda: entrypoint_answers_everywhere(path, 200),
+                                                     timeout_s=20.0),
+          detail=str([http_status(node.http_port, path) for node in nodes if node.alive]))
+    check_status("delete the entrypoint", op(nodes[0].client_port, {
+        "type": "DELETE_ENTRYPOINT", "projectName": PROJECT, "name": "clusterGuarded"}), "OK")
+    for name in ("clusterAuth", "clusterGuarded"):
+        check_status(f"delete the procedure {name}", op(nodes[0].client_port, {
+            "type": "DELETE_PROCEDURE", "projectName": PROJECT, "name": name}), "OK")
+
+
 def test_a_revoked_definer_is_disabled_on_every_node():
     section("A trigger whose definer loses READ is disabled on every node, not only where it fires")
 
@@ -4499,6 +4525,7 @@ GROUPS = {
         test_a_procedure_bound_by_another_definer_is_protected_through_any_node,
         test_a_revoked_definer_is_disabled_on_every_node,
         test_entrypoint_replicates_and_every_node_serves_it,
+        test_middleware_replicates_and_every_node_applies_it,
         test_script_placement_forwards_runs,
         test_script_run_history_still_reaches_the_collection_owner,
         test_forwarded_script_reads_and_writes,

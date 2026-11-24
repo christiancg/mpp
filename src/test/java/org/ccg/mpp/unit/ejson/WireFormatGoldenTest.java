@@ -30,7 +30,8 @@ public class WireFormatGoldenTest {
             FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.ResolveTriggerRunResponse", FINAL_PRIMITIVE,
             "org.ccg.mpp.ops.resp.TestTriggerResponse", FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.ReadSnapshotResponse",
             FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.CloseConnectionResponse", NO_ARG_CONSTRUCTOR,
-            "org.ccg.mpp.ops.resp.StopListenResponse", NO_ARG_CONSTRUCTOR);
+            "org.ccg.mpp.ops.resp.StopListenResponse", NO_ARG_CONSTRUCTOR,
+            "org.ccg.mpp.ops.resp.SaveMiddlewareResponse", FINAL_PRIMITIVE);
 
     private static Map<String, String> currentLines() throws Exception {
         final var lines = new LinkedHashMap<String, String>();

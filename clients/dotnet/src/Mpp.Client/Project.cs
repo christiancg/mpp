@@ -61,6 +61,8 @@ public sealed class Project
 
     public Entrypoints Entrypoints() => new(_context, Name);
 
+    public Middlewares Middlewares() => new(_context, Name);
+
     public async Task<IReadOnlyList<TriggerInfo>> ListTriggersAsync(CancellationToken ct = default)
     {
         var reply = await SendAsync(Operation.ListTriggers, ScriptRequestEncoder.ListTriggers(Name, null), ct)

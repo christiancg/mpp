@@ -5,17 +5,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import org.ccg.mpp.data.MiddlewarePhase;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.ops.ErrorCode;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
+import org.ccg.mpp.ops.req.DeleteMiddlewareRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
 import org.ccg.mpp.ops.req.InlineProcedure;
 import org.ccg.mpp.ops.req.ListEntrypointsRequest;
+import org.ccg.mpp.ops.req.ListMiddlewaresRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
+import org.ccg.mpp.ops.req.RequestParser;
 import org.ccg.mpp.ops.req.SaveEntrypointRequest;
+import org.ccg.mpp.ops.req.SaveMiddlewareRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -227,6 +232,63 @@ public class ScriptRequestValidationTest {
         final var adminProject = new SaveEntrypointRequest("admin", "e", "GET", "/x");
         adminProject.setProcedureName("myProc");
         assertFalse(RequestValidator.validate(adminProject).isValid());
+    }
+
+    private static SaveMiddlewareRequest middleware(MiddlewarePhase phase, String procedureName,
+            InlineProcedure procedure) {
+        final var request = new SaveMiddlewareRequest("myProject", "auth", phase);
+        request.setProcedureName(procedureName);
+        request.setProcedure(procedure);
+        return request;
+    }
+
+    @Test
+    public void test_save_middleware_needs_a_name_a_phase_and_exactly_one_procedure_source() {
+        assertTrue(RequestValidator.validate(middleware(MiddlewarePhase.INGRESS, "myProc", null)).isValid());
+        assertTrue(RequestValidator
+                .validate(middleware(MiddlewarePhase.EGRESS, null, new InlineProcedure("myProc", "x"))).isValid());
+        final var noPhase = RequestValidator.validate(middleware(null, "myProc", null));
+        final var neither = RequestValidator.validate(middleware(MiddlewarePhase.INGRESS, null, null));
+        final var both = RequestValidator
+                .validate(middleware(MiddlewarePhase.INGRESS, "p1p", new InlineProcedure("p2p", "x")));
+
+        assertEquals(ErrorCode.INVALID_MIDDLEWARE, noPhase.getErrorCode());
+        assertEquals(ErrorCode.INVALID_MIDDLEWARE, neither.getErrorCode());
+        assertEquals(ErrorCode.INVALID_MIDDLEWARE, both.getErrorCode());
+        assertFalse(RequestValidator
+                .validate(middleware(MiddlewarePhase.INGRESS, null, new InlineProcedure("myProc", " "))).isValid());
+        assertFalse(RequestValidator.validate(new SaveMiddlewareRequest("myProject", "../x", MiddlewarePhase.INGRESS))
+                .isValid());
+        assertFalse(RequestValidator.validate(new SaveMiddlewareRequest("bad name", "auth", MiddlewarePhase.INGRESS))
+                .isValid());
+    }
+
+    @Test
+    public void test_a_phase_off_the_wire_is_upper_case_only() {
+        for (final var phase : List.of("ingress", "BEFORE", "Egress")) {
+            final var result = RequestValidator.validate(parsedMiddleware(phase));
+
+            assertEquals(ErrorCode.INVALID_MIDDLEWARE, result.getErrorCode(), phase);
+            assertTrue(result.getErrorMessage().contains("'phase' must be INGRESS or EGRESS"),
+                    result.getErrorMessage());
+        }
+        final var upper = parsedMiddleware("EGRESS");
+        assertEquals(MiddlewarePhase.EGRESS, upper.getPhase());
+        assertTrue(RequestValidator.validate(upper).isValid());
+    }
+
+    private static SaveMiddlewareRequest parsedMiddleware(String phase) {
+        return (SaveMiddlewareRequest) RequestParser.parseRequest("{\"type\":\"SAVE_MIDDLEWARE\",\"projectName\":"
+                + "\"myProject\",\"name\":\"auth\",\"phase\":\"" + phase + "\",\"procedureName\":\"myProc\"}");
+    }
+
+    @Test
+    public void test_delete_and_list_middlewares_validate_names() {
+        assertTrue(RequestValidator.validate(new DeleteMiddlewareRequest("myProject", "auth")).isValid());
+        assertFalse(RequestValidator.validate(new DeleteMiddlewareRequest("myProject", "")).isValid());
+        assertFalse(RequestValidator.validate(new DeleteMiddlewareRequest(null, "auth")).isValid());
+        assertTrue(RequestValidator.validate(new ListMiddlewaresRequest("myProject")).isValid());
+        assertFalse(RequestValidator.validate(new ListMiddlewaresRequest("bad name")).isValid());
     }
 
     @Test

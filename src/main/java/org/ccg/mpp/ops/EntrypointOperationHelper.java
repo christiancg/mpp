@@ -81,15 +81,11 @@ public final class EntrypointOperationHelper {
         final var inline = request.getProcedure() == null
                 ? null
                 : request.getProcedure().toSaveProcedureRequest(projectName);
-        if (inline != null) {
-            final var refusal = ProcedureOperationHelper.refusalBeforeSave(OperationType.SAVE_ENTRYPOINT, inline);
-            if (refusal != null) {
-                return refusal;
-            }
+        final var inlineRefusal = BoundDefinitionSave.inlineRefusal(OperationType.SAVE_ENTRYPOINT, inline);
+        if (inlineRefusal != null) {
+            return inlineRefusal;
         }
-        final var route = new Route(method, template);
-        return OperationLocks.withProjectShared(projectName, OperationType.SAVE_ENTRYPOINT,
-                ErrorCode.ERROR_SAVING_ENTRYPOINT, () -> saveUnderProjectBarrier(request, route, inline, actingUser));
+        return new EntrypointSave(request, new Route(method, template), inline, actingUser).run(actingUser);
     }
 
     private static OperationResponse timeoutRefusal(long timeoutMs) {
@@ -105,81 +101,57 @@ public final class EntrypointOperationHelper {
         return null;
     }
 
-    private static OperationResponse saveUnderProjectBarrier(SaveEntrypointRequest request, Route route,
-            SaveProcedureRequest inline, String actingUser) throws IOException, InterruptedException {
-        final var projectName = request.getProjectName();
-        if (cache.getAdminProjectEntry(projectName) == null) {
-            return projectNotFound(OperationType.SAVE_ENTRYPOINT, projectName);
+    private static final class EntrypointSave extends BoundDefinitionSave<EntrypointDefinition> {
+        private static final Kind KIND = new Kind(OperationType.SAVE_ENTRYPOINT, ErrorCode.ERROR_SAVING_ENTRYPOINT,
+                Globals.ENTRYPOINTS_FOLDER, ConfigKey.MAX_ENTRYPOINTS_PER_PROJECT, ErrorCode.TOO_MANY_ENTRYPOINTS);
+        private final SaveEntrypointRequest request;
+        private final Route route;
+        private final String actingUser;
+
+        EntrypointSave(SaveEntrypointRequest request, Route route, SaveProcedureRequest inline, String actingUser) {
+            super(KIND, request, request.getName(), request.getProcedureName(), inline);
+            this.request = request;
+            this.route = route;
+            this.actingUser = actingUser;
         }
-        locks.lock(projectName, Globals.ENTRYPOINTS_FOLDER);
-        locks.lock(projectName, Globals.PROCEDURES_FOLDER);
-        try {
-            final var existing = cache.getEntrypoint(projectName, request.getName());
-            final var refusal = refusalUnderLock(request, route, existing, actingUser);
-            if (refusal != null) {
-                return refusal;
+
+        @Override
+        protected EntrypointDefinition existing(String projectName, String name) {
+            return cache.getEntrypoint(projectName, name);
+        }
+
+        @Override
+        protected String definerOf(EntrypointDefinition definition) {
+            return definition.getDefiner();
+        }
+
+        @Override
+        protected List<String> names(String projectName) throws IOException {
+            return fs.metadataFiles().listEntrypointNames(projectName);
+        }
+
+        @Override
+        protected OperationResponse refusalAmong(List<String> names) {
+            final var conflicting = sameRoute(request.getProjectName(), names, request.getName(), route);
+            if (conflicting == null) {
+                return null;
             }
-            final long procedureVersion;
-            if (inline != null) {
-                final var outcome = ProcedureOperationHelper.saveHoldingLock(OperationType.SAVE_ENTRYPOINT, inline,
-                        actingUser);
-                if (outcome.refusal() != null) {
-                    return outcome.refusal();
-                }
-                procedureVersion = outcome.version();
-            } else {
-                final var procedure = cache.getProcedure(projectName, request.getProcedureName());
-                if (procedure == null) {
-                    return new OperationResponse(OperationType.SAVE_ENTRYPOINT,
-                            "Procedure '" + request.getProcedureName() + "' not found in project '" + projectName + "'",
-                            ErrorCode.PROCEDURE_NOT_FOUND);
-                }
-                procedureVersion = procedure.getVersion();
-            }
+            return new OperationResponse(OperationType.SAVE_ENTRYPOINT,
+                    ErrorCode.ENTRYPOINT_ROUTE_CONFLICT.getDefaultMessage() + ": '" + conflicting.getName() + "' ("
+                            + conflicting.getMethod() + " " + conflicting.getPath() + ")",
+                    ErrorCode.ENTRYPOINT_ROUTE_CONFLICT);
+        }
+
+        @Override
+        protected OperationResponse persist(EntrypointDefinition existing, long procedureVersion) throws IOException {
+            final var projectName = request.getProjectName();
             final var definition = newDefinition(request, route, existing, actingUser);
             StoredDefinitions.writeEntrypoint(projectName, definition.getName(), definition.toJsonObject());
             cache.putEntrypoint(projectName, definition);
             router.reload(projectName);
             return new SaveEntrypointResponse("Entrypoint saved successfully", definition.getVersion(),
                     procedureVersion);
-        } finally {
-            locks.release(projectName, Globals.PROCEDURES_FOLDER);
-            locks.release(projectName, Globals.ENTRYPOINTS_FOLDER);
         }
-    }
-
-    private static OperationResponse refusalUnderLock(SaveEntrypointRequest request, Route route,
-            EntrypointDefinition existing, String actingUser) throws IOException {
-        final var projectName = request.getProjectName();
-        if (request.conflictsWith(existing == null ? 0L : existing.getVersion())) {
-            return new OperationResponse(OperationType.SAVE_ENTRYPOINT, ErrorCode.PROCEDURE_VERSION_CONFLICT);
-        }
-        final var foreign = existing == null
-                ? null
-                : ProcedureBindingGuard.foreignDefinitionRefusal(OperationType.SAVE_ENTRYPOINT, projectName,
-                        existing.getDefiner(), actingUser);
-        if (foreign != null) {
-            return foreign;
-        }
-        final var names = fs.metadataFiles().listEntrypointNames(projectName);
-        final var maxEntrypoints = configuration.intValue(ConfigKey.MAX_ENTRYPOINTS_PER_PROJECT);
-        if (existing == null && names.size() >= maxEntrypoints) {
-            return new OperationResponse(OperationType.SAVE_ENTRYPOINT,
-                    ErrorCode.TOO_MANY_ENTRYPOINTS.getDefaultMessage() + " (" + maxEntrypoints + ")",
-                    ErrorCode.TOO_MANY_ENTRYPOINTS);
-        }
-        final var colliding = OnDiskNameRegistry.collidingDefinition(names, request.getName());
-        if (colliding != null) {
-            return new OperationResponse(OperationType.SAVE_ENTRYPOINT, ErrorCode.NAME_COLLIDES_ON_DISK, colliding);
-        }
-        final var conflicting = sameRoute(projectName, names, request.getName(), route);
-        if (conflicting != null) {
-            return new OperationResponse(OperationType.SAVE_ENTRYPOINT,
-                    ErrorCode.ENTRYPOINT_ROUTE_CONFLICT.getDefaultMessage() + ": '" + conflicting.getName() + "' ("
-                            + conflicting.getMethod() + " " + conflicting.getPath() + ")",
-                    ErrorCode.ENTRYPOINT_ROUTE_CONFLICT);
-        }
-        return null;
     }
 
     private static EntrypointDefinition sameRoute(String projectName, List<String> names, String savedName,

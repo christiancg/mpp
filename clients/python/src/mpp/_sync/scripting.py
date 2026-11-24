@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from mpp._async.entrypoints import AsyncEntrypoints
+from mpp._async.middlewares import AsyncMiddlewares
 from mpp._async.procedures import AsyncProcedures
 from mpp._async.schedules import AsyncSchedules
 from mpp._internal.portal import SyncRuntime
@@ -11,6 +12,9 @@ from mpp.scripting_types import (
     EntrypointDefinition,
     EntrypointInfo,
     EntrypointSaved,
+    MiddlewareDefinition,
+    MiddlewareInfo,
+    MiddlewareSaved,
     ProcedureDefinition,
     ProcedureInfo,
     ScheduleDefinition,
@@ -63,4 +67,19 @@ class Entrypoints:
         self._runtime.run(self._inner.delete(name))
 
     def list(self) -> list[EntrypointInfo]:
+        return self._runtime.run(self._inner.list())
+
+
+class Middlewares:
+    def __init__(self, runtime: SyncRuntime, inner: AsyncMiddlewares) -> None:
+        self._runtime = runtime
+        self._inner = inner
+
+    def save(self, definition: MiddlewareDefinition) -> MiddlewareSaved:
+        return self._runtime.run(self._inner.save(definition))
+
+    def delete(self, name: str) -> None:
+        self._runtime.run(self._inner.delete(name))
+
+    def list(self) -> list[MiddlewareInfo]:
         return self._runtime.run(self._inner.list())

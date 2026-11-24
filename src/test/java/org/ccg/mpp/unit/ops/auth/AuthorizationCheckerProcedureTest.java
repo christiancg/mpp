@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import org.ccg.mpp.data.MiddlewarePhase;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.data.auth.PermissionLevel;
 import org.ccg.mpp.data.auth.ScriptPermissionLevel;
@@ -14,15 +15,18 @@ import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.auth.AuthorizationChecker;
 import org.ccg.mpp.ops.req.CallProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
+import org.ccg.mpp.ops.req.DeleteMiddlewareRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteTriggerRequest;
 import org.ccg.mpp.ops.req.ListEntrypointsRequest;
+import org.ccg.mpp.ops.req.ListMiddlewaresRequest;
 import org.ccg.mpp.ops.req.ListProceduresRequest;
 import org.ccg.mpp.ops.req.ListSchedulesRequest;
 import org.ccg.mpp.ops.req.ListTriggersRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.ops.req.SaveEntrypointRequest;
+import org.ccg.mpp.ops.req.SaveMiddlewareRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SaveTriggerRequest;
@@ -215,6 +219,26 @@ public class AuthorizationCheckerProcedureTest {
         save.setProcedureName("p");
         final var delete = new DeleteEntrypointRequest(TestGlobals.PROJECT, "e");
         final var list = new ListEntrypointsRequest(TestGlobals.PROJECT);
+        final var runner = userWith(ScriptPermissionLevel.RUN, PermissionLevel.READ_WRITE);
+        final var manager = userWith(ScriptPermissionLevel.MANAGE, null);
+        final var reader = userWith(null, PermissionLevel.READ);
+        final var nobody = userWith(null, null);
+
+        assertFalse(AuthorizationChecker.check(save, runner).isAllowed());
+        assertFalse(AuthorizationChecker.check(delete, runner).isAllowed());
+        assertTrue(AuthorizationChecker.check(save, manager).isAllowed());
+        assertTrue(AuthorizationChecker.check(delete, manager).isAllowed());
+        assertTrue(AuthorizationChecker.check(save, owner()).isAllowed());
+        assertTrue(AuthorizationChecker.check(list, reader).isAllowed());
+        assertFalse(AuthorizationChecker.check(list, nobody).isAllowed());
+    }
+
+    @Test
+    public void test_middleware_management_needs_manage_and_listing_needs_read() {
+        final var save = new SaveMiddlewareRequest(TestGlobals.PROJECT, "m", MiddlewarePhase.INGRESS);
+        save.setProcedureName("p");
+        final var delete = new DeleteMiddlewareRequest(TestGlobals.PROJECT, "m");
+        final var list = new ListMiddlewaresRequest(TestGlobals.PROJECT);
         final var runner = userWith(ScriptPermissionLevel.RUN, PermissionLevel.READ_WRITE);
         final var manager = userWith(ScriptPermissionLevel.MANAGE, null);
         final var reader = userWith(null, PermissionLevel.READ);

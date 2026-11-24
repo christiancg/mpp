@@ -17,17 +17,17 @@ import org.ccg.mpp.http.PercentDecoding;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.entrypoint.EntrypointArgs;
-import org.ccg.mpp.ops.entrypoint.EntrypointReply;
 import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
 import org.ccg.mpp.ops.entrypoint.MalformedBodyException;
+import org.ccg.mpp.ops.entrypoint.ReplyEnvelope;
 import org.ccg.mpp.ops.entrypoint.RouteMatch;
-import org.ccg.mpp.simplejs.host.ProjectHostBindings;
-import org.ccg.mpp.simplejs.host.ResourceLimits;
+import org.ccg.mpp.ops.middleware.MiddlewareChain;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 
 public final class EntrypointDispatcher {
     private static final Cache cache = IocContainer.get(Cache.class);
-    private static final CompiledProcedureCache compiledProcedures = IocContainer.get(CompiledProcedureCache.class);
     private static final EntrypointRouter router = IocContainer.get(EntrypointRouter.class);
+    private static final MiddlewareChains chains = IocContainer.get(MiddlewareChains.class);
     private static final ScriptAdmission admission = IocContainer.get(ScriptAdmission.class);
     private static final Configuration configuration = Configuration.getInstance();
     private static final Logger logger = Logger.logFor(EntrypointDispatcher.class);
@@ -113,22 +113,30 @@ public final class EntrypointDispatcher {
         if (!configuration.isScriptsEnabled()) {
             return HttpResponse.error(503, "Scripts are disabled on this server");
         }
+        final var chain = chains.chainFor(projectName, definition);
+        if (chain.isUnreadable()) {
+            logger.warning("Entrypoint '" + definition.getName() + "' in project '" + projectName
+                    + "' was called, but the project's middlewares are unreadable: " + chain.unreadableReason());
+            return ReplyEnvelope.failure(null).toHttpResponse();
+        }
         return switch (admission.acquire(definition.getDefiner(), projectName, false)) {
             case ScriptAdmission.Refusal limited ->
                 HttpResponse.error(503, "Too many scripts are running (" + limited.scope() + " limit), retry shortly")
                         .withHeader("Retry-After", String.valueOf(Globals.HTTP_RETRY_AFTER_SECONDS));
             case ScriptAdmission.Permit permit -> {
                 try (permit) {
-                    yield runAdmitted(request, target, found, procedure);
+                    yield runAdmitted(request, target, found, new Admitted(procedure, chain));
                 }
             }
         };
     }
 
+    private record Admitted(ProcedureDefinition procedure, MiddlewareChain chain) {
+    }
+
     private static HttpResponse runAdmitted(HttpRequest request, Target target, RouteMatch.Found found,
-            ProcedureDefinition procedure) {
+            Admitted admitted) {
         final var definition = found.definition();
-        final var projectName = target.projectName();
         final byte[] body;
         try {
             body = request.body();
@@ -141,30 +149,16 @@ public final class EntrypointDispatcher {
         } catch (MalformedBodyException e) {
             return HttpResponse.error(400, e.getMessage());
         }
-        final var definer = definition.getDefiner();
-        final var compiled = compiledProcedures.get(projectName, definition.getProcedureName(), procedure.getVersion(),
-                procedure.getSource());
-        final var logPrefix = "ENTRYPOINT name=" + definition.getName() + " project=" + projectName + " procedure="
-                + definition.getProcedureName() + " definer=" + definer + " method=" + request.head().method()
-                + " path=" + target.path();
-        final var start = System.currentTimeMillis();
-        final var outcome = ScriptOperationHelper.runCompiled(compiled, args, projectName, definer, null, logPrefix,
-                ScriptRunKind.ENTRYPOINT, definition.getName(), limits(definition), null);
-        final var result = outcome.result();
-        ScriptRunHistory.record(new ScriptRunRecord(outcome.runId(), ScriptRunKind.ENTRYPOINT, projectName,
-                definition.getName(), definition.getProcedureName(), null, null, definer, definer, start,
-                System.currentTimeMillis() - start, 1,
-                result.isError() ? ScriptRunRecord.OUTCOME_ERROR : ScriptRunRecord.OUTCOME_OK, result.getErrorName(),
-                result.getErrorMessage(), result.getErrorStack(), result.getMetrics(), result.getLogs(),
-                result.isLogsTruncated()));
-        return EntrypointReply.of(result, outcome.runId());
+        final var chainRequest = new MiddlewareChainRunner.ChainRequest(target.projectName(), definition,
+                request.head().method(), target.path(), found.pathParams().keySet(),
+                System.currentTimeMillis() + timeoutMillis(definition));
+        return MiddlewareChainRunner.run(chainRequest, args, admitted.chain(), admitted.procedure()).toHttpResponse();
     }
 
-    static ResourceLimits limits(EntrypointDefinition definition) {
+    static long timeoutMillis(EntrypointDefinition definition) {
         final var requested = definition.getTimeoutMs() > 0
                 ? definition.getTimeoutMs()
                 : configuration.longValue(ConfigKey.ENTRYPOINT_TIMEOUT_MS);
-        final var timeout = Math.min(requested, configuration.longValue(ConfigKey.ENTRYPOINT_MAX_TIMEOUT_MS));
-        return ProjectHostBindings.limitsFromConfiguration().withWallClockMillis(timeout);
+        return Math.min(requested, configuration.longValue(ConfigKey.ENTRYPOINT_MAX_TIMEOUT_MS));
     }
 }

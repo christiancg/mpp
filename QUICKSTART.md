@@ -8,7 +8,7 @@ MPP is experimental. Try it and build things with it, but don't put data in it t
 ## 1. Start the server
 
 Pick one of the three ways below. All of them listen on port `8989`, and on `8990` for
-[HTTP entrypoints](docs/protocol.md#http-entrypoints).
+[HTTP entrypoints](docs/protocol.md#http-entrypoints) and their [middlewares](docs/protocol.md#middlewares).
 
 The server won't start without a password for its admin user, which is called `admin`, so each option sets one. Use at
 least 8 characters and avoid common passwords and the username, because the server refuses those too (see

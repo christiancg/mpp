@@ -15,6 +15,7 @@ import org.ccg.mpp.ops.SchemaPatternCaps;
 import org.ccg.mpp.ops.admin.AdminRecordKey;
 import org.ccg.mpp.ops.admin.AdminStamp;
 import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 
 final class DefinitionRecordApplier {
     private static final Logger logger = Logger.logFor(DefinitionRecordApplier.class);
@@ -26,6 +27,7 @@ final class DefinitionRecordApplier {
     private static final CompiledProcedureCache compiledProcedures = IocContainer.get(CompiledProcedureCache.class);
     private static final ScheduleRegistry scheduleRegistry = IocContainer.get(ScheduleRegistry.class);
     private static final EntrypointRouter entrypointRouter = IocContainer.get(EntrypointRouter.class);
+    private static final MiddlewareChains middlewareChains = IocContainer.get(MiddlewareChains.class);
     private static final String NOT_A_DEFINITION = "Not a definition record: ";
 
     private DefinitionRecordApplier() {
@@ -73,6 +75,7 @@ final class DefinitionRecordApplier {
             case PROCEDURE -> fs.metadataFiles().writeProcedure(key.projectName(), key.name(), json);
             case SCHEDULE -> fs.metadataFiles().writeSchedule(key.projectName(), key.name(), json);
             case ENTRYPOINT -> fs.metadataFiles().writeEntrypoint(key.projectName(), key.name(), json);
+            case MIDDLEWARE -> fs.metadataFiles().writeMiddleware(key.projectName(), key.name(), json);
             default -> throw new IllegalArgumentException(NOT_A_DEFINITION + key.id());
         }
     }
@@ -84,6 +87,7 @@ final class DefinitionRecordApplier {
             case PROCEDURE -> fs.metadataFiles().deleteProcedure(key.projectName(), key.name());
             case SCHEDULE -> fs.metadataFiles().deleteSchedule(key.projectName(), key.name());
             case ENTRYPOINT -> fs.metadataFiles().deleteEntrypoint(key.projectName(), key.name());
+            case MIDDLEWARE -> fs.metadataFiles().deleteMiddleware(key.projectName(), key.name());
             default -> throw new IllegalArgumentException(NOT_A_DEFINITION + key.id());
         }
     }
@@ -104,6 +108,10 @@ final class DefinitionRecordApplier {
                 cache.removeEntrypoint(key.projectName(), key.name());
                 entrypointRouter.reload(key.projectName());
             }
+            case MIDDLEWARE -> {
+                cache.removeMiddleware(key.projectName(), key.name());
+                middlewareChains.reload(key.projectName());
+            }
             default -> throw new IllegalArgumentException(NOT_A_DEFINITION + key.id());
         }
     }
@@ -113,6 +121,7 @@ final class DefinitionRecordApplier {
             case PROCEDURE -> Globals.PROCEDURES_FOLDER;
             case SCHEDULE -> Globals.SCHEDULES_FOLDER;
             case ENTRYPOINT -> Globals.ENTRYPOINTS_FOLDER;
+            case MIDDLEWARE -> Globals.MIDDLEWARES_FOLDER;
             default -> key.name();
         };
     }

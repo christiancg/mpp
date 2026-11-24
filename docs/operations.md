@@ -313,7 +313,7 @@ What scripts can do is in [simplejs.md](simplejs.md).
 | Key | Default | What it does |
 |---|---|---|
 | `scriptRunHistoryEnabled` | `true` | Record finished runs in each project's `script_runs` collection, best effort |
-| `scriptRunHistoryKinds` | `CALL_PROCEDURE,TRIGGER,SCHEDULE` | Kinds recorded. `RUN_SCRIPT`, `ENTRYPOINT` and `BEFORE_HOOK` (failures only) can be added |
+| `scriptRunHistoryKinds` | `CALL_PROCEDURE,TRIGGER,SCHEDULE` | Kinds recorded. `RUN_SCRIPT`, `ENTRYPOINT`, `MIDDLEWARE` and `BEFORE_HOOK` (failures only) can be added |
 | `scriptRunHistoryIncludeLogs` | `false` | Keep the run's console output on its row |
 | `scriptRunHistoryMaxErrorChars` | `2000` | Characters of an error message kept |
 | `scriptRunHistoryMaxQueued` | `10000` | Rows waiting to be written. More are dropped and counted |
@@ -372,6 +372,7 @@ What an entrypoint does is in [protocol.md](protocol.md#http-entrypoints).
 | `entrypointTimeoutMs` | `30000` | Default time per run |
 | `entrypointMaxTimeoutMs` | `300000` | Largest `timeoutMs` an entrypoint may ask for, then `400-48` |
 | `maxEntrypointsPerProject` | `1000` | Entrypoints per project, then `400-47` |
+| `maxMiddlewaresPerProject` | `64` | HTTP middlewares per project, then `400-50` |
 
 ### Cluster
 

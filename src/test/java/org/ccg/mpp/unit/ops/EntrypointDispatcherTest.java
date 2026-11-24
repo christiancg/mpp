@@ -29,6 +29,7 @@ import org.ccg.mpp.ops.EntrypointOperationHelper;
 import org.ccg.mpp.ops.ScriptAdmission;
 import org.ccg.mpp.ops.admin.StoredDefinitions;
 import org.ccg.mpp.ops.entrypoint.EntrypointRouter;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 import org.ccg.mpp.ops.req.InlineProcedure;
 import org.ccg.mpp.ops.req.SaveEntrypointRequest;
 import org.ccg.mpp.ops.resp.SaveEntrypointResponse;
@@ -47,6 +48,7 @@ public class EntrypointDispatcherTest {
     private final Cache cache = IocContainer.get(Cache.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
     private final EntrypointRouter router = IocContainer.get(EntrypointRouter.class);
+    private final MiddlewareChains chains = IocContainer.get(MiddlewareChains.class);
     private final EJson eJson = IocContainer.get(EJson.class);
 
     @BeforeAll
@@ -75,8 +77,13 @@ public class EntrypointDispatcherTest {
         for (final var name : fs.metadataFiles().listEntrypointNames(TestGlobals.PROJECT)) {
             fs.metadataFiles().deleteEntrypoint(TestGlobals.PROJECT, name);
         }
+        for (final var name : fs.metadataFiles().listMiddlewareNames(TestGlobals.PROJECT)) {
+            fs.metadataFiles().deleteMiddleware(TestGlobals.PROJECT, name);
+        }
         cache.removeEntrypointsForProject(TestGlobals.PROJECT);
+        cache.removeMiddlewaresForProject(TestGlobals.PROJECT);
         router.reload(TestGlobals.PROJECT);
+        chains.reload(TestGlobals.PROJECT);
     }
 
     private static void expose(String name, String method, String path, String script, String definer)

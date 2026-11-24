@@ -146,6 +146,15 @@ The `DELETE_ENTRYPOINT` operation. Deletes an entrypoint.
 ## ListEntrypoints
 The `LIST_ENTRYPOINTS` operation. Lists a project's entrypoints.
 
+## SaveMiddleware
+The `SAVE_MIDDLEWARE` operation. Saves a middleware.
+
+## DeleteMiddleware
+The `DELETE_MIDDLEWARE` operation. Deletes a middleware.
+
+## ListMiddlewares
+The `LIST_MIDDLEWARES` operation. Lists a project's middlewares.
+
 ## ListScripts
 The `LIST_SCRIPTS` operation. Lists the running scripts.
 

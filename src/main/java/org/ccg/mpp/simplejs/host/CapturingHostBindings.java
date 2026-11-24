@@ -66,4 +66,9 @@ public record CapturingHostBindings(HostBindings delegate, ConsoleCapture captur
     public Locale locale() {
         return delegate.locale();
     }
+
+    @Override
+    public MiddlewareDecision middlewareDecision() {
+        return delegate.middlewareDecision();
+    }
 }

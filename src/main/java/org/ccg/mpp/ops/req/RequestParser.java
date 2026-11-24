@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.ccg.mpp.config.Globals;
+import org.ccg.mpp.data.MiddlewarePhase;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonArray;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -50,6 +51,8 @@ public final class RequestParser {
     private static final Set<String> AGGREGATION_STEPS_KEY = Set.of("aggregationSteps");
     private static final String CONDITION_FIELD = "condition";
     private static final Set<String> CONDITION_KEY = Set.of(CONDITION_FIELD);
+    private static final String PHASE_FIELD = "phase";
+    private static final Set<String> PHASE_KEY = Set.of(PHASE_FIELD);
 
     public static OperationRequest parseRequest(final String message) throws InvalidCommandException {
         return parseRequest(message, Integer.MAX_VALUE);
@@ -129,6 +132,9 @@ public final class RequestParser {
                 case SAVE_ENTRYPOINT -> eJson.fromJson(root, SaveEntrypointRequest.class);
                 case DELETE_ENTRYPOINT -> eJson.fromJson(root, DeleteEntrypointRequest.class);
                 case LIST_ENTRYPOINTS -> eJson.fromJson(root, ListEntrypointsRequest.class);
+                case SAVE_MIDDLEWARE -> parseSaveMiddlewareRequest(root);
+                case DELETE_MIDDLEWARE -> eJson.fromJson(root, DeleteMiddlewareRequest.class);
+                case LIST_MIDDLEWARES -> eJson.fromJson(root, ListMiddlewaresRequest.class);
                 case ARM_FAULT -> eJson.fromJson(root, ArmFaultRequest.class);
                 case AWAIT_FAULT -> eJson.fromJson(root, AwaitFaultRequest.class);
                 case RELEASE_FAULT -> eJson.fromJson(root, ReleaseFaultRequest.class);
@@ -154,6 +160,15 @@ public final class RequestParser {
             saveRequest.setCondition(recursiveParse(condition.asJsonObject()));
         }
         return saveRequest;
+    }
+
+    private static OperationRequest parseSaveMiddlewareRequest(final JsonObject parsed) {
+        final var request = eJson.fromJson(parsed, SaveMiddlewareRequest.class, PHASE_KEY);
+        final var phase = parsed.get(PHASE_FIELD);
+        if (phase != null && phase.isJsonString()) {
+            request.setPhase(MiddlewarePhase.parse(phase.asJsonString().getValue()));
+        }
+        return request;
     }
 
     private static OperationRequest parseDeleteRequest(final JsonObject parsed) {

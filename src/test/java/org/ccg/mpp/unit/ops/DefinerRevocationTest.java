@@ -17,6 +17,9 @@ import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.EntrypointDefinition;
+import org.ccg.mpp.data.MiddlewareDefinition;
+import org.ccg.mpp.data.MiddlewareMatch;
+import org.ccg.mpp.data.MiddlewarePhase;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.data.admin.AdminUserEntry;
@@ -32,6 +35,7 @@ import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.UserOperationHelper;
 import org.ccg.mpp.ops.admin.AdminRecordKey;
 import org.ccg.mpp.ops.admin.RestampedRecords;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 import org.ccg.mpp.ops.req.ChangePermissionsRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
 import org.ccg.mpp.ops.req.SetProjectOwnersRequest;
@@ -318,6 +322,29 @@ public class DefinerRevocationTest {
         } finally {
             fs.metadataFiles().deleteEntrypoint(TestGlobals.PROJECT, "read");
             cache.removeEntrypoint(TestGlobals.PROJECT, "read");
+        }
+    }
+
+    @Test
+    public void test_a_revoked_definers_middleware_is_disabled_and_restamped() throws Exception {
+        final var definition = new MiddlewareDefinition("auth", MiddlewarePhase.INGRESS, 0, MiddlewareMatch.EVERYTHING,
+                "job", 0L, true, DEFINER, null).stamped(1L, 1L, 1L, DEFINER);
+        fs.metadataFiles().writeMiddleware(TestGlobals.PROJECT, "auth", eJson.toJson(definition.toJsonObject()));
+        cache.removeMiddleware(TestGlobals.PROJECT, "auth");
+        grant(DEFINER, false);
+        final var restamped = new RestampedRecords();
+
+        try {
+            DefinerRevocation.forDefiner(DEFINER, restamped);
+
+            final var stored = cache.getMiddleware(TestGlobals.PROJECT, "auth");
+            assertTrue(stored.isRevoked());
+            assertTrue(stored.getDisabledReason().contains("script RUN on project"), stored.getDisabledReason());
+            assertEquals(List.of(AdminRecordKey.middleware(TestGlobals.PROJECT, "auth")), restamped.keys());
+        } finally {
+            fs.metadataFiles().deleteMiddleware(TestGlobals.PROJECT, "auth");
+            cache.removeMiddleware(TestGlobals.PROJECT, "auth");
+            IocContainer.get(MiddlewareChains.class).forgetProject(TestGlobals.PROJECT);
         }
     }
 }

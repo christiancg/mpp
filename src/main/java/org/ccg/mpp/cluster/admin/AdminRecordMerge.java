@@ -180,7 +180,8 @@ public final class AdminRecordMerge {
             case PROJECT -> ProjectRecordApplier.install(record);
             case COLLECTION -> CollectionRecordApplier.install(record);
             case USER -> UserRecordApplier.install(record);
-            case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT -> DefinitionRecordApplier.install(record);
+            case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT, MIDDLEWARE ->
+                DefinitionRecordApplier.install(record);
         };
     }
 
@@ -219,14 +220,16 @@ public final class AdminRecordMerge {
             case PROJECT -> ProjectRecordApplier.remove(record, live);
             case COLLECTION -> CollectionRecordApplier.remove(record, live);
             case USER -> UserRecordApplier.remove(record);
-            case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT -> DefinitionRecordApplier.remove(record);
+            case SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT, MIDDLEWARE ->
+                DefinitionRecordApplier.remove(record);
         };
     }
 
     private static Parent parentOf(AdminRecordKey key, long version, Map<String, Long> tombstones) {
         return switch (key.kind()) {
             case PROJECT, USER -> Parent.LIVE;
-            case COLLECTION, PROCEDURE, SCHEDULE, ENTRYPOINT -> project(key.projectName(), version, tombstones);
+            case COLLECTION, PROCEDURE, SCHEDULE, ENTRYPOINT, MIDDLEWARE ->
+                project(key.projectName(), version, tombstones);
             case SCHEMA, TRIGGERS -> collection(key, version, tombstones);
         };
     }

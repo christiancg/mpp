@@ -8,6 +8,10 @@ from mpp.admin_types import Permissions, TransactionDecision, TriggerRunDecision
 from mpp.query.types import PipelineStep
 from mpp.scripting_types import (
     EntrypointDefinition,
+    EntrypointMethod,
+    MiddlewareDefinition,
+    MiddlewareMatch,
+    MiddlewareRule,
     ProcedureDefinition,
     ScheduleDefinition,
     TriggerDefinition,
@@ -48,12 +52,33 @@ def _inline_procedure(procedure: ProcedureDefinition) -> JsonObject:
     }
 
 
-def _entrypoint_target(entrypoint: EntrypointDefinition) -> JsonObject:
-    if (entrypoint.procedure_name is None) == (entrypoint.procedure is None):
-        raise ValueError("an entrypoint takes exactly one of procedure_name and procedure")
-    if entrypoint.procedure is not None:
-        return {"procedure": _inline_procedure(entrypoint.procedure)}
-    return {"procedureName": str(entrypoint.procedure_name)}
+def _target(kind: str, procedure_name: str | None, procedure: ProcedureDefinition | None) -> JsonObject:
+    if (procedure_name is None) == (procedure is None):
+        raise ValueError(f"{kind} takes exactly one of procedure_name and procedure")
+    if procedure is not None:
+        return {"procedure": _inline_procedure(procedure)}
+    return {"procedureName": str(procedure_name)}
+
+
+def _names(values: Sequence[str] | None) -> list[Json] | None:
+    return None if values is None else [str(value) for value in values]
+
+
+def _criteria(
+    methods: Sequence[EntrypointMethod] | None, path_prefix: str | None, entrypoints: Sequence[str] | None
+) -> JsonObject:
+    return _optional(methods=_names(methods), pathPrefix=path_prefix, entrypoints=_names(entrypoints))
+
+
+def _rule(rule: MiddlewareRule) -> Json:
+    return _criteria(rule.methods, rule.path_prefix, rule.entrypoints)
+
+
+def _match(match: MiddlewareMatch | None) -> JsonObject:
+    if match is None:
+        return {}
+    exclude = None if match.exclude is None else [_rule(rule) for rule in match.exclude]
+    return {"match": {**_criteria(match.methods, match.path_prefix, match.entrypoints), **_optional(exclude=exclude)}}
 
 
 class ScriptRequestEncoder:
@@ -145,7 +170,7 @@ class ScriptRequestEncoder:
         return {**request("LIST_SCHEDULES", project), **_optional(includeArgs=include_args)}
 
     def save_entrypoint(self, project: str, entrypoint: EntrypointDefinition) -> JsonObject:
-        target = _entrypoint_target(entrypoint)
+        target = _target("an entrypoint", entrypoint.procedure_name, entrypoint.procedure)
         return {
             **request("SAVE_ENTRYPOINT", project),
             "name": entrypoint.name,
@@ -165,6 +190,29 @@ class ScriptRequestEncoder:
 
     def list_entrypoints(self, project: str) -> JsonObject:
         return request("LIST_ENTRYPOINTS", project)
+
+    def save_middleware(self, project: str, middleware: MiddlewareDefinition) -> JsonObject:
+        target = _target("a middleware", middleware.procedure_name, middleware.procedure)
+        return {
+            **request("SAVE_MIDDLEWARE", project),
+            "name": middleware.name,
+            "phase": str(middleware.phase),
+            **_optional(order=middleware.order),
+            **_match(middleware.match),
+            **target,
+            **_optional(
+                timeoutMs=middleware.timeout_ms,
+                description=middleware.description,
+                enabled=middleware.enabled,
+                ifVersion=middleware.if_version,
+            ),
+        }
+
+    def delete_middleware(self, project: str, name: str) -> JsonObject:
+        return {**request("DELETE_MIDDLEWARE", project), "name": name}
+
+    def list_middlewares(self, project: str) -> JsonObject:
+        return request("LIST_MIDDLEWARES", project)
 
     def list_scripts(self) -> JsonObject:
         return request("LIST_SCRIPTS")

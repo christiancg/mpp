@@ -17,7 +17,7 @@ Raises:
 
 ## drop
 
-Drops the project with every collection, procedure, schedule and entrypoint in it.
+Drops the project with every collection, procedure, schedule, entrypoint and middleware in it.
 
 ## list_collections
 
@@ -68,6 +68,10 @@ Returns the scheduled procedures of this project.
 ## entrypoints
 
 Returns the HTTP entrypoints of this project.
+
+## middlewares
+
+Returns the HTTP middlewares of this project.
 
 ## list_triggers
 

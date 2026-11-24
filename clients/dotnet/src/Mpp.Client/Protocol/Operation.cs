@@ -55,6 +55,9 @@ public sealed class Operation
     public static readonly Operation SaveEntrypoint = new("SAVE_ENTRYPOINT", OperationScope.Project, false, false);
     public static readonly Operation DeleteEntrypoint = new("DELETE_ENTRYPOINT", OperationScope.Project, false, false);
     public static readonly Operation ListEntrypoints = new("LIST_ENTRYPOINTS", OperationScope.Project, false, false);
+    public static readonly Operation SaveMiddleware = new("SAVE_MIDDLEWARE", OperationScope.Project, false, false);
+    public static readonly Operation DeleteMiddleware = new("DELETE_MIDDLEWARE", OperationScope.Project, false, false);
+    public static readonly Operation ListMiddlewares = new("LIST_MIDDLEWARES", OperationScope.Project, false, false);
     public static readonly Operation ListScripts = new("LIST_SCRIPTS", OperationScope.None, true, false);
     public static readonly Operation CancelScript = new("CANCEL_SCRIPT", OperationScope.None, true, false);
     public static readonly Operation TestTrigger = new("TEST_TRIGGER", OperationScope.Collection, false, false);

@@ -24,6 +24,7 @@ public final class FakeSource {
     private final Map<String, List<String>> triggers = new LinkedHashMap<>();
     private final Map<String, List<String>> schedules = new LinkedHashMap<>();
     private final Map<String, List<String>> entrypoints = new LinkedHashMap<>();
+    private final Map<String, List<String>> middlewares = new LinkedHashMap<>();
 
     public FakeSource project(String project, String... collectionNames) {
         collections.put(project, List.of(collectionNames));
@@ -67,6 +68,11 @@ public final class FakeSource {
         return this;
     }
 
+    public FakeSource middleware(String project, String json) {
+        middlewares.computeIfAbsent(project, ignored -> new ArrayList<>()).add(json);
+        return this;
+    }
+
     public FakeSource schedule(String project, String json) {
         schedules.computeIfAbsent(project, ignored -> new ArrayList<>()).add(json);
         return this;
@@ -99,6 +105,8 @@ public final class FakeSource {
                 "\"schedules\":[" + String.join(",", schedules.getOrDefault(project(request), List.of())) + "]"));
         server.respond("LIST_ENTRYPOINTS", request -> FakeLineServer.ok("LIST_ENTRYPOINTS",
                 "\"entrypoints\":[" + String.join(",", entrypoints.getOrDefault(project(request), List.of())) + "]"));
+        server.respond("LIST_MIDDLEWARES", request -> FakeLineServer.ok("LIST_MIDDLEWARES",
+                "\"middlewares\":[" + String.join(",", middlewares.getOrDefault(project(request), List.of())) + "]"));
     }
 
     public String startSnapshot(JsonObject request) {

@@ -193,6 +193,14 @@ unavailable) and the number is sequential.
 
 `400-48`: The entrypoint timeout exceeds the allowed maximum.
 
+## INVALID_MIDDLEWARE
+
+`400-49`: The middleware definition is not valid.
+
+## TOO_MANY_MIDDLEWARES
+
+`400-50`: The project has the maximum number of middlewares.
+
 ## MUST_AUTHENTICATE_FIRST
 
 `401-1`: Must authenticate first.
@@ -223,11 +231,11 @@ unavailable) and the number is sequential.
 
 ## PROCEDURE_BOUND_BY_OTHER_DEFINER
 
-`403-4`: Procedure is bound by a trigger, schedule or entrypoint that runs as another user.
+`403-4`: Procedure is bound by a trigger, schedule, entrypoint or middleware that runs as another user.
 
 ## DEFINITION_OWNED_BY_OTHER_DEFINER
 
-`403-5`: The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it.
+`403-5`: The trigger, schedule, entrypoint or middleware belongs to another user; only that user, a project owner or an admin may change it.
 
 ## SOURCE_REQUIRES_MANAGE
 
@@ -552,6 +560,14 @@ unavailable) and the number is sequential.
 ## ERROR_DELETING_ENTRYPOINT
 
 `500-39`: Error while deleting the entrypoint.
+
+## ERROR_SAVING_MIDDLEWARE
+
+`500-40`: Error while saving the middleware.
+
+## ERROR_DELETING_MIDDLEWARE
+
+`500-41`: Error while deleting the middleware.
 
 ## MAX_CONNECTIONS_REACHED
 

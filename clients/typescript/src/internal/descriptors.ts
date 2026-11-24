@@ -1,7 +1,16 @@
 import type { ScriptRun, ServerInfo, TransactionInfo, TriggerRun, UserInfo } from "../admin/types.js";
 import type { Document } from "../document.js";
 import type { ScriptResult } from "../results.js";
-import type { EntrypointInfo, ProcedureInfo, ScheduleInfo, TriggerInfo } from "../scripting/definitions.js";
+import type {
+    EntrypointInfo,
+    EntrypointMethod,
+    MiddlewareInfo,
+    MiddlewareMatch,
+    MiddlewareRule,
+    ProcedureInfo,
+    ScheduleInfo,
+    TriggerInfo,
+} from "../scripting/definitions.js";
 import { booleanOf, strings, textOf } from "./response-decoder.js";
 import { decodeValue, type JsonObject } from "./values-codec.js";
 
@@ -33,11 +42,39 @@ function list(row: Document, field: string): string[] {
     return Array.isArray(value) ? value.map(String) : [];
 }
 
-function grants(row: Document, field: string): Document {
-    const value = row[field];
+function objectOf(value: unknown): Document | undefined {
     return typeof value === "object" && value !== null && !Array.isArray(value) && value.constructor === Object
         ? (value as Document)
-        : {};
+        : undefined;
+}
+
+function grants(row: Document, field: string): Document {
+    return objectOf(row[field]) ?? {};
+}
+
+function middlewareRule(row: Document): MiddlewareRule {
+    return {
+        ...(Array.isArray(row.methods) ? { methods: list(row, "methods") as EntrypointMethod[] } : {}),
+        ...(typeof row.pathPrefix === "string" ? { pathPrefix: row.pathPrefix } : {}),
+        ...(Array.isArray(row.entrypoints) ? { entrypoints: list(row, "entrypoints") } : {}),
+    };
+}
+
+function excludedRule(item: unknown): MiddlewareRule[] {
+    const rule = objectOf(item);
+    return rule === undefined ? [] : [middlewareRule(rule)];
+}
+
+function middlewareMatch(row: Document): MiddlewareMatch | undefined {
+    const match = objectOf(row.match);
+    if (match === undefined) {
+        return undefined;
+    }
+    const exclude = match.exclude;
+    return {
+        ...middlewareRule(match),
+        ...(Array.isArray(exclude) ? { exclude: exclude.flatMap(excludedRule) } : {}),
+    };
 }
 
 export function procedure(row: Document): ProcedureInfo {
@@ -86,6 +123,23 @@ export function entrypoint(row: Document): EntrypointInfo {
         method: text(row, "method"),
         path: text(row, "path"),
         url: text(row, "url"),
+        procedureName: text(row, "procedureName"),
+        timeoutMs: whole(row, "timeoutMs"),
+        enabled: flag(row, "enabled", true),
+        version: whole(row, "version"),
+        definer: optionalText(row, "definer"),
+        description: optionalText(row, "description"),
+        disabledReason: optionalText(row, "disabledReason"),
+        raw: row,
+    };
+}
+
+export function middleware(row: Document): MiddlewareInfo {
+    return {
+        name: text(row, "name"),
+        phase: text(row, "phase"),
+        order: whole(row, "order"),
+        match: middlewareMatch(row),
         procedureName: text(row, "procedureName"),
         timeoutMs: whole(row, "timeoutMs"),
         enabled: flag(row, "enabled", true),

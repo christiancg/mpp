@@ -14,6 +14,11 @@ import io.github.christiancg.mpp.client.error.MppException;
 import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
 import io.github.christiancg.mpp.client.scripting.EntrypointInfo;
 import io.github.christiancg.mpp.client.scripting.EntrypointMethod;
+import io.github.christiancg.mpp.client.scripting.MiddlewareCriteria;
+import io.github.christiancg.mpp.client.scripting.MiddlewareDefinition;
+import io.github.christiancg.mpp.client.scripting.MiddlewareInfo;
+import io.github.christiancg.mpp.client.scripting.MiddlewareMatch;
+import io.github.christiancg.mpp.client.scripting.MiddlewarePhase;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ProcedureInfo;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
@@ -22,6 +27,7 @@ import io.github.christiancg.mpp.client.scripting.TriggerEvent;
 import io.github.christiancg.mpp.client.scripting.TriggerInfo;
 import io.github.christiancg.mpp.client.scripting.TriggerTiming;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -158,6 +164,41 @@ public class ScriptingIT extends ServerIT {
         shop.entrypoints().delete("echo");
         assertTrue(shop.entrypoints().list().isEmpty());
         assertTrue(shop.procedures().list().stream().map(ProcedureInfo::name).anyMatch("echo_proc"::equals));
+    }
+
+    @Test
+    public void test_middlewares_are_saved_listed_and_deleted() {
+        shop.procedures().save(
+                ProcedureDefinition.builder("check_token", "import { next } from \"middleware\";\nnext();").build());
+        final var match = MiddlewareMatch.of(
+                MiddlewareCriteria.builder().methods(EntrypointMethod.POST).pathPrefix("/orders").build(),
+                MiddlewareCriteria.builder().entrypoints("list_orders").build());
+        final var byName = shop.middlewares().save(MiddlewareDefinition.builder("auth", MiddlewarePhase.INGRESS)
+                .order(10).match(match).procedureName("check_token").timeout(Duration.ofSeconds(2)).build());
+        assertEquals(1, byName.version());
+        final var inline = shop
+                .middlewares().save(
+                        MiddlewareDefinition.builder("cors", MiddlewarePhase.EGRESS)
+                                .procedure(ProcedureDefinition
+                                        .builder("cors_proc",
+                                                "import { next } from \"middleware\";\n"
+                                                        + "next({headers: {\"access-control-allow-origin\": \"*\"}});")
+                                        .build())
+                                .build());
+        assertEquals(1, inline.procedureVersion());
+        final var listed = shop.middlewares().list();
+        assertEquals(List.of("auth", "cors"), listed.stream().map(MiddlewareInfo::name).toList());
+        assertEquals("INGRESS", listed.get(0).phase());
+        assertEquals(10, listed.get(0).order());
+        assertEquals(match, listed.get(0).match().orElseThrow());
+        assertEquals(2000, listed.get(0).timeoutMs());
+        assertEquals("EGRESS", listed.get(1).phase());
+        assertEquals("cors_proc", listed.get(1).procedureName());
+        assertTrue(listed.get(1).match().isEmpty());
+        shop.middlewares().delete("auth");
+        shop.middlewares().delete("cors");
+        assertTrue(shop.middlewares().list().isEmpty());
+        assertTrue(shop.procedures().list().stream().map(ProcedureInfo::name).anyMatch("cors_proc"::equals));
     }
 
     @Test

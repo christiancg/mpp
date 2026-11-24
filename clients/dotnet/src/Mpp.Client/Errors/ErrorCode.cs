@@ -56,6 +56,8 @@ public sealed class ErrorCode
     public static readonly ErrorCode InvalidEntrypoint = new("400-46", "INVALID_ENTRYPOINT", Status.Error, false, "The entrypoint definition is not valid");
     public static readonly ErrorCode TooManyEntrypoints = new("400-47", "TOO_MANY_ENTRYPOINTS", Status.Error, false, "The project has the maximum number of entrypoints");
     public static readonly ErrorCode EntrypointTimeoutTooLarge = new("400-48", "ENTRYPOINT_TIMEOUT_TOO_LARGE", Status.Error, false, "The entrypoint timeout exceeds the allowed maximum");
+    public static readonly ErrorCode InvalidMiddleware = new("400-49", "INVALID_MIDDLEWARE", Status.Error, false, "The middleware definition is not valid");
+    public static readonly ErrorCode TooManyMiddlewares = new("400-50", "TOO_MANY_MIDDLEWARES", Status.Error, false, "The project has the maximum number of middlewares");
     public static readonly ErrorCode MustAuthenticateFirst = new("401-1", "MUST_AUTHENTICATE_FIRST", Status.Unauthenticated, false, "Must authenticate first");
     public static readonly ErrorCode UserNoLongerExists = new("401-2", "USER_NO_LONGER_EXISTS", Status.Unauthenticated, false, "User no longer exists");
     public static readonly ErrorCode WrongCredentials = new("401-3", "WRONG_CREDENTIALS", Status.Error, false, "The user doesn't exist or the wrong credentials have been provided");
@@ -63,8 +65,8 @@ public sealed class ErrorCode
     public static readonly ErrorCode NoPermissions = new("403-1", "NO_PERMISSIONS", Status.Forbidden, false, "Action is forbidden, no permissions");
     public static readonly ErrorCode ScriptsDisabled = new("403-2", "SCRIPTS_DISABLED", Status.Forbidden, false, "Script execution is disabled on this server");
     public static readonly ErrorCode FaultInjectionDisabled = new("403-3", "FAULT_INJECTION_DISABLED", Status.Forbidden, false, "Fault injection is disabled on this server");
-    public static readonly ErrorCode ProcedureBoundByOtherDefiner = new("403-4", "PROCEDURE_BOUND_BY_OTHER_DEFINER", Status.Forbidden, false, "Procedure is bound by a trigger, schedule or entrypoint that runs as another user");
-    public static readonly ErrorCode DefinitionOwnedByOtherDefiner = new("403-5", "DEFINITION_OWNED_BY_OTHER_DEFINER", Status.Forbidden, false, "The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it");
+    public static readonly ErrorCode ProcedureBoundByOtherDefiner = new("403-4", "PROCEDURE_BOUND_BY_OTHER_DEFINER", Status.Forbidden, false, "Procedure is bound by a trigger, schedule, entrypoint or middleware that runs as another user");
+    public static readonly ErrorCode DefinitionOwnedByOtherDefiner = new("403-5", "DEFINITION_OWNED_BY_OTHER_DEFINER", Status.Forbidden, false, "The trigger, schedule, entrypoint or middleware belongs to another user; only that user, a project owner or an admin may change it");
     public static readonly ErrorCode SourceRequiresManage = new("403-6", "SOURCE_REQUIRES_MANAGE", Status.Forbidden, false, "Procedure source requires script MANAGE");
     public static readonly ErrorCode UserNotFound = new("404-1", "USER_NOT_FOUND", Status.NotFound, false, "User not found");
     public static readonly ErrorCode EntryNotFound = new("404-2", "ENTRY_NOT_FOUND", Status.NotFound, false, "Entry not found");
@@ -146,6 +148,8 @@ public sealed class ErrorCode
     public static readonly ErrorCode ErrorReadingSnapshot = new("500-37", "ERROR_READING_SNAPSHOT", Status.Error, false, "Error while reading the snapshot");
     public static readonly ErrorCode ErrorSavingEntrypoint = new("500-38", "ERROR_SAVING_ENTRYPOINT", Status.Error, false, "Error while saving the entrypoint");
     public static readonly ErrorCode ErrorDeletingEntrypoint = new("500-39", "ERROR_DELETING_ENTRYPOINT", Status.Error, false, "Error while deleting the entrypoint");
+    public static readonly ErrorCode ErrorSavingMiddleware = new("500-40", "ERROR_SAVING_MIDDLEWARE", Status.Error, false, "Error while saving the middleware");
+    public static readonly ErrorCode ErrorDeletingMiddleware = new("500-41", "ERROR_DELETING_MIDDLEWARE", Status.Error, false, "Error while deleting the middleware");
     public static readonly ErrorCode MaxConnectionsReached = new("503-1", "MAX_CONNECTIONS_REACHED", Status.Error, false, "Max number of connections reached");
     public static readonly ErrorCode NoQuorum = new("503-2", "NO_QUORUM", Status.Error, true, "Cluster does not have a write quorum");
     public static readonly ErrorCode ReplicationTimeout = new("503-3", "REPLICATION_TIMEOUT", Status.Error, false, "Timed out waiting for the replication quorum");

@@ -898,18 +898,18 @@ Saving an existing name replaces it and raises its `version`.
   only that user, an owner or an admin can change it (`403-4`). Otherwise that user's trigger would run code they never
   saw.
 
-Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` bound by another user's trigger, schedule or
-entrypoint, `404-4` unknown project, `400-1` an invalid name (same rules as a collection) or an empty script, `400-10`
-source too big, `400-13` doesn't parse (the message has the line and column), `400-18` an import that doesn't resolve,
-`400-34` more than `maxProceduresPerProject`, `409-8` version conflict.
+Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` bound by another user's trigger, schedule,
+entrypoint or middleware, `404-4` unknown project, `400-1` an invalid name (same rules as a collection) or an empty
+script, `400-10` source too big, `400-13` doesn't parse (the message has the line and column), `400-18` an import that
+doesn't resolve, `400-34` more than `maxProceduresPerProject`, `409-8` version conflict.
 
 ### `DELETE_PROCEDURE`
 ```json
 {"type":"DELETE_PROCEDURE","projectName":"myproject","name":"recalcTotals"}
 ```
 Answers `OK` whether or not the procedure existed. Refused with `400-14` while a trigger uses it, `400-16` while a
-schedule does and `400-46` while an entrypoint does (the message names it), and with `403-4` under the same rule as
-`SAVE_PROCEDURE`.
+schedule does, `400-46` while an entrypoint does and `400-49` while a middleware does (the message names it), and with
+`403-4` under the same rule as `SAVE_PROCEDURE`.
 
 ### `LIST_PROCEDURES`
 ```json
@@ -1251,8 +1251,8 @@ Or with the procedure inline:
 - `enabled` defaults to `true`. A disabled entrypoint answers `404`. `ifVersion` works as in `SAVE_PROCEDURE`.
 
 Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` an inline procedure bound by another user's trigger,
-schedule or entrypoint, `403-5` replacing another user's entrypoint, `404-4` unknown project, `404-8` unknown
-procedure, `400-1` an invalid name, `400-10`, `400-13`, `400-18` and `400-34` for an inline procedure as in
+schedule, entrypoint or middleware, `403-5` replacing another user's entrypoint, `404-4` unknown project, `404-8`
+unknown procedure, `400-1` an invalid name, `400-10`, `400-13`, `400-18` and `400-34` for an inline procedure as in
 `SAVE_PROCEDURE`, `400-46` a bad method or path, neither or both of `procedureName` and `procedure`, or a negative
 `timeoutMs`, `400-47` more than `maxEntrypointsPerProject`, `400-48` `timeoutMs` over `entrypointMaxTimeoutMs`,
 `409-8` version conflict, `409-11` a name that differs only by case, `409-19` another entrypoint already serves the
@@ -1282,6 +1282,84 @@ Answers `OK` whether or not the entrypoint existed. Only its definer, an owner o
 ```
 Needs `READ` on the project. `url` is the path to request on `httpPort`. A disabled entrypoint also carries
 `disabledReason`.
+
+### `SAVE_MIDDLEWARE`
+Wraps the project's entrypoints with a stored procedure that runs before (`INGRESS`) or after (`EGRESS`) the
+entrypoint's own procedure (see [Middlewares](#middlewares)). Needs admin, ownership or `MANAGE`. Answers `403-2` when
+the server runs with `scriptsEnabled=false`. Saving an existing name replaces it and raises its `version`.
+
+```json
+{
+  "type": "SAVE_MIDDLEWARE",
+  "projectName": "shop",
+  "name": "auth",
+  "phase": "INGRESS",
+  "order": 10,
+  "match": {
+    "pathPrefix": "/orders",
+    "exclude": [{"entrypoints": ["listOrders"]}, {"methods": ["GET"], "pathPrefix": "/orders/public"}]
+  },
+  "procedureName": "checkToken",
+  "timeoutMs": 2000,
+  "description": "optional",
+  "enabled": true,
+  "ifVersion": 2
+}
+```
+```json
+{"type":"SAVE_MIDDLEWARE","status":"OK","message":"Middleware saved successfully","version":1,"procedureVersion":1}
+```
+
+- `phase` is `INGRESS` or `EGRESS`, upper case exactly. Any other value, `ingress` included, is refused with `400-49`.
+- `order` is an integer, `0` when missing. Within a phase, middlewares run by ascending `order`, and ties run in name
+  order.
+- `match` chooses the entrypoints the middleware wraps, by `methods`, `pathPrefix` and `entrypoints` (names). Every
+  criterion given must hold, and a missing or empty `match` wraps every entrypoint of the project, including the ones
+  saved later. `pathPrefix` holds literal segments only and covers whole segments: `/orders` covers `/orders` and
+  `/orders/{id}` but not `/orders-archive` or `/{tenant}/orders`. Names in `entrypoints` don't need to exist yet.
+- `match.exclude` is a list of at most 16 rules with the same three criteria. An entrypoint the middleware would wrap is
+  left out when any rule holds for it, and within a rule every criterion given must hold. A rule with no criterion is
+  refused, because it would hold for every entrypoint.
+- Give exactly one of `procedureName` and `procedure`, as in [`SAVE_ENTRYPOINT`](#save_entrypoint).
+- It runs with its definer's permissions. Saving one always makes you its definer, and only the definer, an owner or an
+  admin can replace or delete it (`403-5`). If the definer is deleted or loses script `RUN`, the middleware is disabled
+  with a `disabledReason`, and every entrypoint it wraps answers `500` until it's saved again or deleted.
+- `timeoutMs` caps one run of this middleware, from `0` (no own cap) to `entrypointMaxTimeoutMs`. The entrypoint's
+  timeout still bounds the whole chain.
+- `enabled` defaults to `true`. A middleware saved with `enabled: false` is skipped. `ifVersion` works as in
+  `SAVE_PROCEDURE`.
+
+Errors: `403-2` scripting disabled, `403-1` not allowed, `403-4` an inline procedure bound by another user, `403-5`
+replacing another user's middleware, `404-4` unknown project, `404-8` unknown procedure, `400-1` an invalid name,
+`400-10`, `400-13`, `400-18` and `400-34` for an inline procedure as in `SAVE_PROCEDURE`, `400-49` a bad phase, method,
+`pathPrefix`, entrypoint name or `timeoutMs`, an empty `exclude` rule or more than 16 of them, or neither or both of
+`procedureName` and `procedure`, `400-50` more than `maxMiddlewaresPerProject`, `409-8` version conflict, `409-11` a
+name that differs only by case.
+
+### `DELETE_MIDDLEWARE`
+```json
+{"type":"DELETE_MIDDLEWARE","projectName":"shop","name":"auth"}
+```
+Answers `OK` whether or not the middleware existed. Only its definer, an owner or an admin can delete someone else's
+(`403-5`). It never deletes the procedure.
+
+### `LIST_MIDDLEWARES`
+```json
+{"type":"LIST_MIDDLEWARES","projectName":"shop"}
+```
+```json
+{
+  "type": "LIST_MIDDLEWARES",
+  "status": "OK",
+  "middlewares": [
+    {"name":"auth","phase":"INGRESS","order":10,"match":{"pathPrefix":"/orders"},"procedureName":"checkToken",
+     "timeoutMs":0,"enabled":true,"definer":"alice","version":3,"createdAt":1763700000000,
+     "updatedAt":1763710000000,"updatedBy":"alice"}
+  ]
+}
+```
+Needs `READ` on the project. The list is in execution order: `INGRESS` before `EGRESS`, then by `order`, then by name.
+A middleware disabled because its definer lost its rights also carries `disabledReason`.
 
 ### `CLOSE_CONNECTION`
 ```json
@@ -1446,13 +1524,46 @@ The replies the server writes itself have a JSON body, `{"error":"<reason>"}`:
 | `411` | The request has a `Transfer-Encoding`. Chunked bodies aren't supported, send a `Content-Length` |
 | `413` | `Content-Length` is over `httpMaxRequestBytes` |
 | `431` | The request head is over 16 KB |
-| `500` | The script failed, its envelope can't be sent, or the bound procedure is missing or disabled |
+| `500` | The script failed, its envelope can't be sent, or the bound procedure is missing or disabled. Or a middleware failed closed: see [Middlewares](#middlewares) |
 | `503` | `httpMaxConnections` connections are open, scripts are disabled, a script limit was reached (with `Retry-After: 1`), or the server is shutting down |
 
 Runs share the script limits of [`RUN_SCRIPT`](#run_script): `maxConcurrentScriptsPerUser`, counted against the
 definer, `maxConcurrentScriptsPerProject` and `maxConcurrentScripts`. Past them the request answers `503` with
 `Retry-After: 1` and nothing ran. The body is read only once the run has a script slot. A request refused before that
 (`404`, `405`, `413`, `503`) is answered without reading its body, and when it has one the connection is closed.
+
+### Middlewares
+
+A middleware wraps entrypoints with a stored procedure of its own. `INGRESS` middlewares run before the entrypoint's
+procedure (the *target*) and `EGRESS` ones run after it, each phase in its own order. They are managed with
+[`SAVE_MIDDLEWARE`](#save_middleware), [`DELETE_MIDDLEWARE`](#delete_middleware) and
+[`LIST_MIDDLEWARES`](#list_middlewares), and they apply to every entrypoint of the project their `match` selects. The
+script side (the `middleware` module and what each run receives) is in
+[simplejs.md](simplejs.md#http-middlewares).
+
+```
+request → INGRESS (order asc) → target → EGRESS (order asc) → response
+              │ reject(...)          ↑
+              └──────────────────────┘
+```
+
+- **Deciding.** A middleware calls `next(changes)` to continue or `reject(status, body, headers)` to answer right away.
+  An ingress `reject` skips the remaining ingress middlewares and the target. `reject` isn't only for errors: a cache
+  hit answers `reject(200, cached)`.
+- **Egress runs on every response a script produced**: the target's reply, an ingress `reject`, and the `500` of a
+  failed ingress run or target. An egress `reject` replaces the response and skips the remaining egress middlewares.
+  Replies the server writes itself (`400`, `404`, `405`, `408`, `503` and the rest of the table above) never reach a
+  middleware.
+- **Failing closed.** These answer `500` and run nothing further, egress included: a middleware that ends without
+  calling `next` or `reject`, a wrapping middleware whose procedure is missing or disabled, one disabled because its
+  definer lost its rights, and a project whose middleware definitions can't be read. A failed egress run answers its
+  own `500`. A middleware saved with `enabled: false` is skipped instead.
+- **Excluding.** An entrypoint excluded by name stays excluded under that name, so a different entrypoint saved later
+  with the same name is excluded too. A `pathPrefix` exclusion also covers routes saved under it later. Prefer
+  excluding by name: it's the narrowest rule.
+- **Identity and budgets.** Each middleware runs as its own definer. The chain takes one script slot, counted against
+  the entrypoint's definer, and the entrypoint's timeout is a deadline for the whole chain: no run starts after it,
+  and a chain that reaches it answers `500`.
 
 ### Connections
 
@@ -1812,6 +1923,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `400-46` | `ERROR` |  | The entrypoint definition isn't valid, or an entrypoint still uses the procedure |
 | `400-47` | `ERROR` |  | The project has the maximum number of entrypoints |
 | `400-48` | `ERROR` |  | The entrypoint timeout exceeds `entrypointMaxTimeoutMs` |
+| `400-49` | `ERROR` |  | The middleware definition isn't valid, or a middleware still uses the procedure |
+| `400-50` | `ERROR` |  | The project has the maximum number of middlewares |
 | `401-1` | `UNAUTHENTICATED` |  | Must authenticate first |
 | `401-2` | `UNAUTHENTICATED` |  | User no longer exists |
 | `401-3` | `ERROR` |  | Wrong username or password |
@@ -1819,8 +1932,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `403-1` | `FORBIDDEN` |  | No permission |
 | `403-2` | `FORBIDDEN` |  | Scripts (or schedules) are disabled on this server |
 | `403-3` | `FORBIDDEN` |  | Fault injection is disabled on this server |
-| `403-4` | `FORBIDDEN` |  | The procedure is used by another user's trigger, before hook, schedule or entrypoint |
-| `403-5` | `FORBIDDEN` |  | The trigger, schedule or entrypoint belongs to another user |
+| `403-4` | `FORBIDDEN` |  | The procedure is used by another user's trigger, before hook, schedule, entrypoint or middleware |
+| `403-5` | `FORBIDDEN` |  | The trigger, schedule, entrypoint or middleware belongs to another user |
 | `403-6` | `FORBIDDEN` |  | `includeSource` or `includeArgs` needs script `MANAGE` |
 | `404-1` | `NOT_FOUND` |  | User not found |
 | `404-2` | `NOT_FOUND` |  | Entry not found |
@@ -1847,7 +1960,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `409-5` | `ERROR` |  | Couldn't lock the collection in time; the transaction is aborted |
 | `409-6` | `ERROR` |  | Not allowed while a transaction is open |
 | `409-7` | `ERROR` |  | Transaction aborted: a participant couldn't prepare |
-| `409-8` | `ERROR` |  | The procedure, trigger, schedule or entrypoint was changed by someone else (`ifVersion`) |
+| `409-8` | `ERROR` |  | The procedure, trigger, schedule, entrypoint or middleware was changed by someone else (`ifVersion`) |
 | `409-9` | `ERROR` |  | The transaction was aborted and must be rolled back |
 | `409-10` | `ERROR` |  | The commit was decided but part of it didn't apply; the server finishes it. Never roll back or resend its writes |
 | `409-11` | `ERROR` |  | A name that differs only by case already exists |
@@ -1902,6 +2015,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `500-37` | `ERROR` |  | Error reading the snapshot |
 | `500-38` | `ERROR` |  | Error saving the entrypoint. An inline procedure saved before the failure stays saved |
 | `500-39` | `ERROR` |  | Error deleting the entrypoint |
+| `500-40` | `ERROR` |  | Error saving the middleware. An inline procedure saved before the failure stays saved |
+| `500-41` | `ERROR` |  | Error deleting the middleware |
 | `503-1` | `ERROR` |  | Too many connections; sent as a `CLOSE_CONNECTION` frame, then the connection is closed (with TLS, closed with no frame) |
 | `503-2` | `ERROR` | yes | The cluster has no write quorum |
 | `503-3` | `ERROR` |  | Timed out waiting for the replication quorum. The write did happen, so don't resend it blindly |

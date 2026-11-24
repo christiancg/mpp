@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import {
     type Project,
     EntrypointMethod,
+    MiddlewarePhase,
     MppError,
     TriggerEvent,
     TriggerRunDecision,
@@ -156,6 +157,44 @@ describe("scripting", () => {
         await entrypoints.delete("echo");
         expect(await entrypoints.list()).toEqual([]);
         expect((await shop.procedures().list()).some((procedure) => procedure.name === "echo_proc")).toBe(true);
+    });
+
+    test("middlewares are saved inline and by name, listed in execution order, refused when invalid and deleted", async () => {
+        const middlewares = shop.middlewares();
+        const cors = await middlewares.save({
+            name: "cors",
+            phase: MiddlewarePhase.EGRESS,
+            procedure: {
+                name: "cors_proc",
+                script: 'import { next } from "middleware";\nnext({headers: {"access-control-allow-origin": "*"}});',
+            },
+        });
+        expect(cors).toEqual({ version: 1, procedureVersion: 1 });
+        await shop.procedures().save({ name: "check_token", script: 'import { next } from "middleware";\nnext({});' });
+        await middlewares.save({
+            name: "auth",
+            phase: MiddlewarePhase.INGRESS,
+            order: 10,
+            match: { pathPrefix: "/orders", exclude: [{ entrypoints: ["listOrders"] }] },
+            procedureName: "check_token",
+        });
+        const listed = await middlewares.list();
+        expect(listed.map((middleware) => middleware.name)).toEqual(["auth", "cors"]);
+        expect(listed[0]?.match).toEqual({ pathPrefix: "/orders", exclude: [{ entrypoints: ["listOrders"] }] });
+        expect(listed[0]?.order).toBe(10);
+        expect(listed[1]?.match).toBeUndefined();
+        expect(listed[1]?.procedureName).toBe("cors_proc");
+        const invalid = middlewares.save({
+            name: "bad",
+            phase: MiddlewarePhase.INGRESS,
+            procedureName: "check_token",
+            match: { exclude: [{}] },
+        });
+        await expect(invalid).rejects.toMatchObject({ rawCode: "400-49" });
+        await middlewares.delete("auth");
+        await middlewares.delete("cors");
+        expect(await middlewares.list()).toEqual([]);
+        expect((await shop.procedures().list()).some((procedure) => procedure.name === "cors_proc")).toBe(true);
     });
 
     test("a long script is listed and cancelled", async () => {

@@ -75,6 +75,10 @@ Runs a SimpleJS program scoped to this project.
 
 @return the project's HTTP entrypoints
 
+## middlewares()
+
+@return the project's HTTP middlewares
+
 ## listTriggers()
 
 @return every trigger of every collection in the project

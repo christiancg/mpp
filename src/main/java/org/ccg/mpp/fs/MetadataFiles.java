@@ -80,6 +80,25 @@ public final class MetadataFiles {
         return MetadataFileStore.listNames(paths.entrypointsFolder(projectName), Globals.ENTRYPOINT_FILE_EXTENSION);
     }
 
+    public void writeMiddleware(String projectName, String name, String json) throws IOException {
+        MetadataFileStore.ensureFolder(paths.middlewaresFolder(projectName), "middlewares", projectName);
+        MetadataFileStore.write(paths.middlewareFile(projectName, name), json);
+    }
+
+    public String readMiddleware(String projectName, String name) throws IOException {
+        final var file = paths.middlewareFile(projectName, name);
+        return MetadataFileStore.isListedExactly(file) ? MetadataFileStore.read(file) : null;
+    }
+
+    public boolean deleteMiddleware(String projectName, String name) throws IOException {
+        final var file = paths.middlewareFile(projectName, name);
+        return MetadataFileStore.isListedExactly(file) && MetadataFileStore.delete(file);
+    }
+
+    public List<String> listMiddlewareNames(String projectName) throws IOException {
+        return MetadataFileStore.listNames(paths.middlewaresFolder(projectName), Globals.MIDDLEWARE_FILE_EXTENSION);
+    }
+
     public void writeTriggers(String projectName, String collName, String json) throws IOException {
         MetadataFileStore.write(paths.triggersFile(projectName, collName), json);
     }
