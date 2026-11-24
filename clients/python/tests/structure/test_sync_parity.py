@@ -20,6 +20,7 @@ PAIRS: list[tuple[type, type]] = [
     (mpp.AsyncProcedures, mpp.Procedures),
     (mpp.AsyncSchedules, mpp.Schedules),
     (mpp.AsyncEntrypoints, mpp.Entrypoints),
+    (mpp.AsyncMiddlewares, mpp.Middlewares),
     (mpp.AsyncAdmin, mpp.Admin),
     (mpp.AsyncUsers, mpp.Users),
     (mpp.AsyncScripts, mpp.Scripts),

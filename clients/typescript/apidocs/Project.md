@@ -60,6 +60,10 @@ Runs a SimpleJS script against the project.
 
 @returns the project's HTTP entrypoints
 
+## middlewares
+
+@returns the project's HTTP middlewares
+
 ## listTriggers
 
 @returns every trigger on every collection of the project

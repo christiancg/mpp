@@ -325,6 +325,87 @@ public sealed class FacadeTests
     }
 
     [Fact]
+    public async Task MiddlewaresDecodeSavesAndLists()
+    {
+        _recorder.Channel.Replies = request => RecordingChannel.Ok(request, new JsonObject { ["version"] = 4, ["procedureVersion"] = 7 });
+        var middlewares = _recorder.Shop.Middlewares();
+        var saved = await middlewares.SaveAsync(new Scripting.MiddlewareDefinition("audit", Scripting.MiddlewarePhase.Egress)
+        {
+            ProcedureName = "audit",
+            Match = new Scripting.MiddlewareMatch { Entrypoints = ["getOrder"] },
+        });
+        Assert.Equal(new Scripting.MiddlewareSaved(4, 7), saved);
+        Assert.Equal("EGRESS", _recorder.Channel.Last["phase"]!.GetValue<string>());
+        Assert.Equal("""{"entrypoints":["getOrder"]}""", _recorder.Channel.Last["match"]!.ToJsonString());
+        Assert.Null(_recorder.Channel.Last["order"]);
+        Assert.Null(_recorder.Channel.Last["procedure"]);
+        Reply("middlewares", new JsonArray(new JsonObject
+        {
+            ["name"] = "auth",
+            ["phase"] = "INGRESS",
+            ["order"] = 10,
+            ["match"] = new JsonObject { ["pathPrefix"] = "/orders" },
+            ["procedureName"] = "checkToken",
+            ["timeoutMs"] = 2000,
+            ["enabled"] = false,
+            ["version"] = 3,
+            ["definer"] = "alice",
+            ["description"] = "d",
+            ["disabledReason"] = "definer deleted",
+        }));
+        var middleware = (await middlewares.ListAsync()).Single();
+        Assert.Equal(("auth", "INGRESS", 10, "checkToken"), (middleware.Name, middleware.Phase, middleware.Order, middleware.ProcedureName));
+        Assert.Equal("/orders", middleware.Match!.GetString("pathPrefix"));
+        Assert.Equal((2000L, false, 3L), (middleware.TimeoutMs, middleware.Enabled, middleware.Version));
+        Assert.Equal(("alice", "d", "definer deleted"), (middleware.Definer, middleware.Description, middleware.DisabledReason));
+        Assert.Equal("checkToken", middleware.Raw.GetString("procedureName"));
+    }
+
+    [Fact]
+    public async Task MiddlewareDescriptorFillsDefaultsForMissingFields()
+    {
+        Reply("middlewares", new JsonArray(new JsonObject()));
+        var middleware = (await _recorder.Shop.Middlewares().ListAsync()).Single();
+        Assert.Equal((string.Empty, string.Empty, 0, string.Empty), (middleware.Name, middleware.Phase, middleware.Order, middleware.ProcedureName));
+        Assert.Equal((0L, true, 0L), (middleware.TimeoutMs, middleware.Enabled, middleware.Version));
+        Assert.Null(middleware.Match);
+        Assert.Equal(((string?)null, (string?)null, (string?)null), (middleware.Definer, middleware.Description, middleware.DisabledReason));
+        _recorder.Channel.Replies = request => RecordingChannel.Ok(request);
+        Assert.Empty(await _recorder.Shop.Middlewares().ListAsync());
+        var saved = await _recorder.Shop.Middlewares().SaveAsync(new Scripting.MiddlewareDefinition("m", Scripting.MiddlewarePhase.Ingress)
+        {
+            Procedure = new Scripting.ProcedureDefinition("m", "return 1;"),
+            Match = new Scripting.MiddlewareMatch { Exclude = [new Scripting.MiddlewareCriteria { Methods = [Scripting.EntrypointMethod.Get], PathPrefix = "/public" }] },
+        });
+        Assert.Equal(new Scripting.MiddlewareSaved(0, 0), saved);
+        Assert.Equal("""{"name":"m","script":"return 1;"}""", _recorder.Channel.Last["procedure"]!.ToJsonString());
+        Assert.Equal("""{"exclude":[{"methods":["GET"],"pathPrefix":"/public"}]}""", _recorder.Channel.Last["match"]!.ToJsonString());
+        Assert.Null(_recorder.Channel.Last["procedureName"]);
+    }
+
+    [Fact]
+    public async Task MiddlewaresCheckTheirDefinitions()
+    {
+        var middlewares = _recorder.Shop.Middlewares();
+        var neither = await Assert.ThrowsAsync<ArgumentException>(() => middlewares.SaveAsync(
+            new Scripting.MiddlewareDefinition("m", Scripting.MiddlewarePhase.Ingress)));
+        Assert.Equal("middleware", neither.ParamName);
+        Assert.Contains("a middleware", neither.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<ArgumentException>(() => middlewares.SaveAsync(new Scripting.MiddlewareDefinition("m", Scripting.MiddlewarePhase.Ingress)
+        {
+            ProcedureName = "p",
+            Procedure = new Scripting.ProcedureDefinition("p", "return 1;"),
+        }));
+        var versioned = await Assert.ThrowsAsync<ArgumentException>(() => middlewares.SaveAsync(
+            new Scripting.MiddlewareDefinition("m", Scripting.MiddlewarePhase.Egress)
+            {
+                Procedure = new Scripting.ProcedureDefinition("p", "return 1;") { IfVersion = 1 },
+            }));
+        Assert.Contains("IfVersion", versioned.Message, StringComparison.Ordinal);
+        Assert.Empty(_recorder.Channel.Requests);
+    }
+
+    [Fact]
     public void EveryExceptionHasTheStandardConstructors()
     {
         foreach (var type in typeof(MppException).Assembly.GetExportedTypes().Where(typeof(MppException).IsAssignableFrom))

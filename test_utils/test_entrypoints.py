@@ -1,14 +1,12 @@
-import http.client
-import json
 import os
 import socket
-import ssl
 import sys
 import tempfile
 import threading
 import time
 
 import base_utils as bu
+import http_utils as hu
 from base_utils import check, check_code, check_status, section
 
 HOST = "127.0.0.1"
@@ -59,68 +57,13 @@ def user_conn(username: str) -> Conn:
     return Conn.authenticated(username, USER_PASSWORD)
 
 
-class Reply:
-    def __init__(self, status: int, headers: dict, body: bytes):
-        self.status = status
-        self.headers = {key.lower(): value for key, value in headers.items()}
-        self.body = body
-
-    def json(self):
-        return json.loads(self.body.decode("utf-8"))
-
-    def text(self) -> str:
-        return self.body.decode("utf-8")
-
-
-def request(method: str, path: str, body=None, headers=None, tls: bool = False) -> Reply:
-    connection = https_connection() if tls else http.client.HTTPConnection(HOST, HTTP_PORT, timeout=15)
-    try:
-        payload = json.dumps(body).encode("utf-8") if isinstance(body, (dict, list)) else body
-        all_headers = dict(headers or {})
-        if isinstance(body, (dict, list)):
-            all_headers.setdefault("Content-Type", "application/json")
-        connection.request(method, path, body=payload, headers=all_headers)
-        response = connection.getresponse()
-        return Reply(response.status, dict(response.getheaders()), response.read())
-    finally:
-        connection.close()
-
-
-def unverified_context() -> ssl.SSLContext:
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    return context
-
-
-def https_connection() -> http.client.HTTPSConnection:
-    return http.client.HTTPSConnection(HOST, HTTP_PORT, timeout=15, context=unverified_context())
-
-
-def raw_socket() -> socket.socket:
-    return socket.create_connection((HOST, HTTP_PORT), timeout=10)
-
-
-def read_until_closed(sock: socket.socket, timeout: float = 10.0) -> bytes:
-    sock.settimeout(timeout)
-    chunks = []
-    try:
-        while True:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-    except (ConnectionResetError, socket.timeout):
-        pass
-    return b"".join(chunks)
-
-
-def http_port_open() -> bool:
-    try:
-        with socket.create_connection((HOST, HTTP_PORT), timeout=1):
-            return True
-    except OSError:
-        return False
+HTTP = hu.HttpTarget(HOST, HTTP_PORT)
+request = HTTP.request
+https_connection = HTTP.https_connection
+raw_socket = HTTP.raw_socket
+http_port_open = HTTP.port_open
+read_until_closed = hu.read_until_closed
+unverified_context = hu.unverified_context
 
 
 def write_config(work_dir: str, **overrides):

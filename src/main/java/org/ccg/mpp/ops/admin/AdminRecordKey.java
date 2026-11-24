@@ -3,12 +3,14 @@ package org.ccg.mpp.ops.admin;
 import java.util.List;
 import java.util.Locale;
 import org.ccg.mpp.ops.req.DeleteEntrypointRequest;
+import org.ccg.mpp.ops.req.DeleteMiddlewareRequest;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteScheduleRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
 import org.ccg.mpp.ops.req.OperationRequest;
 import org.ccg.mpp.ops.req.PermissionsRequest;
 import org.ccg.mpp.ops.req.SaveEntrypointRequest;
+import org.ccg.mpp.ops.req.SaveMiddlewareRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.ops.req.SaveScheduleRequest;
 import org.ccg.mpp.ops.req.SetPasswordRequest;
@@ -17,7 +19,7 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
     private static final String SEPARATOR = "|";
 
     public enum Kind {
-        PROJECT, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT;
+        PROJECT, COLLECTION, USER, SCHEMA, TRIGGERS, PROCEDURE, SCHEDULE, ENTRYPOINT, MIDDLEWARE;
 
         String label() {
             return name().toLowerCase(Locale.ROOT);
@@ -56,6 +58,10 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
         return new AdminRecordKey(Kind.ENTRYPOINT, projectName, name);
     }
 
+    public static AdminRecordKey middleware(String projectName, String name) {
+        return new AdminRecordKey(Kind.MIDDLEWARE, projectName, name);
+    }
+
     public String id() {
         return kind.label() + SEPARATOR + projectName + SEPARATOR + name;
     }
@@ -77,6 +83,11 @@ public record AdminRecordKey(Kind kind, String projectName, String name) {
                     : List.of(procedure(projectName, save.getProcedure().getName()),
                             entrypoint(projectName, save.getName()));
             case DeleteEntrypointRequest delete -> List.of(entrypoint(projectName, delete.getName()));
+            case SaveMiddlewareRequest save -> save.getProcedure() == null
+                    ? List.of(middleware(projectName, save.getName()))
+                    : List.of(procedure(projectName, save.getProcedure().getName()),
+                            middleware(projectName, save.getName()));
+            case DeleteMiddlewareRequest delete -> List.of(middleware(projectName, delete.getName()));
             case PermissionsRequest permissions -> List.of(user(permissions.getUsername()));
             case DeleteUserRequest delete -> List.of(user(delete.getUsername()));
             case SetPasswordRequest password -> List.of(user(password.getUsername()));

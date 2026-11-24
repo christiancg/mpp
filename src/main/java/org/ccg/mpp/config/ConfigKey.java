@@ -160,6 +160,7 @@ public enum ConfigKey {
     ENTRYPOINT_TIMEOUT_MS("entrypointTimeoutMs", ValueType.LONG, "30000", Rule.atLeast(1)),
     ENTRYPOINT_MAX_TIMEOUT_MS("entrypointMaxTimeoutMs", ValueType.LONG, "300000", Rule.atLeast(1)),
     MAX_ENTRYPOINTS_PER_PROJECT("maxEntrypointsPerProject", ValueType.INT, "1000", Rule.atLeast(1)),
+    MAX_MIDDLEWARES_PER_PROJECT("maxMiddlewaresPerProject", ValueType.INT, "64", Rule.atLeast(1)),
     FAULT_INJECTION_ENABLED("faultInjectionEnabled", ValueType.BOOLEAN, "false", Rule.bool()),
     POWER_LOSS_SHADOW_PATH("powerLossShadowPath", ValueType.STRING, "", Rule.none()),
     FILE_PATH("filePath", ValueType.STRING, "db", Rule.none()),

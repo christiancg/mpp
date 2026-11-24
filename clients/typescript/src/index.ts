@@ -79,17 +79,24 @@ export {
     type UserInfo,
 } from "./admin/types.js";
 export { Entrypoints } from "./scripting/entrypoints.js";
+export { Middlewares } from "./scripting/middlewares.js";
 export { Procedures } from "./scripting/procedures.js";
 export { Schedules } from "./scripting/schedules.js";
 export { Triggers } from "./scripting/triggers.js";
 export {
     EntrypointMethod,
+    MiddlewarePhase,
     TriggerEvent,
     TriggerMode,
     TriggerTiming,
     type EntrypointDefinition,
     type EntrypointInfo,
     type EntrypointSaved,
+    type MiddlewareDefinition,
+    type MiddlewareInfo,
+    type MiddlewareMatch,
+    type MiddlewareRule,
+    type MiddlewareSaved,
     type ProcedureDefinition,
     type ProcedureInfo,
     type ScheduleDefinition,

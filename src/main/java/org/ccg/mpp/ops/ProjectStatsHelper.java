@@ -172,6 +172,8 @@ public final class ProjectStatsHelper {
         json.addProperty("scheduleEntries", (long) stats.scheduleEntries());
         json.addProperty("entrypointBytes", stats.entrypointBytes());
         json.addProperty("entrypointEntries", (long) stats.entrypointEntries());
+        json.addProperty("middlewareBytes", stats.middlewareBytes());
+        json.addProperty("middlewareEntries", (long) stats.middlewareEntries());
         json.addProperty("missEntries", (long) stats.missEntries());
         return json;
     }

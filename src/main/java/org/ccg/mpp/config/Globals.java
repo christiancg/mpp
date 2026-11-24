@@ -45,6 +45,9 @@ public final class Globals {
     public static final String ENTRYPOINT_FILE_EXTENSION = JSON_FILE_EXTENSION;
     public static final int ENTRYPOINT_MAX_PATH_CHARS = 256;
     public static final int ENTRYPOINT_MAX_SEGMENTS = 16;
+    public static final String MIDDLEWARES_FOLDER = ".middlewares";
+    public static final String MIDDLEWARE_FILE_EXTENSION = JSON_FILE_EXTENSION;
+    public static final int MIDDLEWARE_MAX_EXCLUDE_RULES = 16;
     public static final int HTTP_MAX_HEAD_BYTES = 16384;
     public static final int HTTP_RETRY_AFTER_SECONDS = 1;
     public static final String COLLECTION_NAMES_LOCK = ".collection-names";

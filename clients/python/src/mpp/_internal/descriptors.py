@@ -5,7 +5,18 @@ from mpp._internal.values_codec import JsonObject, decode_value
 from mpp.admin_types import ScriptRun, ServerInfo, TransactionInfo, TriggerRun, UserInfo
 from mpp.document import Document
 from mpp.results import ScriptResult
-from mpp.scripting_types import EntrypointInfo, ProcedureInfo, ScheduleInfo, TriggerInfo
+from mpp.scripting_types import (
+    EntrypointInfo,
+    EntrypointMethod,
+    MiddlewareInfo,
+    MiddlewareMatch,
+    MiddlewareRule,
+    ProcedureInfo,
+    ScheduleInfo,
+    TriggerInfo,
+)
+
+_METHODS = {method.value: method for method in EntrypointMethod}
 
 
 def _optional_text(row: Document, field: str) -> str | None:
@@ -90,6 +101,47 @@ def entrypoint(row: Document) -> EntrypointInfo:
         method=_text(row, "method"),
         path=_text(row, "path"),
         url=_text(row, "url"),
+        procedure_name=_text(row, "procedureName"),
+        timeout_ms=_number(row, "timeoutMs"),
+        enabled=_flag(row, "enabled", fallback=True),
+        version=_number(row, "version"),
+        definer=_optional_text(row, "definer"),
+        description=_optional_text(row, "description"),
+        disabled_reason=_optional_text(row, "disabledReason"),
+        raw=row,
+    )
+
+
+def _optional_list(row: Document, field: str) -> tuple[str, ...] | None:
+    return _list(row, field) if field in row else None
+
+
+def _methods(row: Document) -> tuple[EntrypointMethod, ...] | None:
+    names = _optional_list(row, "methods")
+    return None if names is None else tuple(_METHODS[name] for name in names if name in _METHODS)
+
+
+def _rule(row: Document) -> MiddlewareRule:
+    return MiddlewareRule(_methods(row), _optional_text(row, "pathPrefix"), _optional_list(row, "entrypoints"))
+
+
+def _match(row: Document) -> MiddlewareMatch | None:
+    value = row.get("match")
+    if not isinstance(value, dict):
+        return None
+    rules = value.get("exclude")
+    exclude = tuple(_rule(rule) for rule in rules if isinstance(rule, dict)) if isinstance(rules, list) else None
+    return MiddlewareMatch(
+        _methods(value), _optional_text(value, "pathPrefix"), _optional_list(value, "entrypoints"), exclude
+    )
+
+
+def middleware(row: Document) -> MiddlewareInfo:
+    return MiddlewareInfo(
+        name=_text(row, "name"),
+        phase=_text(row, "phase"),
+        order=_number(row, "order"),
+        match=_match(row),
         procedure_name=_text(row, "procedureName"),
         timeout_ms=_number(row, "timeoutMs"),
         enabled=_flag(row, "enabled", fallback=True),

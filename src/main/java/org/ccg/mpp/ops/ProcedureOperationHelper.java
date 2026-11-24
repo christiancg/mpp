@@ -207,6 +207,12 @@ public final class ProcedureOperationHelper {
                         "Procedure '" + request.getName() + "' is still referenced by entrypoint '" + exposed + "'",
                         ErrorCode.INVALID_ENTRYPOINT);
             }
+            final var wrapping = MiddlewareOperationHelper.middlewareReferencing(projectName, request.getName());
+            if (wrapping != null) {
+                return new OperationResponse(OperationType.DELETE_PROCEDURE,
+                        "Procedure '" + request.getName() + "' is still referenced by middleware '" + wrapping + "'",
+                        ErrorCode.INVALID_MIDDLEWARE);
+            }
             if (fs.metadataFiles().deleteProcedure(projectName, request.getName())) {
                 AdminStamp.tombstone(AdminRecordKey.procedure(projectName, request.getName()));
             }

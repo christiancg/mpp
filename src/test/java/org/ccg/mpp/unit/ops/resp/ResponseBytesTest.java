@@ -36,6 +36,7 @@ import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.GetSchemaResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
 import org.ccg.mpp.ops.resp.ListEntrypointsResponse;
+import org.ccg.mpp.ops.resp.ListMiddlewaresResponse;
 import org.ccg.mpp.ops.resp.ListProceduresResponse;
 import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.ListSchedulesResponse;
@@ -53,6 +54,7 @@ import org.ccg.mpp.ops.resp.ReindexResponse;
 import org.ccg.mpp.ops.resp.ResolveTriggerRunResponse;
 import org.ccg.mpp.ops.resp.RunScriptResponse;
 import org.ccg.mpp.ops.resp.SaveEntrypointResponse;
+import org.ccg.mpp.ops.resp.SaveMiddlewareResponse;
 import org.ccg.mpp.ops.resp.SaveProcedureResponse;
 import org.ccg.mpp.ops.resp.SaveResponse;
 import org.ccg.mpp.ops.resp.SaveScheduleResponse;
@@ -113,6 +115,7 @@ public class ResponseBytesTest {
                 new GetSchemaResponse("ok", doc), new ListCollectionsResponse("ok", List.of("c1", "c2")),
                 new ListProjectsResponse("ok", List.of("project1")), new ListProceduresResponse("ok", rows),
                 new ListSchedulesResponse("ok", rows), new ListEntrypointsResponse("ok", rows),
+                new ListMiddlewaresResponse("ok", rows), new SaveMiddlewareResponse("ok", 3L, 4L),
                 new ListScriptsResponse("ok", rows), new ListTransactionsResponse("ok", rows),
                 new ListTriggerRunsResponse("ok", rows), new ListTriggersResponse("ok", rows),
                 new ListUsersResponse("ok", rows), new ListenEndedResponse("listen-1", "collection dropped"),

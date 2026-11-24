@@ -9,6 +9,7 @@ from mpp._async.client import AsyncMppClient
 from mpp._async.collection import AsyncCollection
 from mpp._async.entrypoints import AsyncEntrypoints
 from mpp._async.indexes import AsyncIndexes
+from mpp._async.middlewares import AsyncMiddlewares
 from mpp._async.procedures import AsyncProcedures
 from mpp._async.project import AsyncProject
 from mpp._async.query import AsyncQuery
@@ -25,7 +26,7 @@ from mpp._sync.collection import Collection
 from mpp._sync.indexes import Indexes, Schema, Triggers
 from mpp._sync.project import Project
 from mpp._sync.query import Query
-from mpp._sync.scripting import Entrypoints, Procedures, Schedules
+from mpp._sync.scripting import Entrypoints, Middlewares, Procedures, Schedules
 from mpp._sync.subscription import Subscription
 from mpp._sync.transaction import Transaction, TransactionCollection
 from mpp.admin_types import (
@@ -105,6 +106,12 @@ from mpp.scripting_types import (
     EntrypointInfo,
     EntrypointMethod,
     EntrypointSaved,
+    MiddlewareDefinition,
+    MiddlewareInfo,
+    MiddlewareMatch,
+    MiddlewarePhase,
+    MiddlewareRule,
+    MiddlewareSaved,
     ProcedureDefinition,
     ProcedureInfo,
     ScheduleDefinition,
@@ -145,6 +152,7 @@ __all__ = [
     "AsyncDistributedTransactions",
     "AsyncEntrypoints",
     "AsyncIndexes",
+    "AsyncMiddlewares",
     "AsyncMppClient",
     "AsyncProcedures",
     "AsyncProject",
@@ -205,6 +213,13 @@ __all__ = [
     "MappingError",
     "MidOperation",
     "MidOps",
+    "MiddlewareDefinition",
+    "MiddlewareInfo",
+    "MiddlewareMatch",
+    "MiddlewarePhase",
+    "MiddlewareRule",
+    "MiddlewareSaved",
+    "Middlewares",
     "MppClient",
     "MppError",
     "NearestFilter",

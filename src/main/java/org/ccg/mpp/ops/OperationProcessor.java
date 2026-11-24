@@ -148,6 +148,8 @@ public class OperationProcessor {
             case LIST_SCHEDULES -> processListSchedules((ListSchedulesRequest) operationRequest);
             case SAVE_ENTRYPOINT, DELETE_ENTRYPOINT, LIST_ENTRYPOINTS ->
                 EntrypointOperationHelper.process(operationRequest, actingUser);
+            case SAVE_MIDDLEWARE, DELETE_MIDDLEWARE, LIST_MIDDLEWARES ->
+                MiddlewareOperationHelper.process(operationRequest, actingUser);
             case LIST_SCRIPTS -> processListScripts();
             case CANCEL_SCRIPT -> processCancelScript((CancelScriptRequest) operationRequest);
             case LIST_TRIGGER_RUNS -> processListTriggerRuns((ListTriggerRunsRequest) operationRequest);

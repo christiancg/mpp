@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -27,6 +28,7 @@ import org.ccg.mpp.ops.resp.RunScriptResponse;
 import org.ccg.mpp.simplejs.CompiledScript;
 import org.ccg.mpp.simplejs.SimpleJs;
 import org.ccg.mpp.simplejs.host.EnforcingProjectAccess;
+import org.ccg.mpp.simplejs.host.HostBindings;
 import org.ccg.mpp.simplejs.host.ProjectHostBindings;
 import org.ccg.mpp.simplejs.host.ResourceLimits;
 import org.ccg.mpp.simplejs.host.ScriptResult;
@@ -40,7 +42,7 @@ public final class ScriptOperationHelper {
     private static final Configuration configuration = Configuration.getInstance();
     private static final Logger logger = Logger.logFor(ScriptOperationHelper.class);
     private static final Set<ScriptRunKind> SELF_RECORDED_KINDS = EnumSet.of(ScriptRunKind.TRIGGER,
-            ScriptRunKind.SCHEDULE, ScriptRunKind.ENTRYPOINT);
+            ScriptRunKind.SCHEDULE, ScriptRunKind.ENTRYPOINT, ScriptRunKind.MIDDLEWARE);
 
     private ScriptOperationHelper() {
     }
@@ -116,10 +118,17 @@ public final class ScriptOperationHelper {
     static RunOutcome runCompiled(CompiledScript compiled, JsonObject args, String projectName, String username,
             UUID clientId, String logPrefix, ScriptRunKind kind, String name, ResourceLimits limits,
             Consumer<String> console) {
+        return runCompiled(compiled, args, projectName, username, clientId, logPrefix, kind, name, limits, console,
+                host -> host);
+    }
+
+    static RunOutcome runCompiled(CompiledScript compiled, JsonObject args, String projectName, String username,
+            UUID clientId, String logPrefix, ScriptRunKind kind, String name, ResourceLimits limits,
+            Consumer<String> console, Function<ProjectHostBindings, HostBindings> hostDecorator) {
         final var run = registry.register(kind, projectName, name, username, clientId);
         try {
             final var project = new EnforcingProjectAccess(username, clientId, projectName);
-            final var host = hostFor(args, project, limits, console, run);
+            final var host = hostDecorator.apply(hostFor(args, project, limits, console, run));
             final var start = System.currentTimeMillis();
             final var raw = simpleJs.run(compiled, host);
             final var elapsed = System.currentTimeMillis() - start;

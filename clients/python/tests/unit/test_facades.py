@@ -12,6 +12,10 @@ from mpp import (
     Document,
     EntrypointDefinition,
     EntrypointMethod,
+    MiddlewareDefinition,
+    MiddlewareMatch,
+    MiddlewarePhase,
+    MiddlewareRule,
     NotFoundError,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -217,6 +221,63 @@ async def test_entrypoint_replies_carry_every_field() -> None:
     assert listed.raw == row
 
 
+async def test_middleware_replies() -> None:
+    middlewares = _shop(_replying("ok.save_middleware", "ok.list_middlewares")).middlewares()
+    saved = await middlewares.save(MiddlewareDefinition("auth", MiddlewarePhase.INGRESS, "checkToken"))
+    assert (saved.version, saved.procedure_version) == (1, 2)
+    listed = (await middlewares.list())[0]
+    assert (listed.name, listed.phase, listed.order, listed.procedure_name) == ("auth", "INGRESS", 10, "checkToken")
+    assert (listed.match, listed.enabled, listed.timeout_ms, listed.version) == (None, True, 0, 0)
+    assert (listed.definer, listed.description, listed.disabled_reason) == (None, None, None)
+    await middlewares.delete("auth")
+
+
+async def test_middleware_replies_carry_every_field() -> None:
+    row = {
+        "name": "cors",
+        "phase": "EGRESS",
+        "order": 3,
+        "match": {
+            "methods": ["GET", "BREW"],
+            "pathPrefix": "/orders",
+            "entrypoints": ["listOrders"],
+            "exclude": [{"methods": ["POST"]}, {"pathPrefix": "/orders/public"}, "bad"],
+        },
+        "procedureName": "cors",
+        "timeoutMs": 2000,
+        "enabled": False,
+        "version": 4,
+        "definer": "alice",
+        "description": "headers",
+        "disabledReason": "definer lost RUN",
+    }
+    channel = RecordingChannel()
+    channel.replies = lambda request: ok(request, middlewares=[row, {"name": "bare", "match": {"exclude": "x"}}])
+    middlewares = _shop(channel).middlewares()
+    saved = await middlewares.save(
+        MiddlewareDefinition("cors", MiddlewarePhase.EGRESS, "cors", match=MiddlewareMatch())
+    )
+    assert (saved.version, saved.procedure_version) == (0, 0)
+    assert channel.last()["match"] == {}
+    listed, bare = await middlewares.list()
+    assert listed.match == MiddlewareMatch(
+        (EntrypointMethod.GET,),
+        "/orders",
+        ("listOrders",),
+        (MiddlewareRule(methods=(EntrypointMethod.POST,)), MiddlewareRule(path_prefix="/orders/public")),
+    )
+    assert (listed.phase, listed.order, listed.timeout_ms, listed.enabled, listed.version) == (
+        "EGRESS",
+        3,
+        2000,
+        False,
+        4,
+    )
+    assert (listed.definer, listed.description, listed.disabled_reason) == ("alice", "headers", "definer lost RUN")
+    assert listed.raw == row
+    assert bare.match == MiddlewareMatch()
+
+
 async def test_trigger_replies() -> None:
     triggers = (
         _shop(_replying("ok.save_trigger", "ok.list_triggers", "ok.test_trigger")).collection("orders").triggers()
@@ -249,6 +310,20 @@ async def test_entrypoint_definitions_are_validated() -> None:
     with pytest.raises(ValueError, match="an inline procedure takes no if_version"):
         await entrypoints.save(
             EntrypointDefinition("a", EntrypointMethod.GET, "/a", procedure=ProcedureDefinition("a", "", if_version=1))
+        )
+
+
+async def test_middleware_definitions_are_validated() -> None:
+    middlewares = _shop(RecordingChannel()).middlewares()
+    with pytest.raises(ValueError, match="a middleware takes exactly one of procedure_name and procedure"):
+        await middlewares.save(MiddlewareDefinition("a", MiddlewarePhase.INGRESS))
+    with pytest.raises(ValueError, match="a middleware takes exactly one of procedure_name and procedure"):
+        await middlewares.save(
+            MiddlewareDefinition("a", MiddlewarePhase.INGRESS, "b", ProcedureDefinition("a", "return 1;"))
+        )
+    with pytest.raises(ValueError, match="an inline procedure takes no if_version"):
+        await middlewares.save(
+            MiddlewareDefinition("a", MiddlewarePhase.EGRESS, procedure=ProcedureDefinition("a", "", if_version=1))
         )
 
 

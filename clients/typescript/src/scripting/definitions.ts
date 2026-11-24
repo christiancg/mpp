@@ -20,6 +20,9 @@ export const EntrypointMethod = {
 } as const;
 export type EntrypointMethod = (typeof EntrypointMethod)[keyof typeof EntrypointMethod];
 
+export const MiddlewarePhase = { INGRESS: "INGRESS", EGRESS: "EGRESS" } as const;
+export type MiddlewarePhase = (typeof MiddlewarePhase)[keyof typeof MiddlewarePhase];
+
 export interface ProcedureDefinition {
     readonly name: string;
     readonly script: string;
@@ -55,6 +58,29 @@ export interface EntrypointDefinition {
     readonly name: string;
     readonly method: EntrypointMethod;
     readonly path: string;
+    readonly procedureName?: string;
+    readonly procedure?: ProcedureDefinition;
+    readonly timeoutMs?: number;
+    readonly description?: string;
+    readonly enabled?: boolean;
+    readonly ifVersion?: number;
+}
+
+export interface MiddlewareRule {
+    readonly methods?: readonly EntrypointMethod[];
+    readonly pathPrefix?: string;
+    readonly entrypoints?: readonly string[];
+}
+
+export interface MiddlewareMatch extends MiddlewareRule {
+    readonly exclude?: readonly MiddlewareRule[];
+}
+
+export interface MiddlewareDefinition {
+    readonly name: string;
+    readonly phase: MiddlewarePhase;
+    readonly order?: number;
+    readonly match?: MiddlewareMatch;
     readonly procedureName?: string;
     readonly procedure?: ProcedureDefinition;
     readonly timeoutMs?: number;
@@ -113,6 +139,26 @@ export interface EntrypointInfo {
 }
 
 export interface EntrypointSaved {
+    readonly version: number;
+    readonly procedureVersion: number;
+}
+
+export interface MiddlewareInfo {
+    readonly name: string;
+    readonly phase: string;
+    readonly order: number;
+    readonly match: MiddlewareMatch | undefined;
+    readonly procedureName: string;
+    readonly timeoutMs: number;
+    readonly enabled: boolean;
+    readonly version: number;
+    readonly definer: string | undefined;
+    readonly description: string | undefined;
+    readonly disabledReason: string | undefined;
+    readonly raw: Document;
+}
+
+export interface MiddlewareSaved {
     readonly version: number;
     readonly procedureVersion: number;
 }

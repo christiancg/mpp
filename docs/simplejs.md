@@ -78,6 +78,7 @@ single-threaded run.
 | Before-write hook | no one, it can't touch stored data | no | `beforeHook*` | discarded |
 | Scheduled procedure | the schedule's definer | yes | `script*`, `scheduleTimeoutMs` | logged |
 | HTTP entrypoint | the entrypoint's definer | yes | `script*`, `entrypointTimeoutMs` | not returned |
+| HTTP middleware | the middleware's definer | yes | `script*`, the entrypoint's deadline | not returned |
 | Pipeline script | the query's caller | no | `aggregationScript*` | discarded |
 
 ### Ad-hoc scripts and stored procedures
@@ -332,15 +333,16 @@ refuses the write with `400-21`. A hook that times out or runs out of budget ref
 
 ### Who can change a bound procedure
 
-A trigger, before hook, schedule or entrypoint looks its procedure up by name when it runs, so whoever can change that
-procedure changes what runs with the definer's authority. While a binding by another user reaches a procedure, directly
-or through its imports, only that definer, a project owner or an admin can save, disable or delete it (`403-4` for
-everyone else). A procedure that imports by a computed name, or imports the `script` module, could reach any procedure,
-so it counts as reaching all of them. Procedures nobody else has bound stay freely editable.
+A trigger, before hook, schedule, entrypoint or middleware looks its procedure up by name when it runs, so whoever can
+change that procedure changes what runs with the definer's authority. While a binding by another user reaches a
+procedure, directly or through its imports, only that definer, a project owner or an admin can save, disable or delete
+it (`403-4` for everyone else). A procedure that imports by a computed name, or imports the `script` module, could reach
+any procedure, so it counts as reaching all of them. Procedures nobody else has bound stay freely editable.
 
-Only the definer, an owner or an admin can replace or delete someone else's trigger, schedule or entrypoint (`403-5`).
+Only the definer, an owner or an admin can replace or delete someone else's trigger, schedule, entrypoint or middleware
+(`403-5`).
 Saving one always makes you its definer; no request field can name another user. A procedure an entrypoint uses can't be
-deleted until the entrypoint is (`400-46`).
+deleted until the entrypoint is (`400-46`), and one a middleware uses until the middleware is (`400-49`).
 
 ### Scheduled procedures
 
@@ -410,6 +412,70 @@ return {status: 200, headers: {"cache-control": "max-age=60"}, body: order};
   `maxConcurrentScripts` are what size an entrypoint's throughput, and `0` lifts each one. A request that finds no slot
   answers `503` with `Retry-After: 1`, and nothing ran.
 - Under clustering every node serves every entrypoint and runs it where the request arrived, with no placement.
+
+### HTTP middlewares
+
+A middleware wraps the entrypoints its `match` selects with a stored procedure of its own: `INGRESS` ones run before the
+entrypoint's procedure (the target) and `EGRESS` ones after it, each phase by ascending `order`. The request is
+[`SAVE_MIDDLEWARE`](protocol.md#save_middleware), and the chain rules (egress on every response, failing closed, one
+script slot, one deadline) are in [protocol.md](protocol.md#middlewares). Like an entrypoint it runs as its definer.
+
+A middleware decides with the `middleware` module, which exists only inside a middleware run:
+
+```js
+import db from "db";
+import args from "args";
+import { next, reject } from "middleware";
+const token = (args.headers.authorization ?? "").replace(/^Bearer /, "");
+const session = token === "" ? null : db.findById(db.name, "sessions", token);
+if (session === null) {
+  reject(401, {error: "unauthorized"}, {"www-authenticate": "Bearer"});
+} else {
+  next({locals: {user: session.user}});
+}
+```
+
+```js
+import db from "db";
+import args from "args";
+import { next } from "middleware";
+db.save(db.name, "access_log", {path: args.path, status: args.response.status, user: args.locals.user ?? null});
+next({headers: {"access-control-allow-origin": "*"}});
+```
+
+- `next(changes)` continues the chain, and `reject(status, body, headers)` answers with that response. The call is the
+  decision, so `return next()` and a bare `next()` are the same, and the script's return value is ignored. Calling
+  either one twice throws a `TypeError`, and a run that calls neither answers `500`.
+- `reject` takes an integer `status` from 100 to 599, an optional body (sent like an entrypoint envelope's body) and
+  optional headers whose values are strings.
+
+Each run's `args` is what the target gets, as earlier middlewares left it, plus `middleware`
+(`{"name", "phase", "order"}`), `locals` (`{}` until a middleware sets some) and, in an egress run, `response`
+(`{"status", "headers", "body"}`). The target's `args` carry `locals` too.
+
+An ingress `next(changes)` rewrites the request the next middlewares and the target read:
+
+| Key | Effect |
+|---|---|
+| `headers` | Merged by name, lower-cased. A value is a string, and `null` removes the header |
+| `query` | Merged by key. A value is a string or an array of strings, and `null` removes the key |
+| `pathParams` | Merged by name. Only parameters the route declares, and values are strings |
+| `body` | Replaces the body |
+| `locals` | Shallow-merged into `args.locals` |
+
+An egress `next(changes)` rewrites the response:
+
+| Key | Effect |
+|---|---|
+| `status` | Replaces the status, an integer from 100 to 599 |
+| `headers` | Merged by name, case-insensitively. `null` removes a header, and the envelope rules apply |
+| `body` | Replaces the body: a string is sent as text, anything else as JSON, `null` empty |
+| `locals` | Shallow-merged, read by the next egress middlewares |
+
+`method`, `path`, `entrypoint` and `remoteAddress` can't be changed: the route is already chosen and the caller's
+address must stay trustworthy. Any other key, or a value that breaks a rule above, is a `TypeError` naming the key, and
+the run fails like any other. `response.headers` holds the headers a script set; the `Content-Type` the server infers
+from the body is added only when the reply is written.
 
 ### Pipeline scripts
 

@@ -7,6 +7,9 @@ import io.github.christiancg.mpp.client.admin.TriggerRunDecision;
 import io.github.christiancg.mpp.client.admin.TriggerRunStatus;
 import io.github.christiancg.mpp.client.protocol.Operation;
 import io.github.christiancg.mpp.client.scripting.EntrypointDefinition;
+import io.github.christiancg.mpp.client.scripting.MiddlewareCriteria;
+import io.github.christiancg.mpp.client.scripting.MiddlewareDefinition;
+import io.github.christiancg.mpp.client.scripting.MiddlewareMatch;
 import io.github.christiancg.mpp.client.scripting.ProcedureDefinition;
 import io.github.christiancg.mpp.client.scripting.ScheduleDefinition;
 import io.github.christiancg.mpp.client.scripting.TriggerDefinition;
@@ -147,6 +150,28 @@ public final class ScriptRequestEncoder {
         return RequestEncoder.of(Operation.LIST_ENTRYPOINTS, project);
     }
 
+    public ObjectNode saveMiddleware(String project, MiddlewareDefinition middleware) {
+        final var request = RequestEncoder.of(Operation.SAVE_MIDDLEWARE, project).put(NAME, middleware.name())
+                .put("phase", middleware.phase().name());
+        middleware.order().ifPresent(order -> request.put("order", order));
+        middleware.match().ifPresent(match -> request.set("match", match(match)));
+        middleware.procedureName().ifPresent(procedureName -> request.put(PROCEDURE, procedureName));
+        middleware.procedure().ifPresent(procedure -> request.set("procedure", inlineProcedure(procedure)));
+        middleware.timeout().ifPresent(timeout -> request.put(TIMEOUT, timeout.toMillis()));
+        middleware.description().ifPresent(description -> request.put(DESCRIPTION, description));
+        middleware.enabled().ifPresent(enabled -> request.put(ENABLED, enabled));
+        middleware.ifVersion().ifPresent(version -> request.put(IF_VERSION, version));
+        return request;
+    }
+
+    public ObjectNode deleteMiddleware(String project, String name) {
+        return RequestEncoder.of(Operation.DELETE_MIDDLEWARE, project).put(NAME, name);
+    }
+
+    public ObjectNode listMiddlewares(String project) {
+        return RequestEncoder.of(Operation.LIST_MIDDLEWARES, project);
+    }
+
     public ObjectNode listScripts() {
         return RequestEncoder.of(Operation.LIST_SCRIPTS);
     }
@@ -228,6 +253,29 @@ public final class ScriptRequestEncoder {
         procedure.description().ifPresent(description -> inline.put(DESCRIPTION, description));
         procedure.enabled().ifPresent(enabled -> inline.put(ENABLED, enabled));
         return inline;
+    }
+
+    private static ObjectNode match(MiddlewareMatch match) {
+        final var node = criteria(match.include());
+        if (!match.exclude().isEmpty()) {
+            final var exclude = node.putArray("exclude");
+            match.exclude().forEach(rule -> exclude.add(criteria(rule)));
+        }
+        return node;
+    }
+
+    private static ObjectNode criteria(MiddlewareCriteria criteria) {
+        final var node = RequestEncoder.NODES.objectNode();
+        if (!criteria.methods().isEmpty()) {
+            final var methods = node.putArray("methods");
+            criteria.methods().forEach(method -> methods.add(method.name()));
+        }
+        criteria.pathPrefix().ifPresent(pathPrefix -> node.put("pathPrefix", pathPrefix));
+        if (!criteria.entrypoints().isEmpty()) {
+            final var entrypoints = node.putArray("entrypoints");
+            criteria.entrypoints().forEach(entrypoints::add);
+        }
+        return node;
     }
 
     private static ObjectNode withArgs(ObjectNode request, Document args) {

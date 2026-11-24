@@ -219,9 +219,10 @@ public final class Dump {
             }
             if (procedures.isPresent()) {
                 dumpEntrypoints(project);
+                dumpMiddlewares(project);
             } else {
-                err.println(
-                        "note: entrypoints of " + project + " were not dumped: their procedures could not be listed");
+                err.println("note: entrypoints and middlewares of " + project
+                        + " were not dumped: their procedures could not be listed");
             }
         }
     }
@@ -229,6 +230,12 @@ public final class Dump {
     private void dumpEntrypoints(String project) throws IOException {
         for (final var entrypoint : listedOrEmpty(Requests.listEntrypoints(project), "entrypoints")) {
             emit(Requests.saveEntrypointFrom(project, entrypoint));
+        }
+    }
+
+    private void dumpMiddlewares(String project) throws IOException {
+        for (final var middleware : listedOrEmpty(Requests.listMiddlewares(project), "middlewares")) {
+            emit(Requests.saveMiddlewareFrom(project, middleware));
         }
     }
 

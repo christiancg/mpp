@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 import org.ccg.mpp.simplejs.ModuleReferences;
 import org.ccg.mpp.simplejs.builtins.DbModule;
+import org.ccg.mpp.simplejs.builtins.MiddlewareModule;
 import org.ccg.mpp.simplejs.builtins.ScriptModule;
 import org.ccg.mpp.simplejs.exceptions.JsThrowException;
 import org.ccg.mpp.simplejs.exceptions.SyntaxErrorException;
@@ -63,6 +64,8 @@ public final class ModuleEvaluator {
         this.eventLoop = eventLoop;
     }
 
+    private static final String MIDDLEWARE_MODULE = "middleware";
+
     private record ResolvedBinding(JsValue value, boolean moduleNamespace) {
     }
 
@@ -73,6 +76,10 @@ public final class ModuleEvaluator {
             case "db" -> builtin(interp.cacheBuiltinModule("builtin:db", this::createDbModule));
             case ModuleReferences.SCRIPT_MODULE -> builtin(interp.cacheBuiltinModule("builtin:script",
                     () -> ScriptModule.create(this::importText, host.limits(), interp.intrinsics(), interp.ops())));
+            case MIDDLEWARE_MODULE -> host.middlewareDecision() == null
+                    ? new ResolvedBinding(resolveHostModule(source, coroutine), true)
+                    : builtin(interp.cacheBuiltinModule("builtin:middleware",
+                            () -> MiddlewareModule.create(host.middlewareDecision(), interp.ops())));
             default -> new ResolvedBinding(resolveHostModule(source, coroutine), true);
         };
     }

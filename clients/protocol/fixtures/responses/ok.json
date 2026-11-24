@@ -32,6 +32,8 @@
     {"name":"ok.list_schedules","frame":{"type":"LIST_SCHEDULES","status":"OK","message":"Ok","schedules":[{"name":"nightly"}]},"expect":"ok"},
     {"name":"ok.save_entrypoint","frame":{"type":"SAVE_ENTRYPOINT","status":"OK","message":"Entrypoint saved successfully","version":1,"procedureVersion":3},"expect":"ok"},
     {"name":"ok.list_entrypoints","frame":{"type":"LIST_ENTRYPOINTS","status":"OK","message":"Ok","entrypoints":[{"name":"getOrder","method":"GET","path":"/orders/{id}","url":"/shop/orders/{id}"}]},"expect":"ok"},
+    {"name":"ok.save_middleware","frame":{"type":"SAVE_MIDDLEWARE","status":"OK","message":"Middleware saved successfully","version":1,"procedureVersion":2},"expect":"ok"},
+    {"name":"ok.list_middlewares","frame":{"type":"LIST_MIDDLEWARES","status":"OK","message":"Ok","middlewares":[{"name":"auth","phase":"INGRESS","order":10,"procedureName":"checkToken"}]},"expect":"ok"},
     {"name":"ok.list_scripts","frame":{"type":"LIST_SCRIPTS","status":"OK","message":"Ok","scripts":[{"runId":"550e8400-e29b-41d4-a716-446655440000","kind":"RUN_SCRIPT"}]},"expect":"ok"},
     {"name":"ok.cancel_script","frame":{"type":"CANCEL_SCRIPT","status":"OK","message":"Ok","cancelled":true},"expect":"ok"},
     {"name":"ok.list_trigger_runs","frame":{"type":"LIST_TRIGGER_RUNS","status":"OK","message":"Ok","runs":[{"runId":"8f0e","status":"DEAD"}]},"expect":"ok"},

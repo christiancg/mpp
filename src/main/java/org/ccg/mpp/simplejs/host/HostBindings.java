@@ -36,4 +36,8 @@ public interface HostBindings {
     default java.util.Locale locale() {
         return java.util.Locale.getDefault();
     }
+
+    default MiddlewareDecision middlewareDecision() {
+        return null;
+    }
 }

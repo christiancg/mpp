@@ -72,8 +72,8 @@ public class AdminCache {
             () -> metadataMisses, PROCEDURE_MISS_PREFIX, this::loadProcedureUncached);
     private final DefinitionCache<ScheduleDefinition> scheduleCache = new DefinitionCache<>(() -> schedules,
             () -> metadataMisses, SCHEDULE_MISS_PREFIX, this::loadScheduleUncached);
-    private final EntrypointDefinitions entrypoints = new EntrypointDefinitions(
-            configuration.getMetadataCacheMaxBytes() / 3, () -> metadataMisses);
+    private final HttpDefinitionCaches http = new HttpDefinitionCaches(configuration.getMetadataCacheMaxBytes() / 3,
+            () -> metadataMisses);
 
     public void loadAdminData() throws IOException {
         for (var collName : Globals.ADMIN_COLLECTION_NAMES) {
@@ -367,8 +367,8 @@ public class AdminCache {
         scheduleCache.removeIf(keyMatches);
     }
 
-    public EntrypointDefinitions entrypoints() {
-        return entrypoints;
+    public HttpDefinitionCaches http() {
+        return http;
     }
 
     // An empty list doubles as the negative-cache sentinel, so an untriggered collection is read from
@@ -423,7 +423,8 @@ public class AdminCache {
     public MetadataCacheStats metadataCacheStats() {
         return new MetadataCacheStats(procedures.bytes(), procedures.size(), triggers.bytes(), triggers.size(),
                 collectionSchemas.bytes(), collectionSchemas.size(), schedules.bytes(), schedules.size(),
-                entrypoints.bytes(), entrypoints.size(), metadataMisses.size());
+                http.entrypoints().bytes(), http.entrypoints().size(), http.middlewares().bytes(),
+                http.middlewares().size(), metadataMisses.size());
     }
 
     public AdminUserEntry getAdminUserEntry(String username) {

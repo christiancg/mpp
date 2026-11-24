@@ -50,6 +50,9 @@ class Operation(StrEnum):
     SAVE_ENTRYPOINT = 'SAVE_ENTRYPOINT'
     DELETE_ENTRYPOINT = 'DELETE_ENTRYPOINT'
     LIST_ENTRYPOINTS = 'LIST_ENTRYPOINTS'
+    SAVE_MIDDLEWARE = 'SAVE_MIDDLEWARE'
+    DELETE_MIDDLEWARE = 'DELETE_MIDDLEWARE'
+    LIST_MIDDLEWARES = 'LIST_MIDDLEWARES'
     LIST_SCRIPTS = 'LIST_SCRIPTS'
     CANCEL_SCRIPT = 'CANCEL_SCRIPT'
     TEST_TRIGGER = 'TEST_TRIGGER'
@@ -106,6 +109,8 @@ class ErrorCode(StrEnum):
     INVALID_ENTRYPOINT = '400-46'
     TOO_MANY_ENTRYPOINTS = '400-47'
     ENTRYPOINT_TIMEOUT_TOO_LARGE = '400-48'
+    INVALID_MIDDLEWARE = '400-49'
+    TOO_MANY_MIDDLEWARES = '400-50'
     MUST_AUTHENTICATE_FIRST = '401-1'
     USER_NO_LONGER_EXISTS = '401-2'
     WRONG_CREDENTIALS = '401-3'
@@ -196,6 +201,8 @@ class ErrorCode(StrEnum):
     ERROR_READING_SNAPSHOT = '500-37'
     ERROR_SAVING_ENTRYPOINT = '500-38'
     ERROR_DELETING_ENTRYPOINT = '500-39'
+    ERROR_SAVING_MIDDLEWARE = '500-40'
+    ERROR_DELETING_MIDDLEWARE = '500-41'
     MAX_CONNECTIONS_REACHED = '503-1'
     NO_QUORUM = '503-2'
     REPLICATION_TIMEOUT = '503-3'
@@ -279,6 +286,9 @@ OPERATIONS = (
     ('SAVE_ENTRYPOINT', 'PROJECT', False, False),
     ('DELETE_ENTRYPOINT', 'PROJECT', False, False),
     ('LIST_ENTRYPOINTS', 'PROJECT', False, False),
+    ('SAVE_MIDDLEWARE', 'PROJECT', False, False),
+    ('DELETE_MIDDLEWARE', 'PROJECT', False, False),
+    ('LIST_MIDDLEWARES', 'PROJECT', False, False),
     ('LIST_SCRIPTS', 'NONE', True, False),
     ('CANCEL_SCRIPT', 'NONE', True, False),
     ('TEST_TRIGGER', 'COLLECTION', False, False),
@@ -335,6 +345,8 @@ ERROR_CODES = (
     ('INVALID_ENTRYPOINT', '400-46', 'ERROR', False, 'The entrypoint definition is not valid'),
     ('TOO_MANY_ENTRYPOINTS', '400-47', 'ERROR', False, 'The project has the maximum number of entrypoints'),
     ('ENTRYPOINT_TIMEOUT_TOO_LARGE', '400-48', 'ERROR', False, 'The entrypoint timeout exceeds the allowed maximum'),
+    ('INVALID_MIDDLEWARE', '400-49', 'ERROR', False, 'The middleware definition is not valid'),
+    ('TOO_MANY_MIDDLEWARES', '400-50', 'ERROR', False, 'The project has the maximum number of middlewares'),
     ('MUST_AUTHENTICATE_FIRST', '401-1', 'UNAUTHENTICATED', False, 'Must authenticate first'),
     ('USER_NO_LONGER_EXISTS', '401-2', 'UNAUTHENTICATED', False, 'User no longer exists'),
     ('WRONG_CREDENTIALS', '401-3', 'ERROR', False, "The user doesn't exist or the wrong credentials have been provided"),
@@ -342,8 +354,8 @@ ERROR_CODES = (
     ('NO_PERMISSIONS', '403-1', 'FORBIDDEN', False, 'Action is forbidden, no permissions'),
     ('SCRIPTS_DISABLED', '403-2', 'FORBIDDEN', False, 'Script execution is disabled on this server'),
     ('FAULT_INJECTION_DISABLED', '403-3', 'FORBIDDEN', False, 'Fault injection is disabled on this server'),
-    ('PROCEDURE_BOUND_BY_OTHER_DEFINER', '403-4', 'FORBIDDEN', False, 'Procedure is bound by a trigger, schedule or entrypoint that runs as another user'),
-    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger, schedule or entrypoint belongs to another user; only that user, a project owner or an admin may change it'),
+    ('PROCEDURE_BOUND_BY_OTHER_DEFINER', '403-4', 'FORBIDDEN', False, 'Procedure is bound by a trigger, schedule, entrypoint or middleware that runs as another user'),
+    ('DEFINITION_OWNED_BY_OTHER_DEFINER', '403-5', 'FORBIDDEN', False, 'The trigger, schedule, entrypoint or middleware belongs to another user; only that user, a project owner or an admin may change it'),
     ('SOURCE_REQUIRES_MANAGE', '403-6', 'FORBIDDEN', False, 'Procedure source requires script MANAGE'),
     ('USER_NOT_FOUND', '404-1', 'NOT_FOUND', False, 'User not found'),
     ('ENTRY_NOT_FOUND', '404-2', 'NOT_FOUND', False, 'Entry not found'),
@@ -425,6 +437,8 @@ ERROR_CODES = (
     ('ERROR_READING_SNAPSHOT', '500-37', 'ERROR', False, 'Error while reading the snapshot'),
     ('ERROR_SAVING_ENTRYPOINT', '500-38', 'ERROR', False, 'Error while saving the entrypoint'),
     ('ERROR_DELETING_ENTRYPOINT', '500-39', 'ERROR', False, 'Error while deleting the entrypoint'),
+    ('ERROR_SAVING_MIDDLEWARE', '500-40', 'ERROR', False, 'Error while saving the middleware'),
+    ('ERROR_DELETING_MIDDLEWARE', '500-41', 'ERROR', False, 'Error while deleting the middleware'),
     ('MAX_CONNECTIONS_REACHED', '503-1', 'ERROR', False, 'Max number of connections reached'),
     ('NO_QUORUM', '503-2', 'ERROR', True, 'Cluster does not have a write quorum'),
     ('REPLICATION_TIMEOUT', '503-3', 'ERROR', False, 'Timed out waiting for the replication quorum'),

@@ -12,6 +12,10 @@ from mpp import (
     ConflictError,
     EntrypointDefinition,
     EntrypointMethod,
+    MiddlewareDefinition,
+    MiddlewareMatch,
+    MiddlewarePhase,
+    MiddlewareRule,
     MppError,
     ProcedureDefinition,
     ScheduleDefinition,
@@ -156,6 +160,47 @@ async def test_entrypoints_are_saved_listed_refused_and_deleted(shop: AsyncProje
     await entrypoints.delete("echo")
     assert await entrypoints.list() == []
     assert "echo_body" in {procedure.name for procedure in await shop.procedures().list()}
+
+
+async def test_middlewares_are_saved_listed_and_deleted(shop: AsyncProject) -> None:
+    await shop.procedures().save(ProcedureDefinition("check_token", 'import { next } from "middleware";\nnext({});'))
+    middlewares = shop.middlewares()
+    cors = await middlewares.save(
+        MiddlewareDefinition(
+            "cors",
+            MiddlewarePhase.EGRESS,
+            procedure=ProcedureDefinition(
+                "cors_headers",
+                'import { next } from "middleware";\nnext({headers: {"access-control-allow-origin": "*"}});',
+            ),
+        )
+    )
+    assert (cors.version, cors.procedure_version) == (1, 1)
+    match = MiddlewareMatch(
+        methods=(EntrypointMethod.POST,),
+        path_prefix="/orders",
+        exclude=(MiddlewareRule(entrypoints=("listOrders",)),),
+    )
+    auth = await middlewares.save(
+        MiddlewareDefinition("auth", MiddlewarePhase.INGRESS, "check_token", order=10, match=match, timeout_ms=2000)
+    )
+    assert auth.version == 1
+    listed = await middlewares.list()
+    assert [(middleware.name, middleware.phase) for middleware in listed] == [("auth", "INGRESS"), ("cors", "EGRESS")]
+    assert (listed[0].order, listed[0].procedure_name, listed[0].timeout_ms, listed[0].enabled) == (
+        10,
+        "check_token",
+        2000,
+        True,
+    )
+    assert listed[0].match == MiddlewareMatch(
+        (EntrypointMethod.POST,), "/orders", None, (MiddlewareRule(entrypoints=("listOrders",)),)
+    )
+    assert (listed[1].match, listed[1].procedure_name, listed[1].definer) == (None, "cors_headers", "admin")
+    await middlewares.delete("auth")
+    await middlewares.delete("cors")
+    assert await middlewares.list() == []
+    assert "cors_headers" in {procedure.name for procedure in await shop.procedures().list()}
 
 
 async def test_a_long_script_is_listed_and_cancelled(client: AsyncMppClient, shop: AsyncProject) -> None:

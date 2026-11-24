@@ -13,19 +13,23 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.data.MiddlewarePhase;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.ex.MetadataReadException;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.ops.AdminOperationHelper;
+import org.ccg.mpp.ops.MiddlewareOperationHelper;
 import org.ccg.mpp.ops.OperationStatus;
 import org.ccg.mpp.ops.OperationType;
 import org.ccg.mpp.ops.ProcedureBindingGuard;
 import org.ccg.mpp.ops.ProcedureOperationHelper;
 import org.ccg.mpp.ops.UserOperationHelper;
 import org.ccg.mpp.ops.admin.RestampedRecords;
+import org.ccg.mpp.ops.middleware.MiddlewareChains;
 import org.ccg.mpp.ops.req.DeleteProcedureRequest;
 import org.ccg.mpp.ops.req.DeleteUserRequest;
+import org.ccg.mpp.ops.req.SaveMiddlewareRequest;
 import org.ccg.mpp.ops.req.SaveProcedureRequest;
 import org.ccg.mpp.test.TestGlobals;
 import org.ccg.mpp.test.TestUtils;
@@ -79,6 +83,20 @@ public class ProcedureBindingGuardTest {
         bindSchedule("hourly", BOUND, DEFINER);
 
         assertEquals(REFUSAL, refusal(BOUND, INTRUDER).getErrorCode());
+    }
+
+    @Test
+    public void test_a_middleware_binding_counts() throws Exception {
+        final var request = new SaveMiddlewareRequest(TestGlobals.PROJECT, "auth", MiddlewarePhase.INGRESS);
+        request.setProcedureName(BOUND);
+        try {
+            assertEquals(OperationStatus.OK, MiddlewareOperationHelper.executeSave(request, DEFINER).getStatus());
+
+            assertEquals(REFUSAL, refusal(BOUND, INTRUDER).getErrorCode());
+            assertNull(refusal(BOUND, DEFINER));
+        } finally {
+            IocContainer.get(MiddlewareChains.class).forgetProject(TestGlobals.PROJECT);
+        }
     }
 
     @Test
@@ -207,7 +225,7 @@ public class ProcedureBindingGuardTest {
         assertEquals(OperationType.DELETE_PROCEDURE, refused.getType());
         assertEquals(OperationStatus.FORBIDDEN, refused.getStatus());
         assertEquals("Procedure '" + BOUND
-                + "' is bound by a trigger, schedule or entrypoint that runs as another user; only"
+                + "' is bound by a trigger, schedule, entrypoint or middleware that runs as another user; only"
                 + " that user, a project owner or an admin may change it", refused.getMessage());
         assertFalse(refused.getMessage().contains(DEFINER));
         assertFalse(refused.getMessage().contains("audit"));

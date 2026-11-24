@@ -3,6 +3,7 @@ import {
     EntrypointMethod,
     field,
     GlobalPermission,
+    MiddlewarePhase,
     ScriptPermission,
     TransactionDecision,
     TriggerEvent,
@@ -158,6 +159,40 @@ function entrypoints(cases: Map<string, FixtureCall>): void {
     cases.set("scripting.list_entrypoints", (r) => r.shop.entrypoints().list());
 }
 
+function middlewares(cases: Map<string, FixtureCall>): void {
+    cases.set("scripting.save_middleware", (r) =>
+        r.shop.middlewares().save({
+            name: "auth",
+            phase: MiddlewarePhase.INGRESS,
+            order: 10,
+            match: {
+                methods: [EntrypointMethod.POST, EntrypointMethod.DELETE],
+                pathPrefix: "/orders",
+                exclude: [{ entrypoints: ["listOrders"] }],
+            },
+            procedureName: "checkToken",
+            timeoutMs: 2000,
+            description: "Bearer-token filter",
+            enabled: true,
+            ifVersion: 2,
+        }),
+    );
+    cases.set("scripting.save_middleware_inline", (r) =>
+        r.shop.middlewares().save({
+            name: "cors",
+            phase: MiddlewarePhase.EGRESS,
+            procedure: {
+                name: "cors",
+                script: 'import { next } from "middleware";\nnext({headers: {"access-control-allow-origin": "*"}});',
+                description: "Adds CORS headers",
+                enabled: true,
+            },
+        }),
+    );
+    cases.set("scripting.delete_middleware", (r) => r.shop.middlewares().delete("auth"));
+    cases.set("scripting.list_middlewares", (r) => r.shop.middlewares().list());
+}
+
 function adminScripts(cases: Map<string, FixtureCall>): void {
     cases.set("scripting.list_scripts", (r) => r.admin.scripts().list());
     cases.set("scripting.cancel_script", (r) => r.admin.scripts().cancel("3f6c1e2a-8b47-4d90-9a11-5c2e7d0b4f83"));
@@ -203,6 +238,7 @@ export function addAdminCases(cases: Map<string, FixtureCall>): void {
     procedures(cases);
     triggersAndSchedules(cases);
     entrypoints(cases);
+    middlewares(cases);
     adminScripts(cases);
     users(cases);
 }

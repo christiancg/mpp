@@ -57,6 +57,25 @@ public sealed record EntrypointDefinition(string Name, EntrypointMethod Method, 
     public long? IfVersion { get; init; }
 }
 
+public sealed record MiddlewareDefinition(string Name, MiddlewarePhase Phase)
+{
+    public int? Order { get; init; }
+
+    public MiddlewareMatch? Match { get; init; }
+
+    public string? ProcedureName { get; init; }
+
+    public ProcedureDefinition? Procedure { get; init; }
+
+    public TimeSpan? Timeout { get; init; }
+
+    public string? Description { get; init; }
+
+    public bool? Enabled { get; init; }
+
+    public long? IfVersion { get; init; }
+}
+
 public sealed record ProcedureInfo(string Name, long Version, bool Enabled, string? Description, string? Source, Document Raw);
 
 public sealed record TriggerInfo(
@@ -96,8 +115,24 @@ public sealed record EntrypointInfo(
     string? DisabledReason,
     Document Raw);
 
+public sealed record MiddlewareInfo(
+    string Name,
+    string Phase,
+    int Order,
+    Document? Match,
+    string ProcedureName,
+    long TimeoutMs,
+    bool Enabled,
+    long Version,
+    string? Definer,
+    string? Description,
+    string? DisabledReason,
+    Document Raw);
+
 public sealed record TriggerSaved(long Version, string Definer);
 
 public sealed record EntrypointSaved(long Version, long ProcedureVersion);
+
+public sealed record MiddlewareSaved(long Version, long ProcedureVersion);
 
 public sealed record TriggerTestResult(string Decision, Document? Document, IReadOnlyList<string> Logs, bool LogsTruncated);

@@ -10,6 +10,7 @@ import org.ccg.mpp.cluster.WriteGuard;
 import org.ccg.mpp.cluster.admin.AdminRecords;
 import org.ccg.mpp.cluster.ownership.OwnershipManager;
 import org.ccg.mpp.data.EntrypointDefinition;
+import org.ccg.mpp.data.MiddlewareDefinition;
 import org.ccg.mpp.data.ScheduleDefinition;
 import org.ccg.mpp.data.TriggerDefinition;
 import org.ccg.mpp.ioc.IocContainer;
@@ -59,6 +60,12 @@ public final class DefinerAuthority {
         disable(AdminRecordKey.entrypoint(projectName, entrypoint.getName()),
                 "Entrypoint '" + entrypoint.getName() + "' in " + projectName, reason,
                 () -> EntrypointOperationHelper.disable(projectName, entrypoint, reason));
+    }
+
+    public static void disableMiddleware(String projectName, MiddlewareDefinition middleware, String reason) {
+        disable(AdminRecordKey.middleware(projectName, middleware.getName()),
+                "Middleware '" + middleware.getName() + "' in " + projectName, reason,
+                () -> MiddlewareOperationHelper.disable(projectName, middleware, reason));
     }
 
     private interface Disabling {

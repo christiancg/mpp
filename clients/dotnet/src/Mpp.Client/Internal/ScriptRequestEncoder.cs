@@ -94,14 +94,7 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
 
     public static JsonObject SaveEntrypoint(string project, EntrypointDefinition entrypoint)
     {
-        if (entrypoint.ProcedureName is null == entrypoint.Procedure is null)
-        {
-            throw new ArgumentException("an entrypoint takes exactly one of ProcedureName and Procedure", nameof(entrypoint));
-        }
-        if (entrypoint.Procedure?.IfVersion is not null)
-        {
-            throw new ArgumentException("an inline procedure takes no IfVersion", nameof(entrypoint));
-        }
+        RequireOneProcedure("an entrypoint", entrypoint.ProcedureName, entrypoint.Procedure, nameof(entrypoint));
         var frame = Request("SAVE_ENTRYPOINT", project);
         frame["name"] = entrypoint.Name;
         frame["method"] = WireNames.Upper(entrypoint.Method.ToString());
@@ -119,6 +112,28 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
         With(Request("DELETE_ENTRYPOINT", project), "name", name);
 
     public static JsonObject ListEntrypoints(string project) => Request("LIST_ENTRYPOINTS", project);
+
+    public static JsonObject SaveMiddleware(string project, MiddlewareDefinition middleware)
+    {
+        RequireOneProcedure("a middleware", middleware.ProcedureName, middleware.Procedure, nameof(middleware));
+        var frame = Request("SAVE_MIDDLEWARE", project);
+        frame["name"] = middleware.Name;
+        frame["phase"] = WireNames.Upper(middleware.Phase.ToString());
+        Optional(frame, "order", middleware.Order);
+        Optional(frame, "match", Match(middleware.Match));
+        Optional(frame, "procedureName", middleware.ProcedureName);
+        Optional(frame, "procedure", InlineProcedure(middleware.Procedure));
+        Optional(frame, "timeoutMs", Millis(middleware.Timeout));
+        Optional(frame, "description", middleware.Description);
+        Optional(frame, "enabled", middleware.Enabled);
+        Optional(frame, "ifVersion", middleware.IfVersion);
+        return frame;
+    }
+
+    public static JsonObject DeleteMiddleware(string project, string name) =>
+        With(Request("DELETE_MIDDLEWARE", project), "name", name);
+
+    public static JsonObject ListMiddlewares(string project) => Request("LIST_MIDDLEWARES", project);
 
     public static JsonObject CancelScript(string runId) => With(Request("CANCEL_SCRIPT"), "runId", runId);
 
@@ -173,6 +188,41 @@ internal sealed class ScriptRequestEncoder(RequestEncoder encoder)
         {
             encoded[key] = WireNames.Upper(permission.ToString());
         }
+        return encoded;
+    }
+
+    private static void RequireOneProcedure(string kind, string? procedureName, ProcedureDefinition? procedure, string parameter)
+    {
+        if (procedureName is null == procedure is null)
+        {
+            throw new ArgumentException($"{kind} takes exactly one of ProcedureName and Procedure", parameter);
+        }
+        if (procedure?.IfVersion is not null)
+        {
+            throw new ArgumentException("an inline procedure takes no IfVersion", parameter);
+        }
+    }
+
+    private static JsonObject? Match(MiddlewareMatch? match)
+    {
+        if (match is null)
+        {
+            return null;
+        }
+        var encoded = Criteria(match.Methods, match.PathPrefix, match.Entrypoints);
+        if (match.Exclude is { } exclude)
+        {
+            encoded["exclude"] = new JsonArray([.. exclude.Select(rule => (JsonNode)Criteria(rule.Methods, rule.PathPrefix, rule.Entrypoints))]);
+        }
+        return encoded;
+    }
+
+    private static JsonObject Criteria(IReadOnlyList<EntrypointMethod>? methods, string? pathPrefix, IReadOnlyList<string>? entrypoints)
+    {
+        var encoded = new JsonObject();
+        Optional(encoded, "methods", methods is null ? null : Strings(methods.Select(method => WireNames.Upper(method.ToString()))));
+        Optional(encoded, "pathPrefix", pathPrefix);
+        Optional(encoded, "entrypoints", entrypoints is null ? null : Strings(entrypoints));
         return encoded;
     }
 

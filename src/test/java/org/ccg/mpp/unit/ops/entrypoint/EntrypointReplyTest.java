@@ -20,7 +20,8 @@ public class EntrypointReplyTest {
     private final EJson eJson = IocContainer.get(EJson.class);
 
     private HttpResponse reply(String resultJson) {
-        return EntrypointReply.of(ScriptResult.value(eJson.fromJson(resultJson, JsonBaseElement.class)), RUN_ID);
+        return EntrypointReply.envelopeOf(ScriptResult.value(eJson.fromJson(resultJson, JsonBaseElement.class)), RUN_ID)
+                .toHttpResponse();
     }
 
     private static String body(HttpResponse response) {
@@ -42,7 +43,8 @@ public class EntrypointReplyTest {
 
     @Test
     public void test_string_result_is_text_plain() {
-        final var response = EntrypointReply.of(ScriptResult.value(new JsonString("héllo")), RUN_ID);
+        final var response = EntrypointReply.envelopeOf(ScriptResult.value(new JsonString("héllo")), RUN_ID)
+                .toHttpResponse();
 
         assertEquals("héllo", body(response));
         assertEquals(HttpResponse.PLAIN_TEXT, contentType(response));
@@ -50,7 +52,7 @@ public class EntrypointReplyTest {
 
     @Test
     public void test_null_result_is_empty_200() {
-        final var response = EntrypointReply.of(ScriptResult.value(JsonNull.INSTANCE), RUN_ID);
+        final var response = EntrypointReply.envelopeOf(ScriptResult.value(JsonNull.INSTANCE), RUN_ID).toHttpResponse();
 
         assertEquals(200, response.status());
         assertEquals(0, response.body().length);
@@ -124,7 +126,8 @@ public class EntrypointReplyTest {
 
     @Test
     public void test_script_error_is_500_with_run_id_and_no_message() {
-        final var response = EntrypointReply.of(ScriptResult.error("Error", "secret detail"), RUN_ID);
+        final var response = EntrypointReply.envelopeOf(ScriptResult.error("Error", "secret detail"), RUN_ID)
+                .toHttpResponse();
 
         assertEquals(500, response.status());
         assertEquals("{\"error\":\"Internal Server Error\",\"runId\":\"run-1\"}", body(response));
@@ -133,6 +136,7 @@ public class EntrypointReplyTest {
 
     @Test
     public void test_timeout_is_500() {
-        assertEquals(500, EntrypointReply.of(ScriptResult.error("TimeoutError", "timed out"), RUN_ID).status());
+        assertEquals(500, EntrypointReply.envelopeOf(ScriptResult.error("TimeoutError", "timed out"), RUN_ID)
+                .toHttpResponse().status());
     }
 }

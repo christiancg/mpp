@@ -42,6 +42,12 @@ public class DumpTest {
     private static final String GET_ORDER = "{\"name\":\"getOrder\",\"method\":\"GET\",\"path\":\"/orders/{id}\","
             + "\"url\":\"/shop/orders/{id}\",\"procedureName\":\"total\",\"timeoutMs\":500,\"enabled\":true,"
             + "\"definer\":\"bob\",\"version\":4}";
+    private static final String AUTH = "{\"name\":\"auth\",\"phase\":\"INGRESS\",\"order\":10,"
+            + "\"match\":{\"pathPrefix\":\"/orders\",\"exclude\":[{\"entrypoints\":[\"listOrders\"]}]},"
+            + "\"procedureName\":\"total\",\"timeoutMs\":0,\"enabled\":true,\"definer\":\"bob\",\"version\":2}";
+    private static final String REVOKED = "{\"name\":\"gone\",\"phase\":\"EGRESS\",\"order\":0,"
+            + "\"procedureName\":\"total\",\"timeoutMs\":0,\"enabled\":false,\"definer\":\"eve\",\"version\":3,"
+            + "\"disabledReason\":\"definer 'eve' no longer exists\"}";
     private final EJson eJson = IocContainer.get(EJson.class);
     private final ByteArrayOutputStream stdout = new ByteArrayOutputStream();
     private final ByteArrayOutputStream stderr = new ByteArrayOutputStream();
@@ -56,7 +62,7 @@ public class DumpTest {
                 .documents("crm", "leads", 2, 10).index("shop", "orders", "customer", "total")
                 .schema("shop", "orders", "{\"type\":\"object\"}").procedure("shop", TOTAL).procedure("shop", UNUSED)
                 .procedure("shop", HELPER).trigger("shop", AUDIT).trigger("shop", NOTIFY).schedule("shop", NIGHTLY)
-                .entrypoint("shop", GET_ORDER);
+                .entrypoint("shop", GET_ORDER).middleware("shop", AUTH).middleware("shop", REVOKED);
     }
 
     @AfterEach
@@ -119,12 +125,14 @@ public class DumpTest {
     public void test_emits_requests_in_restore_order() throws IOException {
         assertEquals(ClientException.OK, dump());
 
-        assertEquals(List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
-                "CREATE_COLLECTION shop.empty", "SAVE_SCHEMA shop.orders", "CREATE_INDEX shop.orders",
-                "SAVE_PROCEDURE shop.unused", "SAVE_PROCEDURE shop.helper", "SAVE_PROCEDURE shop.total",
-                "SAVE_TRIGGER shop.audit", "SAVE_TRIGGER shop.notify", "SAVE_SCHEDULE shop.nightly",
-                "SAVE_ENTRYPOINT shop.getOrder", "CREATE_PROJECT crm", "CREATE_COLLECTION crm.leads",
-                "BULK_SAVE crm.leads"), summaries(emitted()));
+        assertEquals(
+                List.of("CREATE_PROJECT shop", "CREATE_COLLECTION shop.orders", "BULK_SAVE shop.orders",
+                        "CREATE_COLLECTION shop.empty", "SAVE_SCHEMA shop.orders", "CREATE_INDEX shop.orders",
+                        "SAVE_PROCEDURE shop.unused", "SAVE_PROCEDURE shop.helper", "SAVE_PROCEDURE shop.total",
+                        "SAVE_TRIGGER shop.audit", "SAVE_TRIGGER shop.notify", "SAVE_SCHEDULE shop.nightly",
+                        "SAVE_ENTRYPOINT shop.getOrder", "SAVE_MIDDLEWARE shop.auth", "SAVE_MIDDLEWARE shop.gone",
+                        "CREATE_PROJECT crm", "CREATE_COLLECTION crm.leads", "BULK_SAVE crm.leads"),
+                summaries(emitted()));
         assertTrue(errors().contains("shop.orders: 2500 documents"), errors());
         assertTrue(errors().contains("shop.empty: 0 documents"), errors());
     }
@@ -154,6 +162,24 @@ public class DumpTest {
         assertEquals("{\"type\":\"SAVE_ENTRYPOINT\",\"projectName\":\"shop\",\"name\":\"getOrder\","
                 + "\"method\":\"GET\",\"path\":\"/orders/{id}\",\"procedureName\":\"total\",\"timeoutMs\":500,"
                 + "\"enabled\":true}", eJson.toJson(getOrder));
+    }
+
+    @Test
+    public void test_middlewares_restore_after_entrypoints_without_server_fields() throws IOException {
+        dump();
+
+        final var types = emitted().stream().map(request -> Connection.stringOf(request, "type")).toList();
+        final var middlewares = emitted().stream()
+                .filter(request -> "SAVE_MIDDLEWARE".equals(Connection.stringOf(request, "type"))).toList();
+        assertTrue(types.lastIndexOf("SAVE_ENTRYPOINT") < types.indexOf("SAVE_MIDDLEWARE"), types.toString());
+        assertEquals("{\"type\":\"SAVE_MIDDLEWARE\",\"projectName\":\"shop\",\"name\":\"auth\","
+                + "\"phase\":\"INGRESS\",\"order\":10,\"match\":{\"pathPrefix\":\"/orders\",\"exclude\":"
+                + "[{\"entrypoints\":[\"listOrders\"]}]},\"procedureName\":\"total\",\"timeoutMs\":0,"
+                + "\"enabled\":true}", eJson.toJson(middlewares.getFirst()));
+        assertEquals(
+                "{\"type\":\"SAVE_MIDDLEWARE\",\"projectName\":\"shop\",\"name\":\"gone\","
+                        + "\"phase\":\"EGRESS\",\"order\":0,\"procedureName\":\"total\",\"timeoutMs\":0}",
+                eJson.toJson(middlewares.get(1)));
     }
 
     @Test
@@ -246,7 +272,7 @@ public class DumpTest {
         assertTrue(types.contains("SAVE_SCHEMA"));
         assertTrue(server.types().stream().noneMatch("LIST_TRIGGERS"::equals));
         assertTrue(server.types().stream().noneMatch("LIST_ENTRYPOINTS"::equals));
-        assertTrue(errors().contains("note: entrypoints of shop were not dumped"), errors());
+        assertTrue(errors().contains("note: entrypoints and middlewares of shop were not dumped"), errors());
     }
 
     @Test

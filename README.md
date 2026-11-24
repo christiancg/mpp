@@ -72,7 +72,8 @@ Documents are stored as JSON lines in paged files and queried through an
   [schedules](docs/protocol.md#save_schedule) and [pipeline steps](docs/protocol.md#script-operators-simplejs-in-the-pipeline)
   (see [docs/simplejs.md](docs/simplejs.md))
 - [HTTP entrypoints](docs/protocol.md#http-entrypoints) that serve a stored procedure at an HTTP route, such as
-  `GET /shop/orders/{id}`, on their own port
+  `GET /shop/orders/{id}`, on their own port, with ingress and egress [middlewares](docs/protocol.md#middlewares)
+  for auth filters, logging, caching and the like
 - [clustering](docs/clustering.md) with fully replicated nodes and no master
 - [Prometheus metrics](docs/operations.md#metrics), a health check and graceful shutdown
 

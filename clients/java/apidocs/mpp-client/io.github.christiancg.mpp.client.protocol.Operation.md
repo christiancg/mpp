@@ -193,6 +193,18 @@ Scope project.
 
 Scope project.
 
+## SAVE_MIDDLEWARE
+
+Scope project.
+
+## DELETE_MIDDLEWARE
+
+Scope project.
+
+## LIST_MIDDLEWARES
+
+Scope project.
+
 ## LIST_SCRIPTS
 
 Scope none; admin only.

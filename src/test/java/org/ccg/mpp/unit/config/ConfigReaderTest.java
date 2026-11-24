@@ -90,6 +90,7 @@ public class ConfigReaderTest {
         expectedConfig.put("entrypointTimeoutMs", "30000");
         expectedConfig.put("entrypointMaxTimeoutMs", "300000");
         expectedConfig.put("maxEntrypointsPerProject", "1000");
+        expectedConfig.put("maxMiddlewaresPerProject", "64");
         expectedConfig.put("clusterAdvertisedAddress", "127.0.0.1");
         expectedConfig.put("clusterSeeds", "");
         expectedConfig.put("nodeId", "");

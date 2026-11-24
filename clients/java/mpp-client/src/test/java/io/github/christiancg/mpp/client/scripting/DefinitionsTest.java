@@ -12,6 +12,7 @@ import io.github.christiancg.mpp.client.admin.ScriptPermission;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,57 @@ public class DefinitionsTest {
         assertEquals("p", byName.procedureName().orElseThrow());
         assertTrue(byName.procedure().isEmpty());
         assertTrue(byName.ifVersion().isEmpty());
+    }
+
+    @Test
+    public void test_a_middleware_takes_exactly_one_of_procedure_name_and_procedure() {
+        final var inline = ProcedureDefinition.builder("p", "return 1;").build();
+        final var neither = assertThrows(IllegalArgumentException.class,
+                () -> MiddlewareDefinition.builder("m", MiddlewarePhase.INGRESS).build());
+        assertEquals("a middleware takes exactly one of procedureName and procedure", neither.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> MiddlewareDefinition.builder("m", MiddlewarePhase.EGRESS)
+                .procedureName("p").procedure(inline).build());
+        final var versioned = ProcedureDefinition.builder("p", "return 1;").ifVersion(2).build();
+        final var refused = assertThrows(IllegalArgumentException.class,
+                () -> MiddlewareDefinition.builder("m", MiddlewarePhase.INGRESS).procedure(versioned).build());
+        assertEquals("an inline procedure takes no ifVersion", refused.getMessage());
+    }
+
+    @Test
+    public void test_a_middleware_definition_exposes_its_fields() {
+        final var inline = ProcedureDefinition.builder("p", "return 1;").build();
+        final var match = MiddlewareMatch.of(MiddlewareCriteria.builder().pathPrefix("/orders").build());
+        final var middleware = MiddlewareDefinition.builder("m", MiddlewarePhase.EGRESS).order(5).match(match)
+                .procedure(inline).timeout(Duration.ofSeconds(2)).description("d").enabled(false).ifVersion(3).build();
+        assertEquals("m", middleware.name());
+        assertEquals(MiddlewarePhase.EGRESS, middleware.phase());
+        assertEquals(OptionalInt.of(5), middleware.order());
+        assertEquals(match, middleware.match().orElseThrow());
+        assertTrue(middleware.procedureName().isEmpty());
+        assertEquals(inline, middleware.procedure().orElseThrow());
+        assertEquals(Duration.ofSeconds(2), middleware.timeout().orElseThrow());
+        assertEquals("d", middleware.description().orElseThrow());
+        assertEquals(false, middleware.enabled().orElseThrow());
+        assertEquals(OptionalLong.of(3), middleware.ifVersion());
+        final var byName = MiddlewareDefinition.builder("m", MiddlewarePhase.INGRESS).procedureName("p").build();
+        assertEquals("p", byName.procedureName().orElseThrow());
+        assertTrue(byName.order().isEmpty());
+        assertTrue(byName.match().isEmpty());
+        assertTrue(byName.ifVersion().isEmpty());
+    }
+
+    @Test
+    public void test_middleware_criteria_start_empty_and_keep_what_was_set() {
+        final var empty = MiddlewareCriteria.builder().build();
+        assertTrue(empty.methods().isEmpty());
+        assertTrue(empty.pathPrefix().isEmpty());
+        assertTrue(empty.entrypoints().isEmpty());
+        final var criteria = MiddlewareCriteria.builder().methods(EntrypointMethod.PUT).entrypoints("a", "b").build();
+        assertEquals(List.of(EntrypointMethod.PUT), criteria.methods());
+        assertEquals(List.of("a", "b"), criteria.entrypoints());
+        final var match = MiddlewareMatch.of(empty, criteria);
+        assertEquals(empty, match.include());
+        assertEquals(List.of(criteria), match.exclude());
     }
 
     @Test

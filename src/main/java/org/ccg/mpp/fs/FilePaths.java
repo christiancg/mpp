@@ -167,6 +167,15 @@ final class FilePaths {
                 + Globals.ENTRYPOINT_FILE_EXTENSION);
     }
 
+    File middlewaresFolder(String projectName) {
+        return new File(projectFolder(projectName).getPath() + Globals.FILE_SEPARATOR + Globals.MIDDLEWARES_FOLDER);
+    }
+
+    File middlewareFile(String projectName, String name) {
+        return new File(middlewaresFolder(projectName).getPath() + Globals.FILE_SEPARATOR + segment(name)
+                + Globals.MIDDLEWARE_FILE_EXTENSION);
+    }
+
     private String collectionPrefix(String projectName, String collectionName) {
         final var hit = prefixes.get(projectName, collectionName);
         if (hit != null) {

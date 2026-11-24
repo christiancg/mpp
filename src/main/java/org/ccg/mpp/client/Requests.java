@@ -101,6 +101,10 @@ public final class Requests {
         return onProject("LIST_ENTRYPOINTS", project);
     }
 
+    public static JsonObject listMiddlewares(String project) {
+        return onProject("LIST_MIDDLEWARES", project);
+    }
+
     public static JsonObject createProject(String project) {
         return onProject("CREATE_PROJECT", project);
     }
@@ -163,6 +167,15 @@ public final class Requests {
     public static JsonObject saveEntrypointFrom(String project, JsonObject listed) {
         final var request = onProject("SAVE_ENTRYPOINT", project);
         copy(listed, request, NAME, "method", "path", PROCEDURE_NAME, "timeoutMs", "description", "enabled");
+        return request;
+    }
+
+    public static JsonObject saveMiddlewareFrom(String project, JsonObject listed) {
+        final var request = onProject("SAVE_MIDDLEWARE", project);
+        copy(listed, request, NAME, "phase", "order", "match", PROCEDURE_NAME, "timeoutMs", "description");
+        if (!listed.has("disabledReason")) {
+            copy(listed, request, "enabled");
+        }
         return request;
     }
 

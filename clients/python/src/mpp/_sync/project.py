@@ -6,7 +6,7 @@ from typing import Any, TypeVar, overload
 from mpp._async.project import AsyncProject
 from mpp._internal.portal import SyncRuntime
 from mpp._sync.collection import Collection
-from mpp._sync.scripting import Entrypoints, Procedures, Schedules
+from mpp._sync.scripting import Entrypoints, Middlewares, Procedures, Schedules
 from mpp.document import Document, DocumentCodec
 from mpp.results import ScriptResult
 from mpp.scripting_types import TriggerInfo
@@ -69,6 +69,9 @@ class Project:
 
     def entrypoints(self) -> Entrypoints:
         return Entrypoints(self._runtime, self._inner.entrypoints())
+
+    def middlewares(self) -> Middlewares:
+        return Middlewares(self._runtime, self._inner.middlewares())
 
     def list_triggers(self) -> list[TriggerInfo]:
         return self._runtime.run(self._inner.list_triggers())
