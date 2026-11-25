@@ -29,6 +29,7 @@ from mpp import (
 )
 from tests.fixtures.recorder import FixtureCall
 from tests.fixtures.wire_admin_cases import add_admin_cases
+from tests.fixtures.wire_file_cases import add_file_cases
 
 REDUCE_SUM = "export default (acc, doc) => acc + doc.total;"
 ACTIVE = field("status").eq("active")
@@ -189,4 +190,5 @@ def all_cases() -> dict[str, FixtureCall]:
     _aggregate(cases)
     _custom_types(cases)
     add_admin_cases(cases)
+    add_file_cases(cases)
     return cases

@@ -11,6 +11,7 @@ import org.ccg.mpp.ops.admin.ProjectOperationHelper;
 import org.ccg.mpp.ops.admin.ReadPathHelper;
 import org.ccg.mpp.ops.admin.RestampedRecords;
 import org.ccg.mpp.ops.admin.RunDirectoryHelper;
+import org.ccg.mpp.ops.files.FileOperationHelper;
 import org.ccg.mpp.ops.index.IndexOperationHelper;
 import org.ccg.mpp.ops.req.AggregateRequest;
 import org.ccg.mpp.ops.req.ArmFaultRequest;
@@ -150,6 +151,8 @@ public class OperationProcessor {
                 EntrypointOperationHelper.process(operationRequest, actingUser);
             case SAVE_MIDDLEWARE, DELETE_MIDDLEWARE, LIST_MIDDLEWARES ->
                 MiddlewareOperationHelper.process(operationRequest, actingUser);
+            case WRITE_FILE, READ_FILE, STAT_FILE, LIST_FILES, DELETE_FILE, MOVE_FILE, MAKE_DIRECTORY ->
+                FileOperationHelper.process(operationRequest);
             case LIST_SCRIPTS -> processListScripts();
             case CANCEL_SCRIPT -> processCancelScript((CancelScriptRequest) operationRequest);
             case LIST_TRIGGER_RUNS -> processListTriggerRuns((ListTriggerRunsRequest) operationRequest);

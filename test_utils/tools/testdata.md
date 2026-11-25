@@ -3565,6 +3565,76 @@ Delete — idempotent, and the procedure stays
 {"type": "DELETE_MIDDLEWARE", "projectName": "test", "name": "cors"}
 ```
 
+Project files
+
+Each project has its own file tree in `filesPath`. Write a file (`content` is base64 unless `encoding` is `utf8`); the
+missing folders are created on the way
+
+```json
+{"type": "WRITE_FILE", "projectName": "test", "path": "/public/index.html", "content": "<h1>hi</h1>", "encoding": "utf8"}
+```
+
+```json
+{"path": "/public/index.html", "version": "117673399272407040", "size": 11, "type": "WRITE_FILE", "status": "OK", "message": "File written", "errorCode": null}
+```
+
+Append to it (base64 of ` more`)
+
+```json
+{"type": "WRITE_FILE", "projectName": "test", "path": "/public/index.html", "content": "IG1vcmU=", "mode": "APPEND"}
+```
+
+Read it back, stat it, list the tree
+
+```json
+{"type": "READ_FILE", "projectName": "test", "path": "public/index.html", "encoding": "utf8"}
+```
+
+```json
+{"path": "/public/index.html", "version": "117673399274242048", "size": 16, "offset": 0, "content": "<h1>hi</h1> more", "encoding": "utf8", "eof": true, "type": "READ_FILE", "status": "OK", "message": "File read", "errorCode": null}
+```
+
+```json
+{"type": "STAT_FILE", "projectName": "test", "path": "/public"}
+```
+
+```json
+{"type": "LIST_FILES", "projectName": "test", "recursive": true}
+```
+
+Move the folder, make another, delete recursively
+
+```json
+{"type": "MOVE_FILE", "projectName": "test", "from": "/public", "to": "/www"}
+```
+
+```json
+{"path": "/www", "version": "117673399275159552", "moved": 2, "type": "MOVE_FILE", "status": "OK", "message": "Moved", "errorCode": null}
+```
+
+```json
+{"type": "MAKE_DIRECTORY", "projectName": "test", "path": "/a/b/c"}
+```
+
+```json
+{"type": "DELETE_FILE", "projectName": "test", "path": "/www", "recursive": true}
+```
+
+Refusals:
+
+- `CREATE` on an existing path, or `MOVE_FILE` onto one without `overwrite` → `409-20`
+- writing where a folder is, or under a file → `409-21`
+- `DELETE_FILE` of a non-empty folder without `recursive` → `409-22`
+- `ifVersion` that doesn't match → `409-23` (`"0"` means "must not exist")
+- a name differing only by case from a sibling (`/WWW/x` beside `/www`) → `409-11`
+- `/../x`, `a%b`, `CON`, a name ending with a dot, or moving a folder into itself → `400-51`
+- content that isn't valid base64, an unknown `encoding` or `mode`, or a `utf8` read of bytes that aren't UTF-8 → `400-52`
+- a missing file, folder or (with `createParents: false`) parent → `404-14`
+- a file over `filesMaxFileSize` → `413-2`; a project over `filesMaxBytesPerProject` or `filesMaxEntriesPerProject` → `413-3`
+- any file write inside a transaction → `409-6` (the reads are allowed)
+- `500-42`: the change is committed but a rename or delete on the files volume failed; it is finished on the next access
+  or at startup. `500-43`: the project's files could not be read, for example a damaged manifest.
+
 Answers only a cluster gives
 
 These need `clusterEnabled=true` and at least three nodes. A client may connect to any node: writes and

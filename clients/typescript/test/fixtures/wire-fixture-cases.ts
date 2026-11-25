@@ -25,6 +25,7 @@ import { remove, set } from "../../src/query/map-ops.js";
 import * as MidOps from "../../src/query/mid-ops.js";
 import type { FixtureCall } from "./recorder.js";
 import { addAdminCases } from "./wire-fixture-admin-cases.js";
+import { addFileCases } from "./wire-fixture-file-cases.js";
 
 export const REDUCE_SUM = "export default (acc, doc) => acc + doc.total;";
 const ACTIVE = field("status").eq("active");
@@ -236,5 +237,6 @@ export function allCases(): Map<string, FixtureCall> {
     aggregate(cases);
     customTypes(cases);
     addAdminCases(cases);
+    addFileCases(cases);
     return cases;
 }

@@ -8,6 +8,7 @@ from mpp._async.admin import (
 from mpp._async.client import AsyncMppClient
 from mpp._async.collection import AsyncCollection
 from mpp._async.entrypoints import AsyncEntrypoints
+from mpp._async.files import AsyncProjectFiles
 from mpp._async.indexes import AsyncIndexes
 from mpp._async.middlewares import AsyncMiddlewares
 from mpp._async.procedures import AsyncProcedures
@@ -23,6 +24,7 @@ from mpp._internal.dataclass_mapping import DataclassCodec
 from mpp._sync.admin import Admin, DistributedTransactions, Scripts, TriggerRuns, Users
 from mpp._sync.client import MppClient
 from mpp._sync.collection import Collection
+from mpp._sync.files import ProjectFiles
 from mpp._sync.indexes import Indexes, Schema, Triggers
 from mpp._sync.project import Project
 from mpp._sync.query import Query
@@ -50,6 +52,7 @@ from mpp.errors import (
     AuthenticationError,
     ConflictError,
     ConnectionLostError,
+    FileChangedError,
     ForbiddenError,
     ListenEndedError,
     MappingError,
@@ -60,6 +63,16 @@ from mpp.errors import (
     ServerClosedConnectionError,
     UnavailableError,
     UnknownOutcomeError,
+)
+from mpp.files_types import (
+    DirectoryCreated,
+    FileEncoding,
+    FileInfo,
+    FileKind,
+    FileMoved,
+    FileRange,
+    FileWriteMode,
+    FileWritten,
 )
 from mpp.listen import ListenHandler, ListenUpdate
 from mpp.operations import OPERATIONS, Operation, OperationDetails, OperationScope
@@ -156,6 +169,7 @@ __all__ = [
     "AsyncMppClient",
     "AsyncProcedures",
     "AsyncProject",
+    "AsyncProjectFiles",
     "AsyncQuery",
     "AsyncSchedules",
     "AsyncSchema",
@@ -180,6 +194,7 @@ __all__ = [
     "CustomType",
     "DataPermission",
     "DataclassCodec",
+    "DirectoryCreated",
     "DistanceFilter",
     "DistributedTransactions",
     "Document",
@@ -195,6 +210,14 @@ __all__ = [
     "FieldFilter",
     "FieldFunction",
     "FieldOperator",
+    "FileChangedError",
+    "FileEncoding",
+    "FileInfo",
+    "FileKind",
+    "FileMoved",
+    "FileRange",
+    "FileWriteMode",
+    "FileWritten",
     "Filter",
     "ForbiddenError",
     "GeoDistanceComparator",
@@ -235,6 +258,7 @@ __all__ = [
     "ProcedureInfo",
     "Procedures",
     "Project",
+    "ProjectFiles",
     "Query",
     "QueryBuilder",
     "ReindexResult",

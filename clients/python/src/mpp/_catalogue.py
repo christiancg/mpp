@@ -53,6 +53,13 @@ class Operation(StrEnum):
     SAVE_MIDDLEWARE = 'SAVE_MIDDLEWARE'
     DELETE_MIDDLEWARE = 'DELETE_MIDDLEWARE'
     LIST_MIDDLEWARES = 'LIST_MIDDLEWARES'
+    WRITE_FILE = 'WRITE_FILE'
+    READ_FILE = 'READ_FILE'
+    STAT_FILE = 'STAT_FILE'
+    LIST_FILES = 'LIST_FILES'
+    DELETE_FILE = 'DELETE_FILE'
+    MOVE_FILE = 'MOVE_FILE'
+    MAKE_DIRECTORY = 'MAKE_DIRECTORY'
     LIST_SCRIPTS = 'LIST_SCRIPTS'
     CANCEL_SCRIPT = 'CANCEL_SCRIPT'
     TEST_TRIGGER = 'TEST_TRIGGER'
@@ -111,6 +118,8 @@ class ErrorCode(StrEnum):
     ENTRYPOINT_TIMEOUT_TOO_LARGE = '400-48'
     INVALID_MIDDLEWARE = '400-49'
     TOO_MANY_MIDDLEWARES = '400-50'
+    FILE_PATH_INVALID = '400-51'
+    FILE_CONTENT_INVALID = '400-52'
     MUST_AUTHENTICATE_FIRST = '401-1'
     USER_NO_LONGER_EXISTS = '401-2'
     WRONG_CREDENTIALS = '401-3'
@@ -133,6 +142,7 @@ class ErrorCode(StrEnum):
     COLLECTION_NOT_FOUND = '404-11'
     SCHEMA_NOT_FOUND = '404-12'
     SNAPSHOT_NOT_FOUND = '404-13'
+    FILE_NOT_FOUND = '404-14'
     SCRIPT_TIMEOUT = '408-1'
     SCRIPT_CANCELLED = '408-2'
     FAULT_NOT_REACHED = '408-3'
@@ -158,8 +168,14 @@ class ErrorCode(StrEnum):
     SNAPSHOT_ABORTED = '409-17'
     DOCUMENT_ALREADY_EXISTS = '409-18'
     ENTRYPOINT_ROUTE_CONFLICT = '409-19'
+    FILE_EXISTS = '409-20'
+    FILE_KIND_MISMATCH = '409-21'
+    DIRECTORY_NOT_EMPTY = '409-22'
+    FILE_VERSION_CONFLICT = '409-23'
     LISTEN_ENDED = '410-1'
     OUTBOUND_BACKLOG = '413-1'
+    FILE_TOO_LARGE = '413-2'
+    FILE_QUOTA_EXCEEDED = '413-3'
     NOT_COLLECTION_OWNER = '421-1'
     TRANSACTION_READ_SPANS_NODES = '421-3'
     AUTHENTICATION_ERROR = '500-1'
@@ -203,6 +219,8 @@ class ErrorCode(StrEnum):
     ERROR_DELETING_ENTRYPOINT = '500-39'
     ERROR_SAVING_MIDDLEWARE = '500-40'
     ERROR_DELETING_MIDDLEWARE = '500-41'
+    FILE_APPLY_PENDING = '500-42'
+    ERROR_ACCESSING_FILES = '500-43'
     MAX_CONNECTIONS_REACHED = '503-1'
     NO_QUORUM = '503-2'
     REPLICATION_TIMEOUT = '503-3'
@@ -289,6 +307,13 @@ OPERATIONS = (
     ('SAVE_MIDDLEWARE', 'PROJECT', False, False),
     ('DELETE_MIDDLEWARE', 'PROJECT', False, False),
     ('LIST_MIDDLEWARES', 'PROJECT', False, False),
+    ('WRITE_FILE', 'PROJECT', False, False),
+    ('READ_FILE', 'PROJECT', False, True),
+    ('STAT_FILE', 'PROJECT', False, True),
+    ('LIST_FILES', 'PROJECT', False, True),
+    ('DELETE_FILE', 'PROJECT', False, False),
+    ('MOVE_FILE', 'PROJECT', False, False),
+    ('MAKE_DIRECTORY', 'PROJECT', False, False),
     ('LIST_SCRIPTS', 'NONE', True, False),
     ('CANCEL_SCRIPT', 'NONE', True, False),
     ('TEST_TRIGGER', 'COLLECTION', False, False),
@@ -347,6 +372,8 @@ ERROR_CODES = (
     ('ENTRYPOINT_TIMEOUT_TOO_LARGE', '400-48', 'ERROR', False, 'The entrypoint timeout exceeds the allowed maximum'),
     ('INVALID_MIDDLEWARE', '400-49', 'ERROR', False, 'The middleware definition is not valid'),
     ('TOO_MANY_MIDDLEWARES', '400-50', 'ERROR', False, 'The project has the maximum number of middlewares'),
+    ('FILE_PATH_INVALID', '400-51', 'ERROR', False, 'The file path is not valid'),
+    ('FILE_CONTENT_INVALID', '400-52', 'ERROR', False, 'The file content or its encoding is not valid'),
     ('MUST_AUTHENTICATE_FIRST', '401-1', 'UNAUTHENTICATED', False, 'Must authenticate first'),
     ('USER_NO_LONGER_EXISTS', '401-2', 'UNAUTHENTICATED', False, 'User no longer exists'),
     ('WRONG_CREDENTIALS', '401-3', 'ERROR', False, "The user doesn't exist or the wrong credentials have been provided"),
@@ -369,6 +396,7 @@ ERROR_CODES = (
     ('COLLECTION_NOT_FOUND', '404-11', 'NOT_FOUND', False, 'Collection not found'),
     ('SCHEMA_NOT_FOUND', '404-12', 'NOT_FOUND', False, 'The collection has no schema'),
     ('SNAPSHOT_NOT_FOUND', '404-13', 'NOT_FOUND', False, 'The snapshot does not exist: it was released or expired, or it belongs to another connection'),
+    ('FILE_NOT_FOUND', '404-14', 'NOT_FOUND', False, 'No such file or folder'),
     ('SCRIPT_TIMEOUT', '408-1', 'ERROR', False, 'Script exceeded its time budget'),
     ('SCRIPT_CANCELLED', '408-2', 'ERROR', False, 'Script was cancelled'),
     ('FAULT_NOT_REACHED', '408-3', 'ERROR', False, 'The armed fault point was not reached in time'),
@@ -394,8 +422,14 @@ ERROR_CODES = (
     ('SNAPSHOT_ABORTED', '409-17', 'ERROR', False, 'The snapshot was aborted and holds nothing any more; open a new one'),
     ('DOCUMENT_ALREADY_EXISTS', '409-18', 'ERROR', False, 'A document with this _id already exists'),
     ('ENTRYPOINT_ROUTE_CONFLICT', '409-19', 'ERROR', False, 'Another entrypoint of the project already serves this method and path'),
+    ('FILE_EXISTS', '409-20', 'ERROR', False, 'The file or folder already exists'),
+    ('FILE_KIND_MISMATCH', '409-21', 'ERROR', False, 'A folder is where a file is expected, or a file where a folder is'),
+    ('DIRECTORY_NOT_EMPTY', '409-22', 'ERROR', False, 'The folder is not empty'),
+    ('FILE_VERSION_CONFLICT', '409-23', 'ERROR', False, 'The file was changed by someone else'),
     ('LISTEN_ENDED', '410-1', 'NOT_FOUND', False, 'The listen ended'),
     ('OUTBOUND_BACKLOG', '413-1', 'ERROR', False, "The connection's outbound buffer overflowed"),
+    ('FILE_TOO_LARGE', '413-2', 'ERROR', False, 'The file would exceed the maximum file size'),
+    ('FILE_QUOTA_EXCEEDED', '413-3', 'ERROR', False, "The project's files would exceed their quota"),
     ('NOT_COLLECTION_OWNER', '421-1', 'ERROR', False, 'This node is not the owner of the target collection'),
     ('TRANSACTION_READ_SPANS_NODES', '421-3', 'ERROR', False, 'This read joins collections the transaction wrote on different nodes'),
     ('AUTHENTICATION_ERROR', '500-1', 'ERROR', False, 'Error during authentication'),
@@ -439,6 +473,8 @@ ERROR_CODES = (
     ('ERROR_DELETING_ENTRYPOINT', '500-39', 'ERROR', False, 'Error while deleting the entrypoint'),
     ('ERROR_SAVING_MIDDLEWARE', '500-40', 'ERROR', False, 'Error while saving the middleware'),
     ('ERROR_DELETING_MIDDLEWARE', '500-41', 'ERROR', False, 'Error while deleting the middleware'),
+    ('FILE_APPLY_PENDING', '500-42', 'ERROR', False, "The file change was committed but could not be applied yet; it is applied on the next access to the project's files, or at the next startup"),
+    ('ERROR_ACCESSING_FILES', '500-43', 'ERROR', False, "Error while accessing the project's files"),
     ('MAX_CONNECTIONS_REACHED', '503-1', 'ERROR', False, 'Max number of connections reached'),
     ('NO_QUORUM', '503-2', 'ERROR', True, 'Cluster does not have a write quorum'),
     ('REPLICATION_TIMEOUT', '503-3', 'ERROR', False, 'Timed out waiting for the replication quorum'),

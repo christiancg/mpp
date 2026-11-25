@@ -30,6 +30,7 @@ public class ClusterMessage {
     private boolean triggerRunResolved;
     private boolean cancelledRun;
     private AdminSnapshotPayload adminSnapshot;
+    private FilePayload files;
     private String errorMessage;
 
     public List<TriggerRunRow> getTriggerRuns() {
@@ -242,5 +243,13 @@ public class ClusterMessage {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public FilePayload getFiles() {
+        return files;
+    }
+
+    public void setFiles(FilePayload files) {
+        this.files = files;
     }
 }

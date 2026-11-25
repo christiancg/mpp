@@ -14,6 +14,7 @@ public class ForcerSeamTest {
     private static final Pattern FORCE_CALL = Pattern.compile("(\\w+|\\))\\s*\\.\\s*force\\s*\\(\\s*(\\)?)");
     private static final String FORCER = "/fs/Forcer.java";
     private static final String HELPER = "/fs/SyncedWrites.java";
+    private static final String SHADOWS = "/fs/DurableShadows.java";
 
     static Set<String> forcesOutsideTheSeam(List<JavaSourceFile> files) {
         final var found = new TreeSet<String>();
@@ -34,7 +35,8 @@ public class ForcerSeamTest {
     }
 
     private static boolean isThroughTheSeam(String path, String code, String receiver, boolean noArguments) {
-        if ("DEVICE".equals(receiver) || path.endsWith(HELPER) && "forcer".equals(receiver)) {
+        if ("DEVICE".equals(receiver) || path.endsWith(HELPER) && "forcer".equals(receiver)
+                || path.endsWith(SHADOWS) && "shadow".equals(receiver)) {
             return true;
         }
         return noArguments && !")".equals(receiver) && Pattern

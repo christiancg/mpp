@@ -84,7 +84,8 @@ public class ResponseBudgetTest {
                 OperationType.LIST_COLLECTIONS, OperationType.GET_SCHEMA, OperationType.LIST_USERS,
                 OperationType.GET_PROJECT_STATS, OperationType.LIST_TRANSACTIONS, OperationType.LIST_PROCEDURES,
                 OperationType.LIST_TRIGGERS, OperationType.LIST_SCHEDULES, OperationType.LIST_SCRIPTS,
-                OperationType.LIST_TRIGGER_RUNS, OperationType.READ_SNAPSHOT);
+                OperationType.LIST_TRIGGER_RUNS, OperationType.READ_SNAPSHOT, OperationType.READ_FILE,
+                OperationType.STAT_FILE, OperationType.LIST_FILES);
         for (final var type : OperationType.values()) {
             assertEquals(reads.contains(type), ResponseBudget.isRefusable(type), type.name());
         }

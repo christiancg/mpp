@@ -26,6 +26,7 @@ public final class ConfigurationValidator {
         }
         validateWritablePath(configs, "filePath", errors);
         validateWritablePath(configs, "logPath", errors);
+        FilesPathRules.validate(configs, errors);
         validatePageAndEntrySize(configs, errors);
         validateRequestSize(configs, errors);
         validateAuthFailureDelay(configs, errors);
@@ -316,7 +317,7 @@ public final class ConfigurationValidator {
                 && Boolean.parseBoolean(configs.getOrDefault("clusterTlsEnabled", "false").trim());
     }
 
-    private static void validateWritablePath(Map<String, String> configs, String key, List<String> errors) {
+    static void validateWritablePath(Map<String, String> configs, String key, List<String> errors) {
         final var value = configs.get(key);
         if (value == null || value.isBlank()) {
             errors.add(key + " must be a non-blank path");

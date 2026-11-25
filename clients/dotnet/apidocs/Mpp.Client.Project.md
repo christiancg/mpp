@@ -35,6 +35,11 @@ Returns the project's HTTP entrypoints.
 
 @returns the entrypoints facade
 
+## Files()
+Returns the project's files.
+
+@returns the files facade
+
 ## ListCollectionsAsync(CancellationToken)
 Lists the project's collections.
 

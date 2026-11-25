@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Mpp.Client.Files;
 using Mpp.Client.Internal;
 using Mpp.Client.Mapping;
 using Mpp.Client.Protocol;
@@ -62,6 +63,8 @@ public sealed class Project
     public Entrypoints Entrypoints() => new(_context, Name);
 
     public Middlewares Middlewares() => new(_context, Name);
+
+    public ProjectFiles Files() => new(_context, Name);
 
     public async Task<IReadOnlyList<TriggerInfo>> ListTriggersAsync(CancellationToken ct = default)
     {

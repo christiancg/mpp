@@ -36,6 +36,7 @@ public final class LeftoverFolders {
             return false;
         }
         final var moved = fs.folderQuarantine().moveProjectAside(projectName);
+        ProjectFilesRetirement.quarantine(projectName, "they were left by a project that is no longer registered");
         DroppedCollections.forgetProject(projectName);
         compiledProcedures.invalidateProject(projectName);
         scheduleRegistry.removeProject(projectName);

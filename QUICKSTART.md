@@ -20,6 +20,7 @@ least 8 characters and avoid common passwords and the username, because the serv
 docker run -d --name mpp -p 8989:8989 -p 8990:8990 \
   -e MPP_ADMIN_PASSWORD=<choose-a-strong-password> \
   -v mpp-data:/app/db \
+  -v mpp-files:/app/files \
   ghcr.io/christiancg/mpp:latest
 ```
 
@@ -34,6 +35,7 @@ docker build -t mpp .
 docker run -d --name mpp -p 8989:8989 -p 8990:8990 \
   -e MPP_ADMIN_PASSWORD=<choose-a-strong-password> \
   -v mpp-data:/app/db \
+  -v mpp-files:/app/files \
   mpp
 ```
 
@@ -154,7 +156,7 @@ Authenticate first with [`AUTHENTICATE`](docs/protocol.md#authenticate).
 
 ```bash
 docker stop mpp && docker rm mpp
-docker volume rm mpp-data
+docker volume rm mpp-data mpp-files
 ```
 
 The second line deletes your data. With the jar, stop the server with `Ctrl+C` (it shuts down cleanly) and delete the

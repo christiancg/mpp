@@ -12,6 +12,9 @@ DATA = "/app/data"
 LOGS = "/app/logs"
 DATA_BALLAST = f"{DATA}/ballast"
 LOGS_BALLAST = f"{LOGS}/ballast"
+FILES = "/app/files"
+FILES_BALLAST = f"{FILES}/ballast"
+FILES_SIZE = "8m"
 OUTPUT = "/app/server.out"
 PID = "/app/server.pid"
 JAVA = "java -XX:+UseG1GC -Xmx512m -Djdk.nio.maxCachedBufferSize=262144 -jar app.jar"
@@ -30,7 +33,7 @@ class Container:
         self.cfg_dir = tempfile.mkdtemp(prefix="mpp-disk-full-")
 
     def _write_cfg(self):
-        lines = [f"port={self.port}", f"filePath={DATA}/db", f"logPath={LOGS}",
+        lines = [f"port={self.port}", f"filePath={DATA}/db", f"logPath={LOGS}", f"filesPath={FILES}/tree",
                  f"defaultAdminUsername={bu.USERNAME}", f"defaultAdminPassword={bu.PASSWORD}"]
         lines += [f"{key}={str(value).lower() if isinstance(value, bool) else value}"
                   for key, value in self.settings.items()]
@@ -42,7 +45,8 @@ class Container:
 
     def run_args(self) -> list:
         return ["--tmpfs", f"{DATA}:rw,size={DATA_SIZE},mode=0700",
-                "--tmpfs", f"{LOGS}:rw,size={LOGS_SIZE},mode=0700"]
+                "--tmpfs", f"{LOGS}:rw,size={LOGS_SIZE},mode=0700",
+                "--tmpfs", f"{FILES}:rw,size={FILES_SIZE},mode=0700"]
 
     def up(self):
         self.remove()

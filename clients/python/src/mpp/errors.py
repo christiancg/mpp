@@ -73,3 +73,7 @@ class PoolExhaustedError(MppError):
 
 class MappingError(MppError):
     pass
+
+
+class FileChangedError(MppError):
+    pass

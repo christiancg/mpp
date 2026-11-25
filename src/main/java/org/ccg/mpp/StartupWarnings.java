@@ -90,6 +90,8 @@ public final class StartupWarnings {
     public static void warnIfStorageIsReadableByOthers() {
         warnIfAccessibleByOthers(Path.of(config.getFilePath()), "data folder (filePath)", "chmod 700");
         warnIfAccessibleByOthers(Path.of(config.getLogPath()), "log folder (logPath)", "chmod 700");
+        warnIfAccessibleByOthers(Path.of(config.stringValue(ConfigKey.FILES_PATH)), "project files folder (filesPath)",
+                "chmod 700");
         if (usesKeystore()) {
             warnIfAccessibleByOthers(Path.of(config.getTlsKeystorePath()), "TLS keystore (tlsKeystorePath)",
                     "chmod 600");

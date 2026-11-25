@@ -96,7 +96,8 @@ public class ReflectionUtils {
                 default -> throw new IllegalStateException("Unexpected value: " + jsonType);
             };
             if (enumValueOf != null && jsonValue instanceof String name) {
-                return parameterType.cast(HandleInvoker.apply(enumValueOf, name));
+                final var constant = EnumWireNames.constantOf(parameterType, name);
+                return parameterType.cast(constant != null ? constant : HandleInvoker.apply(enumValueOf, name));
             } else if (listReader != null) {
                 return listReader.read(fieldValue);
             } else if (jsonValue != null && !parameterType.isAssignableFrom(jsonValue.getClass()) && narrowsNumber) {

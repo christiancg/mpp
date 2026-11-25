@@ -43,6 +43,7 @@ final class WireFixtureCases {
         aggregate(cases);
         customTypes(cases);
         WireFixtureAdminCases.add(cases);
+        WireFixtureFileCases.add(cases);
         return cases;
     }
 

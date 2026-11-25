@@ -74,9 +74,10 @@ final class ProjectRecordApplier {
             return false;
         }
         fs.createProjectFolder(projectName);
-        final var owners = AdminProjectEntry.fromJsonObject(record.body()).getOwners();
+        final var incoming = AdminProjectEntry.fromJsonObject(record.body());
         final var installed = new AdminProjectEntry(projectName,
-                local == null ? new ArrayList<>() : new ArrayList<>(local.getCollections()), new ArrayList<>(owners));
+                local == null ? new ArrayList<>() : new ArrayList<>(local.getCollections()),
+                new ArrayList<>(incoming.getOwners()), incoming.getIncarnation());
         installed.setVersion(record.version());
         AdminOperationHelper.saveProjectEntry(installed);
         return true;

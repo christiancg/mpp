@@ -205,6 +205,34 @@ Scope project.
 
 Scope project.
 
+## WRITE_FILE
+
+Scope project.
+
+## READ_FILE
+
+Scope project; allowed inside a transaction.
+
+## STAT_FILE
+
+Scope project; allowed inside a transaction.
+
+## LIST_FILES
+
+Scope project; allowed inside a transaction.
+
+## DELETE_FILE
+
+Scope project.
+
+## MOVE_FILE
+
+Scope project.
+
+## MAKE_DIRECTORY
+
+Scope project.
+
 ## LIST_SCRIPTS
 
 Scope none; admin only.

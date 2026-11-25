@@ -1361,6 +1361,114 @@ Answers `OK` whether or not the middleware existed. Only its definer, an owner o
 Needs `READ` on the project. The list is in execution order: `INGRESS` before `EGRESS`, then by `order`, then by name.
 A middleware disabled because its definer lost its rights also carries `disabledReason`.
 
+### Project files
+
+Every project has a file tree of its own, kept beside the documents in `filesPath` (see [files.md](files.md)). The seven
+operations below read and change it. Paths are `/`-separated, a leading `/` is optional, and `.` and `..` are resolved
+before anything is touched; a path that climbs above the root, holds a character outside printable ASCII or one of
+`\ : * ? " < > | % #`, ends a name with a dot or a space, uses a Windows device name (`CON`, `NUL`, `COM1`...), is longer
+than 1024 characters, has more than 32 segments or a name longer than 255 characters is `400-51`. Two names in one
+folder that differ only by letter case are refused with `409-11`.
+
+Reading (`READ_FILE`, `STAT_FILE`, `LIST_FILES`) needs `READ` on the project and writing (`WRITE_FILE`, `DELETE_FILE`,
+`MOVE_FILE`, `MAKE_DIRECTORY`) needs `READ_WRITE` on the project; owners and admins can do both. A `collectionPermissions`
+entry never reaches a file, because files are not a collection. The reads are allowed inside a transaction, the writes
+answer `409-6` there, because a file change would not roll back with it.
+
+Every change gets a `version`, a string, from the same clock as documents. Under clustering one node coordinates the
+file changes of a project and copies them to the others (see [clustering.md](clustering.md#project-files)).
+
+### `WRITE_FILE`
+```json
+{"type":"WRITE_FILE","projectName":"shop","path":"/public/index.html","content":"PGgxPmhpPC9oMT4=",
+ "encoding":"base64","mode":"REPLACE","createParents":true,"ifVersion":"117673399272407040"}
+```
+```json
+{"type":"WRITE_FILE","status":"OK","message":"File written","path":"/public/index.html","version":"117673399274242048","size":11}
+```
+- `content` is the file's bytes, encoded as `encoding` says: `base64` (the default) or `utf8`. Send `""` for an empty
+  file. Content that doesn't decode is `400-52`.
+- `mode` is `REPLACE` (the default: the file is replaced in one step, a reader sees the old content or the new one),
+  `CREATE` (`409-20` when the path already exists) or `APPEND` (adds to the end, creating the file when it's missing).
+- `createParents` (default `true`) creates the missing folders on the way. With `false` a missing folder is `404-14`.
+- `ifVersion` makes the write conditional: it applies only while the file is at that version, and `"0"` means "only
+  if it doesn't exist". Otherwise the answer is `409-23`.
+- A folder at `path`, or a file where a parent folder should be, is `409-21`. A file larger than `filesMaxFileSize`
+  (64 MB by default) is `413-2`, and a project past `filesMaxBytesPerProject` or `filesMaxEntriesPerProject` is
+  `413-3`. A request is bounded by `maxRequestSize`, so send a large file in chunks: a first `CREATE` and then
+  `APPEND`s, to a hidden name, then `MOVE_FILE` it onto the real one so readers never see half of it. The client
+  libraries' `upload` does exactly that.
+
+### `READ_FILE`
+```json
+{"type":"READ_FILE","projectName":"shop","path":"/public/index.html","offset":0,"length":1048576,"encoding":"base64"}
+```
+```json
+{"type":"READ_FILE","status":"OK","message":"File read","path":"/public/index.html","version":"117673399274242048",
+ "size":11,"offset":0,"content":"PGgxPmhpPC9oMT4=","encoding":"base64","eof":true}
+```
+Answers at most `length` bytes from `offset` (default `0`), and never more than `filesMaxReadBytes` (16 MB by default),
+so a large file is read window by window; check that `version` stays the same between windows. `size` is the whole
+file's size and `eof` says whether this window reaches its end. An `offset` past the end answers an empty window. With
+`encoding` `utf8`, bytes that aren't valid UTF-8 (a binary file, or a window that cuts a character) are `400-52`.
+`404-14` when there is no such file, `409-21` for a folder.
+
+### `STAT_FILE`
+```json
+{"type":"STAT_FILE","projectName":"shop","path":"/public"}
+```
+```json
+{"type":"STAT_FILE","status":"OK","message":"File found","path":"/public","kind":"DIRECTORY","size":0,
+ "version":"117673399272407040","modifiedAt":1795553577765}
+```
+`kind` is `FILE` or `DIRECTORY` and `modifiedAt` is the time of the change that made `version`, in epoch milliseconds.
+`404-14` when nothing is there.
+
+### `LIST_FILES`
+```json
+{"type":"LIST_FILES","projectName":"shop","path":"/public","recursive":true,"limit":1000,"after":"/public/app.js"}
+```
+```json
+{"type":"LIST_FILES","status":"OK","message":"Files listed","entries":[
+  {"path":"/public/index.html","kind":"FILE","size":11,"version":"117673399274242048","modifiedAt":1795553577793}],
+ "next":null}
+```
+Lists the folder `path` (the root when missing), only its children unless `recursive`, in path order. At most `limit`
+entries (1 to 10000, 10000 by default) come back; when there are more, `next` names the last one, to send as `after`
+for the next page. `404-14` for a missing folder, `409-21` for a file.
+
+### `DELETE_FILE`
+```json
+{"type":"DELETE_FILE","projectName":"shop","path":"/public","recursive":true}
+```
+```json
+{"type":"DELETE_FILE","status":"OK","message":"Files deleted","deleted":2}
+```
+Answers `OK` whether or not the path existed; `deleted` counts the files and folders removed. A folder that isn't empty
+needs `recursive` (`409-22`). Deleting `/` with `recursive` empties the project's tree.
+
+### `MOVE_FILE`
+```json
+{"type":"MOVE_FILE","projectName":"shop","from":"/public","to":"/www","overwrite":false,"createParents":true}
+```
+```json
+{"type":"MOVE_FILE","status":"OK","message":"Moved","path":"/www","version":"117673399275159552","moved":2}
+```
+Moves or renames a file or a whole folder; `moved` counts the entries it moved. An existing `to` is `409-20` unless
+`overwrite` is set, and then it must be the same kind and, for a folder, empty (`409-21`, `409-22`). Moving the root or
+a folder into itself is `400-51`. `createParents` works as in `WRITE_FILE`.
+
+### `MAKE_DIRECTORY`
+```json
+{"type":"MAKE_DIRECTORY","projectName":"shop","path":"/assets/img","recursive":true}
+```
+```json
+{"type":"MAKE_DIRECTORY","status":"OK","message":"Folder created","path":"/assets/img","version":"117673399276470272","created":2}
+```
+Creates the folder and, with `recursive` (the default), its missing parents; `created` counts the folders made, and an
+existing folder answers `OK` with `created` `0`. Without `recursive` an existing path is `409-20` and a missing parent
+`404-14`.
+
 ### `CLOSE_CONNECTION`
 ```json
 {"type":"CLOSE_CONNECTION"}
@@ -1683,7 +1791,8 @@ Returns memory use, totals, and a breakdown per project and collection.
 Any authenticated user can send it, and the answer only covers what they can see. An admin gets everything. Anyone
 else gets the projects [`LIST_PROJECTS`](#list_projects) shows them, the collections in them they own or can read,
 and `totals` over that, without `userCount`. The node-wide sections (`memory`, `inDoubtTransactions`, `triggers`,
-`schedules`, `scripts`) are for admins only.
+`schedules`, `scripts`) are for admins only. A project's `files` (`{"entries","bytes"}`, its [project
+files](#project-files)) appears only for a caller who can read them: an admin, an owner, or `READ` on the project.
 
 ### Snapshots (`START_SNAPSHOT`, `READ_SNAPSHOT`, `RELEASE_SNAPSHOT`)
 
@@ -1780,8 +1889,8 @@ deny reads on a single collection.
 
 | Needs | Operations |
 |---|---|
-| `READ` | `FIND_BY_ID`, `AGGREGATE`, `LIST_COLLECTIONS`, `GET_SCHEMA`, `LISTEN`, `LIST_PROCEDURES`, `LIST_TRIGGERS`, `LIST_SCHEDULES`, `LIST_ENTRYPOINTS`, `START_SNAPSHOT` |
-| `READ_WRITE` | `SAVE`, `BULK_SAVE`, `DELETE`, `CREATE_COLLECTION`, `DROP_COLLECTION`, `CREATE_INDEX`, `DROP_INDEX`, `REINDEX` |
+| `READ` | `FIND_BY_ID`, `AGGREGATE`, `LIST_COLLECTIONS`, `GET_SCHEMA`, `LISTEN`, `LIST_PROCEDURES`, `LIST_TRIGGERS`, `LIST_SCHEDULES`, `LIST_ENTRYPOINTS`, `START_SNAPSHOT`, `READ_FILE`, `STAT_FILE`, `LIST_FILES` (the file reads take the project grant only) |
+| `READ_WRITE` | `SAVE`, `BULK_SAVE`, `DELETE`, `CREATE_COLLECTION`, `DROP_COLLECTION`, `CREATE_INDEX`, `DROP_INDEX`, `REINDEX`, `WRITE_FILE`, `DELETE_FILE`, `MOVE_FILE`, `MAKE_DIRECTORY` (the file writes take the project grant only) |
 | Admin or ownership | `DROP_PROJECT`, `SAVE_SCHEMA`, `DELETE_SCHEMA` |
 | Any authenticated user | `LIST_PROJECTS`, `GET_PROJECT_STATS` (both filtered to what the user can see), `START_TRANSACTION`, `COMMIT_TRANSACTION`, `ROLLBACK_TRANSACTION`, `SET_PASSWORD` for their own password |
 
@@ -1925,6 +2034,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `400-48` | `ERROR` |  | The entrypoint timeout exceeds `entrypointMaxTimeoutMs` |
 | `400-49` | `ERROR` |  | The middleware definition isn't valid, or a middleware still uses the procedure |
 | `400-50` | `ERROR` |  | The project has the maximum number of middlewares |
+| `400-51` | `ERROR` |  | A file path isn't valid, climbs above the project's root, or moves a folder into itself |
+| `400-52` | `ERROR` |  | File content or its encoding isn't valid, or the bytes read aren't UTF-8 |
 | `401-1` | `UNAUTHENTICATED` |  | Must authenticate first |
 | `401-2` | `UNAUTHENTICATED` |  | User no longer exists |
 | `401-3` | `ERROR` |  | Wrong username or password |
@@ -1947,6 +2058,7 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `404-11` | `NOT_FOUND` |  | Collection not found (a clustered node answers `503-10` instead) |
 | `404-12` | `NOT_FOUND` |  | The collection has no schema |
 | `404-13` | `NOT_FOUND` |  | Snapshot not found: released, expired or another connection's |
+| `404-14` | `NOT_FOUND` |  | No such file or folder, or a missing parent folder |
 | `408-1` | `ERROR` |  | Script exceeded its time budget |
 | `408-2` | `ERROR` |  | Script was cancelled |
 | `408-3` | `ERROR` |  | The armed fault point wasn't reached in time |
@@ -1972,8 +2084,14 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `409-17` | `ERROR` |  | The snapshot was aborted; the message says why |
 | `409-18` | `ERROR` |  | A document with this `_id` already exists (`failOnUpdate`) |
 | `409-19` | `ERROR` |  | Another entrypoint of the project already serves the same method and path shape |
+| `409-20` | `ERROR` |  | The file or folder already exists |
+| `409-21` | `ERROR` |  | A folder where a file is expected, or a file where a folder is |
+| `409-22` | `ERROR` |  | The folder isn't empty |
+| `409-23` | `ERROR` |  | The file isn't at the `ifVersion` the write named |
 | `410-1` | `NOT_FOUND` |  | The listen ended; pushed once on its connection |
 | `413-1` | `ERROR` |  | Too many unread responses; sent as a `CLOSE_CONNECTION` frame, then the connection is closed |
+| `413-2` | `ERROR` |  | The file would be larger than `filesMaxFileSize` |
+| `413-3` | `ERROR` |  | The project's files would pass `filesMaxBytesPerProject` or `filesMaxEntriesPerProject` |
 | `421-1` | `ERROR` |  | This node doesn't own the collection |
 | `421-3` | `ERROR` |  | This read joins collections the transaction wrote on different nodes |
 | `500-1` | `ERROR` |  | Error during authentication |
@@ -2017,6 +2135,8 @@ Retryable codes are the ones a client may resend on its own (see [Retrying](#ret
 | `500-39` | `ERROR` |  | Error deleting the entrypoint |
 | `500-40` | `ERROR` |  | Error saving the middleware. An inline procedure saved before the failure stays saved |
 | `500-41` | `ERROR` |  | Error deleting the middleware |
+| `500-42` | `ERROR` |  | A file change was committed but not applied yet; it is applied on the next access or at startup |
+| `500-43` | `ERROR` |  | Error while accessing the project's files |
 | `503-1` | `ERROR` |  | Too many connections; sent as a `CLOSE_CONNECTION` frame, then the connection is closed (with TLS, closed with no frame) |
 | `503-2` | `ERROR` | yes | The cluster has no write quorum |
 | `503-3` | `ERROR` |  | Timed out waiting for the replication quorum. The write did happen, so don't resend it blindly |

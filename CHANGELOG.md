@@ -39,6 +39,15 @@ The first release. Protocol version 1, storage format version 1.
 
 ### Added
 
+- Project files: every project has a file tree of its own in `filesPath` (default `files`, the `/app/files` volume in
+  Docker), kept apart from the data folder (`filePath`). Operations `WRITE_FILE` (replace, create or append, conditional on a
+  version), `READ_FILE` (windowed), `STAT_FILE`, `LIST_FILES` (paged), `DELETE_FILE`, `MOVE_FILE` and
+  `MAKE_DIRECTORY`, gated by the project's `READ` and `READ_WRITE` grants; error codes `400-51`, `400-52`, `404-14`,
+  `409-20` to `409-23`, `413-2`, `413-3`, `500-42` and `500-43`; config keys `filesPath`, `filesMaxFileSize`,
+  `filesMaxReadBytes`, `filesMaxBytesPerProject` and `filesMaxEntriesPerProject`; `files` in `GET_PROJECT_STATS`.
+  Each project's manifest is its commit log, so a crash never leaves half a file. Under clustering one node per
+  project coordinates its file changes and replicates them to a majority, and file anti-entropy repairs the rest
+  (see [docs/files.md](docs/files.md)).
 - Storage: documents as newline-delimited JSON in paged files that reuse freed space and vacuum in place, a
   write-ahead log per collection with group commit, and durable writes (`syncWrites=true`) synced before they are
   acknowledged. Startup replays the log and finishes interrupted work, so a crash or a power loss never needs a manual

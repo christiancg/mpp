@@ -97,6 +97,7 @@ public final class ConfigFixture {
         final var map = fullValid();
         map.put("filePath", writablePath.toString());
         map.put("logPath", writablePath.toString());
+        map.put("filesPath", writablePath + "-files");
         return map;
     }
 

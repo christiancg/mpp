@@ -32,6 +32,7 @@ CLAUDE.md
 
 # Runtime data (mounted as volumes, never baked into the image)
 db/
+files/
 logs/
 test_log/
 test_utils/

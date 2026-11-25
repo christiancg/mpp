@@ -135,6 +135,13 @@ public final class RequestParser {
                 case SAVE_MIDDLEWARE -> parseSaveMiddlewareRequest(root);
                 case DELETE_MIDDLEWARE -> eJson.fromJson(root, DeleteMiddlewareRequest.class);
                 case LIST_MIDDLEWARES -> eJson.fromJson(root, ListMiddlewaresRequest.class);
+                case WRITE_FILE -> FileRequestBinding.write(root);
+                case READ_FILE -> FileRequestBinding.read(root);
+                case STAT_FILE -> eJson.fromJson(root, StatFileRequest.class);
+                case LIST_FILES -> eJson.fromJson(root, ListFilesRequest.class);
+                case DELETE_FILE -> eJson.fromJson(root, DeleteFileRequest.class);
+                case MOVE_FILE -> eJson.fromJson(root, MoveFileRequest.class);
+                case MAKE_DIRECTORY -> eJson.fromJson(root, MakeDirectoryRequest.class);
                 case ARM_FAULT -> eJson.fromJson(root, ArmFaultRequest.class);
                 case AWAIT_FAULT -> eJson.fromJson(root, AwaitFaultRequest.class);
                 case RELEASE_FAULT -> eJson.fromJson(root, ReleaseFaultRequest.class);

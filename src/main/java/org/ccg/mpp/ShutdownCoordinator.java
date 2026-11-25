@@ -8,6 +8,7 @@ import org.ccg.mpp.cluster.AdminAntiEntropyService;
 import org.ccg.mpp.cluster.AntiEntropyService;
 import org.ccg.mpp.cluster.ClusterConfig;
 import org.ccg.mpp.cluster.ClusterServer;
+import org.ccg.mpp.cluster.FileAntiEntropyService;
 import org.ccg.mpp.cluster.Tx2pcRecovery;
 import org.ccg.mpp.cluster.membership.MembershipService;
 import org.ccg.mpp.config.Configuration;
@@ -47,6 +48,7 @@ public class ShutdownCoordinator {
     private final ScriptRunHistory scriptRunHistory = IocContainer.get(ScriptRunHistory.class);
     private final MembershipService membershipService = IocContainer.get(MembershipService.class);
     private final AntiEntropyService antiEntropyService = IocContainer.get(AntiEntropyService.class);
+    private final FileAntiEntropyService fileAntiEntropyService = IocContainer.get(FileAntiEntropyService.class);
     private final AdminAntiEntropyService adminAntiEntropyService = IocContainer.get(AdminAntiEntropyService.class);
     private final Tx2pcRecovery tx2pcRecovery = IocContainer.get(Tx2pcRecovery.class);
     private final WriteStallWatchdog writeStallWatchdog = IocContainer.get(WriteStallWatchdog.class);
@@ -83,6 +85,7 @@ public class ShutdownCoordinator {
             snapshotSweeper.stop();
             if (clusterConfig.isEnabled()) {
                 antiEntropyService.stop(remaining(deadline));
+                fileAntiEntropyService.stop(remaining(deadline));
                 adminAntiEntropyService.stop(remaining(deadline));
                 tx2pcRecovery.stop();
             }

@@ -9,6 +9,7 @@ import org.ccg.mpp.cluster.membership.MembershipService;
 import org.ccg.mpp.cluster.msg.AdminSnapshotPayload;
 import org.ccg.mpp.cluster.msg.ClusterMessage;
 import org.ccg.mpp.cluster.msg.ClusterMessageType;
+import org.ccg.mpp.cluster.msg.FilePayload;
 import org.ccg.mpp.cluster.msg.ReplicationPayload;
 import org.ccg.mpp.cluster.msg.TxReplicationPayload;
 import org.ccg.mpp.cluster.ownership.OwnershipManager;
@@ -42,6 +43,14 @@ public class Replicator {
         return awaitQuorum(ClusterMessageType.REPLICATE_ADMIN_ACK, () -> {
             final var message = replicateMessage(ClusterMessageType.REPLICATE_ADMIN);
             message.setAdminSnapshot(records);
+            return message;
+        });
+    }
+
+    public ReplicationOutcome broadcastFiles(FilePayload payload) {
+        return awaitQuorum(ClusterMessageType.REPLICATE_FILES_ACK, () -> {
+            final var message = replicateMessage(ClusterMessageType.REPLICATE_FILES);
+            message.setFiles(payload);
             return message;
         });
     }

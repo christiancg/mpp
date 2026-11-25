@@ -1,0 +1,15 @@
+{
+  "area": "files",
+  "cases": [
+    {"name":"files.write_file","request":{"type":"WRITE_FILE","projectName":"shop","path":"/public/index.html","content":"PGgxPmhpPC9oMT4=","encoding":"base64","mode":"REPLACE","createParents":true}},
+    {"name":"files.write_file_text","request":{"type":"WRITE_FILE","projectName":"shop","path":"/logs/app.log","content":"started\n","encoding":"utf8","mode":"APPEND","createParents":true}},
+    {"name":"files.write_file_conditional","request":{"type":"WRITE_FILE","projectName":"shop","path":"/config.json","content":"e30=","encoding":"base64","mode":"CREATE","createParents":false,"ifVersion":"0"}},
+    {"name":"files.read_file","request":{"type":"READ_FILE","projectName":"shop","path":"/public/index.html","offset":0,"length":1048576,"encoding":"base64"}},
+    {"name":"files.read_file_text","request":{"type":"READ_FILE","projectName":"shop","path":"/logs/app.log","offset":8,"length":4096,"encoding":"utf8"}},
+    {"name":"files.stat_file","request":{"type":"STAT_FILE","projectName":"shop","path":"/public/index.html"}},
+    {"name":"files.list_files","request":{"type":"LIST_FILES","projectName":"shop","path":"/public","recursive":true,"limit":1000,"after":"/public/app.js"}},
+    {"name":"files.delete_file","request":{"type":"DELETE_FILE","projectName":"shop","path":"/public","recursive":true}},
+    {"name":"files.move_file","request":{"type":"MOVE_FILE","projectName":"shop","from":"/public","to":"/www","overwrite":false,"createParents":true}},
+    {"name":"files.make_directory","request":{"type":"MAKE_DIRECTORY","projectName":"shop","path":"/assets/img","recursive":true}}
+  ]
+}

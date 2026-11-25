@@ -79,6 +79,10 @@ Runs a SimpleJS program scoped to this project.
 
 @return the project's HTTP middlewares
 
+## files()
+
+@return the project's files: a tree of folders and files read and written over the wire
+
 ## listTriggers()
 
 @return every trigger of every collection in the project

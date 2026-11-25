@@ -53,3 +53,5 @@ export class ServerClosedConnectionError extends MppError {}
 export class PoolExhaustedError extends MppError {}
 
 export class MappingError extends MppError {}
+
+export class FileChangedError extends MppError {}

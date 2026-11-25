@@ -4,6 +4,20 @@ export { Collection } from "./collection.js";
 export { Transaction, TransactionCollection } from "./transaction.js";
 export { Indexes } from "./indexes.js";
 export { Schema } from "./schema.js";
+export { Files } from "./files/files.js";
+export {
+    FileKind,
+    FileWriteMode,
+    type DirectoryMade,
+    type FileDeleteOptions,
+    type FileListOptions,
+    type FileMoved,
+    type FileMoveOptions,
+    type FileRange,
+    type FileStat,
+    type FileWriteOptions,
+    type FileWritten,
+} from "./files/types.js";
 export type { ListenHandler, ListenUpdate, Subscription } from "./subscription.js";
 export type { ClientSettings, Credentials, ResolvedSettings, ServerAddress } from "./settings.js";
 export type { TlsSettings } from "./tls-settings.js";
@@ -47,6 +61,7 @@ export {
     AuthenticationError,
     ConflictError,
     ConnectionLostError,
+    FileChangedError,
     ForbiddenError,
     ListenEndedError,
     MppError,

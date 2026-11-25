@@ -30,7 +30,8 @@ guide describes what the server does today, not a promise that it is ready for d
 | Runtime | JDK 27 or newer, or the Docker image | The build requires it |
 | Admin password | `defaultAdminPassword` for the first start, then a second admin with [`CREATE_USER`](protocol.md#create_user-admin-only) | The server won't start without one, and a lost admin password can't be reset ([Bootstrap](#bootstrap), [Recovery](#a-lost-admin-password)) |
 | Data folder | `filePath` on a local disk that honours `fsync`, with `syncWrites=true` | Otherwise a power loss can lose acknowledged writes ([Durability](#durability)) |
-| File modes | `chmod 700` on `filePath` and `logPath`, `chmod 600` on `mpp.cfg` and the keystore | They hold password hashes, data and secrets ([File permissions](#file-permissions)) |
+| Files folder | `filesPath` on its own volume (`/app/files` in Docker), on a disk that honours `fsync` | Uploaded files never share space or I/O with the documents, and a full files volume doesn't stop document writes ([files.md](files.md)) |
+| File modes | `chmod 700` on `filePath`, `filesPath` and `logPath`, `chmod 600` on `mpp.cfg` and the keystore | They hold password hashes, data and secrets ([File permissions](#file-permissions)) |
 | Network | `bindAddress` set to the interface clients use | Blank binds every interface |
 | HTTP entrypoints | `httpPort=0` if you don't use [entrypoints](protocol.md#http-entrypoints), otherwise `httpBindAddress` and a firewall rule for `8990` | The listener is on by default on every interface, HTTPS-only with the client port's keystore when `tlsEnabled=true` |
 | TLS | `tlsEnabled=true`, a CA-issued keystore and your own `tlsKeystorePassword` | Without it passwords and documents travel in plaintext ([TLS](#tls--secure-connections)) |
@@ -63,14 +64,14 @@ variable can't write into a read-only mount):
 
 ```bash
 docker build -t mpp .
-docker run -p 8989:8989 -p 8990:8990 -v ./db:/app/db -v ./mpp.cfg:/app/mpp.cfg:ro mpp
+docker run -p 8989:8989 -p 8990:8990 -v ./db:/app/db -v ./files:/app/files -v ./mpp.cfg:/app/mpp.cfg:ro mpp
 ```
 
 Port `8990` is the [HTTP entrypoint](protocol.md#http-entrypoints) listener. Leave out `-p 8990:8990` if you don't use
 entrypoints.
 
 The image runs as the unprivileged `mpp` user, so a host folder mounted over `/app/db`, `/app/logs` or `/app/certs`
-must be writable by its uid (`docker run --rm --entrypoint id mpp` prints it). It also has a `HEALTHCHECK`, see
+must be writable by its uid, and so must one over `/app/files`, the projects' files (`docker run --rm --entrypoint id mpp` prints it). It also has a `HEALTHCHECK`, see
 [Health checks](#health-checks).
 
 ### On Windows
@@ -373,6 +374,18 @@ What an entrypoint does is in [protocol.md](protocol.md#http-entrypoints).
 | `entrypointMaxTimeoutMs` | `300000` | Largest `timeoutMs` an entrypoint may ask for, then `400-48` |
 | `maxEntrypointsPerProject` | `1000` | Entrypoints per project, then `400-47` |
 | `maxMiddlewaresPerProject` | `64` | HTTP middlewares per project, then `400-50` |
+
+### Project files
+
+What project files are and how they behave is in [files.md](files.md).
+
+| Key | Default | What it does |
+|---|---|---|
+| `filesPath` | `files` | Folder of the projects' files, created `0700` if missing. It must neither equal, contain nor sit inside `filePath` or `logPath`; in Docker it is its own volume, `/app/files` |
+| `filesMaxFileSize` | `64Mb` | Largest file, then `413-2` |
+| `filesMaxReadBytes` | `16Mb` | Most bytes one `READ_FILE` answers; a client reads a larger file window by window |
+| `filesMaxBytesPerProject` | `0` | Most bytes of files one project holds, then `413-3`. `0` means no cap |
+| `filesMaxEntriesPerProject` | `100000` | Most files and folders one project holds, then `413-3`. A project's file index stays in memory once used, about 200 bytes per entry |
 
 ### Cluster
 
@@ -714,6 +727,10 @@ schedules and entrypoints belong to the user who ran the restore, and run with t
 
 Script run history, pending trigger runs and in-doubt transactions aren't dumped either.
 
+Project files aren't dumped yet. Back up the files folder (`filesPath`, `/app/files` in Docker) beside the dump: copy
+it while the server is stopped, or snapshot the volume. A copy taken while files change is still loadable, because the
+server rebuilds each project's file index from what it finds at startup (see [files.md](files.md#recovery)).
+
 ### A restore drill
 
 A backup is only as good as its last restore. Restore into a scratch server on another port and folder, then compare:
@@ -782,6 +799,15 @@ users and restore.
 
 Nothing to do. The start replays the write-ahead logs, rebuilds its page bookkeeping and finishes the interrupted index
 work. Expect `Repaired the field indexes of ...` lines and a slower start than usual.
+
+### A file change answered `500-42`
+
+The change was committed to the project's file manifest but a later step (a rename or a delete on the files volume)
+failed, usually because the volume is full or read-only. Free the space or fix the volume; the next access to the
+project's files finishes the change, and so does a restart. Look for `Finished writing`, `Finished moving` or
+`Finished deleting` lines in the log. A project's files that answer `500-43` with `The file manifest ... is damaged`
+need the manifest at `filesPath/.mpp/<project>/manifest.log` moved aside: the next start rebuilds it from the files
+it finds, as new versions.
 
 ### After a power loss
 

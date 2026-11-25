@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 import org.ccg.mpp.cache.Cache;
 import org.ccg.mpp.cluster.admin.AdminRecord;
+import org.ccg.mpp.cluster.files.FilePayloads;
 import org.ccg.mpp.cluster.msg.AdminSnapshotPayload;
 import org.ccg.mpp.cluster.msg.ReplicationOp;
 import org.ccg.mpp.cluster.msg.ReplicationPayload;
@@ -19,8 +20,10 @@ import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.fault.FaultInjector;
 import org.ccg.mpp.fault.FaultPoint;
+import org.ccg.mpp.fs.FileChange;
 import org.ccg.mpp.fs.FileSystem;
 import org.ccg.mpp.fs.PendingForce;
+import org.ccg.mpp.fs.ProjectFileStore;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.admin.CollectionIncarnation;
@@ -48,6 +51,7 @@ public class ClusterCoordinator {
     private final Replicator replicator = IocContainer.get(Replicator.class);
     private final Cache cache = IocContainer.get(Cache.class);
     private final FileSystem fs = IocContainer.get(FileSystem.class);
+    private final ProjectFileStore projectFiles = IocContainer.get(ProjectFileStore.class);
     private final HybridClock hybridClock = IocContainer.get(HybridClock.class);
     private final EJson eJson = IocContainer.get(EJson.class);
     private final FaultInjector faultInjector = IocContainer.get(FaultInjector.class);
@@ -158,6 +162,20 @@ public class ClusterCoordinator {
         } catch (Exception e) {
             logger.warning(
                     "Failed to replicate a write group to " + projectName + "|" + collName + ": " + e.getMessage());
+            return ReplicationOutcome.TIMEOUT;
+        }
+    }
+
+    public ReplicationOutcome replicateFiles(String projectName, List<FileChange> changes, byte[] content) {
+        final var applicability = documentReplicationOutcome(projectName, Globals.FILES_LOCK_NAME);
+        if (applicability != null) {
+            return applicability;
+        }
+        try {
+            return replicator.broadcastFiles(
+                    FilePayloads.replication(projectName, projectFiles.incarnation(projectName), changes, content));
+        } catch (Exception e) {
+            logger.warning("Failed to replicate a file change of " + projectName + ": " + e.getMessage());
             return ReplicationOutcome.TIMEOUT;
         }
     }

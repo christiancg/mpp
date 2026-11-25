@@ -53,6 +53,7 @@ plans/
 ### DB files ###
 logs/
 db/
+/files/
 /test/
 
 ### Test logs ###

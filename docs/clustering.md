@@ -277,6 +277,24 @@ the change reaches it.
 Until a node applies a new or changed middleware it runs the chain it had, so for that short window an auth filter just
 saved on one node may not guard requests arriving at another yet.
 
+## Project files
+
+Every node holds every [project file](files.md). The changes of one project's files are coordinated by one node, the
+owner of the ring key `{project}|.files`, picked by the same consistent hash ring as collection owners. A node that
+gets a file request it doesn't own forwards it there, reads included, like `FIND_BY_ID`; with `readFallbackToLocal`
+a read whose owner can't be reached is served from the local copy.
+
+The owner commits a change locally, sends it to every live node and answers once a majority has it, with the same
+`503-2`, `503-3` and `503-8` as a document write. A replica applies a change only when it is newer than what it has,
+and leaves one it can't apply (an `APPEND` on another version of the file, a move whose source differs) to
+anti-entropy. Every `antiEntropyIntervalMs` and on every membership change, each node compares a hash of each
+project's file index with its peers and pulls the newer files, folders and deletions, file content in 8 MB windows.
+Deleted paths keep a tombstone for `tombstoneRetentionMs`, collected only in a round where every node answered.
+
+A project dropped and created again gets a new incarnation, recorded in the project's admin record. A node holding
+files of an earlier incarnation moves them aside (`<project>.quarantined-...` in `filesPath`) instead of serving or
+sending them, so files of a dropped project never come back.
+
 ## Pending trigger runs are node-local
 
 The records of trigger runs waiting to run (`admin/trigger_runs`) are not replicated. A node that restarts replays its

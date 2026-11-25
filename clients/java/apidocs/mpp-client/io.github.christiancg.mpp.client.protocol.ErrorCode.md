@@ -201,6 +201,14 @@ unavailable) and the number is sequential.
 
 `400-50`: The project has the maximum number of middlewares.
 
+## FILE_PATH_INVALID
+
+`400-51`: The file path is not valid.
+
+## FILE_CONTENT_INVALID
+
+`400-52`: The file content or its encoding is not valid.
+
 ## MUST_AUTHENTICATE_FIRST
 
 `401-1`: Must authenticate first.
@@ -288,6 +296,10 @@ unavailable) and the number is sequential.
 ## SNAPSHOT_NOT_FOUND
 
 `404-13`: The snapshot does not exist: it was released or expired, or it belongs to another connection.
+
+## FILE_NOT_FOUND
+
+`404-14`: No such file or folder.
 
 ## SCRIPT_TIMEOUT
 
@@ -389,6 +401,22 @@ unavailable) and the number is sequential.
 
 `409-19`: Another entrypoint of the project already serves this method and path.
 
+## FILE_EXISTS
+
+`409-20`: The file or folder already exists.
+
+## FILE_KIND_MISMATCH
+
+`409-21`: A folder is where a file is expected, or a file where a folder is.
+
+## DIRECTORY_NOT_EMPTY
+
+`409-22`: The folder is not empty.
+
+## FILE_VERSION_CONFLICT
+
+`409-23`: The file was changed by someone else.
+
 ## LISTEN_ENDED
 
 `410-1`: The listen ended.
@@ -396,6 +424,14 @@ unavailable) and the number is sequential.
 ## OUTBOUND_BACKLOG
 
 `413-1`: The connection's outbound buffer overflowed.
+
+## FILE_TOO_LARGE
+
+`413-2`: The file would exceed the maximum file size.
+
+## FILE_QUOTA_EXCEEDED
+
+`413-3`: The project's files would exceed their quota.
 
 ## NOT_COLLECTION_OWNER
 
@@ -568,6 +604,14 @@ unavailable) and the number is sequential.
 ## ERROR_DELETING_MIDDLEWARE
 
 `500-41`: Error while deleting the middleware.
+
+## FILE_APPLY_PENDING
+
+`500-42`: The file change was committed but could not be applied yet; it is applied on the next access to the project's files, or at the next startup.
+
+## ERROR_ACCESSING_FILES
+
+`500-43`: Error while accessing the project's files.
 
 ## MAX_CONNECTIONS_REACHED
 

@@ -11,6 +11,8 @@ from .workload import (
     CHURNED_INDEX,
     CLOSED_MESSAGE,
     DELETE_WHERE,
+    FILES,
+    FILES_FOLDER,
     ID_OPS,
     OUTCOME_ERROR,
     OUTCOME_OK,
@@ -31,6 +33,7 @@ DUPLICATED = "<more than one live copy>"
 LOG_REFUSALS = ("-FATAL-", "could be read as a", "refusing to append")
 UNCLEAN_SUFFIX = "-indexes.unclean"
 PROBE_ID = "durability_probe"
+PROBE_FILE = "/workload/durability_probe.txt"
 
 
 def page_files(work_dir: str, project: str, coll: str) -> list:
@@ -117,7 +120,24 @@ def observed_state(conn, schema: WorkloadSchema) -> dict:
             copies.setdefault(row.get("_id"), []).append(row)
         state[coll] = {doc_id: (held[0].get("w", NOBODY) if len(held) == 1 else DUPLICATED, held[0])
                        for doc_id, held in copies.items()}
+    state[FILES] = observed_files(conn, schema)
     return state
+
+
+def observed_files(conn, schema: WorkloadSchema):
+    listed = conn.send({"type": "LIST_FILES", "projectName": schema.project, "recursive": True})
+    if listed.get("status") != "OK":
+        return None
+    files = {}
+    for entry in listed.get("entries") or []:
+        if entry.get("kind") != "FILE" or not entry["path"].startswith(FILES_FOLDER):
+            continue
+        read = conn.send({"type": "READ_FILE", "projectName": schema.project, "path": entry["path"],
+                          "encoding": "utf8"})
+        content = read.get("content") if read.get("status") == "OK" else None
+        token = NOBODY if content is None or "|" not in content else content.split("|", 1)[0]
+        files[entry["path"]] = (token, entry)
+    return files
 
 
 def _token_of(state: dict, coll: str, doc_id: str):
@@ -134,12 +154,12 @@ def _describe(entry) -> str:
 def acknowledged_durability(state: dict, history: History, schema: WorkloadSchema) -> list:
     found = []
     timelines = history.by_id()
-    for coll in schema.collections:
+    for coll in [*schema.collections, FILES]:
         if state.get(coll) is None:
             found.append(Divergence("O1", history.seed, f"{coll}: the full scan failed, so no write can be checked"))
             continue
         for doc_id, (token, _) in sorted(state[coll].items()):
-            if (coll, doc_id) not in timelines and doc_id != PROBE_ID:
+            if (coll, doc_id) not in timelines and doc_id != PROBE_ID and doc_id != PROBE_FILE:
                 found.append(Divergence("O1", history.seed,
                                         f"{coll}/{doc_id}: present with {token!r}, but no write ever named it"))
     for (coll, doc_id), timeline in sorted(timelines.items()):
@@ -158,7 +178,7 @@ def acknowledged_durability(state: dict, history: History, schema: WorkloadSchem
     return found
 
 
-def atomicity(state: dict, history: History, schema: WorkloadSchema) -> list:
+def atomicity(state: dict, history: History) -> list:
     found = []
     entries = sorted(history.entries, key=lambda e: e.sent_at)
     for position, entry in enumerate(entries):
@@ -264,7 +284,7 @@ def counts_agree(conn, state: dict, history: History, schema: WorkloadSchema) ->
 
 def check_all(conn, history: History, schema: WorkloadSchema) -> list:
     state = observed_state(conn, schema)
-    return (acknowledged_durability(state, history, schema) + atomicity(state, history, schema)
+    return (acknowledged_durability(state, history, schema) + atomicity(state, history)
             + index_equals_scan(conn, state, history, schema) + counts_agree(conn, state, history, schema))
 
 
@@ -291,9 +311,12 @@ def check_clean_start(log_path: str, conn, seed: int, work_dir: str = "", log_of
 
 def snapshot(conn, schema: WorkloadSchema) -> dict:
     state = observed_state(conn, schema)
-    return {coll: None if state.get(coll) is None else {
+    taken = {coll: None if state.get(coll) is None else {
         "docs": {doc_id: token for doc_id, (token, _) in state[coll].items()},
         "pk": count_of(_aggregate(conn, schema.project, coll, [{"type": "COUNT"}]))} for coll in schema.collections}
+    taken[FILES] = None if state.get(FILES) is None else {
+        "docs": {path: token for path, (token, _) in state[FILES].items()}, "pk": len(state[FILES])}
+    return taken
 
 
 def _state_delta(before, after) -> str:
@@ -308,7 +331,7 @@ def _state_delta(before, after) -> str:
 def check_idempotent(before: dict, conn, history: History, schema: WorkloadSchema) -> list:
     found = []
     after = snapshot(conn, schema)
-    for coll in schema.collections:
+    for coll in [*schema.collections, FILES]:
         if before.get(coll) != after.get(coll):
             found.append(Divergence("O6", history.seed, f"{coll}: a second restart changed the state:"
                                                          f" {_state_delta(before.get(coll), after.get(coll))}"))
@@ -320,6 +343,11 @@ def check_idempotent(before: dict, conn, history: History, schema: WorkloadSchem
             found.append(Divergence("O6", history.seed, f"{coll}: refused a write after recovery: {saved}"))
             continue
         conn.send({"type": "DELETE", "projectName": schema.project, "collectionName": coll, "_id": PROBE_ID})
+    written = conn.send({"type": "WRITE_FILE", "projectName": schema.project, "path": PROBE_FILE, "content": "probe|",
+                         "encoding": "utf8"})
+    if written.get("status") != "OK":
+        found.append(Divergence("O6", history.seed, f"refused a file write after recovery: {written}"))
+    conn.send({"type": "DELETE_FILE", "projectName": schema.project, "path": PROBE_FILE})
     return found
 
 
@@ -327,16 +355,28 @@ def failures(divergences: list) -> list:
     return [divergence for divergence in divergences if divergence.severity == SEVERITY_FAIL]
 
 
-UNKNOWN_OUTCOME_CODES = ("503-8", "500-33", "500-34")
+UNKNOWN_OUTCOME_CODES = ("503-8", "500-33", "500-34", "500-42")
 RETRYABLE_CODES = ("503-16", "503-17", "503-19")
 UNCAUGHT_MARKER = "Exception in thread"
 O7_PROBE_ID = PROBE_ID
 
 
 def find_token(conn, project: str, coll: str, doc_id: str) -> tuple:
+    if coll == FILES:
+        return find_file_token(conn, project, doc_id)
     answer = conn.send({"type": "FIND_BY_ID", "projectName": project, "collectionName": coll, "_id": doc_id})
     if answer.get("status") == "OK":
         return "present", (answer.get("object") or {}).get("w", NOBODY)
+    if answer.get("status") == "NOT_FOUND":
+        return "absent", None
+    return "error", answer
+
+
+def find_file_token(conn, project: str, path: str) -> tuple:
+    answer = conn.send({"type": "READ_FILE", "projectName": project, "path": path, "encoding": "utf8"})
+    if answer.get("status") == "OK":
+        content = answer.get("content") or ""
+        return "present", content.split("|", 1)[0] if "|" in content else NOBODY
     if answer.get("status") == "NOT_FOUND":
         return "absent", None
     return "error", answer

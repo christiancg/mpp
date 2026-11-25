@@ -28,6 +28,10 @@ public class ClusterRouter {
     private static final Set<OperationType> WRITES = Set.of(OperationType.SAVE, OperationType.BULK_SAVE,
             OperationType.DELETE);
     private static final Set<OperationType> SCRIPT_OPS = Set.of(OperationType.RUN_SCRIPT, OperationType.CALL_PROCEDURE);
+    private static final Set<OperationType> FILE_READS = Set.of(OperationType.READ_FILE, OperationType.STAT_FILE,
+            OperationType.LIST_FILES);
+    private static final Set<OperationType> FILE_WRITES = Set.of(OperationType.WRITE_FILE, OperationType.DELETE_FILE,
+            OperationType.MOVE_FILE, OperationType.MAKE_DIRECTORY);
     private final Logger logger = Logger.logFor(ClusterRouter.class);
     private final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);
     private final OwnershipManager ownershipManager = IocContainer.get(OwnershipManager.class);
@@ -53,6 +57,9 @@ public class ClusterRouter {
         if (SCRIPT_OPS.contains(type)) {
             return forwardScript(type, request.getProjectName(), rawJson, actingUser);
         }
+        if (FILE_READS.contains(type) || FILE_WRITES.contains(type)) {
+            return forwardFileOperation(request, rawJson, actingUser);
+        }
         if (!ROUTABLE.contains(type)) {
             return null;
         }
@@ -66,6 +73,18 @@ public class ClusterRouter {
             return null;
         }
         return forwardToOwner(type, rawJson, ownerAddress, actingUser);
+    }
+
+    private String forwardFileOperation(OperationRequest request, String rawJson, String actingUser) {
+        final var projectName = request.getProjectName();
+        if (ownershipManager.isOwner(projectName, Globals.FILES_LOCK_NAME)) {
+            return null;
+        }
+        final var ownerAddress = ownershipManager.ownerAddress(projectName, Globals.FILES_LOCK_NAME);
+        return ownerAddress == null
+                ? null
+                : forwardToOwner(request.getType(), rawJson, ownerAddress, actingUser,
+                        2 * clusterConfig.replicationAckTimeoutMs());
     }
 
     private String routeActiveTransaction(OperationRequest request, String rawJson, OperationType type,
@@ -277,30 +296,38 @@ public class ClusterRouter {
         if (type == OperationType.COMMIT_TRANSACTION) {
             return ErrorCode.TRANSACTION_INDETERMINATE;
         }
-        return WRITES.contains(type) ? ErrorCode.WRITE_OUTCOME_UNKNOWN : ErrorCode.OWNER_UNREACHABLE;
+        return WRITES.contains(type) || FILE_WRITES.contains(type)
+                ? ErrorCode.WRITE_OUTCOME_UNKNOWN
+                : ErrorCode.OWNER_UNREACHABLE;
     }
 
     private String forwardToOwner(OperationType type, String rawJson, String ownerAddress, String actingUser) {
+        return forwardToOwner(type, rawJson, ownerAddress, actingUser, clusterConfig.replicationAckTimeoutMs());
+    }
+
+    private String forwardToOwner(OperationType type, String rawJson, String ownerAddress, String actingUser,
+            long timeoutMillis) {
         final var message = PeerRequest.message(ClusterMessageType.FORWARD_REQUEST);
         message.setForwardBody(rawJson);
         message.setActingUser(actingUser);
         try {
-            final var response = pool.request(NodeAddress.parse(ownerAddress), message,
-                    clusterConfig.replicationAckTimeoutMs());
+            final var response = pool.request(NodeAddress.parse(ownerAddress), message, timeoutMillis);
             if (response.getType() == ClusterMessageType.FORWARD_RESPONSE) {
                 return response.getForwardBody();
             }
             logger.warning("Owner " + ownerAddress + " rejected a forwarded request: " + response.getErrorMessage());
             return eJson.toJson(new OperationResponse(type, outcomeUnknownFor(type)));
         } catch (PeerUnreachableException e) {
-            if (READS.contains(type) && clusterConfig.readFallbackToLocal()) {
+            if ((READS.contains(type) || FILE_READS.contains(type)) && clusterConfig.readFallbackToLocal()) {
                 return null;
             }
             logger.warning("Could not reach owner " + ownerAddress + ": " + e.getMessage());
             return eJson.toJson(new OperationResponse(type, ErrorCode.OWNER_UNREACHABLE));
         } catch (Exception e) {
             logger.warning("Owner " + ownerAddress + " did not answer a forwarded request: " + e.getMessage());
-            final var code = READS.contains(type) ? ErrorCode.OWNER_UNREACHABLE : ErrorCode.WRITE_OUTCOME_UNKNOWN;
+            final var code = READS.contains(type) || FILE_READS.contains(type)
+                    ? ErrorCode.OWNER_UNREACHABLE
+                    : ErrorCode.WRITE_OUTCOME_UNKNOWN;
             return eJson.toJson(new OperationResponse(type, code));
         }
     }

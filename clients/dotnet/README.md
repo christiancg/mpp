@@ -152,6 +152,27 @@ await subscription.DisposeAsync();
 The handler gets the whole result right away, then again every time a write changes it, one update at a time. Live
 queries use their own connections, not the pool.
 
+## Project files
+
+```csharp
+var files = shop.Files();
+await files.WriteTextAsync("/public/index.html", "<h1>hi</h1>");
+await using (var video = File.OpenRead("intro.mp4"))
+{
+    await files.UploadAsync("/media/intro.mp4", video);
+}
+var html = await files.ReadTextAsync("/public/index.html");
+await foreach (var entry in files.ListAsync("/media", new FileListOptions { Recursive = true }))
+{
+    Console.WriteLine($"{entry.Path} {entry.Kind} {entry.Size}");
+}
+```
+
+A project also stores a tree of files and folders. `WriteAsync` and `WriteTextAsync` take `FileWriteOptions` (`Replace`,
+`Create` or `Append`, and an `IfVersion` check). `UploadAsync` sends a stream of any size in 4 MB chunks to a hidden
+sibling and moves it over the file once complete, and `ReadAsync` and `DownloadAsync` read window by window, starting
+over if the file changes in between. `ListAsync` pages through the folder as you enumerate it.
+
 ## Errors and retries
 
 Every refusal from the server is an `MppException` with the server's error code. There is a subclass per range:

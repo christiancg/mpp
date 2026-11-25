@@ -1,5 +1,6 @@
 package org.ccg.mpp.ops;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.Set;
 import org.ccg.mpp.bckg_ops.BackgroundTaskManager;
@@ -13,8 +14,10 @@ import org.ccg.mpp.config.Configuration;
 import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.ejson.elements.JsonArray;
 import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.fs.ProjectFileStore;
 import org.ccg.mpp.fs.TombstoneStore;
 import org.ccg.mpp.ioc.IocContainer;
+import org.ccg.mpp.log.Logger;
 import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.OperationResponse;
 
@@ -30,6 +33,8 @@ public final class ProjectStatsHelper {
     private static final CompiledScriptCache compiledScripts = IocContainer.get(CompiledScriptCache.class);
     private static final ScriptAdmission scriptAdmission = IocContainer.get(ScriptAdmission.class);
     private static final ScriptPlacement scriptPlacement = IocContainer.get(ScriptPlacement.class);
+    private static final ProjectFileStore projectFiles = IocContainer.get(ProjectFileStore.class);
+    private static final Logger logger = Logger.logFor(ProjectStatsHelper.class);
 
     private ProjectStatsHelper() {
     }
@@ -178,6 +183,21 @@ public final class ProjectStatsHelper {
         return json;
     }
 
+    private static JsonObject buildFileStats(String projectName) {
+        final var files = new JsonObject();
+        try {
+            final var fileTotals = projectFiles.totals(projectName);
+            files.addProperty("entries", fileTotals.entries());
+            files.addProperty("bytes", fileTotals.bytes());
+        } catch (IOException | RuntimeException e) {
+            logger.warning("The files of project '" + projectName + "' could not be counted: " + e.getMessage());
+            files.addProperty("entries", 0L);
+            files.addProperty("bytes", 0L);
+            files.addProperty("unreadable", true);
+        }
+        return files;
+    }
+
     private static JsonObject buildProjectStats(StatsView view, String projectName, Totals totals) {
         final var collNames = cache.getCollectionNamesForProject(projectName).stream()
                 .filter(collName -> view.includesCollection(projectName, collName)).toList();
@@ -202,6 +222,9 @@ public final class ProjectStatsHelper {
         projectObj.addProperty("entryCount", dbEntries);
         projectObj.addProperty("sizeBytes", projectSizeBytes);
         projectObj.add("collections", collArray);
+        if (view.includesFiles(projectName)) {
+            projectObj.add("files", buildFileStats(projectName));
+        }
 
         totals.collections += collNames.size();
         totals.indexes += projectIndexes;

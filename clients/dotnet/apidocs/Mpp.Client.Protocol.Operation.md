@@ -155,6 +155,27 @@ The `DELETE_MIDDLEWARE` operation. Deletes a middleware.
 ## ListMiddlewares
 The `LIST_MIDDLEWARES` operation. Lists a project's middlewares.
 
+## WriteFile
+The `WRITE_FILE` operation. Writes, creates or appends to a project file.
+
+## ReadFile
+The `READ_FILE` operation. Reads a window of a project file.
+
+## StatFile
+The `STAT_FILE` operation. Describes a project file or folder.
+
+## ListFiles
+The `LIST_FILES` operation. Lists a page of a project folder.
+
+## DeleteFile
+The `DELETE_FILE` operation. Deletes a project file or folder.
+
+## MoveFile
+The `MOVE_FILE` operation. Moves or renames a project file or folder.
+
+## MakeDirectory
+The `MAKE_DIRECTORY` operation. Creates a project folder.
+
 ## ListScripts
 The `LIST_SCRIPTS` operation. Lists the running scripts.
 
@@ -186,7 +207,7 @@ Every operation.
 Whether the operation may be sent while a transaction is open.
 
 ## IsRead
-Whether the operation only reads: `FIND_BY_ID`, `AGGREGATE`, `SERVER_INFO` and the `LIST_` and `GET_` operations.
+Whether the operation only reads: `FIND_BY_ID`, `AGGREGATE`, `SERVER_INFO`, `READ_FILE`, `STAT_FILE` and the `LIST_` and `GET_` operations.
 
 ## Name
 The wire name, such as `FIND_BY_ID`.

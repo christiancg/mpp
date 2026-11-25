@@ -1,8 +1,8 @@
 # MPP Python client
 
 The Python client for [MPP](https://github.com/christiancg/mpp). It keeps a pool of authenticated connections
-and gives you a fluent query builder, transactions, live queries and the server's custom value types, both
-synchronous and with asyncio. It needs Python 3.11 or newer and has no runtime dependencies.
+and gives you a fluent query builder, transactions, live queries, project files and the server's custom value types,
+both synchronous and with asyncio. It needs Python 3.11 or newer and has no runtime dependencies.
 
 ## Installation
 
@@ -138,6 +138,23 @@ with client.transaction() as tx:
 
 The block commits when it ends normally and rolls back when it raises. A transaction holds one connection, its writes
 lock their collections until the commit, and the server rolls it back after `transactionIdleTimeoutMs` idle.
+
+## Project files
+
+```python
+files = client.project("shop").files()
+files.write("/public/index.html", "<h1>hi</h1>")
+html = files.read_text("/public/index.html")
+with open("backup.tar", "rb") as source:
+    files.upload("/backups/backup.tar", source)
+for entry in files.list("/public", recursive=True):
+    print(entry.path, entry.kind, entry.size)
+```
+
+Each project has a folder tree of files beside its collections. `write` sends `bytes` as base64 and a `str` as UTF-8;
+`upload` writes 4 MB chunks to a hidden sibling and moves it onto the target, so readers never see a half-written file.
+`read` and `download` read 4 MB windows and start over when the file changes between two of them, raising
+`FileChangedError` after three restarts. `list` pages through the folder as you iterate.
 
 ## Live queries
 

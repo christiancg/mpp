@@ -18,6 +18,7 @@ import org.ccg.mpp.cluster.AdminAntiEntropyService;
 import org.ccg.mpp.cluster.AntiEntropyService;
 import org.ccg.mpp.cluster.ClusterConfig;
 import org.ccg.mpp.cluster.ClusterServer;
+import org.ccg.mpp.cluster.FileAntiEntropyService;
 import org.ccg.mpp.cluster.HybridClock;
 import org.ccg.mpp.cluster.MetadataCachePruner;
 import org.ccg.mpp.cluster.TransactionSessionReaper;
@@ -37,7 +38,9 @@ import org.ccg.mpp.data.admin.AdminUserEntry;
 import org.ccg.mpp.data.auth.GlobalPermissionType;
 import org.ccg.mpp.data.auth.PasswordHasher;
 import org.ccg.mpp.ex.InvalidPortException;
+import org.ccg.mpp.fs.DurableShadows;
 import org.ccg.mpp.fs.FileSystem;
+import org.ccg.mpp.fs.ProjectFileStore;
 import org.ccg.mpp.http.HttpLimits;
 import org.ccg.mpp.http.HttpServer;
 import org.ccg.mpp.ioc.IocContainer;
@@ -85,6 +88,8 @@ public class ServerMain {
     private static final SnapshotSweeper snapshotSweeper = IocContainer.get(SnapshotSweeper.class);
     private static ClusterServer clusterServer;
     private static final AntiEntropyService antiEntropyService = IocContainer.get(AntiEntropyService.class);
+    private static final FileAntiEntropyService fileAntiEntropyService = IocContainer.get(FileAntiEntropyService.class);
+    private static final ProjectFileStore projectFiles = IocContainer.get(ProjectFileStore.class);
     private static final AdminAntiEntropyService adminAntiEntropyService = IocContainer
             .get(AdminAntiEntropyService.class);
     private static final TransactionSessionReaper transactionSessionReaper = IocContainer
@@ -112,7 +117,7 @@ public class ServerMain {
     private static void installDurableShadowIfConfigured() throws IOException {
         final var shadow = config.getPowerLossShadowPath();
         if (config.isFaultInjectionEnabled() && !shadow.isBlank()) {
-            fs.installDurableShadow(Path.of(shadow));
+            DurableShadows.install(Path.of(config.getFilePath()), projectFiles.root(), Path.of(shadow));
         }
     }
 
@@ -149,6 +154,7 @@ public class ServerMain {
         StorageFormatGuard.refuseIncompatibleFolder(fs);
         clearSnapshotsOfAPreviousProcess();
         DeviceSyncGuard.fallBackWhenUnsyncable(fs);
+        prepareProjectFiles();
         installDurableShadowIfConfigured();
         StorageFormatGuard.stampIfUnstamped(fs);
         fs.createAdminProject();
@@ -268,18 +274,32 @@ public class ServerMain {
             // Admin listener before the document one: structure must conform before documents repopulate it.
             membershipService.addListener(adminAntiEntropyService);
             membershipService.addListener(antiEntropyService);
+            membershipService.addListener(fileAntiEntropyService);
             membershipService.addListener(transactionSessionReaper);
             membershipService.addListener(tx2pcRecovery);
             membershipService.start();
             ownershipManager.setSelfNodeId(membershipService.getSelf().getNodeId());
             adminAntiEntropyService.start();
             antiEntropyService.start();
+            fileAntiEntropyService.start();
             recoverTransactionsAtStartup();
             tx2pcRecovery.start();
         } catch (IOException e) {
             logger.fatal("Failed to start the cluster server", e);
             throw new RuntimeException("Failed to start the cluster server", e);
         }
+    }
+
+    private static void prepareProjectFiles() throws IOException {
+        projectFiles.useConfiguredRoot();
+        StorageFormatGuard.refuseIncompatibleFiles(projectFiles);
+        projectFiles.createRoot();
+        projectFiles.useClock(hybridClock::next, hybridClock::observe);
+        projectFiles.useIncarnations(projectName -> {
+            final var project = cache.getAdminProjectEntry(projectName);
+            return project == null ? 0L : project.getIncarnation();
+        });
+        StorageFormatGuard.stampFilesIfUnstamped(projectFiles);
     }
 
     private static void recoverTransactionsAtStartup() {

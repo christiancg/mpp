@@ -152,6 +152,12 @@ Code `400-49` (`INVALID_MIDDLEWARE`). The middleware definition is not valid.
 ## TooManyMiddlewares
 Code `400-50` (`TOO_MANY_MIDDLEWARES`). The project has the maximum number of middlewares.
 
+## FilePathInvalid
+Code `400-51` (`FILE_PATH_INVALID`). The file path is not valid.
+
+## FileContentInvalid
+Code `400-52` (`FILE_CONTENT_INVALID`). The file content or its encoding is not valid.
+
 ## MustAuthenticateFirst
 Code `401-1` (`MUST_AUTHENTICATE_FIRST`). Must authenticate first.
 
@@ -217,6 +223,9 @@ Code `404-12` (`SCHEMA_NOT_FOUND`). The collection has no schema.
 
 ## SnapshotNotFound
 Code `404-13` (`SNAPSHOT_NOT_FOUND`). The snapshot does not exist: it was released or expired, or it belongs to another connection.
+
+## FileNotFound
+Code `404-14` (`FILE_NOT_FOUND`). No such file or folder.
 
 ## ScriptTimeout
 Code `408-1` (`SCRIPT_TIMEOUT`). Script exceeded its time budget.
@@ -293,11 +302,29 @@ Code `409-18` (`DOCUMENT_ALREADY_EXISTS`). A document with this _id already exis
 ## EntrypointRouteConflict
 Code `409-19` (`ENTRYPOINT_ROUTE_CONFLICT`). Another entrypoint of the project already serves this method and path.
 
+## FileExists
+Code `409-20` (`FILE_EXISTS`). The file or folder already exists.
+
+## FileKindMismatch
+Code `409-21` (`FILE_KIND_MISMATCH`). A folder is where a file is expected, or a file where a folder is.
+
+## DirectoryNotEmpty
+Code `409-22` (`DIRECTORY_NOT_EMPTY`). The folder is not empty.
+
+## FileVersionConflict
+Code `409-23` (`FILE_VERSION_CONFLICT`). The file was changed by someone else.
+
 ## ListenEnded
 Code `410-1` (`LISTEN_ENDED`). The listen ended.
 
 ## OutboundBacklog
 Code `413-1` (`OUTBOUND_BACKLOG`). The connection's outbound buffer overflowed.
+
+## FileTooLarge
+Code `413-2` (`FILE_TOO_LARGE`). The file would exceed the maximum file size.
+
+## FileQuotaExceeded
+Code `413-3` (`FILE_QUOTA_EXCEEDED`). The project's files would exceed their quota.
 
 ## NotCollectionOwner
 Code `421-1` (`NOT_COLLECTION_OWNER`). This node is not the owner of the target collection.
@@ -427,6 +454,12 @@ Code `500-40` (`ERROR_SAVING_MIDDLEWARE`). Error while saving the middleware.
 
 ## ErrorDeletingMiddleware
 Code `500-41` (`ERROR_DELETING_MIDDLEWARE`). Error while deleting the middleware.
+
+## FileApplyPending
+Code `500-42` (`FILE_APPLY_PENDING`). The file change was committed but could not be applied yet; it is applied on the next access to the project's files, or at the next startup.
+
+## ErrorAccessingFiles
+Code `500-43` (`ERROR_ACCESSING_FILES`). Error while accessing the project's files.
 
 ## MaxConnectionsReached
 Code `503-1` (`MAX_CONNECTIONS_REACHED`). Max number of connections reached.

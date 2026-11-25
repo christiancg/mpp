@@ -58,6 +58,13 @@ public sealed class Operation
     public static readonly Operation SaveMiddleware = new("SAVE_MIDDLEWARE", OperationScope.Project, false, false);
     public static readonly Operation DeleteMiddleware = new("DELETE_MIDDLEWARE", OperationScope.Project, false, false);
     public static readonly Operation ListMiddlewares = new("LIST_MIDDLEWARES", OperationScope.Project, false, false);
+    public static readonly Operation WriteFile = new("WRITE_FILE", OperationScope.Project, false, false);
+    public static readonly Operation ReadFile = new("READ_FILE", OperationScope.Project, false, true);
+    public static readonly Operation StatFile = new("STAT_FILE", OperationScope.Project, false, true);
+    public static readonly Operation ListFiles = new("LIST_FILES", OperationScope.Project, false, true);
+    public static readonly Operation DeleteFile = new("DELETE_FILE", OperationScope.Project, false, false);
+    public static readonly Operation MoveFile = new("MOVE_FILE", OperationScope.Project, false, false);
+    public static readonly Operation MakeDirectory = new("MAKE_DIRECTORY", OperationScope.Project, false, false);
     public static readonly Operation ListScripts = new("LIST_SCRIPTS", OperationScope.None, true, false);
     public static readonly Operation CancelScript = new("CANCEL_SCRIPT", OperationScope.None, true, false);
     public static readonly Operation TestTrigger = new("TEST_TRIGGER", OperationScope.Collection, false, false);
@@ -76,7 +83,7 @@ public sealed class Operation
         Scope = scope;
         AdminOnly = adminOnly;
         AllowedInTransaction = allowedInTransaction;
-        IsRead = name is "FIND_BY_ID" or "AGGREGATE" or "SERVER_INFO"
+        IsRead = name is "FIND_BY_ID" or "AGGREGATE" or "SERVER_INFO" or "READ_FILE" or "STAT_FILE"
             || name.StartsWith("LIST_", StringComparison.Ordinal)
             || name.StartsWith("GET_", StringComparison.Ordinal);
     }

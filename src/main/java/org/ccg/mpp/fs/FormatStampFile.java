@@ -5,6 +5,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
@@ -14,14 +16,21 @@ public final class FormatStampFile {
     private static final String FORMAT_VERSION = "formatVersion";
     private static final String WRITTEN_BY = "writtenBy";
     private final EJson eJson = IocContainer.get(EJson.class);
-    private final FilePaths paths;
+    private final Supplier<Path> location;
+    private final BooleanSupplier holdsData;
 
     FormatStampFile(FilePaths paths) {
-        this.paths = paths;
+        this(() -> paths.formatStampFile().toPath(),
+                () -> paths.projectFolder(Globals.ADMIN_PROJECT_NAME).isDirectory());
+    }
+
+    FormatStampFile(Supplier<Path> location, BooleanSupplier holdsData) {
+        this.location = location;
+        this.holdsData = holdsData;
     }
 
     public Path path() {
-        return paths.formatStampFile().toPath();
+        return location.get();
     }
 
     public FormatStamp read() throws IOException {
@@ -41,7 +50,7 @@ public final class FormatStampFile {
     }
 
     public boolean holdsData() {
-        return paths.projectFolder(Globals.ADMIN_PROJECT_NAME).isDirectory();
+        return holdsData.getAsBoolean();
     }
 
     private JsonObject parse(Path path, String content) throws MalformedFormatStampException {
