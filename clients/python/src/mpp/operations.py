@@ -28,6 +28,9 @@ _READS = frozenset(
         Operation.LIST_MIDDLEWARES,
         Operation.LIST_SCRIPTS,
         Operation.LIST_TRIGGER_RUNS,
+        Operation.READ_FILE,
+        Operation.STAT_FILE,
+        Operation.LIST_FILES,
     }
 )
 

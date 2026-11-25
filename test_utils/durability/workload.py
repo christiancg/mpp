@@ -26,7 +26,13 @@ TRANSACTION = "TRANSACTION"
 CREATE_INDEX = "CREATE_INDEX"
 DROP_INDEX = "DROP_INDEX"
 REINDEX = "REINDEX"
-ID_OPS = (SAVE, DELETE, BULK_SAVE, TRANSACTION, DELETE_WHERE, SAVE_WHERE)
+FILE_WRITE = "FILE_WRITE"
+FILE_DELETE = "FILE_DELETE"
+FILES = "@files"
+FILE_SHARE = 0.08
+FILES_PER_CLIENT = 6
+FILES_FOLDER = "/workload/"
+ID_OPS = (SAVE, DELETE, BULK_SAVE, TRANSACTION, DELETE_WHERE, SAVE_WHERE, FILE_WRITE, FILE_DELETE)
 
 INDEXED_FIELDS = ["v", "n"]
 CHURNED_INDEX = "tag"
@@ -111,6 +117,7 @@ class Workload:
         self._stop = threading.Event()
         self._threads = []
         self._tokens = 0
+        self._file_ticks = [0] * clients
 
     def setup(self, connect: Connect) -> WorkloadSchema:
         names = [f"pl{i}" for i in range(self.collections)]
@@ -147,7 +154,8 @@ class Workload:
 
     def history(self) -> History:
         with self._lock:
-            return History(self.seed, sorted(self._entries, key=lambda e: e.sent_at))
+            entries = sorted(self._entries, key=lambda e: e.sent_at)
+        return History(self.seed, entries)
 
     def run_sequence(self, conn: bu.Conn, ops: list) -> History:
         schema = self._require_schema()
@@ -208,7 +216,11 @@ class Workload:
                 if not self._one_op(conn, schema, rng, coll, owned, client):
                     return
 
-    def _one_op(self, conn, schema, rng, coll, owned, client) -> bool:
+    def _one_op(self, conn, schema: WorkloadSchema, rng: random.Random, coll: str, owned: list, client: int) -> bool:
+        files_side = random.Random(hash((rng.getstate()[1], self._file_ticks[client])))
+        if files_side.random() < FILE_SHARE:
+            self._file_ticks[client] += 1
+            return self._file_op(conn, schema, files_side, client).outcome != OUTCOME_UNKNOWN
         roll = rng.random()
         if roll < 0.5:
             doc_id = rng.choice(owned)
@@ -242,12 +254,25 @@ class Workload:
             entry = self._admin(conn, schema, coll, REINDEX, None, client, rng.random() < 0.5)
         return entry.outcome != OUTCOME_UNKNOWN
 
+    def _file_op(self, conn, schema, side, client) -> HistoryEntry:
+        path = f"{FILES_FOLDER}c{max(client, 0)}/f{side.randrange(FILES_PER_CLIENT)}.txt"
+        if side.random() < 0.25:
+            entry = self._record(FILE_DELETE, FILES, [path], [None], client)
+            return self._answer(entry, conn.send({"type": "DELETE_FILE", "projectName": schema.project, "path": path}))
+        token = self._token(client)
+        entry = self._record(FILE_WRITE, FILES, [path], [token], client)
+        return self._answer(entry, conn.send({"type": "WRITE_FILE", "projectName": schema.project, "path": path,
+                                              "content": token + "|" + "f" * side.randint(0, MAX_PAD),
+                                              "encoding": "utf8"}))
+
     def _token(self, client: int) -> str:
         with self._lock:
             self._tokens += 1
-            return f"s{self.seed}c{client}w{self._tokens}"
+            tokens = self._tokens
+        return f"s{self.seed}c{client}w{tokens}"
 
-    def _document(self, rng, doc_id: str, token: str) -> dict:
+    @staticmethod
+    def _document(rng, doc_id: str, token: str) -> dict:
         doc = {"_id": doc_id, "w": token, "v": values.operand(rng), "n": rng.choice(values.INTERESTING_NUMBERS),
                "pad": "p" * rng.randint(0, MAX_PAD)}
         if rng.random() < 0.6:

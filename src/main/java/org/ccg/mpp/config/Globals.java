@@ -170,4 +170,15 @@ public final class Globals {
     public static final long FENCE_RECHECK_MS = 200L;
     public static final long REFUSAL_MIN_SPACING_MS = 1000L;
     public static final long TRANSIENT_SORT_WALK_MAX_INDEX_BYTES = 1024L * 1024L;
+    public static final int FILES_FORMAT_VERSION = 1;
+    public static final String FILES_META_FOLDER = ".mpp";
+    public static final String FILES_MANIFEST_FILE = "manifest.log";
+    public static final String FILES_TEMP_FOLDER = "tmp";
+    public static final String FILES_LOCK_NAME = ".files";
+    public static final int FILES_LIST_MAX_ENTRIES = 10_000;
+    public static final int FILE_PATH_MAX_CHARS = 1024;
+    public static final int FILE_PATH_MAX_SEGMENTS = 32;
+    public static final int FILE_SEGMENT_MAX_CHARS = 255;
+    public static final int FILE_MANIFEST_COMPACT_FLOOR = 1024;
+    public static final int FILE_FETCH_CHUNK_BYTES = 8 * 1024 * 1024;
 }

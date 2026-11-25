@@ -351,14 +351,14 @@ public class ClusterTxMessageDispatchTest extends ClusterConnectionHandlerTestBa
     }
 
     @Test
-    public void test_only_gossip_forward_request_digest_pull_tx_status_and_list_tx_may_overtake_the_ordered_lane()
+    public void test_only_gossip_forwards_digests_pulls_tx_lookups_and_file_reads_may_overtake_the_ordered_lane()
             throws Exception {
         final var mayOvertake = org.ccg.mpp.cluster.ClusterConnectionHandler.class.getDeclaredMethod("mayOvertake",
                 ClusterMessageType.class);
         mayOvertake.setAccessible(true);
         final var expectedExempt = java.util.EnumSet.of(ClusterMessageType.GOSSIP, ClusterMessageType.FORWARD_REQUEST,
                 ClusterMessageType.DIGEST, ClusterMessageType.PULL, ClusterMessageType.TX_STATUS,
-                ClusterMessageType.LIST_TX);
+                ClusterMessageType.LIST_TX, ClusterMessageType.FILE_DIGEST, ClusterMessageType.FILE_FETCH);
 
         for (final var type : ClusterMessageType.values()) {
             final var exempt = (boolean) mayOvertake.invoke(null, type);

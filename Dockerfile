@@ -41,12 +41,13 @@ COPY --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY --chmod=755 healthcheck.sh /app/healthcheck.sh
 
 RUN addgroup -S mpp && adduser -S -G mpp mpp \
-    && mkdir -p /app/db /app/logs /app/certs \
+    && mkdir -p /app/db /app/files /app/logs /app/certs \
     && chown -R mpp:mpp /app
 
 USER mpp
 
 VOLUME /app/db
+VOLUME /app/files
 VOLUME /app/logs
 
 EXPOSE ${PORT}

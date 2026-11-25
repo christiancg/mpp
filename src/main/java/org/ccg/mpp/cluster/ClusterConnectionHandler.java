@@ -150,6 +150,7 @@ public class ClusterConnectionHandler implements Runnable {
         return switch (request.getType()) {
             case REPLICATE -> collectionOf(request.getReplication());
             case REPLICATE_TX -> singleCollectionOf(request.getTxReplication());
+            case REPLICATE_FILES -> FileMessageHandler.laneKeyOf(request);
             default -> null;
         };
     }
@@ -175,7 +176,7 @@ public class ClusterConnectionHandler implements Runnable {
 
     private static boolean mayOvertake(ClusterMessageType type) {
         return switch (type) {
-            case GOSSIP, FORWARD_REQUEST, DIGEST, PULL, TX_STATUS, LIST_TX -> true;
+            case GOSSIP, FORWARD_REQUEST, DIGEST, PULL, TX_STATUS, LIST_TX, FILE_DIGEST, FILE_FETCH -> true;
             default -> false;
         };
     }
@@ -244,6 +245,7 @@ public class ClusterConnectionHandler implements Runnable {
             case ADMIN_SNAPSHOT -> handleAdminSnapshot(request);
             case DIGEST -> handleDigest(request);
             case PULL -> handlePull(request);
+            case REPLICATE_FILES, FILE_DIGEST, FILE_FETCH -> FileMessageHandler.handle(request);
             default -> {
                 final var error = new ClusterMessage();
                 error.setType(ClusterMessageType.ERROR);
@@ -407,7 +409,8 @@ public class ClusterConnectionHandler implements Runnable {
 
     private static boolean carriesWrite(ClusterMessage request) {
         return switch (request.getType()) {
-            case REPLICATE, REPLICATE_TX, REPLICATE_ADMIN, REINDEX_BROADCAST, FORWARD_REQUEST, PREPARE_TX, COMMIT_TX ->
+            case REPLICATE, REPLICATE_TX, REPLICATE_ADMIN, REINDEX_BROADCAST, FORWARD_REQUEST, PREPARE_TX, COMMIT_TX,
+                    REPLICATE_FILES ->
                 true;
             case FORWARD_TX_REQUEST -> forwardedType(request) != OperationType.ROLLBACK_TRANSACTION;
             default -> false;

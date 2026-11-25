@@ -147,6 +147,33 @@ subscription.close();
 The handler gets the whole result right away, then again every time a write changes it. Live queries use their own
 connections, not the pool.
 
+## Files
+
+Each project has a tree of folders and files beside its collections. `Project.files()` reads and writes it.
+
+```java
+ProjectFiles files = shop.files();
+files.writeText("/public/index.html", "<h1>hi</h1>");
+files.write("/config.json", bytes, WriteOptions.builder().ifAbsent().build());
+files.append("/logs/app.log", line);
+String page = files.readText("/public/index.html");
+
+try (InputStream in = Files.newInputStream(build)) {
+    files.upload("/public/app.js", in);
+}
+for (FileInfo entry : files.list("/public", ListOptions.builder().recursive(true).build())) {
+    System.out.println(entry.path() + " " + entry.size());
+}
+files.move("/public", "/www");
+files.delete("/www", true);
+```
+
+`write` and `writeText` send the content in one request. `upload` streams any size in 4 MB chunks to a hidden
+sibling and then moves it over the target, so readers see the old file or the whole new one. `read` pages through the
+file and starts over when it changes in between, and `download` writes it to an `OutputStream`. `list` fetches its
+pages as you iterate. A write can be made conditional with `WriteOptions.ifVersion`, using the version a write, `stat`
+or `list` answered.
+
 ## Errors and retries
 
 Every refusal from the server is an `MppException` with the server's error code. There is a subclass per range:

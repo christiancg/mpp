@@ -21,6 +21,10 @@ public record StatsView(AdminUserEntry user) {
         return includesNodeSections() || ProjectVisibility.isVisible(user(), cache.getAdminProjectEntry(name));
     }
 
+    public boolean includesFiles(String project) {
+        return AuthorizationChecker.canReadProjectFiles(user(), project);
+    }
+
     public boolean includesCollection(String project, String collection) {
         return AuthorizationChecker.canReadCollection(user(), project, collection);
     }

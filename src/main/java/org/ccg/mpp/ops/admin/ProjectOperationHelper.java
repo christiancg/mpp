@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.ccg.mpp.bckg_ops.ScheduleRegistry;
 import org.ccg.mpp.bckg_ops.TriggerExecutor;
 import org.ccg.mpp.cache.Cache;
+import org.ccg.mpp.cluster.HybridClock;
 import org.ccg.mpp.concurrency.ResourceLocking;
 import org.ccg.mpp.config.ConfigKey;
 import org.ccg.mpp.config.Configuration;
@@ -37,6 +38,7 @@ public final class ProjectOperationHelper {
     private static final Logger logger = Logger.logFor(ProjectOperationHelper.class);
     private static final Cache cache = IocContainer.get(Cache.class);
     private static final FileSystem fs = IocContainer.get(FileSystem.class);
+    private static final HybridClock hybridClock = IocContainer.get(HybridClock.class);
     @SuppressWarnings("FieldMayBeFinal")
     private static ResourceLocking locks = IocContainer.get(ResourceLocking.class);
     private static final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
@@ -116,8 +118,8 @@ public final class ProjectOperationHelper {
     private static OperationResponse saveNewProjectEntry(String projectName, String owner)
             throws IOException, InterruptedException {
         final var owners = owner != null ? List.of(owner) : List.<String>of();
-        AdminOperationHelper
-                .saveProjectEntry(new AdminProjectEntry(projectName, new ArrayList<>(), new ArrayList<>(owners)));
+        AdminOperationHelper.saveProjectEntry(
+                new AdminProjectEntry(projectName, new ArrayList<>(), new ArrayList<>(owners), hybridClock.next()));
         return OperationResponse.ok(OperationType.CREATE_PROJECT, "Project created successfully");
     }
 
@@ -211,6 +213,7 @@ public final class ProjectOperationHelper {
                 () -> fs.deleteProject(projectName))) {
             return new OperationResponse(OperationType.DROP_PROJECT, ErrorCode.ERROR_DROPPING_PROJECT);
         }
+        ProjectFilesRetirement.drop(projectName);
         DroppedCollections.forgetProject(projectName);
         AdminOperationHelper.deleteProjectEntry(projectName);
         compiledProcedures.invalidateProject(projectName);

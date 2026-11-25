@@ -1,5 +1,6 @@
 import { Collection } from "./collection.js";
 import type { Document, DocumentCodec, Stored } from "./document.js";
+import { Files } from "./files/files.js";
 import type { ClientContext } from "./internal/client-context.js";
 import { identityCodec, rowCodec } from "./internal/codecs.js";
 import { CollectionOps, type RowCodec } from "./internal/collection-ops.js";
@@ -80,6 +81,10 @@ export class Project {
 
     middlewares(): Middlewares {
         return new Middlewares(this.#context, this.name);
+    }
+
+    files(): Files {
+        return new Files(this.#context, this.name);
     }
 
     async listTriggers(): Promise<TriggerInfo[]> {

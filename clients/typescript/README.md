@@ -1,8 +1,8 @@
 # MPP Node.js client
 
 The JavaScript and TypeScript client for [MPP](https://github.com/christiancg/mpp). It keeps a pool of
-authenticated connections and gives you a fluent query builder, transactions, live queries and the server's custom
-value types. It needs Node.js 22.12 or newer and has no runtime dependencies.
+authenticated connections and gives you a fluent query builder, transactions, live queries, project files and the
+server's custom value types. It needs Node.js 22.12 or newer and has no runtime dependencies.
 
 ## Installation
 
@@ -126,6 +126,23 @@ await subscription.close();
 
 The handler gets the whole result right away, then again every time a write changes it, one update at a time. Live
 queries use their own connections, which keep the process alive until you close the subscriptions.
+
+## Project files
+
+```ts
+const files = client.project("shop").files();
+await files.write("/public/index.html", "<h1>hi</h1>");
+await files.append("/logs/app.log", new Uint8Array([1, 2, 3]));
+await files.upload("/media/video.mp4", createReadStream("video.mp4"));
+const page = await files.readText("/public/index.html");
+for await (const entry of files.list("/", { recursive: true })) {
+    console.log(entry.path, entry.kind, entry.size);
+}
+```
+
+Bytes travel base64-encoded and strings as UTF-8. `upload` streams a file of any size: it writes 4 MB chunks to a
+hidden sibling and moves it over the target at the end. `read` fetches a large file window by window and starts again
+when the file changes underneath it, failing with `FileChangedError` after three restarts.
 
 ## Errors and retries
 

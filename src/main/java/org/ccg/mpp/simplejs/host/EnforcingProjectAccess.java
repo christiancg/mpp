@@ -2,10 +2,7 @@ package org.ccg.mpp.simplejs.host;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import org.ccg.mpp.cache.Cache;
-import org.ccg.mpp.cluster.ClusterConfig;
-import org.ccg.mpp.cluster.ClusterRouter;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.conn.ClientTracker;
 import org.ccg.mpp.ejson.EJson;
@@ -16,9 +13,7 @@ import org.ccg.mpp.ex.InvalidCommandException;
 import org.ccg.mpp.ioc.IocContainer;
 import org.ccg.mpp.listen.ResultHasher;
 import org.ccg.mpp.ops.ErrorCode;
-import org.ccg.mpp.ops.OperationProcessor;
 import org.ccg.mpp.ops.OperationStatus;
-import org.ccg.mpp.ops.SchemaValidationHelper;
 import org.ccg.mpp.ops.TransactionOperationHelper;
 import org.ccg.mpp.ops.auth.AuthorizationChecker;
 import org.ccg.mpp.ops.req.AggregateRequest;
@@ -33,7 +28,6 @@ import org.ccg.mpp.ops.req.RequestParser;
 import org.ccg.mpp.ops.req.RollbackTransactionRequest;
 import org.ccg.mpp.ops.req.SaveRequest;
 import org.ccg.mpp.ops.req.StartTransactionRequest;
-import org.ccg.mpp.ops.req.validations.RequestValidator;
 import org.ccg.mpp.ops.resp.AggregateResponse;
 import org.ccg.mpp.ops.resp.BulkSaveResponse;
 import org.ccg.mpp.ops.resp.DeleteManyResponse;
@@ -41,33 +35,21 @@ import org.ccg.mpp.ops.resp.FindByIdResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
 import org.ccg.mpp.ops.resp.ListProjectsResponse;
 import org.ccg.mpp.ops.resp.OperationResponse;
-import org.ccg.mpp.ops.resp.ResponseParser;
 import org.ccg.mpp.ops.resp.SaveResponse;
 import org.ccg.mpp.ops.resp.SaveWhereResponse;
 import org.ccg.mpp.ops.tx.SliceStateMachine;
-import org.ccg.mpp.simplejs.builtins.ErrorBuiltins;
 import org.ccg.mpp.simplejs.builtins.Intrinsics;
 import org.ccg.mpp.simplejs.exceptions.JsThrowException;
 
-public final class EnforcingProjectAccess implements ProjectAccess {
-    private final OperationProcessor operationProcessor = IocContainer.get(OperationProcessor.class);
+public final class EnforcingProjectAccess implements ProjectAccess, ScriptSession {
     private final Cache cache = IocContainer.get(Cache.class);
     private final ClientTracker clientTracker = IocContainer.get(ClientTracker.class);
-    private final ClusterRouter clusterRouter = IocContainer.get(ClusterRouter.class);
-    private final ClusterConfig clusterConfig = IocContainer.get(ClusterConfig.class);
     private final EJson eJson = IocContainer.get(EJson.class);
 
-    private final AtomicLong dbOperations = new AtomicLong();
-
-    private final String username;
-    private final UUID clientId;
-    private final String scopedProject;
-    private final int triggerDepth;
-    private Intrinsics intrinsics;
+    private final ScriptRequestDispatch requests;
     private UUID sessionClientId;
     private Thread sessionThread;
     private volatile boolean lastCommitFenced;
-    private volatile boolean clusterUnavailable;
 
     public EnforcingProjectAccess(String username, UUID clientId) {
         this(username, clientId, null);
@@ -78,25 +60,23 @@ public final class EnforcingProjectAccess implements ProjectAccess {
     }
 
     public EnforcingProjectAccess(String username, UUID clientId, String scopedProject, int triggerDepth) {
-        this.username = username;
-        this.clientId = clientId;
-        this.scopedProject = scopedProject;
-        this.triggerDepth = triggerDepth;
+        this.requests = new ScriptRequestDispatch(username, clientId, scopedProject, triggerDepth, this);
     }
 
     public long operationCount() {
-        return dbOperations.get();
+        return requests.operationCount();
     }
 
     @Override
     public String scopedProject() {
-        return scopedProject;
+        return requests.scopedProject();
     }
 
     @Override
     public boolean mayReadProcedureSource() {
-        return scopedProject != null
-                && AuthorizationChecker.mayReadProcedureSource(cache.getAdminUserEntry(username), scopedProject);
+        final var scopedProject = requests.scopedProject();
+        return scopedProject != null && AuthorizationChecker
+                .mayReadProcedureSource(cache.getAdminUserEntry(requests.username()), scopedProject);
     }
 
     @Override
@@ -256,6 +236,7 @@ public final class EnforcingProjectAccess implements ProjectAccess {
 
     @Override
     public List<String> listProjects() {
+        final var scopedProject = requests.scopedProject();
         if (scopedProject != null) {
             return List.of(scopedProject);
         }
@@ -272,7 +253,8 @@ public final class EnforcingProjectAccess implements ProjectAccess {
             throw jsError("A transaction is already active on this script");
         }
         sessionThread = Thread.currentThread();
-        sessionClientId = clientId != null ? clientId : clientTracker.registerForwardedClient(username);
+        final var clientId = requests.clientId();
+        sessionClientId = clientId != null ? clientId : clientTracker.registerForwardedClient(requests.username());
         try {
             requireOk(dispatch(new StartTransactionRequest()));
         } catch (RuntimeException e) {
@@ -348,7 +330,7 @@ public final class EnforcingProjectAccess implements ProjectAccess {
     }
 
     public boolean sawClusterUnavailable() {
-        return clusterUnavailable;
+        return requests.sawClusterUnavailable();
     }
 
     private void clearSession() {
@@ -358,7 +340,7 @@ public final class EnforcingProjectAccess implements ProjectAccess {
     private void clearSession(boolean fenced) {
         if (sessionClientId != null && !fenced) {
             clientTracker.clearTransactionState(sessionClientId);
-            if (!sessionClientId.equals(clientId)) {
+            if (!sessionClientId.equals(requests.clientId())) {
                 clientTracker.removeById(sessionClientId);
             }
         }
@@ -372,94 +354,32 @@ public final class EnforcingProjectAccess implements ProjectAccess {
         }
     }
 
-    private void assertSessionThread() {
+    @Override
+    public UUID sessionClientId() {
+        return sessionClientId;
+    }
+
+    @Override
+    public void assertSessionThread() {
         if (sessionThread != null && sessionThread != Thread.currentThread()) {
             throw jsError("A script transaction may only be used from the thread that started it");
         }
     }
 
     private OperationResponse dispatch(OperationRequest request) {
-        return dispatch(request, null);
+        return requests.dispatch(request);
     }
 
     private OperationResponse dispatch(OperationRequest request, String rawJson) {
-        assertSessionThread();
-        dbOperations.incrementAndGet();
-        request.setTriggerDepth(triggerDepth);
-        if (scopedProject != null) {
-            final var targetProject = request.getProjectName();
-            if (targetProject != null && !scopedProject.equals(targetProject)) {
-                throw jsError("This script may only access project '" + scopedProject + "'");
-            }
-        }
-        final var validation = RequestValidator.validate(request);
-        if (!validation.isValid()) {
-            throw jsError(validation.getErrorMessage());
-        }
-        if (!isTransactionControl(request)) {
-            final var user = cache.getAdminUserEntry(username);
-            if (user == null) {
-                throw jsError("User '" + username + "' not found");
-            }
-            final var authorization = AuthorizationChecker.check(request, user);
-            if (!authorization.isAllowed()) {
-                throw jsError(authorization.getReason());
-            }
-        }
-        final var schemaError = SchemaValidationHelper.check(request);
-        if (schemaError != null) {
-            throw jsError(schemaError.getMessage());
-        }
-        if (sessionClientId != null) {
-            return recordClusterAvailability(routeOrProcess(request, rawJson, sessionClientId));
-        }
-        if (clientId != null) {
-            return recordClusterAvailability(routeOrProcess(request, rawJson, clientId));
-        }
-        final var forwardedClientId = clientTracker.registerForwardedClient(username);
-        try {
-            return recordClusterAvailability(routeOrProcess(request, rawJson, forwardedClientId));
-        } finally {
-            clientTracker.removeById(forwardedClientId);
-        }
-    }
-
-    private OperationResponse recordClusterAvailability(OperationResponse response) {
-        if (ErrorCode.NO_QUORUM.getCode().equals(response.getErrorCode())
-                || ErrorCode.NOT_COLLECTION_OWNER.getCode().equals(response.getErrorCode())) {
-            clusterUnavailable = true;
-        }
-        return response;
-    }
-
-    private OperationResponse routeOrProcess(OperationRequest request, String rawJson, UUID effectiveClientId) {
-        if (clusterConfig.isEnabled()) {
-            final var forwarded = clusterRouter.forward(request, rawJson != null ? rawJson : eJson.toJson(request),
-                    sessionClientId != null, username, effectiveClientId);
-            if (forwarded != null) {
-                try {
-                    return ResponseParser.parseResponse(forwarded);
-                } catch (RuntimeException e) {
-                    throw jsError("Unreadable response from the collection's owner: " + e.getMessage());
-                }
-            }
-        }
-        return operationProcessor.processMessage(request, effectiveClientId);
-    }
-
-    private static boolean isTransactionControl(OperationRequest request) {
-        return request instanceof StartTransactionRequest || request instanceof CommitTransactionRequest
-                || request instanceof RollbackTransactionRequest;
+        return requests.dispatch(request, rawJson);
     }
 
     @Override
     public void useIntrinsics(Intrinsics value) {
-        this.intrinsics = value;
+        requests.useIntrinsics(value);
     }
 
     private JsThrowException jsError(String message) {
-        return new JsThrowException(intrinsics == null
-                ? ErrorBuiltins.makeError("Error", message)
-                : intrinsics.makeError("Error", message));
+        return requests.jsError(message);
     }
 }

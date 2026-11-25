@@ -59,7 +59,8 @@ public final class GrantPruner {
         }
         final var owners = new ArrayList<>(project.getOwners());
         owners.removeIf(username::equals);
-        return new AdminProjectEntry(project.get_id(), new ArrayList<>(project.getCollections()), owners);
+        return new AdminProjectEntry(project.get_id(), new ArrayList<>(project.getCollections()), owners,
+                project.getIncarnation());
     }
 
     private static AdminUserEntry withoutGrants(AdminUserEntry user, Predicate<String> projectKey,

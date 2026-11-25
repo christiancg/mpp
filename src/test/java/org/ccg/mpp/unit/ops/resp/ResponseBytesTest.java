@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import org.ccg.mpp.analyze.AnalyzeResult;
 import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.conn.OutboundQueue;
+import org.ccg.mpp.data.FileEncoding;
 import org.ccg.mpp.ejson.EJson;
 import org.ccg.mpp.ejson.elements.JsonObject;
 import org.ccg.mpp.fs.PkRebuild;
@@ -29,13 +30,16 @@ import org.ccg.mpp.ops.resp.BulkSaveResponse;
 import org.ccg.mpp.ops.resp.CallProcedureResponse;
 import org.ccg.mpp.ops.resp.CancelScriptResponse;
 import org.ccg.mpp.ops.resp.CloseConnectionResponse;
+import org.ccg.mpp.ops.resp.DeleteFileResponse;
 import org.ccg.mpp.ops.resp.DeleteManyResponse;
 import org.ccg.mpp.ops.resp.DeleteResponse;
+import org.ccg.mpp.ops.resp.FileInfo;
 import org.ccg.mpp.ops.resp.FindByIdResponse;
 import org.ccg.mpp.ops.resp.GetProjectStatsResponse;
 import org.ccg.mpp.ops.resp.GetSchemaResponse;
 import org.ccg.mpp.ops.resp.ListCollectionsResponse;
 import org.ccg.mpp.ops.resp.ListEntrypointsResponse;
+import org.ccg.mpp.ops.resp.ListFilesResponse;
 import org.ccg.mpp.ops.resp.ListMiddlewaresResponse;
 import org.ccg.mpp.ops.resp.ListProceduresResponse;
 import org.ccg.mpp.ops.resp.ListProjectsResponse;
@@ -47,8 +51,11 @@ import org.ccg.mpp.ops.resp.ListTriggersResponse;
 import org.ccg.mpp.ops.resp.ListUsersResponse;
 import org.ccg.mpp.ops.resp.ListenEndedResponse;
 import org.ccg.mpp.ops.resp.ListenResponse;
+import org.ccg.mpp.ops.resp.MakeDirectoryResponse;
+import org.ccg.mpp.ops.resp.MoveFileResponse;
 import org.ccg.mpp.ops.resp.OperationResponse;
 import org.ccg.mpp.ops.resp.PrimaryKeyReindexResponse;
+import org.ccg.mpp.ops.resp.ReadFileResponse;
 import org.ccg.mpp.ops.resp.ReadSnapshotResponse;
 import org.ccg.mpp.ops.resp.ReindexResponse;
 import org.ccg.mpp.ops.resp.ResolveTriggerRunResponse;
@@ -64,8 +71,10 @@ import org.ccg.mpp.ops.resp.SaveWhereResponse;
 import org.ccg.mpp.ops.resp.ServerInfoResponse;
 import org.ccg.mpp.ops.resp.StartSnapshotResponse;
 import org.ccg.mpp.ops.resp.StartTransactionResponse;
+import org.ccg.mpp.ops.resp.StatFileResponse;
 import org.ccg.mpp.ops.resp.StopListenResponse;
 import org.ccg.mpp.ops.resp.TestTriggerResponse;
+import org.ccg.mpp.ops.resp.WriteFileResponse;
 import org.ccg.mpp.test.TestUtils;
 import org.junit.jupiter.api.Test;
 
@@ -132,7 +141,13 @@ public class ResponseBytesTest {
                 new StartSnapshotResponse("ok", "snap-1", List.of("c1", "界")),
                 new ReadSnapshotResponse("ok", rows, "doc-2", false),
                 new ReadSnapshotResponse("ok", List.of(), null, true), new StopListenResponse(),
-                new TestTriggerResponse("ok", "ALLOW", doc, "because", logs, false, List.of("at y")));
+                new TestTriggerResponse("ok", "ALLOW", doc, "because", logs, false, List.of("at y")),
+                new WriteFileResponse("/a/界.txt", "12", 3L),
+                new ReadFileResponse("/a/b", "12", 9L, 2L, "Y29udGVudA==", FileEncoding.BASE64, false),
+                new StatFileResponse(new FileInfo("/a", "DIRECTORY", 0L, "11", 5L)),
+                new ListFilesResponse(List.of(new FileInfo("/a/b", "FILE", 9L, "12", 6L)), "/a/b"),
+                new ListFilesResponse(List.of(), null), new DeleteFileResponse(2), new MoveFileResponse("/c", "13", 2),
+                new MakeDirectoryResponse("/d/e", "14", 2));
     }
 
     @Test

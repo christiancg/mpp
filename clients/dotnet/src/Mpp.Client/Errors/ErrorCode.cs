@@ -58,6 +58,8 @@ public sealed class ErrorCode
     public static readonly ErrorCode EntrypointTimeoutTooLarge = new("400-48", "ENTRYPOINT_TIMEOUT_TOO_LARGE", Status.Error, false, "The entrypoint timeout exceeds the allowed maximum");
     public static readonly ErrorCode InvalidMiddleware = new("400-49", "INVALID_MIDDLEWARE", Status.Error, false, "The middleware definition is not valid");
     public static readonly ErrorCode TooManyMiddlewares = new("400-50", "TOO_MANY_MIDDLEWARES", Status.Error, false, "The project has the maximum number of middlewares");
+    public static readonly ErrorCode FilePathInvalid = new("400-51", "FILE_PATH_INVALID", Status.Error, false, "The file path is not valid");
+    public static readonly ErrorCode FileContentInvalid = new("400-52", "FILE_CONTENT_INVALID", Status.Error, false, "The file content or its encoding is not valid");
     public static readonly ErrorCode MustAuthenticateFirst = new("401-1", "MUST_AUTHENTICATE_FIRST", Status.Unauthenticated, false, "Must authenticate first");
     public static readonly ErrorCode UserNoLongerExists = new("401-2", "USER_NO_LONGER_EXISTS", Status.Unauthenticated, false, "User no longer exists");
     public static readonly ErrorCode WrongCredentials = new("401-3", "WRONG_CREDENTIALS", Status.Error, false, "The user doesn't exist or the wrong credentials have been provided");
@@ -80,6 +82,7 @@ public sealed class ErrorCode
     public static readonly ErrorCode CollectionNotFound = new("404-11", "COLLECTION_NOT_FOUND", Status.NotFound, false, "Collection not found");
     public static readonly ErrorCode SchemaNotFound = new("404-12", "SCHEMA_NOT_FOUND", Status.NotFound, false, "The collection has no schema");
     public static readonly ErrorCode SnapshotNotFound = new("404-13", "SNAPSHOT_NOT_FOUND", Status.NotFound, false, "The snapshot does not exist: it was released or expired, or it belongs to another connection");
+    public static readonly ErrorCode FileNotFound = new("404-14", "FILE_NOT_FOUND", Status.NotFound, false, "No such file or folder");
     public static readonly ErrorCode ScriptTimeout = new("408-1", "SCRIPT_TIMEOUT", Status.Error, false, "Script exceeded its time budget");
     public static readonly ErrorCode ScriptCancelled = new("408-2", "SCRIPT_CANCELLED", Status.Error, false, "Script was cancelled");
     public static readonly ErrorCode FaultNotReached = new("408-3", "FAULT_NOT_REACHED", Status.Error, false, "The armed fault point was not reached in time");
@@ -105,8 +108,14 @@ public sealed class ErrorCode
     public static readonly ErrorCode SnapshotAborted = new("409-17", "SNAPSHOT_ABORTED", Status.Error, false, "The snapshot was aborted and holds nothing any more; open a new one");
     public static readonly ErrorCode DocumentAlreadyExists = new("409-18", "DOCUMENT_ALREADY_EXISTS", Status.Error, false, "A document with this _id already exists");
     public static readonly ErrorCode EntrypointRouteConflict = new("409-19", "ENTRYPOINT_ROUTE_CONFLICT", Status.Error, false, "Another entrypoint of the project already serves this method and path");
+    public static readonly ErrorCode FileExists = new("409-20", "FILE_EXISTS", Status.Error, false, "The file or folder already exists");
+    public static readonly ErrorCode FileKindMismatch = new("409-21", "FILE_KIND_MISMATCH", Status.Error, false, "A folder is where a file is expected, or a file where a folder is");
+    public static readonly ErrorCode DirectoryNotEmpty = new("409-22", "DIRECTORY_NOT_EMPTY", Status.Error, false, "The folder is not empty");
+    public static readonly ErrorCode FileVersionConflict = new("409-23", "FILE_VERSION_CONFLICT", Status.Error, false, "The file was changed by someone else");
     public static readonly ErrorCode ListenEnded = new("410-1", "LISTEN_ENDED", Status.NotFound, false, "The listen ended");
     public static readonly ErrorCode OutboundBacklog = new("413-1", "OUTBOUND_BACKLOG", Status.Error, false, "The connection's outbound buffer overflowed");
+    public static readonly ErrorCode FileTooLarge = new("413-2", "FILE_TOO_LARGE", Status.Error, false, "The file would exceed the maximum file size");
+    public static readonly ErrorCode FileQuotaExceeded = new("413-3", "FILE_QUOTA_EXCEEDED", Status.Error, false, "The project's files would exceed their quota");
     public static readonly ErrorCode NotCollectionOwner = new("421-1", "NOT_COLLECTION_OWNER", Status.Error, false, "This node is not the owner of the target collection");
     public static readonly ErrorCode TransactionReadSpansNodes = new("421-3", "TRANSACTION_READ_SPANS_NODES", Status.Error, false, "This read joins collections the transaction wrote on different nodes");
     public static readonly ErrorCode AuthenticationError = new("500-1", "AUTHENTICATION_ERROR", Status.Error, false, "Error during authentication");
@@ -150,6 +159,8 @@ public sealed class ErrorCode
     public static readonly ErrorCode ErrorDeletingEntrypoint = new("500-39", "ERROR_DELETING_ENTRYPOINT", Status.Error, false, "Error while deleting the entrypoint");
     public static readonly ErrorCode ErrorSavingMiddleware = new("500-40", "ERROR_SAVING_MIDDLEWARE", Status.Error, false, "Error while saving the middleware");
     public static readonly ErrorCode ErrorDeletingMiddleware = new("500-41", "ERROR_DELETING_MIDDLEWARE", Status.Error, false, "Error while deleting the middleware");
+    public static readonly ErrorCode FileApplyPending = new("500-42", "FILE_APPLY_PENDING", Status.Error, false, "The file change was committed but could not be applied yet; it is applied on the next access to the project's files, or at the next startup");
+    public static readonly ErrorCode ErrorAccessingFiles = new("500-43", "ERROR_ACCESSING_FILES", Status.Error, false, "Error while accessing the project's files");
     public static readonly ErrorCode MaxConnectionsReached = new("503-1", "MAX_CONNECTIONS_REACHED", Status.Error, false, "Max number of connections reached");
     public static readonly ErrorCode NoQuorum = new("503-2", "NO_QUORUM", Status.Error, true, "Cluster does not have a write quorum");
     public static readonly ErrorCode ReplicationTimeout = new("503-3", "REPLICATION_TIMEOUT", Status.Error, false, "Timed out waiting for the replication quorum");

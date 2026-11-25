@@ -36,6 +36,17 @@
     {"name":"errors.503_18","frame":{"type":"AGGREGATE","status":"ERROR","message":"refused","errorCode":"503-18"},"expect":"error:503-18"},
     {"name":"errors.503_19","frame":{"type":"AGGREGATE","status":"ERROR","message":"refused","errorCode":"503-19"},"expect":"error:503-19"},
     {"name":"errors.503_20","frame":{"type":"AGGREGATE","status":"ERROR","message":"refused","errorCode":"503-20"},"expect":"error:503-20"},
-    {"name":"errors.503_21","frame":{"type":"AGGREGATE","status":"ERROR","message":"refused","errorCode":"503-21"},"expect":"error:503-21"}
+    {"name":"errors.503_21","frame":{"type":"AGGREGATE","status":"ERROR","message":"refused","errorCode":"503-21"},"expect":"error:503-21"},
+    {"name":"errors.400_51","frame":{"type":"WRITE_FILE","status":"ERROR","message":"refused","errorCode":"400-51"},"expect":"error:400-51"},
+    {"name":"errors.400_52","frame":{"type":"WRITE_FILE","status":"ERROR","message":"refused","errorCode":"400-52"},"expect":"error:400-52"},
+    {"name":"errors.404_14","frame":{"type":"READ_FILE","status":"NOT_FOUND","message":"refused","errorCode":"404-14"},"expect":"error:404-14"},
+    {"name":"errors.409_20","frame":{"type":"WRITE_FILE","status":"ERROR","message":"refused","errorCode":"409-20"},"expect":"error:409-20"},
+    {"name":"errors.409_21","frame":{"type":"LIST_FILES","status":"ERROR","message":"refused","errorCode":"409-21"},"expect":"error:409-21"},
+    {"name":"errors.409_22","frame":{"type":"DELETE_FILE","status":"ERROR","message":"refused","errorCode":"409-22"},"expect":"error:409-22"},
+    {"name":"errors.409_23","frame":{"type":"WRITE_FILE","status":"ERROR","message":"refused","errorCode":"409-23"},"expect":"error:409-23"},
+    {"name":"errors.413_2","frame":{"type":"WRITE_FILE","status":"ERROR","message":"refused","errorCode":"413-2"},"expect":"error:413-2"},
+    {"name":"errors.413_3","frame":{"type":"MAKE_DIRECTORY","status":"ERROR","message":"refused","errorCode":"413-3"},"expect":"error:413-3"},
+    {"name":"errors.500_42","frame":{"type":"MOVE_FILE","status":"ERROR","message":"refused","errorCode":"500-42"},"expect":"error:500-42"},
+    {"name":"errors.500_43","frame":{"type":"STAT_FILE","status":"ERROR","message":"refused","errorCode":"500-43"},"expect":"error:500-43"}
   ]
 }

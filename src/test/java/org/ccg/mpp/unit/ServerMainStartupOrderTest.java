@@ -47,6 +47,30 @@ public class ServerMainStartupOrderTest {
     }
 
     @Test
+    public void test_the_files_folder_exists_before_the_shadow_records_it() throws IOException {
+        final var body = mainBody();
+        final var files = positionOf(body, "prepareProjectFiles();");
+
+        assertTrue(positionOf(body, "StorageFormatGuard.refuseIncompatibleFolder(fs);") < files);
+        assertTrue(files < positionOf(body, "installDurableShadowIfConfigured();"),
+                "the shadow records the files folder's baseline, so the folder must exist first");
+    }
+
+    @Test
+    public void test_the_files_stamp_is_checked_before_the_files_folder_is_written() throws IOException {
+        final var source = Files.readString(MAIN_SOURCE);
+        final var prepare = source.substring(source.indexOf("private static void prepareProjectFiles()"));
+        final var check = positionOf(prepare, "StorageFormatGuard.refuseIncompatibleFiles(projectFiles);");
+
+        assertTrue(positionOf(prepare, "projectFiles.useConfiguredRoot();") < check,
+                "the check reads the stamp under the configured root");
+        assertTrue(check < positionOf(prepare, "projectFiles.createRoot();"),
+                "a refused files folder must be left exactly as it was");
+        assertTrue(positionOf(prepare, "projectFiles.createRoot();") < positionOf(prepare,
+                "StorageFormatGuard.stampFilesIfUnstamped(projectFiles);"));
+    }
+
+    @Test
     public void test_the_format_check_runs_before_anything_is_written_or_deleted() throws IOException {
         final var body = mainBody();
         final var check = positionOf(body, "StorageFormatGuard.refuseIncompatibleFolder(fs);");

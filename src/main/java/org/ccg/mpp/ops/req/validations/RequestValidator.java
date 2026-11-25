@@ -107,6 +107,8 @@ public class RequestValidator {
             case START_SNAPSHOT -> SnapshotRequestValidator.validateStart((StartSnapshotRequest) request);
             case READ_SNAPSHOT -> SnapshotRequestValidator.validateRead((ReadSnapshotRequest) request);
             case RELEASE_SNAPSHOT -> SnapshotRequestValidator.validateRelease((ReleaseSnapshotRequest) request);
+            case WRITE_FILE, READ_FILE, STAT_FILE, LIST_FILES, DELETE_FILE, MOVE_FILE, MAKE_DIRECTORY ->
+                FileRequestValidator.validate(request);
             case ARM_FAULT -> ControlRequestValidator.validateArmFault((ArmFaultRequest) request);
             case AWAIT_FAULT -> ControlRequestValidator.validateAwaitFault((AwaitFaultRequest) request);
             case RELEASE_FAULT -> ControlRequestValidator.validateReleaseFault((ReleaseFaultRequest) request);

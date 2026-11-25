@@ -33,6 +33,7 @@ CASES_PROJECT = write_intent_kills.PROJECT
 DEFAULT_BUDGET_S = 300.0
 AUTO = "auto"
 AT_POWER_LOSS = "db.at-power-loss"
+FILES_SHADOW_SUFFIX = "-files"
 
 
 @dataclass
@@ -94,6 +95,9 @@ def run_seed(seed: int, mode: str, rebuild: str = AUTO) -> Run:
     run.rebuild_mode = auto_rebuild(seed, mode) if rebuild == AUTO else rebuild
     data_folder = os.path.join(run.work_dir, "db")
     run.rebuild = shadow.rebuild(shadow_root, data_folder, run.rebuild_mode, rng).summary()
+    files_report = shadow.rebuild(files_shadow_of(shadow_root), os.path.join(run.work_dir, "files"),
+                                  run.rebuild_mode, rng)
+    run.notes.append(f"files: {files_report.summary()}")
     shutil.copytree(data_folder, os.path.join(run.work_dir, AT_POWER_LOSS))
     counts = {}
     for entry in history.entries:
@@ -108,13 +112,21 @@ def run_seed(seed: int, mode: str, rebuild: str = AUTO) -> Run:
                                  lambda conn: (oracles.check_idempotent(before, conn, history, schema), None))
     run.divergences += found
     shutil.rmtree(shadow_root, ignore_errors=True)
+    shutil.rmtree(files_shadow_of(shadow_root), ignore_errors=True)
     return run
+
+
+def files_shadow_of(shadow_root: str) -> str:
+    return shadow_root.rstrip(os.sep) + FILES_SHADOW_SUFFIX
 
 
 def strict_recovery(shadow_roots: dict):
     def recover(work_dir: str) -> None:
         report = shadow.rebuild(shadow_roots[work_dir], os.path.join(work_dir, "db"), shadow.STRICT, random.Random(0))
         print(f"    {report.summary()}")
+        files = shadow.rebuild(files_shadow_of(shadow_roots[work_dir]), os.path.join(work_dir, "files"),
+                               shadow.STRICT, random.Random(0))
+        print(f"    files: {files.summary()}")
     return recover
 
 

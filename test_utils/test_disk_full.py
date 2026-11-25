@@ -9,7 +9,7 @@ from collections import Counter
 
 import base_utils as bu
 from base_utils import check, section
-from disk_full.container import DATA, DATA_BALLAST, LOGS, LOGS_BALLAST
+from disk_full.container import DATA, DATA_BALLAST, FILES, FILES_BALLAST, LOGS, LOGS_BALLAST
 from disk_full.scenario import PORT, Run, connect
 from durability import oracles
 from durability.workload import BULK_SAVE, SAVE, Divergence
@@ -312,6 +312,60 @@ def shutdown_while_full(run: Run):
     run.recover_and_check(history)
 
 
+def files_full(run: Run):
+    section(f"D8 files_full (seed {run.seed}): {FILES} is full; document writes keep working, file writes fail"
+            f" cleanly and work again once space is back")
+    run.prepare(docs=50)
+    coll = "d8_notes"
+    project = run.schema.project
+    rng = random.Random(run.seed)
+    found = []
+    refused_paths = []
+    with connect() as conn:
+        conn.send({"type": "CREATE_COLLECTION", "projectName": project, "collectionName": coll})
+        seeded = conn.send({"type": "WRITE_FILE", "projectName": project, "path": "/d8/seed.txt", "content": "seed",
+                            "encoding": "utf8"})
+        if seeded.get("status") != "OK":
+            found.append(Divergence("D8", run.seed, f"the first file write answered {seeded.get('errorCode')}"))
+        run.container.fill_to(FILES, FILES_BALLAST, 0)
+        for k in range(20):
+            saved = conn.send({"type": "SAVE", "projectName": project, "collectionName": coll,
+                               "object": d5_document(rng, f"d8-{k}")}, timeout=15.0)
+            if saved.get("status") != "OK":
+                found.append(Divergence("D8", run.seed, f"SAVE #{k} answered {saved.get('errorCode')} while only the"
+                                                        f" files volume was full"))
+            path = f"/d8/big-{k}.bin"
+            written = conn.send({"type": "WRITE_FILE", "projectName": project, "path": path,
+                                 "content": "x" * 65536, "encoding": "utf8"}, timeout=15.0)
+            if written.get("status") == "OK":
+                continue
+            refused_paths.append((path, written.get("errorCode")))
+        run.note(f"{len(refused_paths)} file write(s) refused while full: "
+                 f"{sorted({code for _, code in refused_paths})}")
+        if not refused_paths:
+            bu.warn("D8 no file write was refused, so the full files volume exercised nothing")
+        read = conn.send({"type": "READ_FILE", "projectName": project, "path": "/d8/seed.txt", "encoding": "utf8"})
+        if read.get("content") != "seed":
+            found.append(Divergence("D8", run.seed, f"the seed file read back {read} while the volume was full"))
+        run.container.free(FILES_BALLAST)
+        again = conn.send({"type": "WRITE_FILE", "projectName": project, "path": "/d8/after.txt", "content": "after",
+                           "encoding": "utf8"})
+        if again.get("status") != "OK":
+            found.append(Divergence("O7", run.seed, f"a file write answered {again.get('errorCode')} once space was"
+                                                    f" back"))
+    run.report("D8 document writes ignore a full files volume, file writes recover", found)
+    run.check_stranded()
+    run.recover_and_check(run.workload.history())
+    survivors = []
+    with connect() as conn:
+        for path, code in refused_paths:
+            state, _ = oracles.find_file_token(conn, project, path)
+            if state != "absent" and code not in oracles.UNKNOWN_OUTCOME_CODES:
+                survivors.append(f"{path} ({code})")
+    run.report("O8 an error-answered file write is absent after a restart",
+               [Divergence("O8", run.seed, f"survived: {survivors}")] if survivors else [])
+
+
 def d5_document(rng: random.Random, doc_id: str) -> dict:
     return {"_id": doc_id, "n": rng.randint(0, 50), "w": f"d5-{rng.random()}", "pad": "y" * rng.randint(100, 700)}
 
@@ -337,6 +391,7 @@ SCENARIOS = {
     "d5": ("logs_full", logs_full, D5_SETTINGS),
     "d6": ("listen_while_full", listen_while_full, {}),
     "d7": ("shutdown_while_full", shutdown_while_full, {}),
+    "d8": ("files_full", files_full, {}),
 }
 
 
@@ -352,7 +407,7 @@ def selected(names: list) -> list:
 
 def main():
     parser = argparse.ArgumentParser(description="disk-full harness: a 48 MB tmpfs filled with a ballast file")
-    parser.add_argument("--scenario", action="append", default=[], help="d1..d7 or a scenario name; repeatable")
+    parser.add_argument("--scenario", action="append", default=[], help="d1..d8 or a scenario name; repeatable")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--keep", action="store_true", help="leave the last container running")
     parser.add_argument("--report", help="write the divergences as JSON to this path")

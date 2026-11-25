@@ -1,5 +1,6 @@
 package io.github.christiancg.mpp.client;
 
+import io.github.christiancg.mpp.client.files.ProjectFiles;
 import io.github.christiancg.mpp.client.internal.ClientContext;
 import io.github.christiancg.mpp.client.internal.CollectionOps;
 import io.github.christiancg.mpp.client.internal.Descriptors;
@@ -85,6 +86,10 @@ public final class Project {
 
     public Middlewares middlewares() {
         return new Middlewares(context, name);
+    }
+
+    public ProjectFiles files() {
+        return new ProjectFiles(context, name);
     }
 
     public List<TriggerInfo> listTriggers() {

@@ -25,13 +25,20 @@ public class WireFormatGoldenTest {
             + " keeps its default";
     private static final String NO_ARG_CONSTRUCTOR = "the public no-arg constructor fixes message and errorCode,"
             + " which are final and non-null so the reader keeps them";
-    private static final Map<String, String> NOT_REBUILT_BY_THE_GENERIC_READER = Map.of(
-            "org.ccg.mpp.ops.resp.CancelScriptResponse", FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.SaveEntrypointResponse",
-            FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.ResolveTriggerRunResponse", FINAL_PRIMITIVE,
-            "org.ccg.mpp.ops.resp.TestTriggerResponse", FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.ReadSnapshotResponse",
-            FINAL_PRIMITIVE, "org.ccg.mpp.ops.resp.CloseConnectionResponse", NO_ARG_CONSTRUCTOR,
-            "org.ccg.mpp.ops.resp.StopListenResponse", NO_ARG_CONSTRUCTOR,
-            "org.ccg.mpp.ops.resp.SaveMiddlewareResponse", FINAL_PRIMITIVE);
+    private static final Map<String, String> NOT_REBUILT_BY_THE_GENERIC_READER = Map.ofEntries(
+            Map.entry("org.ccg.mpp.ops.resp.CancelScriptResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.SaveEntrypointResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.ResolveTriggerRunResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.TestTriggerResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.ReadSnapshotResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.CloseConnectionResponse", NO_ARG_CONSTRUCTOR),
+            Map.entry("org.ccg.mpp.ops.resp.StopListenResponse", NO_ARG_CONSTRUCTOR),
+            Map.entry("org.ccg.mpp.ops.resp.SaveMiddlewareResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.WriteFileResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.ReadFileResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.StatFileResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.MoveFileResponse", FINAL_PRIMITIVE),
+            Map.entry("org.ccg.mpp.ops.resp.MakeDirectoryResponse", FINAL_PRIMITIVE));
 
     private static Map<String, String> currentLines() throws Exception {
         final var lines = new LinkedHashMap<String, String>();

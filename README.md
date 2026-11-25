@@ -74,6 +74,8 @@ Documents are stored as JSON lines in paged files and queried through an
 - [HTTP entrypoints](docs/protocol.md#http-entrypoints) that serve a stored procedure at an HTTP route, such as
   `GET /shop/orders/{id}`, on their own port, with ingress and egress [middlewares](docs/protocol.md#middlewares)
   for auth filters, logging, caching and the like
+- [project files](docs/files.md): each project's own file tree, kept on a folder (and Docker volume) separate from
+  the documents, read and written over the wire and replicated to every node of a cluster
 - [clustering](docs/clustering.md) with fully replicated nodes and no master
 - [Prometheus metrics](docs/operations.md#metrics), a health check and graceful shutdown
 
@@ -120,6 +122,7 @@ guide and not as a promise.
   recovery.
 - [docs/simplejs.md](docs/simplejs.md): the JavaScript engine and everything you can script.
 - [docs/clustering.md](docs/clustering.md): running several nodes.
+- [docs/files.md](docs/files.md): each project's file tree, its folder, durability and replication.
 - [docs/compatibility.md](docs/compatibility.md): what a new version may change.
 - [clients/](clients/README.md): the client libraries.
 

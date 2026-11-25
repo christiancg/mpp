@@ -54,6 +54,10 @@ final class DurableShadow implements Forcer {
         return path.toAbsolutePath().normalize();
     }
 
+    boolean covers(Path path) {
+        return normalized(path).startsWith(dataRoot);
+    }
+
     @Override
     public void force(FileChannel channel, Path path) throws IOException {
         Forcer.DEVICE.force(channel, path);

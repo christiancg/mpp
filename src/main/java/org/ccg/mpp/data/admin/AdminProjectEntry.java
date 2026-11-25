@@ -8,12 +8,15 @@ import org.ccg.mpp.config.Globals;
 import org.ccg.mpp.data.DbEntry;
 import org.ccg.mpp.ejson.elements.JsonArray;
 import org.ccg.mpp.ejson.elements.JsonObject;
+import org.ccg.mpp.ejson.elements.JsonString;
 
 public class AdminProjectEntry extends DbEntry {
     private static final String COLLECTIONS_FIELD_NAME = "collections";
     private static final String OWNERS_FIELD_NAME = "owners";
+    private static final String INCARNATION_FIELD_NAME = "incarnation";
     private List<String> collections;
     private List<String> owners;
+    private long incarnation;
 
     private AdminProjectEntry() {
         super.setProjectName(Globals.ADMIN_PROJECT_NAME);
@@ -29,11 +32,16 @@ public class AdminProjectEntry extends DbEntry {
     }
 
     public AdminProjectEntry(String projectName, List<String> collections, List<String> owners) {
+        this(projectName, collections, owners, 0L);
+    }
+
+    public AdminProjectEntry(String projectName, List<String> collections, List<String> owners, long incarnation) {
         super.setProjectName(Globals.ADMIN_PROJECT_NAME);
         super.setCollectionName(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         this.set_id(projectName);
         this.collections = collections;
         this.owners = owners;
+        this.incarnation = incarnation;
         rebuildData();
     }
 
@@ -52,6 +60,10 @@ public class AdminProjectEntry extends DbEntry {
                 ? ownersEl.asJsonArray().asList().stream().map(element -> element.asJsonString().getValue())
                         .collect(Collectors.toList())
                 : new ArrayList<>();
+        final var incarnationEl = object.get(INCARNATION_FIELD_NAME);
+        result.incarnation = incarnationEl != null && incarnationEl.isJsonString()
+                ? Long.parseLong(incarnationEl.asJsonString().getValue())
+                : 0L;
         result.setProjectName(Globals.ADMIN_PROJECT_NAME);
         result.setCollectionName(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
         return result;
@@ -60,7 +72,7 @@ public class AdminProjectEntry extends DbEntry {
     private void rebuildData() {
         final var data = new JsonObject();
         if (get_id() != null) {
-            data.add(Globals.PK_FIELD, new org.ccg.mpp.ejson.elements.JsonString(get_id()));
+            data.add(Globals.PK_FIELD, new JsonString(get_id()));
         }
         final var collectionsArr = new JsonArray();
         collections.forEach(collectionsArr::add);
@@ -68,6 +80,9 @@ public class AdminProjectEntry extends DbEntry {
         final var ownersArr = new JsonArray();
         owners.forEach(ownersArr::add);
         data.add(OWNERS_FIELD_NAME, ownersArr);
+        if (incarnation != 0L) {
+            data.add(INCARNATION_FIELD_NAME, new JsonString(Long.toString(incarnation)));
+        }
         this.setData(data);
     }
 
@@ -89,6 +104,10 @@ public class AdminProjectEntry extends DbEntry {
         return owners != null ? owners : new ArrayList<>();
     }
 
+    public long getIncarnation() {
+        return incarnation;
+    }
+
     public boolean isOwner(String username) {
         return owners != null && owners.contains(username);
     }
@@ -101,17 +120,18 @@ public class AdminProjectEntry extends DbEntry {
             return false;
         if (!super.equals(o))
             return false;
-        return Objects.equals(collections, that.collections) && Objects.equals(owners, that.owners);
+        return Objects.equals(collections, that.collections) && Objects.equals(owners, that.owners)
+                && incarnation == that.incarnation;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), collections, owners);
+        return Objects.hash(super.hashCode(), collections, owners, incarnation);
     }
 
     @Override
     public String toString() {
         return "AdminProjectEntry(super=" + super.toString() + ", collections=" + collections + ", owners=" + owners
-                + ")";
+                + ", incarnation=" + incarnation + ")";
     }
 }

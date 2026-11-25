@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Mpp.Client.Admin;
+using Mpp.Client.Files;
 using Mpp.Client.Internal;
 using Mpp.Client.Scripting;
 using static Mpp.Client.Query.Filters;
@@ -21,6 +23,7 @@ internal static class WireFixtureAdminCases
         TriggersAndSchedules(cases);
         Entrypoints(cases);
         Middlewares(cases);
+        Files(cases);
         AdminScripts(cases);
         Users(cases);
     }
@@ -168,6 +171,32 @@ internal static class WireFixtureAdminCases
             });
         cases["scripting.delete_middleware"] = r => r.Shop.Middlewares().DeleteAsync("auth");
         cases["scripting.list_middlewares"] = r => r.Shop.Middlewares().ListAsync();
+    }
+
+    private static void Files(Dictionary<string, FixtureCall> cases)
+    {
+        cases["files.write_file"] = r => r.Shop.Files().WriteAsync("/public/index.html", "<h1>hi</h1>"u8.ToArray());
+        cases["files.write_file_text"] = r => r.Shop.Files().AppendTextAsync("/logs/app.log", "started\n");
+        cases["files.write_file_conditional"] = r => r.Shop.Files().WriteAsync(
+            "/config.json",
+            "{}"u8.ToArray(),
+            new FileWriteOptions { Mode = FileWriteMode.Create, CreateParents = false, IfVersion = "0" });
+        cases["files.read_file"] = r => r.Shop.Files().ReadRangeAsync("/public/index.html", 0, 1048576);
+        cases["files.read_file_text"] = r => r.Shop.Files().ReadTextRangeAsync("/logs/app.log", 8, 4096);
+        cases["files.stat_file"] = r => r.Shop.Files().StatAsync("/public/index.html");
+        cases["files.list_files"] = r => Drain(r.Shop.Files().ListAsync(
+            "/public",
+            new FileListOptions { Recursive = true, PageSize = 1000, After = "/public/app.js" }));
+        cases["files.delete_file"] = r => r.Shop.Files().DeleteAsync("/public", true);
+        cases["files.move_file"] = r => r.Shop.Files().MoveAsync("/public", "/www");
+        cases["files.make_directory"] = r => r.Shop.Files().MakeDirectoryAsync("/assets/img");
+    }
+
+    private static async Task Drain(IAsyncEnumerable<FileEntry> entries)
+    {
+        await foreach (var _ in entries)
+        {
+        }
     }
 
     private static void AdminScripts(Dictionary<string, FixtureCall> cases)

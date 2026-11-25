@@ -1,4 +1,5 @@
 import argparse
+import base64
 import bisect
 import hashlib
 import http.client
@@ -1666,12 +1667,13 @@ def test_script_run_history_still_reaches_the_collection_owner():
     calls = []
 
     def _batch(_round):
-        conn = authed(port)
+        batch_conn = authed(port)
         try:
-            batch = [conn.send({"type": "CALL_PROCEDURE", "projectName": hist_project, "procedureName": "histproc"})
+            batch = [batch_conn.send({"type": "CALL_PROCEDURE", "projectName": hist_project,
+                                      "procedureName": "histproc"})
                      for _ in range(20)]
         finally:
-            conn.close()
+            batch_conn.close()
         calls.extend(batch)
         return batch
 
@@ -1699,12 +1701,12 @@ def test_script_run_history_still_reaches_the_collection_owner():
     burst_before = len(history_rows())
     conn = authed(port)
     try:
-        burst = [conn.send({"type": "CALL_PROCEDURE", "projectName": hist_project, "procedureName": "histproc"})
-                 for _ in range(200)]
+        replies = [conn.send({"type": "CALL_PROCEDURE", "projectName": hist_project, "procedureName": "histproc"})
+                   for _ in range(200)]
     finally:
         conn.close()
-    check("a burst of 200 calls answered OK", all(c.get("status") == "OK" for c in burst),
-          f"statuses={sorted({c.get('status') for c in burst})}")
+    check("a burst of 200 calls answered OK", all(c.get("status") == "OK" for c in replies),
+          f"statuses={sorted({c.get('status') for c in replies})}")
     check("the burst left 200 more rows, written in forwarded batches",
           wait_until(lambda: len(history_rows()) >= burst_before + 200, timeout_s=60.0),
           f"rows={len(history_rows())} expected>={burst_before + 200}")
@@ -2971,9 +2973,10 @@ def test_a_trigger_fires_once_despite_a_replication_timeout():
 
 def exec_client(port: int, request: dict) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory() as cwd:
-        return subprocess.run(["java", "-jar", bu.JAR_PATH, "--exec", json.dumps(request), "--host", HOST, "--port",
-                               str(port), "--user", ADMIN_USERNAME], cwd=cwd, capture_output=True, timeout=300,
-                              env={**os.environ, "MPP_PASSWORD": ADMIN_PASSWORD}, check=False)
+        completed = subprocess.run(["java", "-jar", bu.JAR_PATH, "--exec", json.dumps(request), "--host", HOST,
+                                    "--port", str(port), "--user", ADMIN_USERNAME], cwd=cwd, capture_output=True,
+                                   timeout=300, env={**os.environ, "MPP_PASSWORD": ADMIN_PASSWORD}, check=False)
+    return completed
 
 
 def test_the_client_does_not_resend_a_replication_timeout():
@@ -3193,7 +3196,7 @@ def test_an_escaped_trigger_depth_does_not_suppress_the_owners_trigger():
         finally:
             conn.close()
         check(f"the owner's trigger still ran for {doc_id}",
-              wait_until(lambda doc_id=doc_id: runs_marked(host, marks, doc_id) >= 1, timeout_s=30.0))
+              wait_until(lambda marked=doc_id: runs_marked(host, marks, marked) >= 1, timeout_s=30.0))
 
 
 SCHEDULE_PROJECT = PROJECT
@@ -4486,6 +4489,118 @@ def test_a_write_inside_an_anti_entropy_round_trip_is_not_undone():
         restore_after_fault_test()
 
 
+FILES_PROJECT = "cluster_files_project"
+FILES_LIFE_PROJECT = "cluster_files_life"
+
+
+def write_file(port, project, path, data: bytes, **extra) -> dict:
+    payload = {"type": "WRITE_FILE", "projectName": project, "path": path,
+               "content": base64.b64encode(data).decode()}
+    payload.update(extra)
+    return op(port, payload)
+
+
+def file_on_disk(node, project, path):
+    physical = os.path.join(node.work_dir, "files", project, *path.strip("/").split("/"))
+    if not os.path.isfile(physical):
+        return None
+    with open(physical, "rb") as handle:
+        data = handle.read()
+    return data
+
+
+def every_node_holds(project, path, data) -> bool:
+    return all(file_on_disk(n, project, path) == data for n in nodes)
+
+
+def no_node_holds(project, path) -> bool:
+    return all(file_on_disk(n, project, path) is None for n in nodes)
+
+
+def test_project_files_replicate_to_every_node():
+    section("Project files written through any node reach every node")
+    p0, p1, p2 = (n.client_port for n in nodes)
+    check_status("create the files project", op_with_retry(lambda: create_project(p0, FILES_PROJECT)), "OK")
+    payload = os.urandom(200_000)
+    check_status("write through node-1", op_with_retry(
+        lambda: write_file(p1, FILES_PROJECT, "/site/app.js", payload)), "OK")
+    check("every node holds the file", wait_until(lambda: every_node_holds(FILES_PROJECT, "/site/app.js", payload),
+                                                  timeout_s=30.0), "")
+    reads = [op(port, {"type": "STAT_FILE", "projectName": FILES_PROJECT, "path": "/site/app.js"}) for port in
+             (p0, p1, p2)]
+    check("every node answers the same version", len({r.get("version") for r in reads}) == 1
+          and reads[0].get("size") == len(payload), f"got {reads}")
+    check_status("append through node-2", op_with_retry(
+        lambda: write_file(p2, FILES_PROJECT, "/site/app.js", b"tail", mode="APPEND")), "OK")
+    check("the append reaches every node", wait_until(
+        lambda: every_node_holds(FILES_PROJECT, "/site/app.js", payload + b"tail"), timeout_s=30.0), "")
+    check_status("move the folder through node-0", op_with_retry(lambda: op(p0, {
+        "type": "MOVE_FILE", "projectName": FILES_PROJECT, "from": "/site", "to": "/www"})), "OK")
+    check("the move reaches every node", wait_until(
+        lambda: every_node_holds(FILES_PROJECT, "/www/app.js", payload + b"tail")
+        and no_node_holds(FILES_PROJECT, "/site/app.js"), timeout_s=30.0), "")
+    check_status("delete through node-1", op_with_retry(lambda: op(p1, {
+        "type": "DELETE_FILE", "projectName": FILES_PROJECT, "path": "/www", "recursive": True})), "OK")
+    check("the delete reaches every node", wait_until(lambda: no_node_holds(FILES_PROJECT, "/www/app.js"),
+                                                      timeout_s=30.0), "")
+
+
+def test_files_written_while_a_node_is_down_reach_it():
+    section("Files written while a node is down reach it through anti-entropy")
+    port = nodes[0].client_port
+    check_status("create the files project", op_with_retry(lambda: create_project(port, FILES_PROJECT)), "OK")
+    victim = nodes[2]
+    print(f"  Killing node-{victim.index} ...")
+    victim.kill()
+    check("the ring settles without it", wait_until_cluster_is_healthy())
+    payloads = {f"/missed/f{i}.bin": os.urandom(50_000 + i) for i in range(5)}
+    for path, data in payloads.items():
+        check(f"write {path} without node-{victim.index}", wait_until(
+            lambda p=path, d=data: write_file(port, FILES_PROJECT, p, d).get("status") == "OK", timeout_s=60.0,
+            interval_s=1.0))
+    big = os.urandom(9 * 1024 * 1024)
+    check("and a file larger than one fetch window", wait_until(
+        lambda: write_file(port, FILES_PROJECT, "/missed/big.bin", big).get("status") == "OK", timeout_s=60.0,
+        interval_s=1.0))
+    print(f"  Restarting node-{victim.index} ...")
+    victim.start()
+    check("the restarted node fetches every missed file", wait_until(
+        lambda: all(file_on_disk(victim, FILES_PROJECT, p) == d for p, d in payloads.items())
+        and file_on_disk(victim, FILES_PROJECT, "/missed/big.bin") == big, timeout_s=90.0, interval_s=1.0), "")
+
+
+def test_a_recreated_project_never_gets_its_old_files_back():
+    section("A project dropped and created again while a node was down never gets the old files back")
+    port = nodes[0].client_port
+    check_status("create the project", op_with_retry(lambda: create_project(port, FILES_LIFE_PROJECT)), "OK")
+    old = b"from the first life"
+    check_status("write a file in its first life", op_with_retry(
+        lambda: write_file(port, FILES_LIFE_PROJECT, "/old.txt", old)), "OK")
+    check("every node holds it", wait_until(lambda: every_node_holds(FILES_LIFE_PROJECT, "/old.txt", old),
+                                            timeout_s=30.0), "")
+    victim = nodes[2]
+    print(f"  Killing node-{victim.index} ...")
+    victim.kill()
+    check("the ring settles without it", wait_until_cluster_is_healthy())
+    check("drop the project without it", wait_until(
+        lambda: drop_project(port, FILES_LIFE_PROJECT).get("status") == "OK", timeout_s=60.0, interval_s=1.0))
+    check("create it again", wait_until(
+        lambda: create_project(port, FILES_LIFE_PROJECT).get("status") == "OK", timeout_s=60.0, interval_s=1.0))
+    new = b"from the second life"
+    check("write a file in its second life", wait_until(
+        lambda: write_file(port, FILES_LIFE_PROJECT, "/new.txt", new).get("status") == "OK", timeout_s=60.0,
+        interval_s=1.0))
+    print(f"  Restarting node-{victim.index} ...")
+    victim.start()
+    check("the restarted node takes the second life's file", wait_until(
+        lambda: file_on_disk(victim, FILES_LIFE_PROJECT, "/new.txt") == new, timeout_s=90.0, interval_s=1.0), "")
+    check("and no node serves the first life's file", holds_throughout(
+        lambda: no_node_holds(FILES_LIFE_PROJECT, "/old.txt"), seconds=2 * ANTI_ENTROPY_INTERVAL_S), "")
+    listed = op(port, {"type": "LIST_FILES", "projectName": FILES_LIFE_PROJECT, "recursive": True})
+    check("the project lists only the new file", [e["path"] for e in listed.get("entries") or []] == ["/new.txt"],
+          f"got {listed}")
+
+
 GROUPS = {
     "replication": [
         test_formation_and_quorum_writes,
@@ -4519,6 +4634,7 @@ GROUPS = {
         test_forwarded_write_ignores_a_client_supplied_trigger_depth,
         test_an_escaped_trigger_depth_does_not_suppress_the_owners_trigger,
         test_replica_with_refused_pk_applies_batches,
+        test_project_files_replicate_to_every_node,
     ],
     "scripts": [
         test_formation_and_quorum_writes,
@@ -4561,6 +4677,7 @@ GROUPS = {
         test_delete_of_an_unreplicated_id_does_not_destroy_it,
         test_a_rejoining_node_repairs_one_change_among_many_documents,
         test_replicated_saves_stay_fast_with_many_tombstones,
+        test_files_written_while_a_node_is_down_reach_it,
     ],
     "faults": [
         test_formation_and_quorum_writes,
@@ -4591,6 +4708,7 @@ GROUPS = {
         test_drop_project_then_rejoin_then_recreate_does_not_resurrect_documents,
         test_rapid_collection_creates_are_not_quarantined,
         test_recreating_an_existing_collection_keeps_its_documents,
+        test_a_recreated_project_never_gets_its_old_files_back,
         test_admin_tombstone_snapshot_ships_differences,
         test_a_node_that_missed_the_last_project_drop_converges,
         test_a_populated_standalone_node_keeps_its_data_when_a_fresh_node_joins,

@@ -21,6 +21,7 @@ PAIRS: list[tuple[type, type]] = [
     (mpp.AsyncSchedules, mpp.Schedules),
     (mpp.AsyncEntrypoints, mpp.Entrypoints),
     (mpp.AsyncMiddlewares, mpp.Middlewares),
+    (mpp.AsyncProjectFiles, mpp.ProjectFiles),
     (mpp.AsyncAdmin, mpp.Admin),
     (mpp.AsyncUsers, mpp.Users),
     (mpp.AsyncScripts, mpp.Scripts),

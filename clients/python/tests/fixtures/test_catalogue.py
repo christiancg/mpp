@@ -34,7 +34,7 @@ def test_every_list_and_get_operation_is_a_read() -> None:
     reads = {details.name for details in OPERATIONS if details.read}
     listings = {details.name for details in OPERATIONS if details.name.startswith(("LIST_", "GET_"))}
     assert listings <= reads
-    assert reads - listings == {"FIND_BY_ID", "AGGREGATE", "SERVER_INFO"}
+    assert reads - listings == {"FIND_BY_ID", "AGGREGATE", "SERVER_INFO", "READ_FILE", "STAT_FILE"}
 
 
 def test_error_codes_equal_error_codes_json() -> None:

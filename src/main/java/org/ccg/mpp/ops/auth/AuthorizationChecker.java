@@ -209,6 +209,16 @@ public final class AuthorizationChecker {
                 || !lacksCollectionAccess(user, projectName, collName, PermissionLevel.READ);
     }
 
+    public static boolean canReadProjectFiles(AdminUserEntry user, String projectName) {
+        if (user == null) {
+            return false;
+        }
+        if (ownsOrAdministers(user, projectName)) {
+            return true;
+        }
+        return !lacksCollectionAccess(user, projectName, null, PermissionLevel.READ);
+    }
+
     private static boolean allowsScriptManagement(AdminUserEntry user, String projectName, OperationRequest req) {
         if (!user.canManageScripts(projectName)) {
             return false;
@@ -232,8 +242,8 @@ public final class AuthorizationChecker {
     private static PermissionLevel getRequiredPermissionLevel(OperationType type) {
         return switch (type) {
             case FIND_BY_ID, AGGREGATE, LIST_COLLECTIONS, GET_SCHEMA, LISTEN, LIST_PROCEDURES, LIST_TRIGGERS,
-                    LIST_SCHEDULES, LIST_ENTRYPOINTS, LIST_MIDDLEWARES, START_SNAPSHOT, READ_SNAPSHOT,
-                    RELEASE_SNAPSHOT ->
+                    LIST_SCHEDULES, LIST_ENTRYPOINTS, LIST_MIDDLEWARES, START_SNAPSHOT, READ_SNAPSHOT, RELEASE_SNAPSHOT,
+                    READ_FILE, STAT_FILE, LIST_FILES ->
                 PermissionLevel.READ;
             default -> PermissionLevel.READ_WRITE;
         };

@@ -52,7 +52,7 @@ public final class TransactionOperationHelper {
     public static boolean isAllowedDuringTransaction(OperationType type) {
         return switch (type) {
             case START_TRANSACTION, COMMIT_TRANSACTION, ROLLBACK_TRANSACTION, SAVE, BULK_SAVE, DELETE, FIND_BY_ID,
-                    AGGREGATE, CLOSE_CONNECTION, SERVER_INFO ->
+                    AGGREGATE, CLOSE_CONNECTION, SERVER_INFO, READ_FILE, STAT_FILE, LIST_FILES ->
                 true;
             default -> false;
         };

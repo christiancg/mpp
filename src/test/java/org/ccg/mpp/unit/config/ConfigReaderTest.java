@@ -56,6 +56,11 @@ public class ConfigReaderTest {
         expectedConfig.put("filePath", "db");
         expectedConfig.put("backgroundProcessingThreads", "10");
         expectedConfig.put("logPath", "logs");
+        expectedConfig.put("filesPath", "files");
+        expectedConfig.put("filesMaxFileSize", "64Mb");
+        expectedConfig.put("filesMaxReadBytes", "16Mb");
+        expectedConfig.put("filesMaxBytesPerProject", "0");
+        expectedConfig.put("filesMaxEntriesPerProject", "100000");
         expectedConfig.put("logLevel", "INFO");
         expectedConfig.put("maxLogFiles", "7");
         expectedConfig.put("maxPageSize", "2Mb");

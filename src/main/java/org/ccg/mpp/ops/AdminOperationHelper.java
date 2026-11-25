@@ -172,7 +172,7 @@ public final class AdminOperationHelper {
                 return false;
             }
             final var updated = new AdminProjectEntry(projectName, new ArrayList<>(dbEntry.getCollections()),
-                    new ArrayList<>(owners));
+                    new ArrayList<>(owners), dbEntry.getIncarnation());
             cache.putAdminProjectEntry(updated, writeAdminEntry(Globals.ADMIN_PROJECTS_COLLECTION_NAME, updated, pk));
             return true;
         } finally {
@@ -210,7 +210,8 @@ public final class AdminOperationHelper {
         }
         final var collections = new ArrayList<>(current.getCollections());
         collections.add(split[1]);
-        publishProjectEntry(new AdminProjectEntry(split[0], collections, new ArrayList<>(current.getOwners())));
+        publishProjectEntry(new AdminProjectEntry(split[0], collections, new ArrayList<>(current.getOwners()),
+                current.getIncarnation()));
     }
 
     private static void unregisterNewCollectionRow(AdminCollEntry collEntry, Exception cause) {
@@ -249,8 +250,8 @@ public final class AdminOperationHelper {
                 final var adminProjectEntry = cache.getAdminProjectEntry(projectName);
                 final var remaining = new ArrayList<>(adminProjectEntry.getCollections());
                 remaining.remove(collName);
-                publishProjectEntry(
-                        new AdminProjectEntry(projectName, remaining, new ArrayList<>(adminProjectEntry.getOwners())));
+                publishProjectEntry(new AdminProjectEntry(projectName, remaining,
+                        new ArrayList<>(adminProjectEntry.getOwners()), adminProjectEntry.getIncarnation()));
             } finally {
                 releaseAdmin(Globals.ADMIN_COLLECTIONS_COLLECTION_NAME);
                 releaseAdmin(Globals.ADMIN_PROJECTS_COLLECTION_NAME);
@@ -377,7 +378,8 @@ public final class AdminOperationHelper {
                 + ": registered but missing from the project's list, which a process killed during"
                 + " CREATE_COLLECTION leaves");
         listed.addAll(unlisted);
-        return new AdminProjectEntry(project.get_id(), listed, new ArrayList<>(project.getOwners()));
+        return new AdminProjectEntry(project.get_id(), listed, new ArrayList<>(project.getOwners()),
+                project.getIncarnation());
     }
 
     public static void saveTransactionOp(AdminTransactionEntry entry) throws IOException, InterruptedException {

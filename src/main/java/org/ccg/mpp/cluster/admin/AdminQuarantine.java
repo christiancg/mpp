@@ -17,6 +17,7 @@ import org.ccg.mpp.ops.DroppedCollections;
 import org.ccg.mpp.ops.TriggerRunLog;
 import org.ccg.mpp.ops.admin.CollectionIncarnation;
 import org.ccg.mpp.ops.admin.FieldIndexDropFence;
+import org.ccg.mpp.ops.admin.ProjectFilesRetirement;
 
 final class AdminQuarantine {
     private enum MoveAside {
@@ -153,6 +154,7 @@ final class AdminQuarantine {
         AdminOperationHelper.deleteProjectEntry(projectName);
         listenManager.endAllForProject(projectName, ListenManager.PROJECT_DROPPED);
         final var moved = fs.folderQuarantine().moveProjectAside(projectName);
+        ProjectFilesRetirement.quarantine(projectName, "the cluster dropped the project while this node held it");
         DroppedCollections.forgetProject(projectName);
         compiledProcedures.invalidateProject(projectName);
         scheduleRegistry.removeProject(projectName);
