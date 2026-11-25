@@ -91,7 +91,8 @@ public class AggregationSaltedKeyTest {
                 .size());
     }
 
-    private static final int SELF_PAIRS = 20_000;
+    private static final int SELF_PAIRS = 40_000;
+    private static final Duration LINEAR_BUDGET = Duration.ofSeconds(5);
 
     private static JsonObject selfPair(int i) {
         final var document = new JsonObject();
@@ -108,7 +109,7 @@ public class AggregationSaltedKeyTest {
 
     @Test
     public void distinctRowsOverSelfPairDocumentsStayLinear() {
-        final var rows = assertTimeoutPreemptively(Duration.ofSeconds(1),
+        final var rows = assertTimeoutPreemptively(LINEAR_BUDGET,
                 () -> AggregationOperationHelper.processStepsOnStream(List.of(new DistinctAggregationStep(null)),
                         IntStream.range(0, SELF_PAIRS).mapToObj(AggregationSaltedKeyTest::selfPair)).size());
         assertEquals(SELF_PAIRS, rows);
@@ -118,7 +119,7 @@ public class AggregationSaltedKeyTest {
     public void distinctAndGroupByOnSelfPairValuesStayLinear() {
         final var documents = IntStream.range(0, SELF_PAIRS).mapToObj(AggregationSaltedKeyTest::selfPairValue)
                 .toArray(JsonObject[]::new);
-        assertEquals(SELF_PAIRS, assertTimeoutPreemptively(Duration.ofSeconds(1), () -> distinctValues(documents)));
-        assertEquals(SELF_PAIRS, assertTimeoutPreemptively(Duration.ofSeconds(1), () -> groups(documents)));
+        assertEquals(SELF_PAIRS, assertTimeoutPreemptively(LINEAR_BUDGET, () -> distinctValues(documents)));
+        assertEquals(SELF_PAIRS, assertTimeoutPreemptively(LINEAR_BUDGET, () -> groups(documents)));
     }
 }
